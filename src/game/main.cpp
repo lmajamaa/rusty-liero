@@ -18,9 +18,11 @@
 #include "console.hpp"
 #include <gvl/support/platform.hpp>
 
+#include <cstdio>
 #include <ctime>
 #include <exception>
 #include <gvl/math/cmwc.hpp>
+#include <liero_game.h>
 
 #if __APPLE__
 #define gameEntry SDL_main
@@ -31,6 +33,8 @@ void benchAll();
 int gameEntry(int argc, char* argv[])
 try
 {
+	std::printf("%s\n", liero_game_version());
+
 	// TODO: Better PRNG seeding
 	gfx.rand.seed(Uint32(std::time(0)));
 

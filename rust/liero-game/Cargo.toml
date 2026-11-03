@@ -1,0 +1,20 @@
+[package]
+name = "liero-game"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause"
+description = "Game code ported from C++ to Rust, linked into openliero as a static library"
+
+[lib]
+name = "liero_game"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+
+# A panic must never unwind into C++, so it aborts instead.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
