@@ -1,10 +1,24 @@
 FROM debian:trixie-slim
 
 ARG EMSDK_VERSION=4.0.0
+# Rust 1.87 uses LLVM 20, the same major version as emsdk 4.0.0's clang, so
+# their object files link together. Change the two versions together.
+ARG RUST_VERSION=1.87.0
+ARG CBINDGEN_VERSION=0.29.0
 
+# gcc and libc6-dev are the host linker cargo needs for build scripts.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates cmake git make python3 xz-utils \
+ && apt-get install -y --no-install-recommends ca-certificates cmake curl gcc git libc6-dev make python3 xz-utils \
  && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/rustup \
+    CARGO_HOME=/cargo \
+    PATH=/cargo/bin:$PATH
+
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
+      --default-toolchain ${RUST_VERSION} --target wasm32-unknown-emscripten \
+ && cargo install --locked cbindgen --version ${CBINDGEN_VERSION} \
+ && rm -rf /cargo/registry /cargo/git
 
 RUN git clone --depth 1 https://github.com/emscripten-core/emsdk.git /emsdk \
  && /emsdk/emsdk install ${EMSDK_VERSION} \

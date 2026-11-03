@@ -110,24 +110,37 @@ set(VIDEO_TOOL_SOURCES ${SOURCES}
     src/video_tool/video_recorder.c
 )
 
-if(APPLE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-    set(GAME_SOURCES ${GAME_SOURCES} src/game/SDLmain.m)
-    set_source_files_properties(src/game/SDLmain.m PROPERTIES COMPILE_FLAGS "-std=c99")
-
-    # Populate RESOURCE_FILES with files to copy into the .app Resources/ directory.
-    file(GLOB_RECURSE RESOURCE_FILES pkg/*.cfg pkg/TC/* pkg/*.icns)
-else(APPLE)
-    set(GAME_SOURCES ${GAME_SOURCES} src/game/sdlmain.cpp)
-endif(APPLE)
-
-add_executable(openliero WIN32 ${GAME_SOURCES} ${RESOURCE_FILES} pkg/win32_icon.rc)
-target_link_libraries(openliero SDL2::SDL2 SDL2_image::SDL2_image)
+set(GAME_SOURCES ${GAME_SOURCES} src/game/sdlmain.cpp)
 include_directories(src/game)
 
 if(EMSCRIPTEN)
-    # The web build is only the game: tctool is a Rust CLI (tools/tctool) and
-    # videotool needs ffmpeg. Emscripten writes openliero.html/.js/.wasm.
+    # The game is only built for the browser.
+
+    # Game code ported to Rust (rust/liero-game). cargo builds it as a static
+    # library for wasm32-unknown-emscripten on every build, and only rebuilds
+    # what changed.
+    find_program(CARGO cargo REQUIRED)
+    set(LIERO_GAME_DIR ${PROJECT_SOURCE_DIR}/rust/liero-game)
+    set(LIERO_GAME_TARGET_DIR ${CMAKE_BINARY_DIR}/rust)
+    set(LIERO_GAME_LIB
+        ${LIERO_GAME_TARGET_DIR}/wasm32-unknown-emscripten/release/libliero_game.a)
+
+    add_custom_target(liero_game_cargo
+        COMMAND ${CARGO} build --release
+            --manifest-path ${LIERO_GAME_DIR}/Cargo.toml
+            --target-dir ${LIERO_GAME_TARGET_DIR}
+            --target wasm32-unknown-emscripten
+        BYPRODUCTS ${LIERO_GAME_LIB}
+        COMMENT "Building rust/liero-game")
+    add_library(liero_game STATIC IMPORTED)
+    set_target_properties(liero_game PROPERTIES
+        IMPORTED_LOCATION ${LIERO_GAME_LIB}
+        INTERFACE_INCLUDE_DIRECTORIES ${LIERO_GAME_DIR}/include)
+    add_dependencies(liero_game liero_game_cargo)
+
+    add_executable(openliero ${GAME_SOURCES})
+    target_link_libraries(openliero SDL2::SDL2 SDL2_image::SDL2_image liero_game)
+    # Emscripten writes openliero.html/.js/.wasm/.data.
     set_target_properties(openliero PROPERTIES SUFFIX ".html")
     # ASYNCIFY lets the blocking menu and game loops yield to the browser from
     # emscripten_sleep in Gfx::flip() (and SDL_Delay/SDL_WaitEvent).
@@ -138,23 +151,9 @@ if(EMSCRIPTEN)
     target_link_options(openliero PRIVATE
         "--preload-file=${PROJECT_SOURCE_DIR}/TC/openliero@/TC/openliero")
 else()
+    # Natively, only the command-line tools are built.
     add_executable(tctool ${TC_TOOL_SOURCES})
     add_executable(videotool EXCLUDE_FROM_ALL ${VIDEO_TOOL_SOURCES})
     target_link_libraries(tctool SDL2::SDL2)
     target_link_libraries(videotool SDL2::SDL2 avcodec avformat avutil dl pthread swresample swscale x264)
 endif()
-
-if(APPLE)
-    target_link_libraries(openliero "-framework Cocoa" "-framework CoreFoundation")
-    set_target_properties(openliero PROPERTIES MACOSX_BUNDLE TRUE)
-    set_target_properties(openliero PROPERTIES MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in")
-    set(MACOSX_BUNDLE_ICON_FILE liero)
-
-    # Preserve directory structure when copying contents of pkg/ to the .app Resources/ directory.
-    foreach(absolute_path ${RESOURCE_FILES})
-        file(RELATIVE_PATH relative_path "${CMAKE_CURRENT_SOURCE_DIR}/pkg" ${absolute_path})
-        get_filename_component(relative_path ${relative_path} DIRECTORY)
-        set_source_files_properties(${absolute_path}
-            PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${relative_path}")
-    endforeach(absolute_path)
-endif(APPLE)

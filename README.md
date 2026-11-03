@@ -1,4 +1,7 @@
 
+> The game itself is only built for the web now (see **How to build (Docker)**).
+> The native builds below make only the command-line tools (`tctool`, `videotool`).
+
 How to build (Windows)
 ======================
 
@@ -66,7 +69,7 @@ How to build (Docker)
 With Docker installed, no other build tools are needed. The repository is mounted
 into the containers and build output ends up in `build/`.
 
-Native Linux build of openliero and tctool:
+Native Linux build of the C++ tctool:
 ```bash
 docker compose run --rm native
 ```
@@ -99,6 +102,17 @@ docker compose run --rm native cargo build --release --manifest-path tools/tctoo
 docker compose run --rm native tools/tctool/target/release/tctool --tc-name "Liero v1.33" liero-1.36-bundle
 ```
 With Rust installed locally, `cargo run --release --manifest-path tools/tctool/Cargo.toml -- <path-to-tc>` works too.
+
+Game code ported to Rust lives in `rust/liero-game`. The web build compiles it
+with cargo for `wasm32-unknown-emscripten` and links it into openliero. After
+changing its `extern "C"` functions, regenerate the C header:
+```bash
+docker compose run --rm web sh -c "cd rust/liero-game && cbindgen --config cbindgen.toml --output include/liero_game.h"
+```
+Its tests:
+```bash
+docker compose run --rm native cargo test --manifest-path rust/liero-game/Cargo.toml
+```
 
 Extracting game data for total conversions
 ======================
