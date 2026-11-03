@@ -66,13 +66,15 @@
 #  define GVL_ARM 1
 # elif defined(__aarch64__) || defined(_M_ARM64)
 #  define GVL_ARM_64 1
+# elif defined(__wasm32__)
+#  define GVL_WASM32 1
 # else
 #  error "Unknown architecture, please add it"
 # endif
 #endif
 
 #if !GVL_LITTLE_ENDIAN && !GVL_BIG_ENDIAN
-# if GVL_X86 || GVL_X86_64 || GVL_ARM || GVL_ARM_64
+# if GVL_X86 || GVL_X86_64 || GVL_ARM || GVL_ARM_64 || GVL_WASM32
 #  define GVL_LITTLE_ENDIAN 1
 # else
 #  define GVL_BIG_ENDIAN 1

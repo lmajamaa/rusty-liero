@@ -21,4 +21,9 @@ services:
       dockerfile: Dockerfile.web
     volumes:
       - .:/src
+      # Keeps Emscripten's compiled ports (SDL2, SDL2_image) between runs.
+      - emcache:/emsdk/upstream/emscripten/cache
     command: bash
+
+volumes:
+  emcache:

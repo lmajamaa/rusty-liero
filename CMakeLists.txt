@@ -1,8 +1,24 @@
 cmake_minimum_required(VERSION 3.21)
 project(openliero)
 
-find_package(SDL2 REQUIRED)
-find_package(SDL2_image REQUIRED)
+if(EMSCRIPTEN)
+    # Emscripten ships its own SDL2 and SDL2_image ports. Wrap them in the same
+    # target names find_package gives, so the targets below link the same way.
+    add_library(SDL2::SDL2 INTERFACE IMPORTED)
+    set_target_properties(SDL2::SDL2 PROPERTIES
+        INTERFACE_COMPILE_OPTIONS "-sUSE_SDL=2"
+        INTERFACE_LINK_OPTIONS "-sUSE_SDL=2")
+    add_library(SDL2_image::SDL2_image INTERFACE IMPORTED)
+    set_target_properties(SDL2_image::SDL2_image PROPERTIES
+        INTERFACE_COMPILE_OPTIONS "-sUSE_SDL_IMAGE=2"
+        INTERFACE_LINK_OPTIONS "-sUSE_SDL_IMAGE=2;-sSDL2_IMAGE_FORMATS=tga,png")
+    # The game reports errors with exceptions; emcc only catches them when asked.
+    add_compile_options(-fexceptions)
+    add_link_options(-fexceptions)
+else()
+    find_package(SDL2 REQUIRED)
+    find_package(SDL2_image REQUIRED)
+endif()
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/ffmpeg)
@@ -11,7 +27,10 @@ link_directories(${PROJECT_SOURCE_DIR}/ffmpeg/libavcodec ${PROJECT_SOURCE_DIR}/f
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
-set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-s")
+if(NOT EMSCRIPTEN)
+    # emcc reads a bare -s as the start of a setting, not as "strip".
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-s")
+endif()
 
 set(SOURCES
     src/game/bobject.cpp
@@ -103,12 +122,27 @@ else(APPLE)
 endif(APPLE)
 
 add_executable(openliero WIN32 ${GAME_SOURCES} ${RESOURCE_FILES} pkg/win32_icon.rc)
-add_executable(tctool ${TC_TOOL_SOURCES})
-add_executable(videotool EXCLUDE_FROM_ALL ${VIDEO_TOOL_SOURCES})
 target_link_libraries(openliero SDL2::SDL2 SDL2_image::SDL2_image)
-target_link_libraries(tctool SDL2::SDL2)
-target_link_libraries(videotool SDL2::SDL2 avcodec avformat avutil dl pthread swresample swscale x264)
 include_directories(src/game)
+
+if(EMSCRIPTEN)
+    # The web build is only the game: tctool is a Rust CLI (tools/tctool) and
+    # videotool needs ffmpeg. Emscripten writes openliero.html/.js/.wasm.
+    set_target_properties(openliero PROPERTIES SUFFIX ".html")
+    # ASYNCIFY lets the blocking menu and game loops yield to the browser from
+    # emscripten_sleep in Gfx::flip() (and SDL_Delay/SDL_WaitEvent).
+    # The menus sleep deep inside their call stacks, which outgrows ASYNCIFY's
+    # default 4 KB save area.
+    target_link_options(openliero PRIVATE "-sASYNCIFY" "-sASYNCIFY_STACK_SIZE=65536")
+    # The game looks for TC/ under the current folder, which is / in the browser.
+    target_link_options(openliero PRIVATE
+        "--preload-file=${PROJECT_SOURCE_DIR}/TC/openliero@/TC/openliero")
+else()
+    add_executable(tctool ${TC_TOOL_SOURCES})
+    add_executable(videotool EXCLUDE_FROM_ALL ${VIDEO_TOOL_SOURCES})
+    target_link_libraries(tctool SDL2::SDL2)
+    target_link_libraries(videotool SDL2::SDL2 avcodec avformat avutil dl pthread swresample swscale x264)
+endif()
 
 if(APPLE)
     target_link_libraries(openliero "-framework Cocoa" "-framework CoreFoundation")

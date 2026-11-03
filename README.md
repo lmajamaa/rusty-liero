@@ -81,6 +81,16 @@ Shell with the web build tools (Emscripten and Bun):
 docker compose run --rm web
 ```
 
+Web build of openliero (writes `build/web/openliero.html`, `.js`, `.wasm` and `.data`):
+```bash
+docker compose run --rm web sh -c "emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release && cmake --build build/web -j"
+```
+
+Serving the web build locally with Bun (then open http://localhost:8080):
+```bash
+bun web/serve.ts build/web
+```
+
 Building the Rust version of tctool (in `tools/tctool`):
 ```bash
 docker compose run --rm native cargo build --release --manifest-path tools/tctool/Cargo.toml
