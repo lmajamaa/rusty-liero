@@ -64,13 +64,15 @@
 #  define TL_ARM 1
 # elif defined(__aarch64__) || defined(_M_ARM64)
 #  define TL_ARM_64 1
+# elif defined(__wasm32__)
+#  define TL_WASM32 1
 # else
 #  error "Unknown architecture, please add it"
 # endif
 #endif
 
 #if !TL_LITTLE_ENDIAN && !TL_BIG_ENDIAN
-# if TL_X86 || TL_X86_64 || TL_ARM || TL_ARM_64
+# if TL_X86 || TL_X86_64 || TL_ARM || TL_ARM_64 || TL_WASM32
 #  define TL_LITTLE_ENDIAN 1
 # else
 #  define TL_BIG_ENDIAN 1

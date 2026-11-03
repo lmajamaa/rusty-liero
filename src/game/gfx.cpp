@@ -11,6 +11,9 @@
 #include <memory>
 #include <limits>
 #include <random>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "gfx.hpp"
 #include "reader.hpp"
@@ -925,6 +928,12 @@ void Gfx::flip()
 
 	uint32_t wantedTime = lastFrame + delay;
 
+#ifdef __EMSCRIPTEN__
+	// The browser only shows the frame and delivers input once we return to it,
+	// so yield (through ASYNCIFY) every frame, even when we're behind.
+	uint32_t now = SDL_GetTicks();
+	emscripten_sleep(now < wantedTime ? wantedTime - now : 0);
+#else
 	while(true)
 	{
 		uint32_t now = SDL_GetTicks();
@@ -933,6 +942,7 @@ void Gfx::flip()
 
 		SDL_Delay(wantedTime - now);
 	}
+#endif
 
 	lastFrame = wantedTime;
 }
