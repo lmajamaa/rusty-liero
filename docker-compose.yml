@@ -1,0 +1,24 @@
+# Build tooling. The repo is mounted at /src and build output goes to build/.
+#
+#   docker compose run --rm native                  # build openliero and tctool for Linux
+#   docker compose run --rm native build/native/tctool <path-to-tc>
+#   docker compose run --rm web                     # shell with emcc, emcmake and bun
+
+services:
+  native:
+    build:
+      context: .
+      dockerfile: Dockerfile.native
+    volumes:
+      - .:/src
+    command: >
+      sh -c "cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release
+      && cmake --build build/native -j"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    volumes:
+      - .:/src
+    command: bash

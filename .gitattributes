@@ -1,0 +1,13 @@
+# Store and check out text files with LF on every platform.
+* text=auto eol=lf
+
+# Windows-only scripts need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary data: never touch line endings or diff as text.
+*.tga binary
+*.wav binary
+*.png binary
+*.ico binary
+*.icns binary
