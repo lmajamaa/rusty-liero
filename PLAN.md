@@ -56,7 +56,7 @@ tctool is rewritten in Rust as a standalone command-line tool (`tools/tctool`, c
 
 Remaining steps:
 
-- [ ] **Compile and fix.** The crate hasn't been built yet.
+- [x] **Compile and fix.** Builds cleanly in the `native` image (no fixes needed).
 - [ ] **Compare outputs.** Convert the 1.36 bundle with both tools and diff the TC folders; they should be identical.
 - [ ] **Remove the C++ tctool** once the outputs match.
 - [ ] **Test in CI.** Run the conversion and compare against a checked-in file listing.
