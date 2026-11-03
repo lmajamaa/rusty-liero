@@ -1,0 +1,12 @@
+[package]
+name = "liero-tctool"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause"
+description = "Converts a Liero installation (LIERO.EXE, LIERO.CHR, LIERO.SND) into an OpenLiero TC folder"
+
+[[bin]]
+name = "tctool"
+path = "src/main.rs"
+
+[dependencies]
