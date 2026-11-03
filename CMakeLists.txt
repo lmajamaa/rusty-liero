@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 project(openliero)
 
 find_package(SDL2 REQUIRED)
-find_package(SDL2_Image REQUIRED)
+find_package(SDL2_image REQUIRED)
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/ffmpeg)
