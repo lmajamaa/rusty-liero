@@ -314,6 +314,11 @@ void Gfx::setVideoMode()
 {
 	int flags;
 
+#ifdef __EMSCRIPTEN__
+	// The page has one canvas, so there is no second window to show.
+	settings->spectatorWindow = false;
+#endif
+
 	if (sdlSpectatorRenderer)
 	{
 		SDL_DestroyRenderer(sdlSpectatorRenderer);
@@ -454,9 +459,14 @@ void Gfx::onWindowResize(Uint32 windowID)
 		}
 		sdlDrawSurface = SDL_CreateRGBSurface(0, doubleRes ? 640 : 320,
 		                         doubleRes ? 400 : 200, 32, 0, 0, 0, 0);
+#ifdef __EMSCRIPTEN__
+		// The canvas fills the window, so keep the pixels sharp when scaling up.
+		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+#else
 		// linear for that old-school chunky look, but consider adding a user
 		// option for this
 		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+#endif
 		SDL_RenderSetLogicalSize(sdlRenderer, doubleRes ? 640 : 320,
 		                         doubleRes ? 400 : 200);
 	}
@@ -501,7 +511,9 @@ void Gfx::loadMenus()
 	hiddenMenu.addItem(MenuItem(48, 7, "BOT WEAPONS", HiddenMenu::SelectBotWeapons));
 	hiddenMenu.addItem(MenuItem(48, 7, "SEE SPAWN POINT", HiddenMenu::AllowViewingSpawnPoint));
 	hiddenMenu.addItem(MenuItem(48, 7, "SINGLE SCREEN REPLAY", HiddenMenu::SingleScreenReplay));
+#ifndef __EMSCRIPTEN__
 	hiddenMenu.addItem(MenuItem(48, 7, "SPECTATOR WINDOW", HiddenMenu::SpectatorWindow));
+#endif
 
 	playerMenu.addItem(MenuItem(3, 7, "PROFILE LOADED", PlayerMenu::PlLoadedProfile));
 	playerMenu.addItem(MenuItem(3, 7, "SAVE PROFILE", PlayerMenu::PlSaveProfile));
@@ -1657,6 +1669,12 @@ void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
 bool Gfx::inputString(std::string& dest, std::size_t maxLen, int x, int y, int (*filter)(int), std::string const& prefix, bool centered)
 {
 	std::string buffer = dest;
+
+#ifdef __EMSCRIPTEN__
+	// Text input stays off outside this loop, so that SDL calls
+	// preventDefault on every key the game gets (see main.cpp).
+	struct StopTextInput { ~StopTextInput() { SDL_StopTextInput(); } } stopTextInput;
+#endif
 
 	while(true)
 	{

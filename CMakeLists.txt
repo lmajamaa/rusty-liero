@@ -150,6 +150,14 @@ if(EMSCRIPTEN)
     # The game looks for TC/ under the current folder, which is / in the browser.
     target_link_options(openliero PRIVATE
         "--preload-file=${PROJECT_SOURCE_DIR}/TC/openliero@/TC/openliero")
+    # The page (web/shell.html) waits for a click before it calls main, so the
+    # browser lets the game start audio.
+    target_link_options(openliero PRIVATE
+        "--shell-file=${PROJECT_SOURCE_DIR}/web/shell.html"
+        "-sINVOKE_RUN=0"
+        "-sEXPORTED_RUNTIME_METHODS=callMain")
+    set_property(TARGET openliero APPEND PROPERTY
+        LINK_DEPENDS ${PROJECT_SOURCE_DIR}/web/shell.html)
 else()
     # Natively, only the command-line tools are built.
     add_executable(tctool ${TC_TOOL_SOURCES})

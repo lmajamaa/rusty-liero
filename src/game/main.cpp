@@ -104,6 +104,13 @@ try
 	}
 
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
+#ifdef __EMSCRIPTEN__
+	// SDL starts with text input on, and then lets the browser handle keys
+	// that type characters, so Space scrolls and / opens Firefox's quick find.
+	// With it off, SDL calls preventDefault on all keys. inputString turns it
+	// on while a name is typed.
+	SDL_StopTextInput();
+#endif
 
 	initKeys();
 
