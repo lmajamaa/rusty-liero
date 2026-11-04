@@ -68,6 +68,9 @@ jobs:
           emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release
           cmake --build build/web -j
 
+      - name: Check game-state hashes against the original C++
+        run: bun tools/hashrun/run.ts
+
   native:
     name: Native tools
     runs-on: ubuntu-latest
