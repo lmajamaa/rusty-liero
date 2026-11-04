@@ -10,6 +10,7 @@ pub mod material;
 pub mod math;
 pub mod object;
 pub mod rand;
+pub mod weapon;
 
 use std::ffi::c_char;
 

@@ -18,26 +18,26 @@ use crate::level::{LieroLevel, LieroLevelCommon};
 use crate::math::{ftoi, itof, vector_length, LieroIVec2};
 use crate::rand::LieroRand;
 
-fn add(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
+pub(crate) fn add(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
     LieroIVec2 { x: a.x.wrapping_add(b.x), y: a.y.wrapping_add(b.y) }
 }
 
-fn sub(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
+pub(crate) fn sub(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
     LieroIVec2 { x: a.x.wrapping_sub(b.x), y: a.y.wrapping_sub(b.y) }
 }
 
 /// Divides both components, rounding towards zero like C++.
-fn div(a: LieroIVec2, d: i32) -> LieroIVec2 {
+pub(crate) fn div(a: LieroIVec2, d: i32) -> LieroIVec2 {
     LieroIVec2 { x: a.x.wrapping_div(d), y: a.y.wrapping_div(d) }
 }
 
-fn ftoi_vec(v: LieroIVec2) -> LieroIVec2 {
+pub(crate) fn ftoi_vec(v: LieroIVec2) -> LieroIVec2 {
     LieroIVec2 { x: ftoi(v.x), y: ftoi(v.y) }
 }
 
 /// Like C++'s `Level::inside`: negative coordinates wrap to large unsigned
 /// values and fail.
-fn inside(level: &LieroLevel, x: i32, y: i32) -> bool {
+pub(crate) fn inside(level: &LieroLevel, x: i32, y: i32) -> bool {
     (x as u32) < (level.width as u32) && (y as u32) < (level.height as u32)
 }
 

@@ -80,6 +80,9 @@ struct Weapon
 	std::string idStr;
 };
 
+// The parts of a Weapon that the Rust code uses.
+LieroWeapon toRust(Weapon const& w);
+
 struct WObject : ExactObjectListBase
 {
 	void blowUpObject(Game& game, int causeIdx);

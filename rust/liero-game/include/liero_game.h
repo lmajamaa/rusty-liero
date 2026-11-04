@@ -45,6 +45,34 @@
 #define LIERO_RAND_DEFAULT_SEED 4919
 
 /**
+ * `Weapon::shotType`.
+ */
+#define LIERO_SHOT_NORMAL 0
+
+#define LIERO_SHOT_DTYPE1 1
+
+#define LIERO_SHOT_STEERABLE 2
+
+#define LIERO_SHOT_DTYPE2 3
+
+#define LIERO_SHOT_LASER 4
+
+/**
+ * Number of weapons a worm carries (`Settings::selectableWeapons`).
+ */
+#define LIERO_SELECTABLE_WEAPONS 5
+
+/**
+ * `hit_worms` result: the object should explode.
+ */
+#define LIERO_HIT_EXPLODE 1
+
+/**
+ * `hit_worms` result: the object should disappear.
+ */
+#define LIERO_HIT_REMOVE 2
+
+/**
  * Material flags of one palette index or level pixel. C++'s `Material`
  * inherits from this struct and keeps its tests inline, because the
  * renderer and AI call them for every pixel.
@@ -285,6 +313,236 @@ typedef struct LieroNinjaropeHooks {
                           struct LieroIVec2 pos,
                           int32_t color);
 } LieroNinjaropeHooks;
+
+/**
+ * How a new weapon object starts, from `Weapon::fire`.
+ */
+typedef struct LieroLaunch {
+  struct LieroIVec2 vel;
+  int32_t cur_frame;
+  int32_t time_left;
+} LieroLaunch;
+
+/**
+ * The parts of a C++ `Weapon` that Rust uses.
+ */
+typedef struct LieroWeapon {
+  int32_t id;
+  int32_t detect_distance;
+  bool affect_by_worm;
+  int32_t blow_away;
+  int32_t gravity;
+  int32_t explo_sound;
+  int32_t speed;
+  int32_t add_speed;
+  int32_t distribution;
+  int32_t parts;
+  int32_t recoil;
+  int32_t mult_speed;
+  int32_t delay;
+  int32_t loading_time;
+  int32_t ammo;
+  int32_t create_on_exp;
+  int32_t dirt_effect;
+  int32_t leave_shells;
+  int32_t leave_shell_delay;
+  bool play_reload_sound;
+  bool expl_ground;
+  int32_t fire_cone;
+  bool collide_with_objects;
+  int32_t bounce;
+  int32_t time_to_explo;
+  int32_t time_to_explo_v;
+  int32_t start_frame;
+  int32_t num_frames;
+  bool loop_anim;
+  int32_t shot_type;
+  int32_t color_bullets;
+  int32_t splinter_amount;
+  int32_t splinter_colour;
+  int32_t splinter_type;
+  int32_t splinter_scatter;
+  int32_t obj_trail_type;
+  int32_t obj_trail_delay;
+  int32_t part_trail_type;
+  int32_t part_trail_obj;
+  int32_t part_trail_delay;
+} LieroWeapon;
+
+/**
+ * A worm's weapon slot, laid out like C++'s `WormWeapon`.
+ */
+typedef struct LieroWormWeapon {
+  /**
+   * The C++ `Weapon`.
+   */
+  const void *kind;
+  int32_t ammo;
+  int32_t delay_left;
+  int32_t loading_left;
+} LieroWormWeapon;
+
+/**
+ * Pointers to the fields of a C++ `Worm` that firing and reloading use.
+ */
+typedef struct LieroWormFiring {
+  struct LieroIVec2 *pos;
+  struct LieroIVec2 *vel;
+  /**
+   * Fixed-point, 0 to 128.
+   */
+  int32_t aiming_angle;
+  int32_t *fire_cone;
+  int32_t *leave_shell_timer;
+  /**
+   * All five weapon slots.
+   */
+  struct LieroWormWeapon *weapons;
+  int32_t current_weapon;
+} LieroWormFiring;
+
+/**
+ * What C++ does when a worm fires or reloads.
+ */
+typedef struct LieroWormFiringHooks {
+  void *ctx;
+  /**
+   * The weapon's launch sound, looping or not.
+   */
+  void (*launch_sound)(void *ctx);
+  /**
+   * `Weapon::fire` for the current weapon: one part of a shot.
+   */
+  void (*fire_part)(void *ctx,
+                    int32_t angle,
+                    struct LieroIVec2 vel,
+                    int32_t speed,
+                    struct LieroIVec2 pos);
+  /**
+   * Plays sound `sound`.
+   */
+  void (*play_sound)(void *ctx, int32_t sound);
+  /**
+   * `NObjectType::create1` for nobject type `kind`, owned by the worm.
+   */
+  void (*create_nobject1)(void *ctx,
+                          int32_t kind,
+                          struct LieroIVec2 vel,
+                          struct LieroIVec2 pos,
+                          int32_t color);
+} LieroWormFiringHooks;
+
+/**
+ * Pointers to the fields of one C++ `WObject`.
+ */
+typedef struct LieroWObjectFields {
+  struct LieroIVec2 *pos;
+  struct LieroIVec2 *vel;
+  int32_t *cur_frame;
+  int32_t *time_left;
+} LieroWObjectFields;
+
+/**
+ * Everything else weapon objects read from the game.
+ */
+typedef struct LieroWObjectEnv {
+  struct LieroLevel level;
+  struct LieroLevelCommon common;
+  struct LieroRand *rand;
+  int32_t cycles;
+  bool shadow;
+  /**
+   * `LC(SplinterLarpaVelDiv)` and `LC(SplinterCracklerVelDiv)`.
+   */
+  int32_t larpa_vel_div;
+  int32_t crackler_vel_div;
+} LieroWObjectEnv;
+
+/**
+ * What C++ does for a `WObject`. `ctx` is passed back to each function.
+ */
+typedef struct LieroWObjectHooks {
+  void *ctx;
+  /**
+   * Whether the owner is steering the object: visible and holding up.
+   */
+  bool (*owner_steers)(void *ctx);
+  /**
+   * `SObjectType::create` for sobject type `kind`, owned like the object.
+   */
+  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
+  /**
+   * `NObjectType::create1` for nobject type `kind`, owned like the object.
+   */
+  void (*create_nobject1)(void *ctx,
+                          int32_t kind,
+                          struct LieroIVec2 vel,
+                          struct LieroIVec2 pos,
+                          int32_t color);
+  /**
+   * `NObjectType::create2` for nobject type `kind`, owned like the object.
+   */
+  void (*create_nobject2)(void *ctx,
+                          int32_t kind,
+                          int32_t angle,
+                          struct LieroIVec2 vel,
+                          struct LieroIVec2 pos,
+                          int32_t color);
+  /**
+   * Adds `impulse` to the other objects within 2 pixels.
+   */
+  void (*push_objects)(void *ctx, struct LieroIVec2 impulse);
+  /**
+   * The worm loop in `WObject::process`: hurts the worms the object hits.
+   * Returns `LIERO_HIT_*` flags.
+   */
+  uint32_t (*hit_worms)(void *ctx);
+  /**
+   * `WObject::blowUpObject` with the owner as the cause.
+   */
+  void (*blow_up)(void *ctx);
+  /**
+   * Frees the object.
+   */
+  void (*free)(void *ctx);
+  /**
+   * Whether the object is still in use.
+   */
+  bool (*used)(void *ctx);
+} LieroWObjectHooks;
+
+/**
+ * What C++ does when a weapon object blows up.
+ */
+typedef struct LieroBlowUpHooks {
+  void *ctx;
+  /**
+   * `SObjectType::create` for sobject type `kind` at (x, y), caused by
+   * the exploding object.
+   */
+  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
+  /**
+   * Plays sound `sound`.
+   */
+  void (*play_sound)(void *ctx, int32_t sound);
+  /**
+   * `NObjectType::create1` for nobject type `kind`.
+   */
+  void (*create_nobject1)(void *ctx,
+                          int32_t kind,
+                          struct LieroIVec2 vel,
+                          struct LieroIVec2 pos,
+                          int32_t color);
+  /**
+   * `NObjectType::create2` for nobject type `kind`.
+   */
+  void (*create_nobject2)(void *ctx,
+                          int32_t kind,
+                          int32_t angle,
+                          struct LieroIVec2 vel,
+                          struct LieroIVec2 pos,
+                          int32_t color);
+} LieroBlowUpHooks;
 
 #ifdef __cplusplus
 extern "C" {
@@ -529,6 +787,73 @@ uint32_t liero_rand_below(struct LieroRand *rand, uint32_t max);
 uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
 
 double liero_rand_double_below(struct LieroRand *rand, double max);
+
+/**
+ * The start of a shot: C++'s `Weapon::fire` without the object list and
+ * stats.
+ */
+struct LieroLaunch liero_weapon_launch(const struct LieroWeapon *w,
+                                       struct LieroRand *rand,
+                                       int32_t angle,
+                                       struct LieroIVec2 vel,
+                                       int32_t speed);
+
+/**
+ * Fires the worm's current weapon `w`: C++'s `Worm::fire`.
+ * `signed_recoil` is the TC's hack that makes recoils of 128 and more
+ * negative.
+ *
+ * # Safety
+ * The pointers in `worm` must be valid for the call.
+ */
+void liero_worm_fire(const struct LieroWormFiring *worm,
+                     const struct LieroWeapon *w,
+                     struct LieroRand *rand,
+                     bool signed_recoil,
+                     const struct LieroWormFiringHooks *hooks);
+
+/**
+ * Counts down weapon delays and reloads, the fire cone and the shell
+ * casing timer: C++'s `Worm::processWeapons`. `current` is the current
+ * weapon's type and `loading_time_percent` the game's loading time
+ * setting.
+ *
+ * # Safety
+ * The pointers in `worm` must be valid for the call.
+ */
+void liero_worm_process_weapons(const struct LieroWormFiring *worm,
+                                const struct LieroWeapon *current,
+                                int32_t loading_time_percent,
+                                struct LieroRand *rand,
+                                const struct LieroWormFiringHooks *hooks);
+
+/**
+ * Moves a weapon object one tick: C++'s `WObject::process`, after the
+ * remote-explosion check.
+ *
+ * # Safety
+ * The field pointers, views and `rand` must be valid for the call. The
+ * hooks may change them, or free the object (after which this returns
+ * without touching it).
+ */
+void liero_wobject_process(const struct LieroWObjectFields *obj,
+                           const struct LieroWeapon *w,
+                           const struct LieroWObjectEnv *env,
+                           const struct LieroWObjectHooks *hooks);
+
+/**
+ * The effects of a weapon object blowing up at `pos` with `vel`: C++'s
+ * `WObject::blowUpObject` after it freed the object. Uses `env.level`,
+ * `env.common`, `env.rand` and `env.shadow`.
+ *
+ * # Safety
+ * The views and `rand` must be valid for the call.
+ */
+void liero_wobject_blow_up(const struct LieroWeapon *w,
+                           struct LieroIVec2 pos,
+                           struct LieroIVec2 vel,
+                           const struct LieroWObjectEnv *env,
+                           const struct LieroBlowUpHooks *hooks);
 
 #ifdef __cplusplus
 }  // extern "C"

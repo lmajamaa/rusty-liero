@@ -21,6 +21,12 @@ pub struct LieroIVec2 {
     pub y: i32,
 }
 
+/// Entry `angle` (0 to 127) of the cos/sin table, which is computed once.
+pub fn cos_sin(angle: i32) -> LieroIVec2 {
+    static TABLE: std::sync::OnceLock<[LieroIVec2; LIERO_COS_SIN_ENTRIES]> = std::sync::OnceLock::new();
+    TABLE.get_or_init(cos_sin_table)[angle as usize]
+}
+
 /// Number of entries in the cos/sin table: a full turn in 128 steps.
 pub const LIERO_COS_SIN_ENTRIES: usize = 128;
 
