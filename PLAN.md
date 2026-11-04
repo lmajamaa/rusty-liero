@@ -40,7 +40,7 @@ Phase 1 is done when local 2-player games, menus, sound and saved settings all w
 - [ ] **Saving.** Mount IDBFS on the folder for settings, profiles and replays. Load it with `FS.syncfs(true)` at startup and save with `FS.syncfs(false)` after each write.
 - [ ] **Custom TCs and levels.** Add a file upload on the page that writes files into the virtual file system. The original Liero data is not hosted.
 - [x] **Browser details.** Add a click-to-start screen so audio can start, call `preventDefault` on the game's keys, give player 2 default keys that exist on Mac keyboards (there is no Right Ctrl, and Ctrl+arrows switch Spaces), make the canvas fill the window, and turn off the spectator window.
-- [ ] **Hosting.** Publish a static page (`index.html`, `.js`, `.wasm`, `.data`) on GitHub Pages, built and deployed by a GitHub Actions workflow on every push to master. Bun is the web runtime: `web/serve.ts` (Bun.serve) serves the build locally with the right MIME types and no COOP/COEP headers, matching what Pages serves.
+- [x] **Hosting.** Publish a static page (`index.html`, `.js`, `.wasm`, `.data`) on GitHub Pages, built and deployed by a GitHub Actions workflow on every push to main: <https://lmajamaa.github.io/rusty-liero/>. Bun is the web runtime: `web/serve.ts` (Bun.serve) serves the build locally with the right MIME types and no COOP/COEP headers, matching what Pages serves.
 
 **Later, if needed:** replace ASYNCIFY with `emscripten_set_main_loop` by turning each menu and the game into a state with a `tick()` function. That gives a smaller, faster binary.
 
