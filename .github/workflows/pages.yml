@@ -1,9 +1,8 @@
 name: Pages
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  release:
+    types: [published]
 
 # Each job asks for what it needs.
 permissions: {}
