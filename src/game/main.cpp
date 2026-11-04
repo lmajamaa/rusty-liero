@@ -24,12 +24,6 @@
 #include <gvl/math/cmwc.hpp>
 #include <liero_game.h>
 
-#if __APPLE__
-#define gameEntry SDL_main
-#endif
-
-void benchAll();
-
 int gameEntry(int argc, char* argv[])
 try
 {
@@ -39,9 +33,6 @@ try
 	gfx.rand.seed(Uint32(std::time(0)));
 
 #if 0
-	benchAll();
-	return 0;
-#elif 0
 	std::string const& path = "D:\\cpp\\liero\\tc";
 	FsNode node(path);
 
