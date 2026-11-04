@@ -8,6 +8,7 @@
 pub mod level;
 pub mod material;
 pub mod math;
+pub mod object;
 pub mod rand;
 
 use std::ffi::c_char;

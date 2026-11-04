@@ -72,8 +72,17 @@ docker compose run --rm web sh -c "cd rust/liero-game && cargo test --target was
 ```
 Ported code is tested against the original C++: `rust/liero-game/reference/reference_values.cpp`
 prints the values the tests expect, by running the same loops through the C++
-code (see the comment at its top for how to run it). CI runs these tests and
-builds on every pull request (`.github/workflows/test.yml`).
+code (see the comment at its top for how to run it).
+
+Whole games are checked too: `openliero --hash-run` plays fixed-seed bot games
+without a window and prints game-state hashes, and `tools/hashrun/run.ts`
+compares them with `tools/hashrun/expected.txt`, made from the original C++.
+After building the web game:
+```bash
+docker compose run --rm web bun tools/hashrun/run.ts
+```
+CI runs these tests and checks and builds on every pull request
+(`.github/workflows/test.yml`).
 
 Extracting game data for total conversions
 ======================

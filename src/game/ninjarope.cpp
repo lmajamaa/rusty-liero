@@ -3,109 +3,74 @@
 #include "game.hpp"
 #include "gfx/color.hpp"
 #include "math.hpp"
+#include <cstddef>
+
+// Rust works on Ninjarope in place, with the anchor as an opaque pointer.
+static_assert(sizeof(Ninjarope) == sizeof(LieroNinjarope), "Ninjarope layout");
+static_assert(offsetof(Ninjarope, out) == offsetof(LieroNinjarope, out), "Ninjarope layout");
+static_assert(offsetof(Ninjarope, attached) == offsetof(LieroNinjarope, attached), "Ninjarope layout");
+static_assert(offsetof(Ninjarope, anchor) == offsetof(LieroNinjarope, anchor), "Ninjarope layout");
+static_assert(offsetof(Ninjarope, pos) == offsetof(LieroNinjarope, pos), "Ninjarope layout");
+static_assert(offsetof(Ninjarope, vel) == offsetof(LieroNinjarope, vel), "Ninjarope layout");
+static_assert(offsetof(Ninjarope, length) == offsetof(LieroNinjarope, length), "Ninjarope layout");
+static_assert(offsetof(Ninjarope, curLen) == offsetof(LieroNinjarope, cur_len), "Ninjarope layout");
+
+namespace
+{
+
+struct RopeContext
+{
+	Game& game;
+	Worm& owner;
+};
+
+void* hookFindAnchor(void* ctx, int32_t x, int32_t y)
+{
+	auto& c = *static_cast<RopeContext*>(ctx);
+
+	for(std::size_t i = 0; i < c.game.worms.size(); ++i)
+	{
+		Worm& w = *c.game.worms[i];
+
+		if(&w != &c.owner
+		&& checkForSpecWormHit(c.game, x, y, 1, w))
+		{
+			return &w;
+		}
+	}
+
+	return 0;
+}
+
+LieroWormMotion hookWormMotion(void* worm)
+{
+	Worm& w = *static_cast<Worm*>(worm);
+	LieroWormMotion m = { toRust(&w.pos), toRust(&w.vel) };
+	return m;
+}
+
+void hookRopeCreateNObject2(void* ctx, int32_t kind, int32_t angle, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
+{
+	auto& c = *static_cast<RopeContext*>(ctx);
+	c.game.common->nobjectTypes[kind].create2(
+		c.game, angle, fromRust(vel), fromRust(pos), color, c.owner.index, 0);
+}
+
+} // namespace
 
 void Ninjarope::process(Worm& owner, Game& game)
 {
 	Common& common = *game.common;
 
-	if(out)
-	{
-		pos += vel;
+	RopeContext context = { game, owner };
+	LieroWormMotion ownerMotion = hookWormMotion(&owner);
+	LieroLevel level = game.level.view();
+	LieroNinjaropeConstants k = {
+		LC(NRForceShlX), LC(NRForceDivX),
+		LC(NRForceShlY), LC(NRForceDivY),
+		LC(NRForceLenShl), LC(NRAttachLength), LC(NinjaropeGravity),
+	};
+	LieroNinjaropeHooks hooks = { &context, hookFindAnchor, hookWormMotion, hookRopeCreateNObject2 };
 
-		auto ipos = ftoi(pos);
-
-		anchor = 0;
-		for(std::size_t i = 0; i < game.worms.size(); ++i)
-		{
-			Worm& w = *game.worms[i];
-
-			if(&w != &owner
-			&& checkForSpecWormHit(game, ipos.x, ipos.y, 1, w))
-			{
-				anchor = &w;
-				break;
-			}
-		}
-
-		fixedvec diff = pos - owner.pos;
-
-		fixedvec force(
-			(diff.x << LC(NRForceShlX)) / LC(NRForceDivX),
-			(diff.y << LC(NRForceShlY)) / LC(NRForceDivY));
-
-		curLen = (vectorLength(ftoi(diff.x), ftoi(diff.y)) + 1) << LC(NRForceLenShl);
-
-		if(ipos.x <= 0
-		|| ipos.x >= game.level.width - 1
-		|| ipos.y <= 0
-		|| ipos.y >= game.level.height - 1
-		|| game.level.mat(ipos).dirtRock())
-		{
-			if(!attached)
-			{
-				length = LC(NRAttachLength);
-				attached = true;
-
-				if(game.level.inside(ipos))
-				{
-					if(game.level.mat(ipos).anyDirt())
-					{
-						PalIdx pix = game.level.pixel(ipos);
-						for(int i = 0; i < 11; ++i) // TODO: Check 11 and read from exe
-						{
-							common.nobjectTypes[2].create2(
-								game,
-								game.rand(128),
-								fixedvec(),
-								pos,
-								pix,
-								owner.index,
-								0);
-						}
-					}
-				}
-			}
-
-			vel.zero();
-		}
-		else if(anchor)
-		{
-			if(!attached)
-			{
-				length = LC(NRAttachLength); // TODO: Should this value be separate from the non-worm attaching?
-				attached = true;
-			}
-
-			if(curLen > length)
-			{
-				anchor->vel -= force / curLen;
-			}
-
-			vel = anchor->vel;
-			pos = anchor->pos;
-		}
-		else
-		{
-			attached = false;
-		}
-
-		if(attached)
-		{
-			// curLen can't be 0
-
-			if(curLen > length)
-			{
-				owner.vel += force / curLen;
-			}
-		}
-		else
-		{
-			vel.y += LC(NinjaropeGravity);
-
-			if(curLen > length)
-			{
-				vel -= force / curLen;
-			}
-		}
-	}
+	liero_ninjarope_process(reinterpret_cast<LieroNinjarope*>(this), ownerMotion, &level, &game.rand, &k, &hooks);
 }

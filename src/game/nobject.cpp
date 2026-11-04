@@ -3,6 +3,8 @@
 #include "gfx/renderer.hpp"
 #include "mixer/player.hpp"
 #include "bobject.hpp"
+#include "worm.hpp"
+#include "gfx/blit.hpp"
 
 NObject& NObjectType::create(Game& game, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy)
 {
@@ -73,209 +75,163 @@ void NObjectType::create2(Game& game, int angle, fixedvec vel, fixedvec pos, int
 	obj.pos += obj.vel;
 }
 
+namespace
+{
+
+// What the Rust code in liero_nobject_process calls back for.
+struct NObjectContext
+{
+	Game& game;
+	NObject& obj;
+};
+
+void hookCreateBObject(void* ctx, LieroIVec2 pos, LieroIVec2 vel)
+{
+	auto& c = *static_cast<NObjectContext*>(ctx);
+	c.game.createBObject(fromRust(pos), fromRust(vel));
+}
+
+void hookCreateSObject(void* ctx, int32_t kind, int32_t x, int32_t y)
+{
+	auto& c = *static_cast<NObjectContext*>(ctx);
+	c.game.common->sobjectTypes[kind].create(c.game, x, y, c.obj.ownerIdx, c.obj.firedBy);
+}
+
+void hookCreateNObject2(void* ctx, int32_t kind, int32_t angle, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
+{
+	auto& c = *static_cast<NObjectContext*>(ctx);
+	c.game.common->nobjectTypes[kind].create2(
+		c.game, angle, fromRust(vel), fromRust(pos), color, c.obj.ownerIdx, 0);
+}
+
+void hookDrawOnMap(void* ctx, int32_t x, int32_t y)
+{
+	auto& c = *static_cast<NObjectContext*>(ctx);
+	Common& common = *c.game.common;
+	NObjectType const& t = *c.obj.type;
+
+	blitImageOnMap(
+		common,
+		c.game.level,
+		common.smallSprites.spritePtr(t.startFrame + c.obj.curFrame),
+		x,
+		y,
+		7,
+		7);
+	// x and y are 3 left of and above the object. This seems like an overly
+	// large rectangle.
+	if(c.game.settings->shadow)
+		correctShadow(common, c.game.level, gvl::rect(x - 5, y - 5, x + 12, y + 12));
+}
+
+bool hookHitWorms(void* ctx)
+{
+	auto& c = *static_cast<NObjectContext*>(ctx);
+	Game& game = c.game;
+	Common& common = *game.common;
+	NObject& o = c.obj;
+	NObjectType const& t = *o.type;
+	bool doExplode = false;
+
+	for(std::size_t i = 0; i < game.worms.size(); ++i)
+	{
+		Worm& w = *game.worms[i];
+
+		if(checkForSpecWormHit(game, ftoi(o.pos.x), ftoi(o.pos.y), t.detectDistance, w))
+		{
+			w.vel += o.vel * t.blowAway / 100;
+
+			game.doDamage(w, t.hitDamage, o.ownerIdx);
+
+			Worm* owner = game.wormByIdx(o.ownerIdx);
+			game.statsRecorder->damageDealt(owner, o.firedBy, &w, t.hitDamage, o.hasHit);
+			o.hasHit = true;
+
+			if(t.hitDamage > 0
+			&& w.health > 0
+			&& game.rand(3) == 0)
+			{
+				int snd = 18 + game.rand(3); // NOTE: MUST be outside the unpredictable branch below
+				if(!game.soundPlayer->isPlaying(&w))
+				{
+					game.soundPlayer->play(snd, &w);
+				}
+			}
+
+			int blood = t.bloodOnHit * game.settings->blood / 100;
+
+			for(int i = 0; i < blood; ++i)
+			{
+				int angle = game.rand(128);
+				common.nobjectTypes[6].create2(
+					game,
+					angle,
+					o.vel / 3,
+					o.pos,
+					0,
+					o.ownerIdx,
+					0);
+			}
+
+			if(t.wormExplode)
+				doExplode = true;
+			else if (t.wormDestroy && o.used)
+				game.nobjects.free(&o);
+		}
+	}
+
+	return doExplode;
+}
+
+void hookFree(void* ctx)
+{
+	auto& c = *static_cast<NObjectContext*>(ctx);
+	if(c.obj.used)
+		c.game.nobjects.free(&c.obj);
+}
+
+LieroNObjectType toRust(NObjectType const& t)
+{
+	LieroNObjectType r;
+	r.gravity = t.gravity;
+	r.bounce = t.bounce;
+	r.hit_damage = t.hitDamage;
+	r.expl_ground = t.explGround;
+	r.blood_trail = t.bloodTrail;
+	r.blood_trail_delay = t.bloodTrailDelay;
+	r.start_frame = t.startFrame;
+	r.num_frames = t.numFrames;
+	r.draw_on_map = t.drawOnMap;
+	r.leave_obj = t.leaveObj;
+	r.leave_obj_delay = t.leaveObjDelay;
+	r.time_to_explo = t.timeToExplo;
+	r.create_on_exp = t.createOnExp;
+	r.dirt_effect = t.dirtEffect;
+	r.splinter_amount = t.splinterAmount;
+	r.splinter_colour = t.splinterColour;
+	r.splinter_type = t.splinterType;
+	return r;
+}
+
+} // namespace
+
 void NObject::process(Game& game)
 {
 	Common& common = *game.common;
 
-	bool bounced = false;
-	bool doExplode = false;
+	NObjectContext context = { game, *this };
+	LieroNObjectFields fields = { toRust(&pos), toRust(&vel), &timeLeft, &curFrame };
+	LieroNObjectType t = toRust(*type);
+	LieroNObjectEnv env = { game.level.view(), common.levelCommon(), &game.rand, game.cycles, game.settings->shadow };
+	LieroNObjectHooks hooks = {
+		&context,
+		hookCreateBObject,
+		hookCreateSObject,
+		hookCreateNObject2,
+		hookDrawOnMap,
+		hookHitWorms,
+		hookFree,
+	};
 
-	pos += vel;
-
-	LTRACE(rand, 0, nopr, game.rand.x);
-	LTRACE(nobj, this - game.nobjects.arr, moxp, pos.x);
-	LTRACE(nobj, this - game.nobjects.arr, moyp, pos.y);
-
-	auto inewPos = ftoi(pos + vel);
-	auto ipos = ftoi(pos);
-
-	NObjectType const& t = *type;
-
-	if(t.bounce > 0)
-	{
-		if(!game.level.inside(inewPos.x, ipos.y)
-		|| game.pixelMat(inewPos.x, ipos.y).dirtRock())
-		{
-			vel.x = -vel.x * t.bounce / 100;
-			vel.y = (vel.y * 4) / 5; // TODO: Read from EXE
-			bounced = true;
-		}
-
-		if(!game.level.inside(ipos.x, inewPos.y)
-		|| game.pixelMat(ipos.x, inewPos.y).dirtRock())
-		{
-			vel.y = -vel.y * t.bounce / 100;
-			vel.x = (vel.x * 4) / 5; // TODO: Read from EXE
-			bounced = true;
-		}
-
-
-	}
-
-	if(t.bloodTrail
-	&& t.bloodTrailDelay > 0
-	&& (game.cycles % t.bloodTrailDelay) == 0)
-	{
-		game.createBObject(pos, vel / 4); // TODO: Read from EXE
-	}
-
-	// Yes, we do this again.
-	inewPos = ftoi(pos + vel);
-
-	if(inewPos.x < 0) pos.x = 0;
-	if(inewPos.y < 0) pos.y = 0;
-	if(inewPos.x >= game.level.width) pos.x = itof(game.level.width);
-	if(inewPos.y >= game.level.height) pos.y = itof(game.level.height);
-
-	if(!game.level.inside(inewPos)
-	|| game.pixelMat(inewPos.x, inewPos.y).dirtRock())
-	{
-		vel.zero();
-
-		if(t.explGround)
-		{
-			if(t.startFrame > 0 && t.drawOnMap)
-			{
-				blitImageOnMap(
-					common,
-					game.level,
-					common.smallSprites.spritePtr(t.startFrame + curFrame),
-					ipos.x - 3,
-					ipos.y - 3,
-					7,
-					7);
-				if(game.settings->shadow)
-					correctShadow(common, game.level, gvl::rect(ipos.x - 8, ipos.y - 8, ipos.x + 9, ipos.y + 9)); // This seems like an overly large rectangle
-			}
-
-			doExplode = true;
-		}
-	}
-	else
-	{
-		if(!bounced
-		&& t.leaveObjDelay != 0
-		&& t.leaveObj >= 0 // NOTE: AFAIK, this doesn't exist in Liero, but some TCs seem to forget to set leaveObjDelay to 0 when not using this trail
-		&& (game.cycles % t.leaveObjDelay) == 0)
-		{
-			common.sobjectTypes[t.leaveObj].create(game, ftoi(pos.x), ftoi(pos.y), ownerIdx, firedBy);
-		}
-
-		vel.y += t.gravity;
-	}
-
-	if(t.numFrames > 0)
-	{
-		if((game.cycles & 7) == 0) // TODO: Read from EXE
-		{
-			if(vel.x > 0)
-			{
-				++curFrame;
-				if(curFrame > t.numFrames)
-					curFrame = 0;
-			}
-			else if(vel.x < 0)
-			{
-				--curFrame;
-				if(curFrame < 0)
-					curFrame = t.numFrames;
-			}
-		}
-	}
-
-	if(t.timeToExplo > 0)
-	{
-		if(--timeLeft <= 0)
-			doExplode = true;
-	}
-
-	if(!doExplode)
-	{
-		if(t.hitDamage > 0)
-		{
-			for(std::size_t i = 0; i < game.worms.size(); ++i)
-			{
-				Worm& w = *game.worms[i];
-
-				if(checkForSpecWormHit(game, ftoi(pos.x), ftoi(pos.y), t.detectDistance, w))
-				{
-					w.vel += vel * t.blowAway / 100;
-
-					game.doDamage(w, t.hitDamage, ownerIdx);
-
-					Worm* owner = game.wormByIdx(ownerIdx);
-					game.statsRecorder->damageDealt(owner, firedBy, &w, t.hitDamage, hasHit);
-					hasHit = true;
-
-					if(t.hitDamage > 0
-					&& w.health > 0
-					&& game.rand(3) == 0)
-					{
-						int snd = 18 + game.rand(3); // NOTE: MUST be outside the unpredictable branch below
-						if(!game.soundPlayer->isPlaying(&w))
-						{
-							game.soundPlayer->play(snd, &w);
-						}
-					}
-
-					int blood = t.bloodOnHit * game.settings->blood / 100;
-
-					for(int i = 0; i < blood; ++i)
-					{
-						int angle = game.rand(128);
-						common.nobjectTypes[6].create2(
-							game,
-							angle,
-							vel / 3,
-							pos,
-							0,
-							ownerIdx,
-							0);
-					}
-
-					if(t.wormExplode)
-						doExplode = true;
-					else if (t.wormDestroy && used)
-						game.nobjects.free(this);
-				}
-
-			}
-		}
-	}
-
-	if(doExplode)
-	{
-		if(t.createOnExp >= 0)
-		{
-			common.sobjectTypes[t.createOnExp].create(game, ftoi(pos.x), ftoi(pos.y), ownerIdx, firedBy);
-		}
-
-		if(t.dirtEffect >= 0)
-		{
-			drawDirtEffect(common, game.rand, game.level, t.dirtEffect, ftoi(pos.x) - 7, ftoi(pos.y) - 7);
-
-			if(game.settings->shadow)
-				correctShadow(common, game.level, gvl::rect(ftoi(pos.x) - 10, ftoi(pos.y) - 10, ftoi(pos.x) + 11, ftoi(pos.y) + 11));
-		}
-
-		if(t.splinterAmount > 0)
-		{
-			for(int i = 0; i < t.splinterAmount; ++i)
-			{
-				int angle = game.rand(128);
-				int colorSub = game.rand(2);
-				common.nobjectTypes[t.splinterType].create2(
-					game,
-					angle,
-					fixedvec(),
-					pos,
-					t.splinterColour - colorSub,
-					ownerIdx,
-					0);
-			}
-		}
-
-		if(used)
-			game.nobjects.free(this);
-	}
+	liero_nobject_process(&fields, &t, &env, &hooks);
 }

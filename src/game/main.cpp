@@ -23,10 +23,14 @@
 #include <exception>
 #include <gvl/math/cmwc.hpp>
 #include <liero_game.h>
+#include "hashrun.hpp"
 
 int gameEntry(int argc, char* argv[])
 try
 {
+	if (argc > 1 && std::strcmp(argv[1], "--hash-run") == 0)
+		return hashRun(argc, argv);
+
 	std::printf("%s\n", liero_game_version());
 
 	// TODO: Better PRNG seeding
