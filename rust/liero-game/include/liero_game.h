@@ -125,6 +125,167 @@ typedef struct LieroIVec2 {
   int32_t y;
 } LieroIVec2;
 
+/**
+ * A blood particle, laid out like C++'s `BObject`.
+ */
+typedef struct LieroBObject {
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  int32_t color;
+} LieroBObject;
+
+/**
+ * Constants for bonuses, from the TC (`LC(Bonus...)` in C++).
+ */
+typedef struct LieroBonusConstants {
+  int32_t gravity;
+  int32_t bounce_mul;
+  int32_t bounce_div;
+} LieroBonusConstants;
+
+/**
+ * Pointers to the fields of one C++ `NObject`.
+ */
+typedef struct LieroNObjectFields {
+  struct LieroIVec2 *pos;
+  struct LieroIVec2 *vel;
+  int32_t *time_left;
+  int32_t *cur_frame;
+} LieroNObjectFields;
+
+/**
+ * The parts of a `NObjectType` that its physics uses.
+ */
+typedef struct LieroNObjectType {
+  int32_t gravity;
+  int32_t bounce;
+  int32_t hit_damage;
+  bool expl_ground;
+  bool blood_trail;
+  int32_t blood_trail_delay;
+  int32_t start_frame;
+  int32_t num_frames;
+  bool draw_on_map;
+  int32_t leave_obj;
+  int32_t leave_obj_delay;
+  int32_t time_to_explo;
+  int32_t create_on_exp;
+  int32_t dirt_effect;
+  int32_t splinter_amount;
+  int32_t splinter_colour;
+  int32_t splinter_type;
+} LieroNObjectType;
+
+/**
+ * Everything else `NObject::process` reads from the game.
+ */
+typedef struct LieroNObjectEnv {
+  struct LieroLevel level;
+  struct LieroLevelCommon common;
+  struct LieroRand *rand;
+  int32_t cycles;
+  bool shadow;
+} LieroNObjectEnv;
+
+/**
+ * What C++ does for an `NObject`. `ctx` is passed back to each function.
+ */
+typedef struct LieroNObjectHooks {
+  void *ctx;
+  /**
+   * `Game::createBObject`.
+   */
+  void (*create_bobject)(void *ctx, struct LieroIVec2 pos, struct LieroIVec2 vel);
+  /**
+   * `SObjectType::create` for sobject type `kind`, owned like the object.
+   */
+  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
+  /**
+   * `NObjectType::create2` for nobject type `kind`, owned like the object.
+   */
+  void (*create_nobject2)(void *ctx,
+                          int32_t kind,
+                          int32_t angle,
+                          struct LieroIVec2 vel,
+                          struct LieroIVec2 pos,
+                          int32_t color);
+  /**
+   * Draws the object's current frame onto the level at (x, y), with the
+   * shadow corrected.
+   */
+  void (*draw_on_map)(void *ctx, int32_t x, int32_t y);
+  /**
+   * The worm loop in `NObject::process`: hurts the worms the object hits
+   * and may free it. Returns true when it should explode.
+   */
+  bool (*hit_worms)(void *ctx);
+  /**
+   * Frees the object if it is still in use.
+   */
+  void (*free)(void *ctx);
+} LieroNObjectHooks;
+
+/**
+ * The ninja rope, laid out like C++'s `Ninjarope`.
+ */
+typedef struct LieroNinjarope {
+  bool out;
+  bool attached;
+  /**
+   * The worm the rope is attached to, or null.
+   */
+  void *anchor;
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  int32_t length;
+  int32_t cur_len;
+} LieroNinjarope;
+
+/**
+ * Pointers to a worm's position and velocity.
+ */
+typedef struct LieroWormMotion {
+  struct LieroIVec2 *pos;
+  struct LieroIVec2 *vel;
+} LieroWormMotion;
+
+/**
+ * Constants for the ninja rope, from the TC (`LC(NR...)` in C++).
+ */
+typedef struct LieroNinjaropeConstants {
+  int32_t force_shl_x;
+  int32_t force_div_x;
+  int32_t force_shl_y;
+  int32_t force_div_y;
+  int32_t force_len_shl;
+  int32_t attach_length;
+  int32_t gravity;
+} LieroNinjaropeConstants;
+
+/**
+ * What C++ does for the ninja rope. `ctx` is passed back to each function.
+ */
+typedef struct LieroNinjaropeHooks {
+  void *ctx;
+  /**
+   * The first worm other than the owner that (x, y) hits, or null.
+   */
+  void *(*find_anchor)(void *ctx, int32_t x, int32_t y);
+  /**
+   * Where worm `worm` keeps its position and velocity.
+   */
+  struct LieroWormMotion (*worm_motion)(void *worm);
+  /**
+   * `NObjectType::create2` for nobject type `kind`, owned by the owner.
+   */
+  void (*create_nobject2)(void *ctx,
+                          int32_t kind,
+                          int32_t angle,
+                          struct LieroIVec2 vel,
+                          struct LieroIVec2 pos,
+                          int32_t color);
+} LieroNinjaropeHooks;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -265,6 +426,99 @@ int32_t liero_vector_length(int32_t x, int32_t y);
  * `out` must point to 128 writable `LieroIVec2`s.
  */
 void liero_cos_sin_table(struct LieroIVec2 *out);
+
+/**
+ * Moves blood particle `obj` one tick: C++'s `BObject::process`. Returns
+ * false when C++ should free it.
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`.
+ */
+bool liero_bobject_process(struct LieroBObject *obj,
+                           const struct LieroLevel *level,
+                           const struct LieroLevelCommon *common,
+                           struct LieroRand *rand,
+                           int32_t gravity);
+
+/**
+ * Moves a bonus box one tick: falling, bouncing on the ground and counting
+ * down `timer`. Returns true when the timer ran out, so C++ explodes it.
+ * `x` is fixed-point and must be inside the level.
+ *
+ * # Safety
+ * See `LieroLevel`.
+ */
+bool liero_bonus_process(int32_t x,
+                         int32_t *y,
+                         int32_t *vel_y,
+                         int32_t *timer,
+                         const struct LieroLevel *level,
+                         const struct LieroBonusConstants *constants);
+
+/**
+ * Advances an explosion's animation one tick. Returns true when the
+ * animation is over, so C++ frees the object.
+ */
+bool liero_sobject_animate(int32_t *cur_frame,
+                           int32_t *anim_delay,
+                           int32_t type_anim_delay,
+                           int32_t num_frames);
+
+/**
+ * Pushes a worm at fixed-point `pos` away from an explosion at (x, y), as
+ * `SObjectType::create` does. A worm already moving at 2 pixels per tick or
+ * more on an axis isn't pushed on that axis. Returns false when the worm is
+ * out of range; otherwise sets `power_sum`, which sets the damage.
+ */
+bool liero_explosion_push_worm(struct LieroIVec2 pos,
+                               struct LieroIVec2 *vel,
+                               int32_t x,
+                               int32_t y,
+                               int32_t range,
+                               int32_t blow_away,
+                               int32_t *power_sum);
+
+/**
+ * The damage an explosion does to a worm, from `power_sum`.
+ */
+int32_t liero_explosion_damage(int32_t damage, int32_t power_sum, int32_t range);
+
+/**
+ * Pushes an object that explosions affect away from an explosion at
+ * (x, y). Returns whether it was in range (for chain explosions).
+ */
+bool liero_explosion_push_object(struct LieroIVec2 pos,
+                                 struct LieroIVec2 *vel,
+                                 int32_t x,
+                                 int32_t y,
+                                 int32_t range,
+                                 int32_t blow_away);
+
+/**
+ * Moves a non-weapon object one tick: C++'s `NObject::process`.
+ *
+ * # Safety
+ * The field pointers, views and `rand` must be valid for the call. The
+ * hooks may change them (but not free their memory).
+ */
+void liero_nobject_process(const struct LieroNObjectFields *obj,
+                           const struct LieroNObjectType *t,
+                           const struct LieroNObjectEnv *env,
+                           const struct LieroNObjectHooks *hooks);
+
+/**
+ * Moves a worm's ninja rope one tick: C++'s `Ninjarope::process`.
+ *
+ * # Safety
+ * All pointers must be valid for the call, and `owner` must be the
+ * rope's worm.
+ */
+void liero_ninjarope_process(struct LieroNinjarope *rope,
+                             struct LieroWormMotion owner,
+                             const struct LieroLevel *level,
+                             struct LieroRand *rand,
+                             const struct LieroNinjaropeConstants *constants,
+                             const struct LieroNinjaropeHooks *hooks);
 
 void liero_rand_seed(struct LieroRand *rand, uint32_t seed);
 

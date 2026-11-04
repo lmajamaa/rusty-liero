@@ -3,6 +3,7 @@
 #include "gfx/color.hpp"
 #include "game.hpp"
 #include "constants.hpp"
+#include <cstddef>
 
 void Game::createBObject(fixedvec pos, fixedvec vel)
 {
@@ -15,46 +16,16 @@ void Game::createBObject(fixedvec pos, fixedvec vel)
 	obj.vel = vel;
 }
 
+// Rust works on BObject in place.
+static_assert(sizeof(BObject) == sizeof(LieroBObject), "BObject layout");
+static_assert(offsetof(BObject, pos) == offsetof(LieroBObject, pos), "BObject layout");
+static_assert(offsetof(BObject, vel) == offsetof(LieroBObject, vel), "BObject layout");
+static_assert(offsetof(BObject, color) == offsetof(LieroBObject, color), "BObject layout");
+
 bool BObject::process(Game& game)
 {
 	Common& common = *game.common;
-
-	pos += vel;
-
-	auto ipos = ftoi(pos);
-
-	if(!game.level.inside(ipos))
-	{
-		return false;
-	}
-	else
-	{
-		PalIdx c = game.level.pixel(ipos);
-		Material m = game.level.mat(ipos);
-
-		if(m.background())
-			vel.y += LC(BObjGravity);
-
-		LTRACE(blod, c, xpos, ipos.x);
-		LTRACE(blod, c, ypos, ipos.y);
-
-		if((c >= 1 && c <= 2)
-		|| (c >= 77 && c <= 79)) // TODO: Read from EXE
-		{
-			game.level.setPixel(ipos, 77 + game.rand(3), common);
-			return false;
-		}
-		else if(m.anyDirt())
-		{
-			game.level.setPixel(ipos, 82 + game.rand(3), common);
-			return false;
-		}
-		else if(m.rock())
-		{
-			game.level.setPixel(ipos, 85 + game.rand(3), common);
-			return false;
-		}
-	}
-
-	return true;
+	LieroLevel v = game.level.view();
+	LieroLevelCommon c = common.levelCommon();
+	return liero_bobject_process(reinterpret_cast<LieroBObject*>(this), &v, &c, &game.rand, LC(BObjGravity));
 }

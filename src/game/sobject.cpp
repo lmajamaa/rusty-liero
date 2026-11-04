@@ -60,41 +60,10 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 		{
 			Worm& w = *game.worms[i];
 
-			int wix = ftoi(w.pos.x);
-			int wiy = ftoi(w.pos.y);
-
-			if(wix < x + detectRange
-			&& wix > x - detectRange
-			&& wiy < y + detectRange
-			&& wiy > y - detectRange)
+			int powerSum;
+			if(liero_explosion_push_worm(toRust(w.pos), toRust(&w.vel), x, y, detectRange, blowAway, &powerSum))
 			{
-				int delta = wix - x;
-				int power = detectRange - std::abs(delta);
-				int powerSum = power;
-
-				if(std::abs(w.vel.x) < itof(2)) // TODO: Read from EXE
-				{
-					if(delta > 0)
-						w.vel.x += blowAway * power;
-					else
-						w.vel.x -= blowAway * power;
-				}
-
-				delta = wiy - y;
-				power = detectRange - std::abs(delta);
-				powerSum = (powerSum + power) / 2;
-
-				if(std::abs(w.vel.y) < itof(2)) // TODO: Read from EXE
-				{
-					if(delta > 0)
-						w.vel.y += blowAway * power;
-					else
-						w.vel.y -= blowAway * power;
-				}
-
-				int z = damage * powerSum;
-				if(detectRange)
-					z /= detectRange;
+				int z = liero_explosion_damage(damage, powerSum, detectRange);
 
 				if (from && !from->hasHit)
 				{
@@ -144,39 +113,11 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 		{
 			Weapon const& weapon = *i->type;
 
-			if(weapon.affectByExplosions)
+			if(weapon.affectByExplosions
+			&& liero_explosion_push_object(toRust(i->pos), toRust(&i->vel), x, y, detectRange, objBlowAway)
+			&& weapon.chainExplosion)
 			{
-				auto ipos = ftoi(i->pos);
-				if(ipos.x < x + detectRange
-				&& ipos.x > x - detectRange
-				&& ipos.y < y + detectRange
-				&& ipos.y > y - detectRange)
-				{
-					int delta = ipos.x - x;
-					int power = detectRange - std::abs(delta);
-
-					if(power > 0)
-					{
-						if(delta > 0)
-							i->vel.x += objBlowAway * power;
-						else if(delta < 0)
-							i->vel.x -= objBlowAway * power;
-					}
-
-					delta = ipos.y - y;
-					power = detectRange - std::abs(delta);
-
-					if(power > 0)
-					{
-						if(delta > 0)
-							i->vel.y += objBlowAway * power;
-						else if(delta < 0)
-							i->vel.y -= objBlowAway * power;
-					}
-
-					if(weapon.chainExplosion)
-						i->blowUpObject(game, ownerIdx);
-				}
+				i->blowUpObject(game, ownerIdx);
 			} // if( ... affectByExplosions ...
 		} // for( ... wobjects ...
 
@@ -186,41 +127,7 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 			NObjectType const& t = *i->type;
 
 			if(t.affectByExplosions)
-			{
-				auto ipos = ftoi(i->pos);
-				if(ipos.x < x + detectRange
-				&& ipos.x > x - detectRange
-				&& ipos.y < y + detectRange
-				&& ipos.y > y - detectRange)
-				{
-					int delta = ipos.x - x;
-					int power = detectRange - std::abs(delta);
-
-					if(power > 0)
-					{
-						if(delta > 0)
-							i->vel.x += objBlowAway * power;
-						else if(delta < 0)
-							i->vel.x -= objBlowAway * power;
-					}
-
-					delta = ipos.y - y;
-					power = detectRange - std::abs(delta);
-
-					if(power > 0)
-					{
-						if(delta > 0)
-							i->vel.y += objBlowAway * power;
-						else if(delta < 0)
-							i->vel.y -= objBlowAway * power;
-					}
-
-					IF_ENABLE_TRACING(Common& common = *game.common);
-
-					LTRACE(nobj, &*i - game.nobjects.arr, puxp, i->vel.x);
-					LTRACE(nobj, &*i - game.nobjects.arr, puyp, i->vel.y);
-				}
-			}
+				liero_explosion_push_object(toRust(i->pos), toRust(&i->vel), x, y, detectRange, objBlowAway);
 		}
 
 		{
@@ -279,12 +186,6 @@ void SObject::process(Game& game)
 	Common& common = *game.common;
 	SObjectType& t = common.sobjectTypes[id];
 
-
-	if(--animDelay <= 0)
-	{
-		animDelay = t.animDelay;
-		++curFrame;
-		if(curFrame > t.numFrames)
-			game.sobjects.free(this);
-	}
+	if(liero_sobject_animate(&curFrame, &animDelay, t.animDelay, t.numFrames))
+		game.sobjects.free(this);
 }
