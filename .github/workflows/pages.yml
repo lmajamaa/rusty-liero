@@ -1,0 +1,79 @@
+name: Pages
+
+on:
+  release:
+    types: [published]
+
+# Each job asks for what it needs.
+permissions: {}
+
+# One deployment at a time. A deployment in progress is allowed to finish, and
+# only the newest waiting run deploys after it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  EMSDK_VERSION: 4.0.0
+  RUST_VERSION: 1.87.0
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-unknown-emscripten
+          rustup default "$RUST_VERSION"
+
+      - name: Install Emscripten
+        uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Build the game
+        run: |
+          emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/web -j
+
+      - name: Collect the site files
+        run: |
+          mkdir -p build/site
+          cp build/web/openliero.html build/site/index.html
+          cp build/web/openliero.js build/web/openliero.wasm build/web/openliero.data build/site/
+          ls -l build/site
+
+      - name: Check the page only uses relative URLs
+        run: |
+          if grep -nE '(src|href)="/' build/site/index.html; then
+            echo "index.html has root-relative URLs, which break under /rusty-liero/" >&2
+            exit 1
+          fi
+          grep -q 'src="openliero.js"' build/site/index.html
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the site
+        id: deployment
+        uses: actions/deploy-pages@v5
