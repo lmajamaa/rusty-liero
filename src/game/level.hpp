@@ -8,6 +8,7 @@
 #include "gfx/palette.hpp"
 #include "material.hpp"
 #include "common.hpp"
+#include <liero_game.h>
 #include <gvl/math/vec.hpp>
 #include <gvl/math/rect.hpp>
 
@@ -122,6 +123,14 @@ struct Level
 	}
 
 	void resize(int width_new, int height_new);
+
+	// View of the pixels and materials for the Rust level code
+	// (rust/liero-game/src/level.rs), valid until the level is resized.
+	LieroLevel view()
+	{
+		LieroLevel v = { data.data(), materials.data(), width, height };
+		return v;
+	}
 
 	std::vector<unsigned char> data;
 	std::vector<Material> materials;

@@ -9,6 +9,35 @@
 #include <stdlib.h>
 
 /**
+ * Width and height of the large sprites (stones, dirt textures...).
+ */
+#define LIERO_LARGE_SPRITE_SIZE 16
+
+/**
+ * Number of dirt effects (`Common::textures`).
+ */
+#define LIERO_TEXTURE_COUNT 9
+
+/**
+ * Width and height of generated and loaded `.LEV` levels.
+ */
+#define LIERO_LEVEL_WIDTH 504
+
+#define LIERO_LEVEL_HEIGHT 350
+
+#define LIERO_MATERIAL_DIRT (1 << 0)
+
+#define LIERO_MATERIAL_DIRT2 (1 << 1)
+
+#define LIERO_MATERIAL_ROCK (1 << 2)
+
+#define LIERO_MATERIAL_BACKGROUND (1 << 3)
+
+#define LIERO_MATERIAL_SEE_SHADOW (1 << 4)
+
+#define LIERO_MATERIAL_WORM (1 << 5)
+
+/**
  * Number of entries in the cos/sin table: a full turn in 128 steps.
  */
 #define LIERO_COS_SIN_ENTRIES 128
@@ -16,12 +45,67 @@
 #define LIERO_RAND_DEFAULT_SEED 4919
 
 /**
- * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
+ * Material flags of one palette index or level pixel. C++'s `Material`
+ * inherits from this struct and keeps its tests inline, because the
+ * renderer and AI call them for every pixel.
  */
-typedef struct LieroIVec2 {
-  int32_t x;
-  int32_t y;
-} LieroIVec2;
+typedef struct LieroMaterial {
+  uint8_t flags;
+} LieroMaterial;
+
+/**
+ * View of a C++ `Level`'s pixels: `data` holds the palette index of each
+ * pixel and `materials` its material, both `width * height` long, row by
+ * row.
+ */
+typedef struct LieroLevel {
+  uint8_t *data;
+  struct LieroMaterial *materials;
+  int32_t width;
+  int32_t height;
+} LieroLevel;
+
+/**
+ * A dirt effect: how explosions and digging change the terrain. C++ uses it
+ * as `Texture` in `Common::textures`.
+ */
+typedef struct LieroTexture {
+  /**
+   * Draws dirt onto background instead of removing dirt.
+   */
+  bool n_draw_back;
+  /**
+   * Large sprite used as the mask.
+   */
+  int32_t m_frame;
+  /**
+   * First large sprite used as the dirt texture...
+   */
+  int32_t s_frame;
+  /**
+   * ...of this many, picked at random.
+   */
+  int32_t r_frame;
+} LieroTexture;
+
+/**
+ * View of the TC's tables in C++'s `Common` that level code reads.
+ */
+typedef struct LieroLevelCommon {
+  /**
+   * 256 materials, one per palette index.
+   */
+  const struct LieroMaterial *materials;
+  /**
+   * `LIERO_TEXTURE_COUNT` dirt effects.
+   */
+  const struct LieroTexture *textures;
+  /**
+   * `large_sprite_count` sprites of 16 x 16 palette indices.
+   */
+  const uint8_t *large_sprites;
+  int32_t large_sprite_count;
+} LieroLevelCommon;
 
 /**
  * Generator state. C++'s `Rand` inherits from this struct, so the state stays
@@ -33,6 +117,14 @@ typedef struct LieroRand {
   uint32_t c;
 } LieroRand;
 
+/**
+ * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
+ */
+typedef struct LieroIVec2 {
+  int32_t x;
+  int32_t y;
+} LieroIVec2;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -43,6 +135,126 @@ extern "C" {
  * is linked in.
  */
 const char *liero_game_version(void);
+
+/**
+ * Sets every pixel's material from its colour.
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`.
+ */
+void liero_level_update_materials(const struct LieroLevel *level,
+                                  const struct LieroLevelCommon *common);
+
+/**
+ * Fills the level with the dirt pattern of random levels. C++ sizes the
+ * level first.
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`.
+ */
+void liero_level_generate_dirt_pattern(const struct LieroLevel *level,
+                                       const struct LieroLevelCommon *common,
+                                       struct LieroRand *rand);
+
+/**
+ * Generates a random level. C++ sizes the level and resets its palette first.
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`.
+ */
+void liero_level_generate_random(const struct LieroLevel *level,
+                                 const struct LieroLevelCommon *common,
+                                 struct LieroRand *rand);
+
+/**
+ * Adds the shadows of the "Shadows" option.
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`.
+ */
+void liero_level_make_shadow(const struct LieroLevel *level, const struct LieroLevelCommon *common);
+
+/**
+ * Picks a random w x h area for Holdazone's zone and writes its top-left
+ * corner to `selected`. Returns false, leaving `selected` as it was, if there
+ * is none.
+ *
+ * # Safety
+ * See `LieroLevel`; only `materials` is read.
+ */
+bool liero_level_select_spawn(const struct LieroLevel *level,
+                              struct LieroRand *rand,
+                              int32_t w,
+                              int32_t h,
+                              struct LieroIVec2 *selected);
+
+/**
+ * Draws the level shrunk by `step` into an 8-bit bitmap with `pitch` bytes
+ * per row, at (map_x, map_y).
+ *
+ * # Safety
+ * See `LieroLevel`; `dest` must cover the whole miniature.
+ */
+void liero_level_draw_miniature(const struct LieroLevel *level,
+                                uint8_t *dest,
+                                int32_t pitch,
+                                int32_t map_x,
+                                int32_t map_y,
+                                int32_t step);
+
+/**
+ * Draws a 16 x 16 stone sprite onto the level.
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`; `sprite` must point to 256 bytes.
+ */
+void liero_level_blit_stone(const struct LieroLevel *level,
+                            const struct LieroLevelCommon *common,
+                            bool p1,
+                            const uint8_t *sprite,
+                            int32_t x,
+                            int32_t y);
+
+/**
+ * Draws a `width` x `height` image onto the level.
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`; `image` must point to
+ * `width * height` bytes.
+ */
+void liero_level_blit_image(const struct LieroLevel *level,
+                            const struct LieroLevelCommon *common,
+                            const uint8_t *image,
+                            int32_t x,
+                            int32_t y,
+                            int32_t width,
+                            int32_t height);
+
+/**
+ * Applies dirt effect `dirt_effect` (0 to 8) at (x, y).
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`.
+ */
+void liero_level_draw_dirt_effect(const struct LieroLevel *level,
+                                  const struct LieroLevelCommon *common,
+                                  struct LieroRand *rand,
+                                  int32_t dirt_effect,
+                                  int32_t x,
+                                  int32_t y);
+
+/**
+ * Corrects shadows in the rectangle from (x1, y1) to (x2, y2), excluded.
+ *
+ * # Safety
+ * See `LieroLevel` and `LieroLevelCommon`.
+ */
+void liero_level_correct_shadow(const struct LieroLevel *level,
+                                const struct LieroLevelCommon *common,
+                                int32_t x1,
+                                int32_t y1,
+                                int32_t x2,
+                                int32_t y2);
 
 int32_t liero_vector_length(int32_t x, int32_t y);
 
