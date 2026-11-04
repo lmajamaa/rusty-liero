@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liero</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c8c8c8;
+    font: 16px/1.4 ui-monospace, Menlo, Consolas, monospace;
+  }
+  /* The largest 8:5 box that fits the window. SDL sees that CSS sizes the
+     canvas and renders at that size; it sets the size inline, hence !important. */
+  #canvas {
+    display: block;
+    width: min(100vw, 160vh) !important;
+    height: min(100vh, 62.5vw) !important;
+    image-rendering: pixelated;
+    outline: none;
+  }
+  #start {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    cursor: default;
+    text-align: center;
+    padding: 16px;
+  }
+  #start.ready {
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+<div id="start"><div id="status">Loading…</div></div>
+<script>
+  const start = document.getElementById("start");
+  const status = document.getElementById("status");
+  let started = false;
+
+  function begin() {
+    if (started || !start.classList.contains("ready")) return;
+    started = true;
+    start.remove();
+    // main runs inside this click, so the game's AudioContext may play sound.
+    Module.callMain([]);
+  }
+  start.addEventListener("click", begin);
+  window.addEventListener("keydown", (e) => {
+    if (!started && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      begin();
+    }
+  });
+
+  // SDL calls preventDefault on every key it sees. Hide Cmd shortcuts from it
+  // so the browser still handles them (Cmd+R, Cmd+L, ...).
+  for (const type of ["keydown", "keyup", "keypress"]) {
+    window.addEventListener(type, (e) => {
+      if (e.metaKey) e.stopImmediatePropagation();
+    }, true);
+  }
+
+  var Module = {
+    canvas: document.getElementById("canvas"),
+    onRuntimeInitialized() {
+      status.textContent = "Click to play";
+      start.classList.add("ready");
+    },
+    onAbort(what) {
+      status.textContent = "The game stopped: " + what;
+      document.body.appendChild(start);
+    },
+  };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

@@ -60,10 +60,15 @@ Settings::Settings()
 	wormSettings[0]->color = 32;
 	wormSettings[1]->color = 41;
 
+	// DOS scan codes for up, down, left, right, fire, change and jump.
+	// Player 1: R, F, D, G, Left Ctrl, Left Shift, Left Alt.
+	// Player 2: I, K, J, L, Slash, Right Alt, Right Shift. The original
+	// arrows and Right Ctrl don't work on a Mac: there is no Right Ctrl, and
+	// with player 1 holding Left Ctrl, Ctrl+arrows switch Spaces.
 	unsigned char defControls[2][7] =
 	{
 		{0x13, 0x21, 0x20, 0x22, 0x1D, 0x2A, 0x38},
-		{0xA0, 0xA8, 0xA3, 0xA5, 0x75, 0x90, 0x36}
+		{0x17, 0x25, 0x24, 0x26, 0x35, 0x90, 0x36}
 	};
 
 	unsigned char defRGB[2][3] =
