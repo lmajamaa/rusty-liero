@@ -12,7 +12,8 @@ jobs:
     name: Web build and Rust tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the repository
+        uses: actions/checkout@v7
 
       - name: Build the web toolchain image
         run: docker compose build web
@@ -35,7 +36,8 @@ jobs:
     name: Native tools
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the repository
+        uses: actions/checkout@v7
 
       - name: Build the native toolchain image
         run: docker compose build native
