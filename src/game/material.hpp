@@ -2,17 +2,22 @@
 #define LIERO_MATERIAL_HPP
 
 #include <gvl/cstdint.hpp>
+#include <liero_game.h>
 
-struct Material
+// Material flags of a palette index or level pixel. The flags and the struct
+// are defined in Rust (rust/liero-game/src/material.rs), which uses them for
+// the level code. The tests stay inline here because the renderer and the AI
+// call them for every pixel.
+struct Material : LieroMaterial
 {
 	enum
 	{
-		Dirt = 1<<0,
-		Dirt2 = 1<<1,
-		Rock = 1<<2,
-		Background = 1<<3,
-		SeeShadow = 1<<4,
-		WormM = 1<<5
+		Dirt = LIERO_MATERIAL_DIRT,
+		Dirt2 = LIERO_MATERIAL_DIRT2,
+		Rock = LIERO_MATERIAL_ROCK,
+		Background = LIERO_MATERIAL_BACKGROUND,
+		SeeShadow = LIERO_MATERIAL_SEE_SHADOW,
+		WormM = LIERO_MATERIAL_WORM
 	};
 
 	bool dirt() { return (flags & Dirt) != 0; }
@@ -26,8 +31,8 @@ struct Material
 	bool anyDirt() { return (flags & (Dirt | Dirt2)) != 0; }
 	bool dirtBack() { return (flags & (Dirt | Dirt2 | Background)) != 0; }
 	bool worm() { return (flags & WormM) != 0; }
-
-	uint8_t flags;
 };
+
+static_assert(sizeof(Material) == sizeof(LieroMaterial), "Level views pass Material arrays to Rust");
 
 #endif // LIERO_MATERIAL_HPP

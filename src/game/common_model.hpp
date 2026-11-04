@@ -222,10 +222,10 @@ void archive_text(Common& common, Archive& ar)
 		});
 
 		ar.array_obj("textures", common.textures, [&] (Texture& tx) {
-			ar.i32("mframe", tx.mFrame);
-			ar.i32("rframe", tx.rFrame);
-			ar.i32("sframe", tx.sFrame);
-			ar.b("ndrawback", tx.nDrawBack);
+			ar.i32("mframe", tx.m_frame);
+			ar.i32("rframe", tx.r_frame);
+			ar.i32("sframe", tx.s_frame);
+			ar.b("ndrawback", tx.n_draw_back);
 		});
 
 		ar.array_obj("colorAnim", common.colorAnim, [&] (ColourAnim& ca) {

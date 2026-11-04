@@ -21,15 +21,10 @@ extern "C" {
 #include <gvl/serialization/archive.hpp>
 #endif
 
-extern int stoneTab[3][4];
-
-struct Texture
-{
-	bool nDrawBack; // 1C208
-	int  mFrame; // 1C1EA
-	int  sFrame; // 1C1F4
-	int  rFrame; // 1C1FE
-};
+// A dirt effect, defined in Rust (rust/liero-game/src/level.rs). Its fields
+// were at 1C208 (n_draw_back), 1C1EA (m_frame), 1C1F4 (s_frame) and 1C1FE
+// (r_frame) in the original game.
+typedef LieroTexture Texture;
 
 struct Texts
 {
@@ -153,7 +148,7 @@ struct Common : gvl::shared
 	SpriteSet fireConeSprites;
 
 	Material materials[256];
-	Texture textures[9];
+	Texture textures[LIERO_TEXTURE_COUNT];
 	vector<Weapon> weapons;
 	vector<SObjectType> sobjectTypes;
 	vector<NObjectType> nobjectTypes;
@@ -164,6 +159,14 @@ struct Common : gvl::shared
 	int bonusFrames[2];
 	SpriteSet smallSprites;
 	SpriteSet largeSprites;
+
+	// The tables the Rust level code reads.
+	LieroLevelCommon levelCommon()
+	{
+		LieroLevelCommon c = { materials, textures, largeSprites.data.data(), largeSprites.count };
+		return c;
+	}
+
 	SpriteSet textSprites;
 	Palette exepal;
 	Font font;

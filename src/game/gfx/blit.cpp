@@ -229,23 +229,6 @@ void blitImageTrans(Bitmap& scr, Sprite spr, int x, int y, int phase)
 		scrptr += scr.pitch; \
 		mem += pitch - width; } } while(false)
 
-#define BLITL(pixels, destpitch, matpixels, body) do { \
-	PalIdx* scrptr = (pixels) + y*(destpitch) + x; \
-	Material* matptr = (matpixels) + y*(destpitch) + x; \
-	for(int y_ = 0; y_ < height; ++y_)	{ \
-		PalIdx* rowdest = scrptr; \
-		Material* rowmatdest = matptr; \
-		PalIdx* rowsrc = mem; \
-		for(int x_ = 0; x_ < width; ++x_) { \
-			PalIdx c = *rowsrc; \
-			body \
-			++rowsrc; \
-			++rowdest; \
-			++rowmatdest; } \
-		scrptr += (destpitch); \
-		matptr += (destpitch); \
-		mem += pitch; } } while(false)
-
 void blitImageR(Bitmap& scr, PalIdx* mem, int x, int y, int width, int height)
 {
 	int pitch = width;
@@ -301,29 +284,14 @@ void blitFireCone(Bitmap& scr, int fc, PalIdx* mem, int x, int y)
 	}
 }
 
+// The terrain operations below are implemented in Rust
+// (rust/liero-game/src/level.rs).
+
 void blitImageOnMap(Common& common, Level& level, PalIdx* mem, int x, int y, int width, int height)
 {
-	int pitch = width;
-	gvl::rect clipRect(0, 0, level.width, level.height);
-
-	LTRACE(blit, 0, xpos, x);
-	LTRACE(blit, 0, ypos, y);
-
-	CLIP_IMAGE(clipRect);
-
-	BLITL(&level.data[0], level.width, &level.materials[0],
-	{
-		if(c)
-		{
-			PalIdx n;
-			if(rowmatdest->dirtBack())
-				n = c;
-			else
-				n = c + 3;
-			*rowdest = n;
-			*rowmatdest = common.materials[n];
-		}
-	});
+	LieroLevel v = level.view();
+	LieroLevelCommon c = common.levelCommon();
+	liero_level_blit_image(&v, &c, mem, x, y, width, height);
 }
 
 void blitShadowImage(Common& common, Bitmap& scr, PalIdx* mem, int x, int y, int width, int height)
@@ -355,183 +323,24 @@ void blitShadowImage(Common& common, Bitmap& scr, PalIdx* mem, int x, int y, int
 
 void blitStone(Common& common, Level& level, bool p1, PalIdx* mem, int x, int y)
 {
-	int width = 16;
-	int height = 16;
-	int pitch = width;
-
-	gvl::rect clip(0, 0, level.width, level.height);
-
-	CLIP_IMAGE(clip);
-
-	PalIdx* dest = level.pixelp(x, y);
-	Material* matdest = level.matp(x, y);
-
-	if(p1)
-	{
-		for(int y_ = 0; y_ < height; ++y_)
-		{
-			PalIdx* rowdest = dest;
-			Material* rowmatdest = matdest;
-			PalIdx* rowsrc = mem;
-
-			for(int x_ = 0; x_ < width; ++x_)
-			{
-				PalIdx c = *rowsrc;
-				PalIdx n;
-				if(c && rowmatdest->dirtBack()) // TODO: Speed up this test?
-					n = c;
-				else
-					n = c + 3;
-				*rowdest = n;
-				*rowmatdest = common.materials[n];
-				++rowsrc;
-				++rowdest;
-				++rowmatdest;
-			}
-
-			dest += level.width;
-			matdest += level.width;
-			mem += pitch;
-		}
-	}
-	else
-	{
-		for(int y_ = 0; y_ < height; ++y_)
-		{
-			PalIdx* rowdest = dest;
-			Material* rowmatdest = matdest;
-			PalIdx* rowsrc = mem;
-
-			for(int x_ = 0; x_ < width; ++x_)
-			{
-				PalIdx c = *rowsrc;
-				if(c)
-				{
-					*rowdest = c;
-					*rowmatdest = common.materials[c];
-				}
-
-				++rowsrc;
-				++rowdest;
-				++rowmatdest;
-			}
-
-			dest += level.width;
-			matdest += level.width;
-			mem += pitch;
-		}
-	}
+	LieroLevel v = level.view();
+	LieroLevelCommon c = common.levelCommon();
+	liero_level_blit_stone(&v, &c, p1, mem, x, y);
 }
 
 void drawDirtEffect(Common& common, Rand& rand, Level& level, int dirtEffect, int x, int y)
 {
-	assert(dirtEffect >= 0 && dirtEffect < 9);
-	Texture& tex = common.textures[dirtEffect];
-	PalIdx* tFrame = common.largeSprites.spritePtr(tex.sFrame + rand(tex.rFrame));
-	PalIdx* mFrame = common.largeSprites.spritePtr(tex.mFrame);
-
-	LTRACE(draw, dirtEffect, xpos, x);
-	LTRACE(draw, dirtEffect, ypos, y);
-
-	int width = 16;
-	int height = 16;
-	int pitch = width;
-	PalIdx* mem = mFrame;
-
-	gvl::rect clip(0, 0, level.width, level.height - 1);
-
-	CLIP_IMAGE(clip);
-
-	if(tex.nDrawBack)
-	{
-		BLITL(&level.data[0], level.width, &level.materials[0],
-		{
-			switch(c)
-			{
-			case 6:
-				if(rowmatdest->anyDirt())
-				{
-					int mx = x + x_;
-					int my = y + y_;
-
-					*rowdest = tFrame[((my & 15) << 4) + (mx & 15)];
-					*rowmatdest = common.materials[*rowdest];
-				}
-			break;
-
-			case 1:
-				Material m = *rowmatdest;
-				if(m.dirt2())
-				{
-					*rowdest = 2;
-					*rowmatdest = common.materials[2];
-				}
-				else if(m.dirt())
-				{
-					*rowdest = 1;
-					*rowmatdest = common.materials[1];
-				}
-			}
-		});
-	}
-	else
-	{
-		BLITL(&level.data[0], level.width, &level.materials[0],
-		{
-			switch(c)
-			{
-			case 10:
-			case 6:
-				if(rowmatdest->background())
-				{
-					int mx = x + x_;
-					int my = y + y_;
-
-					*rowdest = tFrame[((my & 15) << 4) + (mx & 15)];
-					*rowmatdest = common.materials[*rowdest];
-				}
-			break;
-
-			case 2:
-				if(rowmatdest->background())
-				{
-					*rowdest = 2;
-					*rowmatdest = common.materials[2];
-				}
-			break;
-
-			case 1:
-				if(rowmatdest->background())
-				{
-					*rowdest = 1;
-					*rowmatdest = common.materials[1];
-				}
-			}
-		});
-	}
+	assert(dirtEffect >= 0 && dirtEffect < LIERO_TEXTURE_COUNT);
+	LieroLevel v = level.view();
+	LieroLevelCommon c = common.levelCommon();
+	liero_level_draw_dirt_effect(&v, &c, &rand, dirtEffect, x, y);
 }
 
 void correctShadow(Common& common, Level& level, gvl::rect rect)
 {
-	rect.intersect(gvl::rect(0, 3, level.width - 3, level.height));
-
-	for(int x = rect.x1; x < rect.x2; ++x)
-	for(int y = rect.y1; y < rect.y2; ++y)
-	{
-		PalIdx pix = level.pixel(x, y);
-
-		if(level.mat(x, y).seeShadow()
-		&& level.mat(x + 3, y - 3).dirtRock())
-		{
-			level.setPixel(x, y, pix + 4, common);
-		}
-		else if(pix >= 164 // Remove shadow
-		&& pix <= 167
-		&& !level.mat(x + 3, y - 3).dirtRock())
-		{
-			level.setPixel(x, y, pix - 4, common);
-		}
-	}
+	LieroLevel v = level.view();
+	LieroLevelCommon c = common.levelCommon();
+	liero_level_correct_shadow(&v, &c, rect.x1, rect.y1, rect.x2, rect.y2);
 }
 
 inline int sign(int v) { return v < 0 ? -1 : (v > 0 ? 1 : 0); }

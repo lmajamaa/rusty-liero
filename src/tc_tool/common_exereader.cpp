@@ -685,13 +685,13 @@ void loadWeapons(Common& common, ReaderFile& exe)
 void loadTextures(Common& common, ReaderFile& exe)
 {
 	exe.seekg(0x1C208);
-	readMembers<ReadBool>(exe, common.textures, &Texture::nDrawBack);
+	readMembers<ReadBool>(exe, common.textures, &Texture::n_draw_back);
 	exe.seekg(0x1C1EA);
-	readMembers<Read8>(exe, common.textures, &Texture::mFrame);
+	readMembers<Read8>(exe, common.textures, &Texture::m_frame);
 	exe.seekg(0x1C1F4);
-	readMembers<Read8>(exe, common.textures, &Texture::sFrame);
+	readMembers<Read8>(exe, common.textures, &Texture::s_frame);
 	exe.seekg(0x1C1FE);
-	readMembers<Read8>(exe, common.textures, &Texture::rFrame);
+	readMembers<Read8>(exe, common.textures, &Texture::r_frame);
 }
 
 void loadOthers(Common& common, ReaderFile& exe)
