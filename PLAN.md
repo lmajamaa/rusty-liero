@@ -101,11 +101,11 @@ Rust code is built as a static library for `wasm32-unknown-emscripten`, and `emc
 - [x] Pinned versions: Rust 1.87.0 (LLVM 20.1) in the `web` image, matching emsdk 4.0.0's clang 20. Alpine 3.22's `cargo` is also 1.87.0. Change Rust and emsdk together.
 - [x] Smoke test: `liero_game_version()` is called from `main.cpp`, which prints `liero-game 0.1.0` at startup in the browser.
 - [x] Decided: the game is only built for wasm. The native CMake build now makes only the command-line tools (`tctool`, and `videotool` on request). Files only the desktop game used are removed: the macOS bundle and Windows icon files, `pkg/`, `CMakeSettings.json`, and about 200 sources and headers no target builds, mostly unused parts of `src/tl` and the original zlib (`miniz.c` replaces it).
-- [ ] Check in CI that the checked-in header matches cbindgen's output.
+- [x] CI (`.github/workflows/test.yml`, on pushes to main and on pull requests) runs the Rust tests natively and as wasm, checks the header against cbindgen's output, builds the game, and builds both tctools.
 
 **Porting order**, starting with code that depends on nothing else:
 
-1. `math`, `rand` (CMWC random generator), fixed-point helpers
+1. [x] `math`, `rand`, fixed-point helpers: in `rust/liero-game/src/{rand,math}.rs`. C++'s `Rand` is now a thin wrapper that inherits the Rust state struct (`LieroRand`, the `gvl::mwc` multiply-with-carry generator, not CMWC), so games still copy and archive it as a plain value. `vectorLength` and the cos/sin table call Rust. Tests compare long output streams with hashes printed by `rust/liero-game/reference/reference_values.cpp`, which runs the original C++ code through em++. They pass natively and as wasm. Two findings: the cos/sin table relies on signed 64-bit overflow wrapping around, and native g++ on arm64 only matches wasm with `-ffp-contract=off` (no fused multiply-add). The C++ tctool keeps using `gvl::mwc`, and its build drops unused functions so it links without the Rust library.
 2. `level` and materials
 3. Object physics: `nobject`, `sobject`, `bobject`, `bonus`, `ninjarope`
 4. `weapon`, `worm`, then the game tick in `game`
