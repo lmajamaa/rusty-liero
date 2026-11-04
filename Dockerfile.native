@@ -1,3 +1,5 @@
+# Toolchain for the native command-line tools. Alpine 3.22's cargo is Rust
+# 1.87.0, the RUST_VERSION in .github/workflows/test.yml.
 FROM alpine:3.22
 
 # sdl2_image's CMake config only reports itself found when the dev packages

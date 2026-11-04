@@ -1,5 +1,7 @@
 FROM debian:trixie-slim
 
+# Toolchain for local web builds. CI installs the same versions directly;
+# keep them in sync with the env block in .github/workflows/test.yml.
 ARG EMSDK_VERSION=4.0.0
 # Rust 1.87 uses LLVM 20, the same major version as emsdk 4.0.0's clang, so
 # their object files link together. Change the two versions together.

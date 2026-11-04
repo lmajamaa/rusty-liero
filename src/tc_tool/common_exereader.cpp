@@ -4,7 +4,7 @@
 #include <gvl/io2/fstream.hpp>
 #include <cctype>
 #include "game/reader.hpp"
-#include "game/rand.hpp"
+#include <gvl/math/cmwc.hpp>
 #include "game/filesystem.hpp"
 
 int CSint32desc[][3] =
@@ -791,7 +791,8 @@ void loadGfx(Common& common, ReaderFile& exe, ReaderFile& gfx)
 	// Cropping the worm sprites here to match the original behavior.
 	cropSprites(common.largeSprites, 16, 21, 2, 0, 10, 9);
 
-	Rand rand;
+	// gvl::mwc, not the game's Rand, which is implemented in Rust and only built for the web.
+	gvl::mwc rand;
 
 	for(int y = 0; y < 16; ++y)
 	for(int x = 0; x < 16; ++x)

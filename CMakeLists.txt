@@ -153,6 +153,16 @@ if(EMSCRIPTEN)
 else()
     # Natively, only the command-line tools are built.
     add_executable(tctool ${TC_TOOL_SOURCES})
+    # tctool compiles the shared game sources, but never calls the parts that
+    # are implemented in Rust, which is only built for the web. It sees the
+    # header, and the linker drops the unused functions that would call in.
+    target_include_directories(tctool PRIVATE ${PROJECT_SOURCE_DIR}/rust/liero-game/include)
+    target_compile_options(tctool PRIVATE -ffunction-sections -fdata-sections)
+    if(APPLE)
+        target_link_options(tctool PRIVATE -Wl,-dead_strip)
+    else()
+        target_link_options(tctool PRIVATE -Wl,--gc-sections)
+    endif()
     add_executable(videotool EXCLUDE_FROM_ALL ${VIDEO_TOOL_SOURCES})
     target_link_libraries(tctool SDL2::SDL2)
     target_link_libraries(videotool SDL2::SDL2 avcodec avformat avutil dl pthread swresample swscale x264)

@@ -63,10 +63,17 @@ changing its `extern "C"` functions, regenerate the C header:
 ```bash
 docker compose run --rm web sh -c "cd rust/liero-game && cbindgen --config cbindgen.toml --output include/liero_game.h"
 ```
-Its tests:
+Its tests, natively and as wasm (run with Bun):
 ```bash
-docker compose run --rm native cargo test --manifest-path rust/liero-game/Cargo.toml
+docker compose run --rm web sh -c "cd rust/liero-game && cargo test"
 ```
+```bash
+docker compose run --rm web sh -c "cd rust/liero-game && cargo test --target wasm32-unknown-emscripten"
+```
+Ported code is tested against the original C++: `rust/liero-game/reference/reference_values.cpp`
+prints the values the tests expect, by running the same loops through the C++
+code (see the comment at its top for how to run it). CI runs these tests and
+builds on every pull request (`.github/workflows/test.yml`).
 
 Extracting game data for total conversions
 ======================

@@ -8,6 +8,31 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * Number of entries in the cos/sin table: a full turn in 128 steps.
+ */
+#define LIERO_COS_SIN_ENTRIES 128
+
+#define LIERO_RAND_DEFAULT_SEED 4919
+
+/**
+ * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
+ */
+typedef struct LieroIVec2 {
+  int32_t x;
+  int32_t y;
+} LieroIVec2;
+
+/**
+ * Generator state. C++'s `Rand` inherits from this struct, so the state stays
+ * a plain value inside `Game`, `Worm` and the other objects that own one:
+ * they are copied for the AI and written into replays.
+ */
+typedef struct LieroRand {
+  uint32_t x;
+  uint32_t c;
+} LieroRand;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -18,6 +43,26 @@ extern "C" {
  * is linked in.
  */
 const char *liero_game_version(void);
+
+int32_t liero_vector_length(int32_t x, int32_t y);
+
+/**
+ * Writes the cos/sin table into `out`, which must hold 128 entries.
+ *
+ * # Safety
+ * `out` must point to 128 writable `LieroIVec2`s.
+ */
+void liero_cos_sin_table(struct LieroIVec2 *out);
+
+void liero_rand_seed(struct LieroRand *rand, uint32_t seed);
+
+uint32_t liero_rand_next(struct LieroRand *rand);
+
+uint32_t liero_rand_below(struct LieroRand *rand, uint32_t max);
+
+uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
+
+double liero_rand_double_below(struct LieroRand *rand, double max);
 
 #ifdef __cplusplus
 }  // extern "C"

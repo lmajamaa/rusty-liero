@@ -1,0 +1,94 @@
+# Builds and tests everything. Tools are installed directly on the runner; the
+# versions match the pins in Dockerfile.web and Dockerfile.native, which are for
+# local builds. Change them together.
+#
+# Rust comes from the rustup that GitHub-hosted runners include, as in GitHub's
+# Rust guide. Actions are GitHub's own, plus Emscripten's setup-emsdk and
+# Oven's setup-bun.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The jobs only read the repository.
+permissions:
+  contents: read
+
+env:
+  EMSDK_VERSION: 4.0.0
+  RUST_VERSION: 1.87.0
+  CBINDGEN_VERSION: 0.29.0
+  BUN_VERSION: 1.4.4
+
+jobs:
+  web:
+    name: Web build and Rust tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-unknown-emscripten
+          rustup default "$RUST_VERSION"
+
+      - name: Install cbindgen
+        run: cargo install --locked cbindgen --version "$CBINDGEN_VERSION"
+
+      - name: Install Emscripten
+        uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Rust tests (native)
+        working-directory: rust/liero-game
+        run: cargo test
+
+      - name: Rust tests (wasm, run with Bun)
+        working-directory: rust/liero-game
+        run: cargo test --target wasm32-unknown-emscripten
+
+      - name: Check the C header matches cbindgen's output
+        working-directory: rust/liero-game
+        run: |
+          cbindgen --config cbindgen.toml --output include/liero_game.h
+          git diff --exit-code include/liero_game.h
+
+      - name: Build the game
+        run: |
+          emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/web -j
+
+  native:
+    name: Native tools
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install SDL2 and SDL2_image
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-image-dev
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+
+      - name: Build the C++ tctool
+        run: |
+          cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native -j
+
+      - name: Build the Rust tctool
+        run: cargo build --release --manifest-path tools/tctool/Cargo.toml

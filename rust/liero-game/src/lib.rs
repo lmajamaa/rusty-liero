@@ -1,8 +1,12 @@
 //! Game code ported from C++ to Rust. Built as a static library and linked
 //! into the web build of openliero (`wasm32-unknown-emscripten`).
 //!
-//! C++ calls in through the plain C functions below. `cbindgen` turns them
-//! into `include/liero_game.h`; regenerate it after changing them (see README).
+//! C++ calls in through plain C functions (`liero_*`) in each module. `cbindgen`
+//! turns them into `include/liero_game.h`; regenerate it after changing them
+//! (see README).
+
+pub mod math;
+pub mod rand;
 
 use std::ffi::c_char;
 
@@ -14,6 +18,31 @@ pub extern "C" fn liero_game_version() -> *const c_char {
     concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0")
         .as_ptr()
         .cast()
+}
+
+#[cfg(test)]
+mod test_util {
+    /// 64-bit FNV-1a over 32- or 64-bit words, used to compare long streams of
+    /// results against the C++ reference values in one number.
+    pub struct Fnv(u64);
+
+    impl Fnv {
+        pub fn new() -> Self {
+            Fnv(0xcbf2_9ce4_8422_2325)
+        }
+
+        pub fn add(&mut self, v: u32) {
+            self.add64(v as u64);
+        }
+
+        pub fn add64(&mut self, v: u64) {
+            self.0 = (self.0 ^ v).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+
+        pub fn finish(&self) -> u64 {
+            self.0
+        }
+    }
 }
 
 #[cfg(test)]
