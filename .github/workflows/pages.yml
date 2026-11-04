@@ -1,12 +1,3 @@
-# Builds the web game and publishes it on GitHub Pages at
-# https://lmajamaa.github.io/rusty-liero/.
-#
-# The build matches the web job in test.yml; keep the versions in step with it.
-# Pages serves the site under /rusty-liero/, so the page must only use relative
-# URLs. Emscripten's page loads openliero.js by a relative path, and the .js
-# finds the .wasm and .data next to itself.
-#
-# One-time setup: Settings → Pages → Source: GitHub Actions.
 name: Pages
 
 on:
