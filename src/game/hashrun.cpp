@@ -188,6 +188,8 @@ RunConfig const configs[] = {
 	{ "throwers-13", 13, Settings::GMKillEmAll, throwers },
 	{ "traps-14", 14, Settings::GMKillEmAll, traps },
 	{ "soj-15", 15, Settings::GMScalesOfJustice },
+	{ "soj-guns-16", 16, Settings::GMScalesOfJustice, guns },
+	{ "zone-shotguns-17", 17, Settings::GMHoldazone, shotguns },
 };
 
 // Sets a worm's weapons to the menu positions of the named weapons.

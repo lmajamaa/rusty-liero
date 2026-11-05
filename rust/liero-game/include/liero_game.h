@@ -101,6 +101,77 @@
 #define LIERO_GAME_SCALES_OF_JUSTICE 3
 
 /**
+ * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
+ */
+typedef struct LieroIVec2 {
+  int32_t x;
+  int32_t y;
+} LieroIVec2;
+
+/**
+ * Pointers to the fields of a C++ `Worm` that the game rules use.
+ */
+typedef struct LieroGameWorm {
+  struct LieroIVec2 *pos;
+  bool *visible;
+  int32_t *health;
+  int32_t *lives;
+  /**
+   * Game of Tag and Holdazone time.
+   */
+  int32_t *timer;
+  int32_t *last_killed_by_idx;
+  /**
+   * `Worm::index`.
+   */
+  int32_t index;
+  /**
+   * The worm's full health (`settings->health`).
+   */
+  int32_t max_health;
+} LieroGameWorm;
+
+/**
+ * Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
+ * `gvl::rect`.
+ */
+typedef struct LieroRect {
+  int32_t x1;
+  int32_t y1;
+  int32_t x2;
+  int32_t y2;
+} LieroRect;
+
+/**
+ * Holdazone's zone, laid out like C++'s `Holdazone`.
+ */
+typedef struct LieroHoldazone {
+  struct LieroRect rect;
+  /**
+   * The worm holding the zone, or -1.
+   */
+  int32_t holder_idx;
+  /**
+   * The worm taking the zone, or -1.
+   */
+  int32_t contender_idx;
+  int32_t contender_frames;
+  int32_t timeout_left;
+  int32_t zone_width;
+  int32_t zone_height;
+} LieroHoldazone;
+
+/**
+ * Generator state. C++'s `Rand` inherits from this struct, so the state stays
+ * a plain value inside `Game`, `Worm` and the other objects that own one:
+ * they are copied for the AI and written into replays.
+ */
+typedef struct LieroRand {
+  uint32_t x;
+  uint32_t c;
+} LieroRand;
+
+/**
  * Material flags of one palette index or level pixel. C++'s `Material`
  * inherits from this struct and keeps its tests inline, because the
  * renderer and AI call them for every pixel.
@@ -120,6 +191,124 @@ typedef struct LieroLevel {
   int32_t width;
   int32_t height;
 } LieroLevel;
+
+/**
+ * The game state the rules read and change. `worms` has `worm_count`
+ * entries in the order of C++'s `Game::worms`; worm numbers (killers,
+ * holders, 'it') are positions in it.
+ */
+typedef struct LieroGameFields {
+  const struct LieroGameWorm *worms;
+  int32_t worm_count;
+  int32_t *cycles;
+  /**
+   * The worm that died last, which is 'it' in Game of Tag, or -1.
+   */
+  int32_t *last_killed_idx;
+  struct LieroHoldazone *holdazone;
+  struct LieroRand *rand;
+  struct LieroLevel level;
+} LieroGameFields;
+
+/**
+ * Game settings, and TC constants and hacks, for the rules.
+ */
+typedef struct LieroGameSettings {
+  /**
+   * `LIERO_GAME_*`.
+   */
+  int32_t game_mode;
+  int32_t max_bonuses;
+  int32_t time_to_lose;
+  /**
+   * Seconds.
+   */
+  int32_t zone_timeout;
+  /**
+   * Ticks.
+   */
+  int32_t zone_capture_time;
+  /**
+   * `Settings::weapTable`, one entry per weapon; 2 means the weapon is
+   * never in bonuses.
+   */
+  const uint32_t *weap_table;
+  int32_t weapon_count;
+  /**
+   * `Common::bonusRandTimer`: for each bonus frame, the shortest time
+   * and the random part.
+   */
+  int32_t bonus_rand_timer[2][2];
+  int32_t bonus_spawn_rect_x;
+  int32_t bonus_spawn_rect_y;
+  int32_t bonus_spawn_rect_w;
+  int32_t bonus_spawn_rect_h;
+  int32_t bonus_drop_chance;
+  /**
+   * The TC's hacks (`H[...]`).
+   */
+  bool bonus_spawn_rect;
+  bool bonus_only_health;
+  bool bonus_only_weapon;
+  bool bonus_disable;
+} LieroGameSettings;
+
+/**
+ * A new bonus's fields, as `set_bonus` copies them into C++'s `Bonus`.
+ */
+typedef struct LieroBonusState {
+  int32_t x;
+  int32_t y;
+  int32_t vel_y;
+  int32_t frame;
+  int32_t timer;
+  int32_t weapon;
+} LieroBonusState;
+
+/**
+ * What C++ does during a tick. `ctx` is passed back to each function.
+ */
+typedef struct LieroGameHooks {
+  void *ctx;
+  /**
+   * Stats, screen flash and viewport shake at the start of the tick.
+   */
+  void (*begin_tick)(void *ctx);
+  void (*process_bonuses)(void *ctx);
+  /**
+   * Moves the viewports' death banners, every other tick.
+   */
+  void (*update_banners)(void *ctx);
+  void (*process_sobjects)(void *ctx);
+  void (*process_wobjects)(void *ctx);
+  void (*process_nobjects)(void *ctx);
+  void (*process_bobjects)(void *ctx);
+  /**
+   * How many bonuses there are.
+   */
+  int32_t (*bonus_count)(void *ctx);
+  /**
+   * A new bonus, or null when the list is full.
+   */
+  void *(*new_bonus)(void *ctx);
+  /**
+   * Sets the fields of a bonus from `new_bonus`.
+   */
+  void (*set_bonus)(void *ctx, void *bonus, const struct LieroBonusState *state);
+  /**
+   * `SObjectType::create` for sobject type `kind`, owned by nobody.
+   */
+  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
+  /**
+   * `Worm::process` and `Ninjarope::process` for worm `i`.
+   */
+  void (*process_worm)(void *ctx, int32_t i);
+  void (*process_rope)(void *ctx, int32_t i);
+  /**
+   * Viewports, the control states replays compare against, and stats.
+   */
+  void (*end_tick)(void *ctx);
+} LieroGameHooks;
 
 /**
  * A dirt effect: how explosions and digging change the terrain. C++ uses it
@@ -162,24 +351,6 @@ typedef struct LieroLevelCommon {
   const uint8_t *large_sprites;
   int32_t large_sprite_count;
 } LieroLevelCommon;
-
-/**
- * Generator state. C++'s `Rand` inherits from this struct, so the state stays
- * a plain value inside `Game`, `Worm` and the other objects that own one:
- * they are copied for the AI and written into replays.
- */
-typedef struct LieroRand {
-  uint32_t x;
-  uint32_t c;
-} LieroRand;
-
-/**
- * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
- */
-typedef struct LieroIVec2 {
-  int32_t x;
-  int32_t y;
-} LieroIVec2;
 
 /**
  * A blood particle, laid out like C++'s `BObject`.
@@ -868,6 +1039,58 @@ extern "C" {
  * is linked in.
  */
 const char *liero_game_version(void);
+
+/**
+ * Runs the game for one tick: C++'s `Game::processFrame`.
+ *
+ * # Safety
+ * See above.
+ */
+void liero_game_process_frame(const struct LieroGameFields *game,
+                              const struct LieroGameSettings *settings,
+                              const struct LieroGameHooks *hooks);
+
+/**
+ * Hurts worm `target` (a position in `game.worms`) by `amount`, caused by
+ * worm `by_idx` or -1: `Game::doDamage`.
+ *
+ * # Safety
+ * See above.
+ */
+void liero_game_damage(const struct LieroGameFields *game,
+                       const struct LieroGameSettings *settings,
+                       int32_t target,
+                       int32_t amount,
+                       int32_t by_idx);
+
+/**
+ * Heals worm `target` by `amount`: `Game::doHealing`.
+ *
+ * # Safety
+ * See above.
+ */
+void liero_game_heal(const struct LieroGameFields *game,
+                     const struct LieroGameSettings *settings,
+                     int32_t target,
+                     int32_t amount);
+
+/**
+ * Moves Holdazone's zone: `Game::spawnZone`.
+ *
+ * # Safety
+ * See above.
+ */
+void liero_game_spawn_zone(const struct LieroGameFields *game,
+                           const struct LieroGameSettings *settings);
+
+/**
+ * Whether the game has ended: `Game::isGameOver`.
+ *
+ * # Safety
+ * See above.
+ */
+bool liero_game_is_over(const struct LieroGameFields *game,
+                        const struct LieroGameSettings *settings);
 
 /**
  * Sets every pixel's material from its colour.
