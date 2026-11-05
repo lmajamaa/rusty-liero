@@ -1,672 +1,296 @@
 #include "viewport.hpp"
+#include "spectatorviewport.hpp"
 #include "game.hpp"
-#include "text.hpp"
-#include "math.hpp"
 #include "constants.hpp"
 #include "gfx/bitmap.hpp"
 #include "gfx/renderer.hpp"
-#include "gfx/blit.hpp"
+#include <vector>
 
-struct PreserveClipRect
+// Viewports are processed and drawn in Rust (rust/liero-game/src/viewport.rs).
+// For each draw, C++ copies what is drawn into a LieroScene.
+
+namespace
 {
-	PreserveClipRect(Bitmap& bmp)
-	: bmp(bmp)
-	{
-		rect = bmp.clip_rect;
-	}
 
-	~PreserveClipRect()
-	{
-		bmp.clip_rect = rect;
-	}
+LieroStr str(std::string const& s)
+{
+	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
+	return r;
+}
 
-	Bitmap& bmp;
-	gvl::rect rect;
+LieroSpriteSet spriteSet(SpriteSet const& s)
+{
+	LieroSpriteSet r = { s.data.data(), s.width, s.height, s.count };
+	return r;
+}
+
+int weaponIndex(Common& common, Weapon const* w)
+{
+	return w ? int(w - &common.weapons[0]) : -1;
+}
+
+LieroViewWorm viewWorm(Common& common, Worm const& w)
+{
+	LieroViewWorm r = {};
+	r.pos = { w.pos.x, w.pos.y };
+	r.visible = w.visible;
+	r.ready = w.ready;
+	r.health = w.health;
+	r.max_health = w.settings->health;
+	r.killed_timer = w.killedTimer;
+	r.stats_x = w.statsX;
+	r.kills = w.kills;
+	r.lives = w.lives;
+	r.timer = w.timer;
+	r.index = w.index;
+	r.name = str(w.settings->name);
+	r.color = w.settings->color;
+	r.pressed_change = w.pressed(Worm::Change);
+	r.pressed_fire = w.pressed(Worm::Fire);
+	r.current_frame = w.currentFrame;
+	r.direction = w.direction;
+	r.hotspot_x = w.hotspotX;
+	r.hotspot_y = w.hotspotY;
+	r.aiming_angle = w.aimingAngle;
+	r.make_sight_green = w.makeSightGreen;
+	r.rope_out = w.ninjarope.out;
+	r.rope_pos = { w.ninjarope.pos.x, w.ninjarope.pos.y };
+	r.fire_cone = w.fireCone;
+	r.last_killed_by_idx = w.lastKilledByIdx;
+	r.current_weapon = w.currentWeapon;
+	for (int i = 0; i < 5; ++i)
+	{
+		WormWeapon const& ww = w.weapons[i];
+		r.weapons[i] = { weaponIndex(common, ww.type), ww.ammo, ww.loadingLeft };
+	}
+	r.steerable_count = w.steerableCount;
+	r.steerable_sum_x = w.steerableSumX;
+	r.steerable_sum_y = w.steerableSumY;
+	r.has_ai = bool(w.ai);
+	return r;
+}
+
+std::vector<LieroViewWorm> viewWorms(Game& game)
+{
+	std::vector<LieroViewWorm> worms;
+	for (Worm* w : game.worms)
+		worms.push_back(viewWorm(*game.common, *w));
+	return worms;
+}
+
+LieroViewport state(Viewport& vp)
+{
+	LieroViewport r;
+	r.x = vp.x;
+	r.y = vp.y;
+	r.shake = vp.shake;
+	r.max_x = vp.maxX;
+	r.max_y = vp.maxY;
+	r.center_x = vp.centerX;
+	r.center_y = vp.centerY;
+	r.worm_idx = vp.wormIdx;
+	r.banner_y = vp.bannerY;
+	r.rect = { vp.rect.x1, vp.rect.y1, vp.rect.x2, vp.rect.y2 };
+	r.rand = &vp.rand;
+	return r;
+}
+
+void setState(Viewport& vp, LieroViewport const& s)
+{
+	vp.x = s.x;
+	vp.y = s.y;
+	vp.bannerY = s.banner_y;
+}
+
+struct AiDebugContext
+{
+	Game& game;
+	Renderer& renderer;
 };
+
+void hookDrawAiDebug(void* ctx, int32_t worm, int32_t offsX, int32_t offsY, LieroRect clip)
+{
+	AiDebugContext& c = *static_cast<AiDebugContext*>(ctx);
+	Worm const& w = *c.game.worms[worm];
+	Bitmap& bmp = c.renderer.bmp;
+	gvl::rect org = bmp.clip_rect;
+	bmp.clip_rect = gvl::rect(clip.x1, clip.y1, clip.x2, clip.y2);
+	w.ai->drawDebug(c.game, w, c.renderer, offsX, offsY);
+	bmp.clip_rect = org;
+}
+
+// Copies of everything drawn, kept alive while Rust draws.
+struct SceneData
+{
+	std::vector<LieroViewWorm> worms;
+	std::vector<LieroViewWeapon> weapons;
+	std::vector<LieroViewBonus> bonuses;
+	std::vector<LieroViewSObject> sobjects;
+	std::vector<LieroViewWObject> wobjects;
+	std::vector<LieroViewNObject> nobjects;
+	std::vector<LieroViewBObject> bobjects;
+	std::vector<LieroViewportBanner> viewports;
+};
+
+template<typename T>
+int32_t count(std::vector<T> const& v)
+{
+	return int32_t(v.size());
+}
+
+void draw(Viewport& vp, int kind, Game& game, Renderer& renderer, GameState gameState, bool isReplay)
+{
+	Common& common = *game.common;
+	Settings& settings = *game.settings;
+	SceneData d;
+
+	d.worms = viewWorms(game);
+
+	for (Weapon const& w : common.weapons)
+	{
+		LieroViewWeapon r;
+		r.name = str(w.name);
+		r.ammo = w.ammo;
+		r.loading_time = w.loadingTime;
+		r.computed_loading_time = w.computedLoadingTime(settings);
+		r.laser_sight = w.laserSight;
+		r.color_bullets = w.colorBullets;
+		r.fire_cone = w.fireCone;
+		r.start_frame = w.startFrame;
+		r.shot_type = w.shotType;
+		r.shadow = w.shadow;
+		d.weapons.push_back(r);
+	}
+
+	auto br = game.bonuses.all();
+	for (Bonus* i; (i = br.next()); )
+		d.bonuses.push_back({ i->x, i->y, i->timer, i->frame, i->weapon });
+
+	auto sr = game.sobjects.all();
+	for (SObject* i; (i = sr.next()); )
+		d.sobjects.push_back({ i->x, i->y, i->curFrame, common.sobjectTypes[i->id].startFrame });
+
+	auto wr = game.wobjects.all();
+	for (WObject* i; (i = wr.next()); )
+		d.wobjects.push_back({ { i->pos.x, i->pos.y }, weaponIndex(common, i->type), i->curFrame, int32_t(i - game.wobjects.arr) });
+
+	auto nr = game.nobjects.all();
+	for (NObject* i; (i = nr.next()); )
+		d.nobjects.push_back({ { i->pos.x, i->pos.y }, i->curFrame, i->type->startFrame });
+
+	for (Game::BObjectList::iterator i = game.bobjects.begin(); i != game.bobjects.end(); ++i)
+		d.bobjects.push_back({ { i->pos.x, i->pos.y }, i->color });
+
+	int selfIndex = -1;
+	for (std::size_t i = 0; i < game.viewports.size(); ++i)
+	{
+		Viewport* v = game.viewports[i];
+		if (v == &vp)
+			selfIndex = int(i);
+		d.viewports.push_back({ v->wormIdx, v->bannerY });
+	}
+
+	AiDebugContext aiCtx = { game, renderer };
+
+	LieroScene s = {};
+	s.worms = d.worms.data();
+	s.worm_count = count(d.worms);
+	s.weapons = d.weapons.data();
+	s.weapon_count = count(d.weapons);
+	s.bonuses = d.bonuses.data();
+	s.bonus_count = count(d.bonuses);
+	s.sobjects = d.sobjects.data();
+	s.sobject_count = count(d.sobjects);
+	s.wobjects = d.wobjects.data();
+	s.wobject_count = count(d.wobjects);
+	s.nobjects = d.nobjects.data();
+	s.nobject_count = count(d.nobjects);
+	s.bobjects = d.bobjects.data();
+	s.bobject_count = count(d.bobjects);
+	s.viewports = d.viewports.data();
+	s.viewport_count = count(d.viewports);
+
+	s.small_sprites = spriteSet(common.smallSprites);
+	s.large_sprites = spriteSet(common.largeSprites);
+	s.worm_sprites = spriteSet(common.wormSprites);
+	s.fire_cone_sprites = spriteSet(common.fireConeSprites);
+	s.text_sprites = spriteSet(common.textSprites);
+	s.font = reinterpret_cast<LieroFontChar const*>(common.font.chars.data());
+	s.font_count = common.font.chars.size();
+	s.materials = reinterpret_cast<LieroMaterial const*>(common.materials);
+	s.level = game.level.view();
+	s.bonus_frames[0] = common.bonusFrames[0];
+	s.bonus_frames[1] = common.bonusFrames[1];
+
+	s.reloading = str(LS(Reloading));
+	s.kills = str(LS(Kills));
+	s.lives = str(LS(Lives));
+	s.press_fire = str(LS(PressFire));
+	s.youre_it = str(LS(YoureIt));
+	s.killed_msg = str(LS(KilledMsg));
+	s.committed_suicide_msg = str(LS(CommittedSuicideMsg));
+
+	s.cycles = game.cycles;
+	s.game_mode = settings.gameMode;
+	s.holdazone = reinterpret_cast<LieroHoldazone const&>(game.holdazone);
+	s.zone_capture_time = settings.zoneCaptureTime;
+	s.last_killed_idx = game.lastKilledIdx;
+	s.got_changed = game.gotChanged;
+	s.shadow = settings.shadow;
+	s.names_on_bonuses = settings.namesOnBonuses;
+	s.allow_viewing_spawn_point = settings.allowViewingSpawnPoint;
+	s.map = settings.map;
+	s.rem_exp = common.H[HRemExp];
+	s.laser_weapon = LC(LaserWeapon);
+	s.bonus_flicker_time = LC(BonusFlickerTime);
+	s.nr_colour_begin = LC(NRColourBegin);
+	s.nr_colour_end = LC(NRColourEnd);
+
+	s.render_res_x = renderer.renderResX;
+	s.render_res_y = renderer.renderResY;
+	s.state_game = gameState == StateGame;
+	s.is_replay = isReplay;
+
+	s.hooks.ctx = &aiCtx;
+	s.hooks.draw_ai_debug = hookDrawAiDebug;
+
+	LieroViewport st = state(vp);
+	LieroBitmap scr = renderer.bmp.view();
+	liero_viewport_draw(&st, kind, selfIndex, &s, &scr);
+	setState(vp, st);
+}
+
+void process(Viewport& vp, int kind, Game& game)
+{
+	std::vector<LieroViewWorm> worms = viewWorms(game);
+	LieroViewport st = state(vp);
+	liero_viewport_process(&st, kind, worms.data(), count(worms));
+	setState(vp, st);
+}
+
+}
+
+static_assert(LIERO_GAME_KILL_EM_ALL == Settings::GMKillEmAll, "game modes");
+static_assert(LIERO_GAME_GAME_OF_TAG == Settings::GMGameOfTag, "game modes");
+static_assert(LIERO_GAME_HOLDAZONE == Settings::GMHoldazone, "game modes");
+static_assert(LIERO_GAME_SCALES_OF_JUSTICE == Settings::GMScalesOfJustice, "game modes");
 
 void Viewport::process(Game& game)
 {
-	Worm& worm = *game.wormByIdx(wormIdx);
-
-	if(worm.killedTimer <= 0)
-	{
-		if(worm.visible)
-		{
-			if(worm.steerableCount > 0)
-			{
-				setCenter(worm.steerableSumX / worm.steerableCount, worm.steerableSumY / worm.steerableCount);
-			}
-			else
-			{
-				setCenter(ftoi(worm.pos.x), ftoi(worm.pos.y));
-			}
-		}
-		else
-		{
-			scrollTo(ftoi(worm.pos.x), ftoi(worm.pos.y), 4);
-		}
-	}
-	else if(worm.health <= 0)
-	{
-		setCenter(ftoi(worm.pos.x), ftoi(worm.pos.y));
-
-		if(worm.killedTimer == 150) // TODO: This depends on what is the starting killedTimer
-			bannerY = -8;
-	}
-
-	int realShake = ftoi(shake);
-
-	if(realShake > 0)
-	{
-		x += rand(realShake * 2) - realShake;
-		y += rand(realShake * 2) - realShake;
-	}
-
-	if(x < 0) x = 0;
-	if(y < 0) y = 0;
-	if(x > maxX) x = maxX;
-	if(y > maxY) y = maxY;
-
-	/*
-	if(worm->health <= 0)
-	{
-		if((game.cycles & 1) == 0)
-		{
-			if(worm->killedTimer > 16)
-			{
-				if(bannerY < 2)
-					++bannerY;
-			}
-			else
-			{
-				if(bannerY > -8)
-					--bannerY;
-			}
-		}
-	}*/
+	::process(*this, LIERO_VIEWPORT_WORM, game);
 }
 
 void Viewport::draw(Game& game, Renderer& renderer, GameState state, bool isReplay)
 {
-	Common& common = *game.common;
-	Worm& worm = *game.wormByIdx(wormIdx);
-	int multiplier = renderer.renderResX / 320;
-	int centerX = renderer.renderResX / 2;
-
-	if(worm.visible)
-	{
-		int lifebarWidth = worm.health * 100 / worm.settings->health;
-		drawBar(renderer.bmp, worm.statsX * multiplier, renderer.renderResY - 39, lifebarWidth, lifebarWidth / 10 + 234);
-	}
-	else
-	{
-		int lifebarWidth = 100 - (worm.killedTimer * 25) / 37;
-		if(lifebarWidth > 0)
-		{
-			if(lifebarWidth > 100)
-				lifebarWidth = 100;
-			drawBar(renderer.bmp, worm.statsX * multiplier, renderer.renderResY - 39, lifebarWidth, lifebarWidth / 10 + 234);
-		}
-	}
-
-	// Draw kills status
-
-	WormWeapon const& ww = worm.weapons[worm.currentWeapon];
-
-	if(ww.available())
-	{
-		if(ww.ammo > 0)
-		{
-			int ammoBarWidth = ww.ammo * 100 / ww.type->ammo;
-
-			if(ammoBarWidth > 0)
-				drawBar(renderer.bmp, worm.statsX * multiplier, renderer.renderResY - 34, ammoBarWidth, ammoBarWidth / 10 + 245);
-		}
-	}
-	else
-	{
-		int ammoBarWidth = 0;
-
-		if(ww.type->loadingTime != 0)
-		{
-			int computedLoadingTime = ww.type->computedLoadingTime(*game.settings);
-			ammoBarWidth = 100 - ww.loadingLeft * 100 / computedLoadingTime;
-		}
-		else
-		{
-			ammoBarWidth = 100 - ww.loadingLeft * 100;
-		}
-
-		if(ammoBarWidth > 0)
-			drawBar(renderer.bmp, worm.statsX * multiplier, renderer.renderResY - 34, ammoBarWidth, ammoBarWidth / 10 + 245);
-
-		if((game.cycles % 20) > 10
-		&& worm.visible)
-		{
-			common.font.drawText(renderer.bmp, LS(Reloading), worm.statsX * multiplier, 164 * multiplier, 50);
-		}
-	}
-
-	common.font.drawText(renderer.bmp, (LS(Kills) + toString(worm.kills)), worm.statsX * multiplier, renderer.renderResY - 29, 10);
-
-	if(isReplay)
-	{
-		common.font.drawText(renderer.bmp, worm.settings->name, worm.statsX * multiplier, renderer.renderResY - 15, 7);
-		fillRect(renderer.bmp, worm.statsX * multiplier, renderer.renderResY - 7 - 1, 8, 8, 7);
-		fillRect(renderer.bmp, (worm.statsX + 1) * multiplier, renderer.renderResY - 7, 6, 6, worm.settings->color);
-		common.font.drawText(renderer.bmp, timeToStringEx(game.cycles * 14, false, true), 95 * multiplier, renderer.renderResY - 15, 7);
-	}
-
-	int const stateColours[2][2] = {{6, 10}, {79, 4}};
-
-	switch(game.settings->gameMode)
-	{
-	case Settings::GMKillEmAll:
-	case Settings::GMScalesOfJustice:
-	{
-		common.font.drawText(renderer.bmp, (LS(Lives) + toString(worm.lives)), worm.statsX * multiplier, renderer.renderResY - 22, 6);
-	}
-	break;
-
-	case Settings::GMHoldazone:
-	{
-		int state = 0;
-
-		for (auto* w : game.worms)
-			if (w != &worm && w->timer <= worm.timer)
-				state = 1;
-
-		int color = stateColours[game.holdazone.holderIdx != worm.index][state];
-
-		common.font.drawText(renderer.bmp, timeToString(worm.timer), 5 * multiplier, 106 * multiplier + 84 * worm.index * multiplier, renderer.renderResY - 39, color);
-	}
-	break;
-
-	case Settings::GMGameOfTag:
-	{
-		int state = 0;
-
-		for (auto* w : game.worms)
-			if (w != &worm && w->timer >= worm.timer)
-				state = 1;
-
-		int color = stateColours[game.lastKilledIdx != worm.index][state];
-
-		common.font.drawText(renderer.bmp, timeToString(worm.timer), 5 * multiplier, 106 * multiplier + 84 * worm.index * multiplier, renderer.renderResY - 39, color);
-	}
-	break;
-	}
-
-	gvl::ivec2 renderPos(x, y);
-
-	{
-		PreserveClipRect pcr(renderer.bmp);
-
-		renderer.bmp.clip_rect = rect;
-
-		fixedvec offs = rect.ul() - renderPos;
-
-		blitImageNoKeyColour(renderer.bmp, &game.level.data[0], offs.x, offs.y, game.level.width, game.level.height);
-
-		if (game.settings->gameMode == Settings::GMHoldazone)
-		{
-			bool timingOut = game.holdazone.timeoutLeft < 70 * 4;
-
-			int color = timingOut ? 168 : 50;
-			int contenderColor;
-
-			if (game.holdazone.contenderIdx >= 0)
-			{
-				Worm* contender = game.wormByIdx(game.holdazone.contenderIdx);
-				if (timingOut)
-					contenderColor = contender->minimapColor();
-				else
-					contenderColor = Palette::wormColourIndexes[contender->index] + 5;
-			}
-			else
-			{
-				contenderColor = color;
-			}
-
-			drawDashedLineBox(renderer.bmp,
-				game.holdazone.rect.x1 + offs.x,
-				game.holdazone.rect.y1 + offs.y,
-				color,
-				contenderColor,
-				game.holdazone.contenderFrames,
-				game.settings->zoneCaptureTime,
-				game.holdazone.rect.width(),
-				game.holdazone.rect.height(), game.cycles / 10);
-		}
-
-		if(!worm.visible
-		&& worm.killedTimer <= 0
-		&& !worm.ready)
-		{
-			common.font.drawText(renderer.bmp, LS(PressFire), rect.center_x() - 30, 76, 0);
-			common.font.drawText(renderer.bmp, LS(PressFire), rect.center_x() - 31, 75, 50);
-
-			if (game.settings->allowViewingSpawnPoint && worm.pressed(Worm::Change))
-			{
-				int tempX = ftoi(worm.pos.x) - 7 + offs.x;
-				int tempY = ftoi(worm.pos.y) - 5 + offs.y;
-
-				blitImageTrans(renderer.bmp, common.wormSpriteObj(worm.currentFrame, worm.direction, worm.index), tempX, tempY, game.cycles);
-			}
-		}
-
-		if(bannerY > -8
-		&& worm.health <= 0)
-		{
-			if(game.settings->gameMode == Settings::GMGameOfTag
-			&& game.gotChanged)
-			{
-				common.font.drawText(renderer.bmp, LS(YoureIt), rect.x1 + 3, bannerY + 1, 0);
-				common.font.drawText(renderer.bmp, LS(YoureIt), rect.x1 + 2, bannerY, 50);
-			}
-		}
-
-		for(std::size_t i = 0; i < game.viewports.size(); ++i)
-		{
-			Viewport* v = game.viewports[i];
-			Worm& otherWorm = *game.wormByIdx(v->wormIdx);
-			if(v != this
-			&& otherWorm.health <= 0
-			&& v->bannerY > -8)
-			{
-				if(otherWorm.lastKilledByIdx == worm.index)
-				{
-					std::string msg(LS(KilledMsg) + otherWorm.settings->name);
-					common.font.drawText(renderer.bmp, msg, rect.x1 + 3, v->bannerY + 1, 0);
-					common.font.drawText(renderer.bmp, msg, rect.x1 + 2, v->bannerY, 50);
-				}
-				else
-				{
-					std::string msg(otherWorm.settings->name + LS(CommittedSuicideMsg));
-					common.font.drawText(renderer.bmp, msg, rect.x1 + 3, v->bannerY + 1, 0);
-					common.font.drawText(renderer.bmp, msg, rect.x1 + 2, v->bannerY, 50);
-				}
-			}
-		}
-
-		auto br = game.bonuses.all();
-		for (Bonus* i; (i = br.next()); )
-		{
-			if(i->timer > LC(BonusFlickerTime) || (game.cycles & 3) == 0)
-			{
-				int f = common.bonusFrames[i->frame];
-
-				blitImage(
-					renderer.bmp,
-					common.smallSprites[f],
-					ftoi(i->x) - 3 + offs.x,
-					ftoi(i->y) - 3 + offs.y);
-
-				if(game.settings->shadow)
-				{
-					blitShadowImage(
-						common,
-						renderer.bmp,
-						common.smallSprites.spritePtr(f),
-						ftoi(i->x) - 5 + offs.x, // TODO: Use offsX
-						ftoi(i->y) - 1 + offs.y,
-						7, 7);
-				}
-
-				if(game.settings->namesOnBonuses
-				&& i->frame == 0)
-				{
-					std::string const& name = common.weapons[i->weapon].name;
-					int len = int(name.size()) * 4;
-
-					common.drawTextSmall(
-						renderer.bmp,
-						name.c_str(),
-						ftoi(i->x) - len/2 + offs.x,
-						ftoi(i->y) - 10 + offs.y);
-				}
-			}
-		}
-
-		auto sr = game.sobjects.all();
-		for (SObject* i; (i = sr.next()); )
-		{
-			SObjectType const& t = common.sobjectTypes[i->id];
-			int frame = i->curFrame + t.startFrame;
-
-			blitImageR(
-				renderer.bmp,
-				common.largeSprites.spritePtr(frame),
-				i->x + offs.x,
-				i->y + offs.y,
-				16, 16);
-
-			if(game.settings->shadow)
-			{
-				blitShadowImage(
-					common,
-					renderer.bmp,
-					common.largeSprites.spritePtr(frame),
-					i->x + offs.x - 3,
-					i->y + offs.y + 3, // TODO: Original doesn't offset the shadow, which is clearly wrong. Check that this offset is correct.
-					16, 16);
-			}
-		}
-
-		auto wr = game.wobjects.all();
-		for (WObject* i; (i = wr.next()); )
-		{
-			Weapon const& w = *i->type;
-
-			if(w.startFrame > -1)
-			{
-				int curFrame = i->curFrame;
-				int shotType = w.shotType;
-
-				if(shotType == 2)
-				{
-					curFrame += 4;
-					curFrame >>= 3;
-					if(curFrame < 0)
-						curFrame = 16;
-					else if(curFrame > 15)
-						curFrame -= 16;
-				}
-				else if(shotType == 3)
-				{
-					if(curFrame > 64)
-						--curFrame;
-					curFrame -= 12;
-					curFrame >>= 3;
-					if(curFrame < 0)
-						curFrame = 0;
-					else if(curFrame > 12)
-						curFrame = 12;
-				}
-
-				int posX = ftoi(i->pos.x) - 3;
-				int posY = ftoi(i->pos.y) - 3;
-
-				if(game.settings->shadow
-				&& w.shadow)
-				{
-					blitShadowImage(
-						common,
-						renderer.bmp,
-						common.smallSprites.spritePtr(w.startFrame + curFrame),
-						posX - 3 + offs.x,
-						posY + 3 + offs.y,
-						7, 7);
-				}
-
-				blitImage(
-					renderer.bmp,
-					common.smallSprites[w.startFrame + curFrame],
-					posX + offs.x,
-					posY + offs.y);
-			}
-			else if(i->curFrame > 0)
-			{
-				int posX = ftoi(i->pos.x) - x + rect.x1;
-				int posY = ftoi(i->pos.y) - y + rect.y1;
-
-				if(renderer.bmp.clip_rect.inside(posX, posY))
-					renderer.bmp.getPixel(posX, posY) = static_cast<PalIdx>(i->curFrame);
-
-				if(game.settings->shadow)
-				{
-					posX -= 3;
-					posY += 3;
-
-					if(renderer.bmp.clip_rect.inside(posX, posY))
-					{
-						PalIdx& pix = renderer.bmp.getPixel(posX, posY);
-						if(common.materials[pix].seeShadow())
-							pix += 4;
-					}
-				}
-
-			}
-
-			if(!common.H[HRemExp] && i->type - &common.weapons[0] == 34 && game.settings->namesOnBonuses) // TODO: Read from EXE
-			{
-				if(i->curFrame == 0)
-				{
-					int nameNum = int(&*i - game.wobjects.arr) % (int)common.weapons.size(); // TODO: Something nicer maybe
-
-					std::string const& name = common.weapons[nameNum].name;
-					int width = int(name.size()) * 4;
-
-					common.drawTextSmall(
-						renderer.bmp,
-						name.c_str(),
-						ftoi(i->pos.x) - width/2 + offs.x,
-						ftoi(i->pos.y) - 10 + offs.y);
-				}
-			}
-		}
-
-		auto nr = game.nobjects.all();
-		for (NObject* i; (i = nr.next()); )
-		{
-			NObjectType const& t = *i->type;
-
-			if(t.startFrame > 0)
-			{
-				auto pos = ftoi(i->pos) - gvl::ivec2(3, 3);
-
-				if(game.settings->shadow)
-				{
-					blitShadowImage(
-						common,
-						renderer.bmp,
-						common.smallSprites.spritePtr(t.startFrame + i->curFrame),
-						pos.x - 3 + offs.x,
-						pos.y + 3 + offs.y,
-						7,
-						7);
-				}
-
-				blitImage(
-					renderer.bmp,
-					common.smallSprites[t.startFrame + i->curFrame],
-					pos.x + offs.x,
-					pos.y + offs.y);
-
-			}
-			else if(i->curFrame > 1)
-			{
-				auto pos = ftoi(i->pos) + offs;
-				if(renderer.bmp.clip_rect.encloses(pos))
-					renderer.bmp.getPixel(pos.x, pos.y) = PalIdx(i->curFrame);
-
-				if(game.settings->shadow)
-				{
-					pos.x -= 3;
-					pos.y += 3;
-
-					if(renderer.bmp.clip_rect.encloses(pos))
-					{
-						PalIdx& pix = renderer.bmp.getPixel(pos.x, pos.y);
-						if(common.materials[pix].seeShadow())
-							pix += 4;
-					}
-				}
-			}
-		}
-
-		for(std::size_t i = 0; i < game.worms.size(); ++i)
-		{
-			Worm const& w = *game.worms[i];
-
-			if(w.visible)
-			{
-
-				int tempX = ftoi(w.pos.x) - 7 + offs.x;
-				int tempY = ftoi(w.pos.y) - 5 + offs.y;
-				int angleFrame = w.angleFrame();
-
-				if(w.weapons[w.currentWeapon].available())
-				{
-					int hotspotX = w.hotspotX + offs.x;
-					int hotspotY = w.hotspotY + offs.y;
-
-					WormWeapon const& ww = w.weapons[w.currentWeapon];
-					Weapon const& weapon = *ww.type;
-
-					if(weapon.laserSight)
-					{
-						drawLaserSight(renderer.bmp, rand, hotspotX, hotspotY, tempX + 7, tempY + 4);
-					}
-
-					if(ww.type - &common.weapons[0] == LC(LaserWeapon) - 1 && w.pressed(Worm::Fire))
-					{
-						drawLine(renderer.bmp, hotspotX, hotspotY, tempX + 7, tempY + 4, weapon.colorBullets);
-					}
-				}
-
-				if(w.ninjarope.out)
-				{
-					int ninjaropeX = ftoi(w.ninjarope.pos.x) + offs.x;
-					int ninjaropeY = ftoi(w.ninjarope.pos.y) + offs.y;
-
-					drawNinjarope(common, renderer.bmp, ninjaropeX, ninjaropeY, tempX + 7, tempY + 4);
-
-					blitImage(renderer.bmp, common.largeSprites[84], ninjaropeX - 1, ninjaropeY - 1);
-
-					if(game.settings->shadow)
-					{
-						drawShadowLine(common, renderer.bmp, ninjaropeX - 3, ninjaropeY + 3, tempX + 7 - 3, tempY + 4 + 3);
-						blitShadowImage(common, renderer.bmp, common.largeSprites.spritePtr(84), ninjaropeX - 4, ninjaropeY + 2, 16, 16);
-					}
-
-				}
-
-				if(w.weapons[w.currentWeapon].type->fireCone > 0 && w.fireCone > 0)
-				{
-					/* TODO
-					//NOTE! Check fctab so it's correct
-					//NOTE! Check function 1071C and see what it actually does*/
-
-					blitFireCone(
-						renderer.bmp,
-						w.fireCone / 2,
-						common.fireConeSprite(angleFrame, w.direction),
-						common.fireConeOffset[w.direction][angleFrame][0] + tempX,
-						common.fireConeOffset[w.direction][angleFrame][1] + tempY);
-				}
-
-
-				blitImage(renderer.bmp, common.wormSpriteObj(w.currentFrame, w.direction, w.index), tempX, tempY);
-				if(game.settings->shadow)
-					blitShadowImage(common, renderer.bmp, common.wormSprite(w.currentFrame, w.direction, w.index), tempX - 3, tempY + 3, 16, 16);
-			}
-
-			if (w.ai)
-				w.ai->drawDebug(game, w, renderer, offs.x, offs.y);
-		}
-
-		/*
-		auto& dp = gfx.debugPoints;
-
-		for (auto& p : dp)
-		{
-			int x = ftoi(p.first) + offsX;
-			int y = ftoi(p.second) + offsY;
-
-			if(isInside(renderer.bmp.clip_rect, x, y))
-				renderer.bmp.getPixel(x, y) = 0;
-		}*/
-
-		if(worm.visible)
-		{
-			auto temp = ftoi(worm.pos) - gvl::ivec2(1, 2) + ftoi(cossinTable[ftoi(worm.aimingAngle)] * 16) + offs;
-			//int tempX = ftoi(worm.pos.x) - 1 + ftoi(cosTable[ftoi(worm.aimingAngle)] * 16) + offs.x;
-			//int tempY = ftoi(worm.pos.y) - 2 + ftoi(sinTable[ftoi(worm.aimingAngle)] * 16) + offs.y;
-
-			blitImage(
-				renderer.bmp,
-				common.smallSprites[worm.makeSightGreen ? 44 : 43],
-				temp.x,
-				temp.y);
-
-			if(worm.pressed(Worm::Change))
-			{
-				std::string const& name = worm.weapons[worm.currentWeapon].type->name;
-
-				int len = int(name.size()) * 4; // TODO: Read 4 from exe? (SW_CHARWID)
-
-				common.drawTextSmall(
-					renderer.bmp,
-					name.c_str(),
-					ftoi(worm.pos.x) - len/2 + 1 + offs.x,
-					ftoi(worm.pos.y) - 10 + offs.y);
-			}
-		}
-
-		for(Game::BObjectList::iterator i = game.bobjects.begin(); i != game.bobjects.end(); ++i)
-		{
-			auto ipos = ftoi(i->pos) + offs;
-			if(renderer.bmp.clip_rect.encloses(ipos))
-				renderer.bmp.getPixel(ipos.x, ipos.y) = PalIdx(i->color);
-
-			if(game.settings->shadow)
-			{
-				ipos.x -= 3;
-				ipos.y += 3;
-
-				if(renderer.bmp.clip_rect.encloses(ipos))
-				{
-					PalIdx& pix = renderer.bmp.getPixel(ipos.x, ipos.y);
-					if(common.materials[pix].seeShadow())
-						pix += 4;
-				}
-			}
-		}
-	}
-
-	if(game.settings->map)
-	{
-		int mapX = centerX - 26;
-		int mapY = renderer.renderResY - 38;
-
-		game.level.drawMiniature(renderer.bmp, mapX, mapY, 10);
-
-		for(std::size_t i = 0; i < game.worms.size(); ++i)
-		{
-			Worm const& w = *game.worms[i];
-
-			if(w.visible)
-			{
-				int x = ftoi(w.pos.x) / 10 + mapX;
-				int y = ftoi(w.pos.y) / 10 + mapY;
-
-				renderer.bmp.getPixel(x, y) = w.minimapColor();
-			}
-		}
-
-		if (game.settings->gameMode == Settings::GMHoldazone
-		 && game.holdazone.timeoutLeft > 0)
-		{
-			int x = game.holdazone.rect.center_x() / 10 + mapX;
-			int y = game.holdazone.rect.center_y() / 10 + mapY;
-
-			int color = 168;
-
-			if (game.holdazone.holderIdx >= 0)
-			{
-				Worm* holder = game.wormByIdx(game.holdazone.holderIdx);
-				color = holder->minimapColor();
-			}
-
-			renderer.bmp.setPixel(x-1, y, color);
-			renderer.bmp.setPixel(x+1, y, color);
-			renderer.bmp.setPixel(x, y-1, color);
-			renderer.bmp.setPixel(x, y+1, color);
-			renderer.bmp.setPixel(x-1, y-1, color);
-			renderer.bmp.setPixel(x+1, y-1, color);
-			renderer.bmp.setPixel(x-1, y+1, color);
-			renderer.bmp.setPixel(x+1, y+1, color);
-		}
-	}
+	::draw(*this, LIERO_VIEWPORT_WORM, game, renderer, state, isReplay);
+}
+
+void SpectatorViewport::process(Game& game)
+{
+	::process(*this, LIERO_VIEWPORT_SPECTATOR, game);
+}
+
+void SpectatorViewport::draw(Game& game, Renderer& renderer, GameState state, bool isReplay)
+{
+	::draw(*this, LIERO_VIEWPORT_SPECTATOR, game, renderer, state, isReplay);
 }

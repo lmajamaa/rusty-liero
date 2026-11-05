@@ -47,7 +47,6 @@ set(SOURCES
     src/game/rand.cpp
     src/game/settings.cpp
     src/game/sobject.cpp
-    src/game/spectatorviewport.cpp
     src/game/stats_recorder.cpp
     src/game/sys.cpp
     src/game/text.cpp

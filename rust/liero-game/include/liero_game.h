@@ -45,6 +45,16 @@
 #define LIERO_RAND_DEFAULT_SEED 4919
 
 /**
+ * The viewport that follows one worm, in split screen.
+ */
+#define LIERO_VIEWPORT_WORM 0
+
+/**
+ * The viewport that shows the whole level, in spectator mode.
+ */
+#define LIERO_VIEWPORT_SPECTATOR 1
+
+/**
  * `Weapon::shotType`.
  */
 #define LIERO_SHOT_NORMAL 0
@@ -545,6 +555,290 @@ typedef struct LieroNinjaropeHooks {
                           struct LieroIVec2 pos,
                           int32_t color);
 } LieroNinjaropeHooks;
+
+/**
+ * A viewport's state, laid out like the fields of C++'s `Viewport`.
+ */
+typedef struct LieroViewport {
+  /**
+   * Top left of what is shown, in level coordinates.
+   */
+  int32_t x;
+  int32_t y;
+  /**
+   * Fixed point.
+   */
+  int32_t shake;
+  int32_t max_x;
+  int32_t max_y;
+  int32_t center_x;
+  int32_t center_y;
+  int32_t worm_idx;
+  /**
+   * Where the kill message is, -8 when hidden.
+   */
+  int32_t banner_y;
+  /**
+   * Where on screen the viewport is.
+   */
+  struct LieroRect rect;
+  /**
+   * Used for shaking and for the laser sight.
+   */
+  struct LieroRand *rand;
+} LieroViewport;
+
+/**
+ * Text from C++: `len` bytes from `ptr`.
+ */
+typedef struct LieroStr {
+  const uint8_t *ptr;
+  uintptr_t len;
+} LieroStr;
+
+/**
+ * One of a worm's weapon slots.
+ */
+typedef struct LieroViewWormWeapon {
+  /**
+   * Index into `LieroScene::weapons`.
+   */
+  int32_t weapon;
+  int32_t ammo;
+  int32_t loading_left;
+} LieroViewWormWeapon;
+
+/**
+ * What viewports use of a worm.
+ */
+typedef struct LieroViewWorm {
+  struct LieroIVec2 pos;
+  bool visible;
+  bool ready;
+  int32_t health;
+  /**
+   * The worm's full health (`settings->health`).
+   */
+  int32_t max_health;
+  int32_t killed_timer;
+  int32_t stats_x;
+  int32_t kills;
+  int32_t lives;
+  int32_t timer;
+  int32_t index;
+  struct LieroStr name;
+  /**
+   * The worm's colour (`settings->color`).
+   */
+  int32_t color;
+  bool pressed_change;
+  bool pressed_fire;
+  int32_t current_frame;
+  int32_t direction;
+  int32_t hotspot_x;
+  int32_t hotspot_y;
+  int32_t aiming_angle;
+  bool make_sight_green;
+  bool rope_out;
+  struct LieroIVec2 rope_pos;
+  int32_t fire_cone;
+  int32_t last_killed_by_idx;
+  int32_t current_weapon;
+  struct LieroViewWormWeapon weapons[5];
+  int32_t steerable_count;
+  int32_t steerable_sum_x;
+  int32_t steerable_sum_y;
+  /**
+   * The worm has an AI, which may draw debug output.
+   */
+  bool has_ai;
+} LieroViewWorm;
+
+/**
+ * What viewports use of a weapon type.
+ */
+typedef struct LieroViewWeapon {
+  struct LieroStr name;
+  int32_t ammo;
+  int32_t loading_time;
+  /**
+   * `Weapon::computedLoadingTime` with the game's settings.
+   */
+  int32_t computed_loading_time;
+  bool laser_sight;
+  int32_t color_bullets;
+  int32_t fire_cone;
+  int32_t start_frame;
+  int32_t shot_type;
+  bool shadow;
+} LieroViewWeapon;
+
+typedef struct LieroViewBonus {
+  int32_t x;
+  int32_t y;
+  int32_t timer;
+  int32_t frame;
+  int32_t weapon;
+} LieroViewBonus;
+
+typedef struct LieroViewSObject {
+  int32_t x;
+  int32_t y;
+  int32_t cur_frame;
+  /**
+   * The type's `startFrame`.
+   */
+  int32_t start_frame;
+} LieroViewSObject;
+
+typedef struct LieroViewWObject {
+  struct LieroIVec2 pos;
+  /**
+   * Index into `LieroScene::weapons`.
+   */
+  int32_t weapon;
+  int32_t cur_frame;
+  /**
+   * Where the object is in C++'s list, which picks a name for weapon 34.
+   */
+  int32_t slot;
+} LieroViewWObject;
+
+typedef struct LieroViewNObject {
+  struct LieroIVec2 pos;
+  int32_t cur_frame;
+  /**
+   * The type's `startFrame`.
+   */
+  int32_t start_frame;
+} LieroViewNObject;
+
+typedef struct LieroViewBObject {
+  struct LieroIVec2 pos;
+  int32_t color;
+} LieroViewBObject;
+
+/**
+ * A split-screen viewport, for the kill messages that every viewport shows.
+ */
+typedef struct LieroViewportBanner {
+  int32_t worm_idx;
+  int32_t banner_y;
+} LieroViewportBanner;
+
+/**
+ * A C++ `SpriteSet`: `count` sprites of `width` x `height` pixels, one after
+ * the other.
+ */
+typedef struct LieroSpriteSet {
+  const uint8_t *data;
+  int32_t width;
+  int32_t height;
+  int32_t count;
+} LieroSpriteSet;
+
+/**
+ * What C++ draws. `ctx` is passed back.
+ */
+typedef struct LieroViewportHooks {
+  void *ctx;
+  /**
+   * Lets the AI of worm `worm` (a position in `LieroScene::worms`) draw its
+   * debug output, clipped to `clip`.
+   */
+  void (*draw_ai_debug)(void *ctx,
+                        int32_t worm,
+                        int32_t offs_x,
+                        int32_t offs_y,
+                        struct LieroRect clip);
+} LieroViewportHooks;
+
+/**
+ * Everything a viewport draws. Lists are in C++'s order, which decides what
+ * is drawn on top.
+ */
+typedef struct LieroScene {
+  /**
+   * In the order of `Game::worms`; worm numbers are positions in it.
+   */
+  const struct LieroViewWorm *worms;
+  int32_t worm_count;
+  /**
+   * `Common::weapons`.
+   */
+  const struct LieroViewWeapon *weapons;
+  int32_t weapon_count;
+  const struct LieroViewBonus *bonuses;
+  int32_t bonus_count;
+  const struct LieroViewSObject *sobjects;
+  int32_t sobject_count;
+  const struct LieroViewWObject *wobjects;
+  int32_t wobject_count;
+  const struct LieroViewNObject *nobjects;
+  int32_t nobject_count;
+  const struct LieroViewBObject *bobjects;
+  int32_t bobject_count;
+  /**
+   * The split-screen viewports, `Game::viewports`.
+   */
+  const struct LieroViewportBanner *viewports;
+  int32_t viewport_count;
+  struct LieroSpriteSet small_sprites;
+  struct LieroSpriteSet large_sprites;
+  struct LieroSpriteSet worm_sprites;
+  struct LieroSpriteSet fire_cone_sprites;
+  struct LieroSpriteSet text_sprites;
+  const struct LieroFontChar *font;
+  uintptr_t font_count;
+  /**
+   * 256 entries.
+   */
+  const struct LieroMaterial *materials;
+  struct LieroLevel level;
+  int32_t bonus_frames[2];
+  struct LieroStr reloading;
+  struct LieroStr kills;
+  struct LieroStr lives;
+  struct LieroStr press_fire;
+  struct LieroStr youre_it;
+  struct LieroStr killed_msg;
+  struct LieroStr committed_suicide_msg;
+  int32_t cycles;
+  /**
+   * `LIERO_GAME_*`.
+   */
+  int32_t game_mode;
+  struct LieroHoldazone holdazone;
+  int32_t zone_capture_time;
+  int32_t last_killed_idx;
+  bool got_changed;
+  bool shadow;
+  bool names_on_bonuses;
+  bool allow_viewing_spawn_point;
+  bool map;
+  /**
+   * The TC's `HRemExp` hack.
+   */
+  bool rem_exp;
+  /**
+   * `LC(LaserWeapon)`, counting from 1.
+   */
+  int32_t laser_weapon;
+  int32_t bonus_flicker_time;
+  /**
+   * `LC(NRColourBegin)` and `LC(NRColourEnd)`.
+   */
+  int32_t nr_colour_begin;
+  int32_t nr_colour_end;
+  int32_t render_res_x;
+  int32_t render_res_y;
+  /**
+   * The game is running (`StateGame`), not paused or over.
+   */
+  bool state_game;
+  bool is_replay;
+  struct LieroViewportHooks hooks;
+} LieroScene;
 
 /**
  * How a new weapon object starts, from `Weapon::fire`.
@@ -1761,6 +2055,34 @@ uint32_t liero_rand_below(struct LieroRand *rand, uint32_t max);
 uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
 
 double liero_rand_double_below(struct LieroRand *rand, double max);
+
+/**
+ * Moves the camera one tick: `Viewport::process` for `LIERO_VIEWPORT_WORM`,
+ * `SpectatorViewport::process` for `LIERO_VIEWPORT_SPECTATOR`. `worms` has
+ * `worm_count` entries in the order of `Game::worms`.
+ *
+ * # Safety
+ * `vp.rand` must be valid, and `worms` must hold `worm_count` worms.
+ */
+void liero_viewport_process(struct LieroViewport *vp,
+                            int32_t kind,
+                            const struct LieroViewWorm *worms,
+                            int32_t worm_count);
+
+/**
+ * Draws a viewport on `scr`: `Viewport::draw` for `LIERO_VIEWPORT_WORM`,
+ * `SpectatorViewport::draw` for `LIERO_VIEWPORT_SPECTATOR`. `self_index` is
+ * a split-screen viewport's position in `scene.viewports`.
+ *
+ * # Safety
+ * See `LieroBitmap` and `LieroScene`: every pointer must be valid for its
+ * count, and `vp.rand` must be valid.
+ */
+void liero_viewport_draw(struct LieroViewport *vp,
+                         int32_t kind,
+                         int32_t self_index,
+                         const struct LieroScene *scene,
+                         const struct LieroBitmap *scr);
 
 /**
  * The start of a shot: C++'s `Weapon::fire` without the object list and

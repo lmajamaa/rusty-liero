@@ -12,6 +12,7 @@ pub mod material;
 pub mod math;
 pub mod object;
 pub mod rand;
+pub mod viewport;
 pub mod weapon;
 pub mod worm;
 
