@@ -303,10 +303,13 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 		{
 			std::printf("%s %d %016llx%s\n", config.name, tick, (unsigned long long)hashGame(game), over ? " end" : "");
 			std::printf("%s %d %016llx frame\n", config.name, tick, (unsigned long long)hashFrame(game, split, spectator));
+			std::printf("%s-stats %d %016llx\n", config.name, tick, (unsigned long long)hashStats(game));
 		}
 		if (over)
 			break;
 	}
+
+	hashStatsScreen(config.name, game, split);
 
 	std::printf("%s summary: %d ticks, kills %d-%d, lives %d-%d\n", config.name, game.cycles,
 		game.worms[0]->kills, game.worms[1]->kills, game.worms[0]->lives, game.worms[1]->lives);

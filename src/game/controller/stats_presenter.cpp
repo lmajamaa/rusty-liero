@@ -248,27 +248,14 @@ void sortWeaponStats(vector<WeaponStats>& ws)
 		[](WeaponStats const& a, WeaponStats const& b) { return a.actualHp > b.actualHp; });
 }
 
-void presentStats(NormalStatsRecorder& recorder, Game& game)
+StatsScreen::StatsScreen(NormalStatsRecorder& recorder, Game& game, Renderer& renderer)
+: recorder(recorder)
+, game(game)
+, renderer(renderer)
 {
-	gfx.clearKeys();
-
-	Common& common = *game.common;
-
-	Bitmap bg;
-
-	bg.copy(gfx.playRenderer.bmp);
-
-	StatsRenderer renderer(gfx.playRenderer, game, recorder, common);
-
-	double offset = 0, destOffset = 0;
-	double pane = 0;
-	double destPane = pane;
-
-	vector<WeaponStats> combinedWeaponStats, weaponStats[2];
-
-	vector<double> wormDamages[2], wormTotalHp[2];
-
-	int const graphWidth = renderer.paneWidth - 20;
+	StatsRenderer statsRenderer(renderer, game, recorder, *game.common);
+	int const graphWidth = statsRenderer.paneWidth - 20;
+	vector<double> wormTotalHp[2];
 
 	for (int i = 0; i < 2; ++i)
 	{
@@ -280,7 +267,7 @@ void presentStats(NormalStatsRecorder& recorder, Game& game)
 		wormTotalHp[i] = convert<double>(pluck(recorder.worms[i].wormFrameStats, &WormFrameStats::totalHp));
 	}
 
-	vector<double> wormTotalHpDiff(
+	wormTotalHpDiff = (
 		stretch(zip(wormTotalHp[0], wormTotalHp[1], std::minus<double>()), graphWidth));
 
 	normalize(wormTotalHpDiff, 100);
@@ -298,103 +285,125 @@ void presentStats(NormalStatsRecorder& recorder, Game& game)
 	sortWeaponStats(combinedWeaponStats);
 	sortWeaponStats(weaponStats[0]);
 	sortWeaponStats(weaponStats[1]);
+}
+
+void StatsScreen::draw(double pane, double offset)
+{
+	Common& common = *game.common;
+	StatsRenderer renderer(this->renderer, game, recorder, common);
+
+	int offsX = (int)std::floor(pane * -renderer.renderer.renderResX);
+	int offsY = (int)offset;
+
+	renderer.pane(0, offsX, offsY, [&] {
+		renderer.drawWorms();
+
+		int oldy = renderer.y;
+		renderer.y -= 20;
+
+		renderer.drawStat(
+			common.texts.gameModes[game.settings->gameMode].c_str(),
+			[&](cell& c) { c << timeToStringFrames(recorder.gameTime); });
+
+		renderer.y = oldy;
+
+		{
+			uint64_t ticks_per_sec = gvl::hires_ticks_per_sec();
+
+			renderer.drawWormStat("ai processing", [&](WormStats& w, cell& c) {
+				c << (int)(w.aiProcessTime * 1000 / ticks_per_sec) << "ms";
+			});
+		}
+
+
+		if (game.settings->gameMode == Settings::GMHoldazone
+		 || game.settings->gameMode == Settings::GMGameOfTag)
+		{
+			renderer.drawWormStat("timer", [&](WormStats& w, cell& c) {
+				c << timeToString(w.timer);
+			});
+		}
+		else
+		{
+			renderer.drawWormStat("lives left", &WormStats::lives);
+		}
+		renderer.drawWormStat("kills", &WormStats::kills);
+		renderer.drawWormStat("damage dealt", &WormStats::damageDealt);
+		renderer.drawWormStat("damage received", &WormStats::damage);
+		renderer.drawWormStat("damage to self", &WormStats::selfDamage);
+
+		renderer.drawWormStat("shortest life", [](WormStats& w, cell& c) {
+			int min, max;
+			w.lifeStats(min, max);
+			c << timeToStringFrames(min);
+		});
+
+		renderer.drawWormStat("longest life", [](WormStats& w, cell& c) {
+			int min, max;
+			w.lifeStats(min, max);
+			c << timeToStringFrames(max);
+		});
+
+		renderer.drawWormStat("loading efficiency", [](WormStats& w, cell& c) {
+			c << percent(w.weaponChangeGood, w.weaponChangeGood + w.weaponChangeBad);
+		});
+
+		renderer.gap();
+
+		renderer.weaponStats(combinedWeaponStats);
+
+		renderer.section(cell().ref() << "Total health difference", 0);
+
+		renderer.graph(
+				wormTotalHpDiff,
+				100,
+				Palette::wormColourIndexes[0],
+				Palette::wormColourIndexes[1],
+				true);
+
+		renderer.section(cell().ref() << "Presence", 0);
+		renderer.heatmap(recorder.presence);
+	});
+
+	for (int i = 0; i < 2; ++i)
+	{
+		WormStats& wormStats = recorder.worms[i];
+		renderer.pane(i == 0 ? -1 : 1, offsX, offsY, [&] {
+			renderer.drawWorm(i);
+
+			renderer.weaponStats(weaponStats[i]);
+
+			renderer.section(cell().ref() << "Damage over time", 0);
+			renderer.graph(wormDamages[i], 50, Palette::wormColourIndexes[i], 0, false);
+
+			renderer.section(cell().ref() << "Presence", 0);
+			renderer.heatmap(wormStats.presence);
+			renderer.section(cell().ref() << "Damage", 0);
+			renderer.heatmap(wormStats.damageHm);
+		});
+	}
+
+	renderer.renderer.pal = common.exepal; // We don't use gfx.origpal because the colors are unpredictable
+}
+
+void presentStats(NormalStatsRecorder& recorder, Game& game)
+{
+	gfx.clearKeys();
+
+	Bitmap bg;
+
+	bg.copy(gfx.playRenderer.bmp);
+
+	StatsScreen screen(recorder, game, gfx.playRenderer);
+
+	double offset = 0, destOffset = 0;
+	double pane = 0;
+	double destPane = pane;
 
 	while (true)
 	{
 		gfx.playRenderer.bmp.copy(bg);
-
-		int offsX = (int)std::floor(pane * -renderer.renderer.renderResX);
-		int offsY = (int)offset;
-
-		renderer.pane(0, offsX, offsY, [&] {
-			renderer.drawWorms();
-
-			int oldy = renderer.y;
-			renderer.y -= 20;
-
-			renderer.drawStat(
-				common.texts.gameModes[game.settings->gameMode].c_str(),
-				[&](cell& c) { c << timeToStringFrames(recorder.gameTime); });
-
-			renderer.y = oldy;
-
-			{
-				uint64_t ticks_per_sec = gvl::hires_ticks_per_sec();
-
-				renderer.drawWormStat("ai processing", [&](WormStats& w, cell& c) {
-					c << (int)(w.aiProcessTime * 1000 / ticks_per_sec) << "ms";
-				});
-			}
-
-
-			if (game.settings->gameMode == Settings::GMHoldazone
-			 || game.settings->gameMode == Settings::GMGameOfTag)
-			{
-				renderer.drawWormStat("timer", [&](WormStats& w, cell& c) {
-					c << timeToString(w.timer);
-				});
-			}
-			else
-			{
-				renderer.drawWormStat("lives left", &WormStats::lives);
-			}
-			renderer.drawWormStat("kills", &WormStats::kills);
-			renderer.drawWormStat("damage dealt", &WormStats::damageDealt);
-			renderer.drawWormStat("damage received", &WormStats::damage);
-			renderer.drawWormStat("damage to self", &WormStats::selfDamage);
-
-			renderer.drawWormStat("shortest life", [](WormStats& w, cell& c) {
-				int min, max;
-				w.lifeStats(min, max);
-				c << timeToStringFrames(min);
-			});
-
-			renderer.drawWormStat("longest life", [](WormStats& w, cell& c) {
-				int min, max;
-				w.lifeStats(min, max);
-				c << timeToStringFrames(max);
-			});
-
-			renderer.drawWormStat("loading efficiency", [](WormStats& w, cell& c) {
-				c << percent(w.weaponChangeGood, w.weaponChangeGood + w.weaponChangeBad);
-			});
-
-			renderer.gap();
-
-			renderer.weaponStats(combinedWeaponStats);
-
-			renderer.section(cell().ref() << "Total health difference", 0);
-
-			renderer.graph(
-					wormTotalHpDiff,
-					100,
-					Palette::wormColourIndexes[0],
-					Palette::wormColourIndexes[1],
-					true);
-
-			renderer.section(cell().ref() << "Presence", 0);
-			renderer.heatmap(recorder.presence);
-		});
-
-		for (int i = 0; i < 2; ++i)
-		{
-			WormStats& wormStats = recorder.worms[i];
-			renderer.pane(i == 0 ? -1 : 1, offsX, offsY, [&] {
-				renderer.drawWorm(i);
-
-				renderer.weaponStats(weaponStats[i]);
-
-				renderer.section(cell().ref() << "Damage over time", 0);
-				renderer.graph(wormDamages[i], 50, Palette::wormColourIndexes[i], 0, false);
-
-				renderer.section(cell().ref() << "Presence", 0);
-				renderer.heatmap(wormStats.presence);
-				renderer.section(cell().ref() << "Damage", 0);
-				renderer.heatmap(wormStats.damageHm);
-			});
-		}
-
-		gfx.playRenderer.pal = common.exepal; // We don't use gfx.origpal because the colors are unpredictable
+		screen.draw(pane, offset);
 
 		gfx.flip();
 		gfx.process();

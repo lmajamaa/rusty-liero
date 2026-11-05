@@ -11,6 +11,8 @@ int hashRun(int argc, char* argv[]);
 #include "math.hpp"
 
 struct Common;
+struct Game;
+struct Renderer;
 
 // Drives the menus and weapon selection with scripted keys and prints hashes
 // of what they show. See hashmenus.cpp.
@@ -19,6 +21,9 @@ void hashTc(Common& common);
 // Hashes settings written, read and broken in every format. See
 // hashsettings.cpp.
 void hashSettings();
+// Hashes the stats recorder and the stats screen. See hashstats.cpp.
+uint64_t hashStats(Game& game);
+void hashStatsScreen(char const* name, Game& game, Renderer& renderer);
 
 // 64-bit FNV-1a over 32-bit words, the same as the Rust tests use.
 struct Fnv
