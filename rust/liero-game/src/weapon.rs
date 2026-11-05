@@ -76,6 +76,9 @@ pub struct LieroWeapon {
     pub part_trail_type: i32,
     pub part_trail_obj: i32,
     pub part_trail_delay: i32,
+    /// Non-zero when the launch sound loops while firing.
+    pub loop_sound: i32,
+    pub laser_sight: bool,
 }
 
 /// A worm's weapon slot, laid out like C++'s `WormWeapon`.

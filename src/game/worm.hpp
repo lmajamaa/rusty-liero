@@ -329,19 +329,8 @@ struct Worm : gvl::shared
 		return 129 + index * 4;
 	}
 
-	void beginRespawn(Game& game);
-	void doRespawning(Game& game);
+	// Runs the worm for one tick, in Rust (rust/liero-game/src/worm.rs).
 	void process(Game& game);
-	void processWeapons(Game& game);
-	void processPhysics(Game& game);
-	void processMovement(Game& game);
-	void processTasks(Game& game);
-	void processAiming(Game& game);
-	void processWeaponChange(Game& game);
-	void processSteerables(Game& game);
-	void fire(Game& game);
-	void processSight(Game& game);
-	void calculateReactionForce(Game& game, int newX, int newY, int dir);
 	void initWeapons(Game& game);
 	int angleFrame() const;
 

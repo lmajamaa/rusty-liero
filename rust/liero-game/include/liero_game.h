@@ -73,6 +73,34 @@
 #define LIERO_HIT_REMOVE 2
 
 /**
+ * Bits of `control_states` (`Worm::Control`).
+ */
+#define LIERO_CONTROL_UP 0
+
+#define LIERO_CONTROL_DOWN 1
+
+#define LIERO_CONTROL_LEFT 2
+
+#define LIERO_CONTROL_RIGHT 3
+
+#define LIERO_CONTROL_FIRE 4
+
+#define LIERO_CONTROL_CHANGE 5
+
+#define LIERO_CONTROL_JUMP 6
+
+/**
+ * `Settings::gameMode`.
+ */
+#define LIERO_GAME_KILL_EM_ALL 0
+
+#define LIERO_GAME_GAME_OF_TAG 1
+
+#define LIERO_GAME_HOLDAZONE 2
+
+#define LIERO_GAME_SCALES_OF_JUSTICE 3
+
+/**
  * Material flags of one palette index or level pixel. C++'s `Material`
  * inherits from this struct and keeps its tests inline, because the
  * renderer and AI call them for every pixel.
@@ -367,6 +395,11 @@ typedef struct LieroWeapon {
   int32_t part_trail_type;
   int32_t part_trail_obj;
   int32_t part_trail_delay;
+  /**
+   * Non-zero when the launch sound loops while firing.
+   */
+  int32_t loop_sound;
+  bool laser_sight;
 } LieroWeapon;
 
 /**
@@ -543,6 +576,287 @@ typedef struct LieroBlowUpHooks {
                           struct LieroIVec2 pos,
                           int32_t color);
 } LieroBlowUpHooks;
+
+/**
+ * Pointers to the fields of a C++ `Worm`.
+ */
+typedef struct LieroWormFields {
+  struct LieroIVec2 *pos;
+  struct LieroIVec2 *vel;
+  /**
+   * Where the respawn camera is, in pixels.
+   */
+  struct LieroIVec2 *logic_respawn;
+  int32_t *hotspot_x;
+  int32_t *hotspot_y;
+  /**
+   * Fixed-point, 0 to 128.
+   */
+  int32_t *aiming_angle;
+  int32_t *aiming_speed;
+  bool *able_to_jump;
+  bool *able_to_dig;
+  bool *key_change_pressed;
+  bool *movable;
+  bool *animate;
+  bool *visible;
+  bool *ready;
+  bool *make_sight_green;
+  int32_t *health;
+  int32_t *lives;
+  int32_t *killed_timer;
+  int32_t *current_frame;
+  struct LieroNinjarope *ninjarope;
+  int32_t *current_weapon;
+  int32_t *last_killed_by_idx;
+  int32_t *fire_cone;
+  int32_t *leave_shell_timer;
+  /**
+   * Four entries, indexed by `RF_*`.
+   */
+  int32_t *reacts;
+  /**
+   * All five weapon slots.
+   */
+  struct LieroWormWeapon *weapons;
+  /**
+   * 0 is left, 1 is right.
+   */
+  int32_t *direction;
+  /**
+   * `Worm::controlStates`, one bit per `LIERO_CONTROL_*`.
+   */
+  uint32_t *control_states;
+  int32_t *steerable_sum_x;
+  int32_t *steerable_sum_y;
+  int32_t *steerable_count;
+  /**
+   * 0 or 1.
+   */
+  int32_t index;
+  /**
+   * The worm's full health (`settings->health`).
+   */
+  int32_t max_health;
+} LieroWormFields;
+
+/**
+ * Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
+ */
+typedef struct LieroWormConstants {
+  int32_t min_bounce_up;
+  int32_t min_bounce_down;
+  int32_t min_bounce_left;
+  int32_t min_bounce_right;
+  int32_t worm_gravity;
+  int32_t walk_vel_left;
+  int32_t max_vel_left;
+  int32_t walk_vel_right;
+  int32_t max_vel_right;
+  int32_t jump_force;
+  int32_t max_aim_vel_left;
+  int32_t aim_acc_left;
+  int32_t max_aim_vel_right;
+  int32_t aim_acc_right;
+  int32_t nr_initial_length;
+  int32_t nr_min_length;
+  int32_t nr_max_length;
+  int32_t nr_throw_vel_x;
+  int32_t nr_throw_vel_y;
+  int32_t nr_pull_vel;
+  int32_t nr_release_vel;
+  int32_t worm_fric_mult;
+  int32_t worm_fric_div;
+  int32_t worm_min_spawn_dist_last;
+  int32_t worm_min_spawn_dist_enemy;
+  int32_t worm_spawn_rect_x;
+  int32_t worm_spawn_rect_y;
+  int32_t worm_spawn_rect_w;
+  int32_t worm_spawn_rect_h;
+  int32_t aim_fric_mult;
+  int32_t aim_fric_div;
+  int32_t aim_max_right;
+  int32_t aim_min_right;
+  int32_t aim_max_left;
+  int32_t aim_min_left;
+  int32_t bonus_explode_risk;
+  int32_t bonus_health_var;
+  int32_t bonus_min_health;
+  /**
+   * 1-based id of the weapon that always has a laser sight.
+   */
+  int32_t laser_weapon;
+  int32_t fall_damage_right;
+  int32_t fall_damage_down;
+  int32_t worm_float_level;
+  int32_t worm_float_power;
+  /**
+   * The TC's hacks (`H[...]`).
+   */
+  bool fall_damage;
+  bool worm_float;
+  bool bonus_reload_only;
+  bool air_jump;
+  bool multi_jump;
+  bool signed_recoil;
+} LieroWormConstants;
+
+/**
+ * Everything else `Worm::process` reads from the game.
+ */
+typedef struct LieroWormEnv {
+  struct LieroLevel level;
+  struct LieroLevelCommon common;
+  struct LieroRand *rand;
+  int32_t cycles;
+  /**
+   * `LIERO_GAME_*`.
+   */
+  int32_t game_mode;
+  /**
+   * Blood amount, in percent.
+   */
+  int32_t blood;
+  /**
+   * Weapon loading time, in percent.
+   */
+  int32_t loading_time;
+  /**
+   * Whether weapons can be changed while loading.
+   */
+  bool load_change;
+  bool shadow;
+  /**
+   * Worms don't respawn in quick simulations.
+   */
+  bool quick_sim;
+  /**
+   * `Settings::wormAnimTab`: frame offsets for the walking animation.
+   */
+  int32_t anim_tab[4];
+  /**
+   * `Game::lastKilledIdx` and `Game::gotChanged`.
+   */
+  int32_t *last_killed_idx;
+  bool *got_changed;
+} LieroWormEnv;
+
+/**
+ * A bonus from `bonus_next`.
+ */
+typedef struct LieroBonusRef {
+  /**
+   * False when there are no more bonuses.
+   */
+  bool found;
+  int32_t x;
+  int32_t y;
+  /**
+   * 0 is a weapon, 1 is health.
+   */
+  int32_t frame;
+  int32_t weapon;
+} LieroBonusRef;
+
+/**
+ * A steerable weapon object from `steerable_next`.
+ */
+typedef struct LieroSteerable {
+  /**
+   * The object's frame, which is its direction; null when there are no
+   * more objects.
+   */
+  int32_t *cur_frame;
+  struct LieroIVec2 pos;
+} LieroSteerable;
+
+/**
+ * What C++ does for a worm. `ctx` is passed back to each function.
+ */
+typedef struct LieroWormHooks {
+  void *ctx;
+  /**
+   * The hooks for `liero_worm_fire` and `liero_worm_process_weapons`.
+   * Their `play_sound` and `create_nobject1` are used for the worm too.
+   */
+  const struct LieroWormFiringHooks *firing;
+  /**
+   * The weapon a slot's `kind` points to.
+   */
+  struct LieroWeapon (*weapon)(void *ctx, const void *kind);
+  /**
+   * Puts weapon `weapon` (an index into the TC's weapons) with full
+   * ammo in slot `slot`.
+   */
+  void (*give_weapon)(void *ctx, int32_t slot, int32_t weapon);
+  /**
+   * Starts going through the bonuses.
+   */
+  void (*bonuses_begin)(void *ctx);
+  /**
+   * The next bonus.
+   */
+  struct LieroBonusRef (*bonus_next)(void *ctx);
+  /**
+   * Frees the bonus `bonus_next` returned last.
+   */
+  void (*bonus_free)(void *ctx);
+  /**
+   * `Game::doHealing` for the worm.
+   */
+  void (*heal)(void *ctx, int32_t amount);
+  /**
+   * `SObjectType::create` for sobject type `kind`, owned by the worm.
+   */
+  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
+  /**
+   * `NObjectType::create2` for nobject type `kind`, owned by the worm.
+   */
+  void (*create_nobject2)(void *ctx,
+                          int32_t kind,
+                          int32_t angle,
+                          struct LieroIVec2 vel,
+                          struct LieroIVec2 pos,
+                          int32_t color);
+  /**
+   * Plays sound `sound` as the worm's own sound.
+   */
+  void (*play_worm_sound)(void *ctx, int32_t sound);
+  /**
+   * Whether the worm's own sound is playing.
+   */
+  bool (*worm_sound_playing)(void *ctx);
+  /**
+   * Stops the current weapon's looping sound.
+   */
+  void (*stop_loop_sound)(void *ctx);
+  /**
+   * Whether (x, y) hits the other worm (`checkForWormHit`).
+   */
+  bool (*worm_hit)(void *ctx, int32_t x, int32_t y);
+  /**
+   * Starts going through the worm's objects of its current weapon.
+   */
+  void (*steerables_begin)(void *ctx);
+  /**
+   * The next of them.
+   */
+  struct LieroSteerable (*steerable_next)(void *ctx);
+  /**
+   * Sets `pos` to the other worm's position, in pixels, and returns
+   * true, when there are exactly two worms.
+   */
+  bool (*enemy_pos)(void *ctx, struct LieroIVec2 *pos);
+  /**
+   * Gives worm `idx` a kill.
+   */
+  void (*add_kill)(void *ctx, int32_t idx);
+  /**
+   * Stats after the worm died and after it respawned.
+   */
+  void (*after_death)(void *ctx);
+  void (*after_spawn)(void *ctx);
+} LieroWormHooks;
 
 #ifdef __cplusplus
 extern "C" {
@@ -854,6 +1168,24 @@ void liero_wobject_blow_up(const struct LieroWeapon *w,
                            struct LieroIVec2 vel,
                            const struct LieroWObjectEnv *env,
                            const struct LieroBlowUpHooks *hooks);
+
+/**
+ * The sprite frame for a worm aiming at `aiming_angle` (fixed-point) in
+ * `direction`, without the walking animation: `Worm::angleFrame`.
+ */
+int32_t liero_worm_angle_frame(int32_t aiming_angle, int32_t direction);
+
+/**
+ * Runs a worm for one tick: C++'s `Worm::process`.
+ *
+ * # Safety
+ * The field pointers, views and the pointers in `env` must be valid for
+ * the call. The hooks may change them (but not free their memory).
+ */
+void liero_worm_process(const struct LieroWormFields *worm,
+                        const struct LieroWormConstants *constants,
+                        const struct LieroWormEnv *env,
+                        const struct LieroWormHooks *hooks);
 
 #ifdef __cplusplus
 }  // extern "C"
