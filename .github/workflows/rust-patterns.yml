@@ -1,0 +1,82 @@
+# Counts unsafe Rust and FFI patterns in the pull request and its base branch,
+# and posts the comparison as a comment on the pull request, updating the same
+# comment on later pushes.
+#
+# The counting job runs the pull request's code with a read-only token. Only
+# the commenting job can write, and it runs no code from the repository. Pull
+# requests from forks get a read-only token, so for them the table is only in
+# the run's summary.
+name: Rust patterns
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: rust-patterns-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.4.4
+
+jobs:
+  count:
+    name: Count unsafe and FFI patterns
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      report: ${{ steps.report.outputs.report }}
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v7
+        with:
+          path: head
+          persist-credentials: false
+
+      - name: Check out the base branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Compare the counts
+        id: report
+        run: |
+          bun head/tools/rust-patterns/report.ts base head > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "report<<REPORT_EOF"
+            cat report.md
+            echo "REPORT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  comment:
+    name: Comment on the pull request
+    needs: count
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post or update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BODY: ${{ needs.count.outputs.report }}
+        run: |
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- rust-patterns-report -->"))) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$BODY" > /dev/null
+          else
+            gh api "repos/$REPO/issues/$PR/comments" -f body="$BODY" > /dev/null
+          fi
