@@ -75,6 +75,7 @@ set(SOURCES
 
 set(GAME_SOURCES ${SOURCES}
     src/game/gfx.cpp
+    src/game/hashmenus.cpp
     src/game/hashrun.cpp
     src/game/keys.cpp
     src/game/main.cpp

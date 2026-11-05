@@ -203,29 +203,6 @@ struct ProfileLoadedBehavior : ItemBehavior
 	WormSettings& ws;
 };
 
-#define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
-
-int levenshtein(char const *s1, char const *s2) {
-    std::size_t x, y, s1len, s2len;
-    s1len = strlen(s1);
-    s2len = strlen(s2);
-	std::size_t w = s1len+1;
-	std::vector<unsigned> matrix(w * (s2len + 1));
-    matrix[0] = 0;
-    for (x = 1; x <= s2len; x++)
-        matrix[x*w] = matrix[(x-1)*w] + 1;
-    for (y = 1; y <= s1len; y++)
-        matrix[y] = matrix[y-1] + 1;
-    for (x = 1; x <= s2len; x++)
-        for (y = 1; y <= s1len; y++)
-		{
-			int c = std::tolower(s1[y-1]) == std::tolower(s2[x-1]) ? 0 : 1;
-            matrix[x*w + y] = MIN3(matrix[(x-1)*w + y] + 1, matrix[x*w + y - 1] + 1, matrix[(x-1)*w + y - 1] + c);
-		}
-
-    return(matrix[s2len*w + s1len]);
-}
-
 struct WeaponEnumBehavior : EnumBehavior
 {
 	WeaponEnumBehavior(Common& common, uint32_t& v)
@@ -252,21 +229,17 @@ struct WeaponEnumBehavior : EnumBehavior
 		std::string search;
 		if (gfx.inputString(search, 10, x, y))
 		{
-			uint32_t minimumi;
-			double minimum = std::numeric_limits<double>::max();
+			std::vector<LieroStr> names;
 			for (uint32_t i = min; i <= max; ++i)
 			{
 				std::string& name = common.weapons[common.weapOrder[i - 1]].name;
-
-				double dist = levenshtein(name.c_str(), search.c_str()) / (double)name.length();
-				if (dist < minimum)
-				{
-					minimumi = i;
-					minimum = dist;
-				}
+				names.push_back({ reinterpret_cast<uint8_t const*>(name.data()), name.size() });
 			}
 
-			v = minimumi;
+			int closest = liero_menu_closest_name(names.data(), int32_t(names.size()),
+				reinterpret_cast<uint8_t const*>(search.data()), search.size());
+			if (closest >= 0)
+				v = min + uint32_t(closest);
 			menu.updateItems(common);
 		}
 
@@ -959,35 +932,10 @@ void Gfx::flip()
 	lastFrame = wantedTime;
 }
 
-void playChangeSound(Common& common, int change)
-{
-	if(change > 0)
-	{
-		sfx.play(common, 25);
-	}
-	else
-	{
-		sfx.play(common, 26);
-	}
-}
-
 void resetLeftRight()
 {
 	gfx.releaseSDLKey(SDL_SCANCODE_LEFT);
 	gfx.releaseSDLKey(SDL_SCANCODE_RIGHT);
-}
-
-template<typename T>
-void changeVariable(T& var, T change, T min, T max, T scale)
-{
-	if(change < 0 && var > min)
-	{
-		var += change * scale;
-	}
-	if(change > 0 && var < max)
-	{
-		var += change * scale;
-	}
 }
 
 struct ProfileLoadBehavior : ItemBehavior
@@ -1637,6 +1585,29 @@ void Gfx::weaponOptions()
 	}
 }
 
+static LieroStr str(std::string const& s)
+{
+	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
+	return r;
+}
+
+// The boxes are drawn in Rust (rust/liero-game/src/menu.rs).
+
+void drawInfoBox(Common& common, Bitmap& bmp, std::string const& text, int x, int y)
+{
+	LieroBitmap scr = bmp.view();
+	LieroFont font = common.font.view();
+	liero_menu_draw_info_box(&scr, &font, str(text), x, y);
+}
+
+void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const& text, int x, int y, bool centered)
+{
+	LieroBitmap scr = bmp.view();
+	LieroBitmap from = frozen.view();
+	LieroFont font = common.font.view();
+	liero_menu_draw_input_box(&scr, &from, &font, str(text), x, y, centered);
+}
+
 void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
 {
 	static int const bgColor = 0;
@@ -1647,14 +1618,7 @@ void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
 		fill(playRenderer.bmp, bgColor);
 	}
 
-	int height;
-	int width = common->font.getDims(text, &height);
-
-	int cx = x - width/2 - 2;
-	int cy = y - height/2 - 2;
-
-	drawRoundedBox(playRenderer.bmp, cx, cy, 0, height+1, width+1);
-	common->font.drawText(playRenderer.bmp, text, cx+2, cy+2, 6);
+	drawInfoBox(*common, playRenderer.bmp, text, x, y);
 
 	flip();
 	process();
@@ -1680,23 +1644,9 @@ bool Gfx::inputString(std::string& dest, std::size_t maxLen, int x, int y, int (
 	{
 		std::string str = prefix + buffer + '_';
 
-		Font& font = common->font;
-
-		int width = font.getDims(str);
-
-		int adjust = centered ? width/2 : 0;
-
-		int clrX = x - 10 - adjust;
-
 		SDL_Event ev;
 
-		//int offset = clrX + y*320; // TODO: Unhardcode 320
-
-		blitImageNoKeyColour(playRenderer.bmp, &frozenScreen.getPixel(clrX, y), clrX, y, clrX + 10 + width, 8, frozenScreen.pitch);
-
-		drawRoundedBox(playRenderer.bmp, x - 2 - adjust, y, 0, 7, width);
-
-		font.drawText(playRenderer.bmp, str, x - adjust, y + 1, 50);
+		drawInputBox(*common, playRenderer.bmp, frozenScreen, str, x, y, centered);
 		flip();
 
 		SDL_StartTextInput();
@@ -1778,17 +1728,8 @@ void PlayerMenu::drawItemOverlay(Common& common, MenuItem& item, int x, int y, b
 	if(item.id >= PlayerMenu::PlRed && item.id <= PlayerMenu::PlBlue) //Color settings
 	{
 		int rgbcol = item.id - PlayerMenu::PlRed;
-
-		if(selected)
-		{
-			drawRoundedBox(gfx.playRenderer.bmp, x + 24, y, 168, 7, ws->rgb[rgbcol] - 1);
-		}
-		else // CE98
-		{
-			drawRoundedBox(gfx.playRenderer.bmp, x + 24, y, 0, 7, ws->rgb[rgbcol] - 1);
-		}
-
-		fillRect(gfx.playRenderer.bmp, x + 25, y + 1, ws->rgb[rgbcol], 5, ws->color);
+		LieroBitmap scr = gfx.playRenderer.bmp.view();
+		liero_menu_draw_rgb_overlay(&scr, x, y, selected, ws->rgb[rgbcol], ws->color);
 	} // CED9
 }
 
@@ -1988,6 +1929,19 @@ void Gfx::drawBasicMenu(/*int curSel*/)
 	mainMenu.draw(*common, playRenderer, curMenu != &mainMenu, -1, true);
 }
 
+void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::string const& levelFileForName, int centerX, int centerY)
+{
+	std::string level = settings.levelFile.empty()
+		? LS(LevelRandom)
+		: LS(LevelIs1) + getBasename(getLeaf(levelFileForName)) + LS(LevelIs2);
+
+	LieroBitmap scr = bmp.view();
+	LieroFont font = common.font.view();
+	WormSettings const& a = *settings.wormSettings[0];
+	WormSettings const& b = *settings.wormSettings[1];
+	liero_menu_draw_versus(&scr, &font, str(level), str(a.name), str(b.name), a.color, b.color, centerX, centerY);
+}
+
 void Gfx::drawSpectatorInfo()
 {
 	Common& common = *this->common;
@@ -1995,24 +1949,7 @@ void Gfx::drawSpectatorInfo()
 	int centerY = singleScreenRenderer.renderResY / 4;
 
 	singleScreenRenderer.bmp.copy(frozenSpectatorScreen);
-	if(settings->levelFile.empty())
-	{
-		common.font.drawCenteredText(singleScreenRenderer.bmp, LS(LevelRandom), centerX, centerY - 32, 7, 2);
-	}
-	else
-	{
-		auto levelName = getBasename(getLeaf(gfx.settings->levelFile));
-		common.font.drawCenteredText(singleScreenRenderer.bmp, LS(LevelIs1) + levelName + LS(LevelIs2), centerX, centerY - 32, 7, 2);
-	}
-
-	std::string vsText = settings->wormSettings[0]->name + " vs " + settings->wormSettings[1]->name;
-	// put worm color boxes on a nice spot even if no player names have been entered
-	int textSize = std::max(common.font.getDims(vsText) * 2, 48);
-	common.font.drawCenteredText(singleScreenRenderer.bmp, vsText, centerX, centerY, 7, 2);
-	fillRect(singleScreenRenderer.bmp, centerX - (textSize / 2) - 1, centerY + 23 - 1, 16, 16, 7);
-	fillRect(singleScreenRenderer.bmp, centerX - textSize / 2, centerY + 23, 14, 14, settings->wormSettings[0]->color);
-	fillRect(singleScreenRenderer.bmp, centerX + (textSize / 2) - 16 - 1, centerY + 23 - 1, 16, 16, 7);
-	fillRect(singleScreenRenderer.bmp, centerX + textSize / 2 - 16, centerY + 23, 14, 14, settings->wormSettings[1]->color);
+	drawVersusInfo(common, singleScreenRenderer.bmp, *settings, gfx.settings->levelFile, centerX, centerY);
 
 	if (controller->running())
 	{

@@ -3,6 +3,7 @@
 
 #include "menu.hpp"
 #include "menuItem.hpp"
+#include "integerBehavior.hpp"
 #include "../common.hpp"
 #include "../text.hpp"
 #include "../sfx.hpp"
@@ -31,8 +32,7 @@ int EnumBehavior::onEnter(Menu& menu, MenuItem& item)
 
 void EnumBehavior::change(Menu& menu, MenuItem& item, int dir)
 {
-	uint32_t range = max - min + 1;
-	uint32_t newV = ((v + dir + range - min) % range) + min;
+	uint32_t newV = liero_menu_enum_change(v, min, max, dir);
 
 	if(newV != v)
 	{
@@ -43,6 +43,6 @@ void EnumBehavior::change(Menu& menu, MenuItem& item, int dir)
 
 void EnumBehavior::onUpdate(Menu& menu, MenuItem& item)
 {
-	item.value = toString(v);
+	item.value = valueText(int(v), LIERO_MENU_VALUE_INTEGER);
 	item.hasValue = true;
 }

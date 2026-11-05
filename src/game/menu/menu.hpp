@@ -58,7 +58,6 @@ struct Menu
 	}
 
 	void draw(Common& common, Renderer& renderer, bool disabled, int x = -1, bool showDisabledSelection = false);
-	void process();
 
 	virtual void drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled)
 	{
@@ -92,7 +91,13 @@ struct Menu
 		return b->onEnter(*this, *s);
 	}
 
-	void onKeys(SDL_Keysym* begin, SDL_Keysym* end, bool contains = false);
+	void onKeys(SDL_Keysym* begin, SDL_Keysym* end, bool contains = false)
+	{
+		onKeys(begin, end, contains, SDL_GetTicks());
+	}
+
+	// `time` is in milliseconds; typing resumes the search within 1.5 s.
+	void onKeys(SDL_Keysym* begin, SDL_Keysym* end, bool contains, Uint32 time);
 
 	void updateItems(Common& common)
 	{
@@ -117,7 +122,11 @@ struct Menu
 		return selection_ >= 0 && selection_ < (int)items.size();
 	}
 
-	void moveToFirstVisible();
+	void moveToFirstVisible()
+	{
+		moveTo(0);
+	}
+
 	void movement(int direction);
 	void movementPage(int direction);
 
@@ -126,9 +135,6 @@ struct Menu
 	void clear();
 
 	bool itemPosition(MenuItem& item, int& x, int& y);
-
-	int visibleItemIndex(int item);
-	int itemFromVisibleIndex(int idx);
 
 	void setHeight(int newHeight)
 	{
@@ -177,15 +183,16 @@ struct Menu
 	}
 
 	void setVisibility(int id, bool state);
-	int firstVisibleFrom(int item);
-	int lastVisibleFrom(int item);
 	void moveTo(int newSelection);
 	void moveToId(int id);
-	bool isInView(int item);
-	void ensureInView(int item);
-	void setBottom(int newBottomVisIdx);
 	void setTop(int newTopVisIdx);
 	void scroll(int amount);
+
+	// The state and items as Rust works on them. Rust only changes the
+	// items' visibility; setState copies it back.
+	LieroMenu state() const;
+	std::vector<LieroMenuItem> itemViews();
+	void setState(LieroMenu const& s, std::vector<LieroMenuItem> const& views);
 
 	std::string searchPrefix;
 	Uint32 searchTime;

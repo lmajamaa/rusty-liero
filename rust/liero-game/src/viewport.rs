@@ -23,6 +23,7 @@ use crate::level::{liero_level_draw_miniature, LieroLevel};
 use crate::material::LieroMaterial;
 use crate::math::{cos_sin, ftoi, LieroIVec2};
 use crate::rand::LieroRand;
+use crate::text::{time_to_string, time_to_string_ex, LieroStr};
 use crate::worm::{
     liero_worm_angle_frame, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL,
     LIERO_GAME_SCALES_OF_JUSTICE,
@@ -63,14 +64,6 @@ pub struct LieroViewport {
     pub rect: LieroRect,
     /// Used for shaking and for the laser sight.
     pub rand: *mut LieroRand,
-}
-
-/// Text from C++: `len` bytes from `ptr`.
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct LieroStr {
-    pub ptr: *const u8,
-    pub len: usize,
 }
 
 /// A C++ `SpriteSet`: `count` sprites of `width` x `height` pixels, one after
@@ -288,38 +281,6 @@ pub struct LieroScene {
     pub hooks: LieroViewportHooks,
 }
 
-/// "MM:SS" from seconds: `timeToString`.
-fn time_to_string(sec: i32) -> [u8; 5] {
-    let d = |v: i32| (b'0' as i32).wrapping_add(v) as u8;
-    [d(sec / 600), d((sec % 600) / 60), b':', d((sec % 60) / 10), d(sec % 10)]
-}
-
-/// "M:SS.CC" style time from milliseconds: `timeToStringEx`.
-fn time_to_string_ex(mut ms: i32, force_hours: bool, force_minutes: bool) -> Vec<u8> {
-    let d = |v: i32| (b'0' as i32).wrapping_add(v) as u8;
-    let mut ret = Vec::with_capacity(9);
-    if ms >= 6_000_000 || force_hours {
-        ret.push(d(ms / 6_000_000));
-        ms %= 6_000_000;
-    }
-    if ms >= 60_000 || force_minutes {
-        ret.push(d(ms / 600_000));
-        ms %= 600_000;
-        ret.push(d(ms / 60_000));
-        ms %= 60_000;
-        ret.push(b':');
-    }
-    ret.push(d(ms / 10_000));
-    ms %= 10_000;
-    ret.push(d(ms / 1000));
-    ms %= 1000;
-    ret.push(b'.');
-    ret.push(d(ms / 100));
-    ms %= 100;
-    ret.push(d(ms / 10));
-    ret
-}
-
 /// C++ integer division, which Rust panics on where C++ is undefined.
 fn div(a: i32, b: i32) -> i32 {
     if b == 0 {
@@ -348,16 +309,6 @@ unsafe fn slice<'a, T>(ptr: *const T, len: i32) -> &'a [T] {
         &[]
     } else {
         std::slice::from_raw_parts(ptr, len as usize)
-    }
-}
-
-impl LieroStr {
-    unsafe fn bytes(&self) -> &[u8] {
-        if self.len == 0 || self.ptr.is_null() {
-            &[]
-        } else {
-            std::slice::from_raw_parts(self.ptr, self.len)
-        }
     }
 }
 
@@ -1088,16 +1039,6 @@ mod tests {
 
     fn process(vp: &mut LieroViewport, kind: i32, worms: &[LieroViewWorm]) {
         unsafe { liero_viewport_process(vp, kind, worms.as_ptr(), worms.len() as i32) }
-    }
-
-    #[test]
-    fn time_strings_match_cpp() {
-        assert_eq!(&time_to_string(754), b"12:34");
-        assert_eq!(&time_to_string(0), b"00:00");
-        assert_eq!(time_to_string_ex(83_456, false, true), b"01:23.45");
-        assert_eq!(time_to_string_ex(3_456, false, false), b"03.45");
-        assert_eq!(time_to_string_ex(7_283_456, false, false), b"121:23.45");
-        assert_eq!(time_to_string_ex(1_000, true, false), b"001.00");
     }
 
     #[test]
