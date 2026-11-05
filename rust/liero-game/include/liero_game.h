@@ -62,6 +62,16 @@
 #define LIERO_RAND_DEFAULT_SEED 4919
 
 /**
+ * Up, down, left, right, fire, change and jump.
+ */
+#define LIERO_MAX_CONTROL 7
+
+/**
+ * The same and dig.
+ */
+#define LIERO_MAX_CONTROL_EX 8
+
+/**
  * Characters in the font (`Font::chars`).
  */
 #define LIERO_TC_FONT_CHARS 250
@@ -136,6 +146,35 @@
 #define LIERO_GAME_HOLDAZONE 2
 
 #define LIERO_GAME_SCALES_OF_JUSTICE 3
+
+/**
+ * What a settings call did.
+ *
+ */
+typedef enum LieroSettingsStatus {
+  LieroSettingsStatus_Ok,
+  /**
+   * liero.cfg didn't parse (`gvl::toml::parse_error`), or LIERO.DAT ended
+   * early.
+   */
+  LieroSettingsStatus_Failed,
+  /**
+   * A setting is missing from liero.cfg. The C++ reader threw
+   * `std::out_of_range` for this.
+   */
+  LieroSettingsStatus_MissingKey,
+  /**
+   * The byte source failed; C++ rethrows what its reader threw.
+   */
+  LieroSettingsStatus_ReadError,
+  /**
+   * The settings archive's checkpoint is wrong
+   * (`gvl::archive_check_error`).
+   */
+  LieroSettingsStatus_CheckError,
+} LieroSettingsStatus;
+
+typedef struct LieroSettingsResult LieroSettingsResult;
 
 /**
  * A loaded TC, or the error that stopped loading it.
@@ -675,6 +714,68 @@ typedef struct LieroNinjaropeHooks {
                           struct LieroIVec2 pos,
                           int32_t color);
 } LieroNinjaropeHooks;
+
+typedef struct LieroWormSettings {
+  int32_t health;
+  uint32_t controller;
+  uint32_t controls[LIERO_MAX_CONTROL];
+  uint32_t weapons[5];
+  struct LieroStr name;
+  int32_t rgb[3];
+  bool random_name;
+  int32_t color;
+  uint32_t controls_ex[LIERO_MAX_CONTROL_EX];
+} LieroWormSettings;
+
+typedef struct LieroSettings {
+  bool record_replays;
+  bool load_powerlevel_palette;
+  int32_t blood_particle_max;
+  int32_t ai_frames;
+  int32_t ai_mutations;
+  bool ai_traces;
+  int32_t ai_parallels;
+  bool fullscreen;
+  int32_t zone_timeout;
+  uint32_t select_bot_weapons;
+  bool allow_viewing_spawn_point;
+  bool single_screen_replay;
+  bool spectator_window;
+  struct LieroStr tc;
+  uint32_t weap_table[40];
+  int32_t max_bonuses;
+  int32_t blood;
+  int32_t time_to_lose;
+  int32_t flags_to_win;
+  uint32_t game_mode;
+  bool shadow;
+  bool load_change;
+  bool names_on_bonuses;
+  bool regenerate_level;
+  int32_t lives;
+  int32_t loading_time;
+  bool random_level;
+  struct LieroStr level_file;
+  bool map;
+  bool screen_sync;
+  struct LieroWormSettings worms[2];
+} LieroSettings;
+
+/**
+ * Bytes for the binary readers. `get` returns the next byte, or -1 when
+ * the C++ reader throws, which C++ keeps to rethrow.
+ */
+typedef struct LieroByteSource {
+  void *ctx;
+  int32_t (*get)(void *ctx);
+} LieroByteSource;
+
+/**
+ * A gash value (`gvl::gash::value_type`).
+ */
+typedef struct LieroHash {
+  uint64_t value[4];
+} LieroHash;
 
 typedef struct LieroTcHooks {
   void *ctx;
@@ -2649,6 +2750,144 @@ uint32_t liero_rand_below(struct LieroRand *rand, uint32_t max);
 uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
 
 double liero_rand_double_below(struct LieroRand *rand, double max);
+
+/**
+ * The default settings, as `Settings::Settings` makes them.
+ */
+struct LieroSettingsResult *liero_settings_default(void);
+
+/**
+ * The default worm settings, as `WormSettings::WormSettings` makes them.
+ */
+struct LieroSettingsResult *liero_worm_settings_default(void);
+
+/**
+ * Reads liero.cfg over `s`: Ok, Failed or MissingKey, with the settings
+ * as far as they were read.
+ *
+ * # Safety
+ * `s`'s strings must be valid, and `data` valid for `len` bytes.
+ */
+struct LieroSettingsResult *liero_settings_read_text(const struct LieroSettings *s,
+                                                     const uint8_t *data,
+                                                     uintptr_t len);
+
+/**
+ * liero.cfg for `s`, in the result's bytes.
+ *
+ * # Safety
+ * `s`'s strings must be valid.
+ */
+struct LieroSettingsResult *liero_settings_write_text(const struct LieroSettings *s);
+
+/**
+ * Reads LIERO.DAT over `s`: Ok, or Failed if it ends early.
+ *
+ * # Safety
+ * `s`'s strings must be valid, and `data` valid for `len` bytes.
+ */
+struct LieroSettingsResult *liero_settings_read_legacy(const struct LieroSettings *s,
+                                                       const uint8_t *data,
+                                                       uintptr_t len);
+
+/**
+ * Reads the settings archive over `s`: Ok, ReadError or CheckError.
+ *
+ * # Safety
+ * `s`'s strings must be valid, and `source.get` callable with its `ctx`.
+ */
+struct LieroSettingsResult *liero_settings_read_archive(const struct LieroSettings *s,
+                                                        const struct LieroByteSource *source);
+
+/**
+ * The settings archive for `s` in the result's bytes, and the settings
+ * after writing it (with the default TC name).
+ *
+ * # Safety
+ * `s`'s strings must be valid.
+ */
+struct LieroSettingsResult *liero_settings_write_archive(const struct LieroSettings *s);
+
+/**
+ * `Settings::updateHash`: the hash, and the settings after it.
+ *
+ * # Safety
+ * `s`'s strings must be valid.
+ */
+struct LieroSettingsResult *liero_settings_hash(const struct LieroSettings *s);
+
+/**
+ * Reads a worm's archive for `replay_version` over `ws`: Ok or ReadError.
+ *
+ * # Safety
+ * `ws`'s name must be valid, and `source.get` callable with its `ctx`.
+ */
+struct LieroSettingsResult *liero_worm_settings_read_archive(const struct LieroWormSettings *ws,
+                                                             int32_t replay_version,
+                                                             const struct LieroByteSource *source);
+
+/**
+ * A worm's archive for `replay_version` in the result's bytes, and the
+ * worm settings after writing it.
+ *
+ * # Safety
+ * `ws`'s name must be valid.
+ */
+struct LieroSettingsResult *liero_worm_settings_write_archive(const struct LieroWormSettings *ws,
+                                                              int32_t replay_version);
+
+/**
+ * `WormSettings::updateHash`: the hash, and the worm settings after it.
+ *
+ * # Safety
+ * `ws`'s name must be valid.
+ */
+struct LieroSettingsResult *liero_worm_settings_hash(const struct LieroWormSettings *ws);
+
+/**
+ * # Safety
+ * `r` must come from one of the functions above and not be freed.
+ */
+enum LieroSettingsStatus liero_settings_result_status(const struct LieroSettingsResult *r);
+
+/**
+ * The settings, or null if the call doesn't return any. Valid until
+ * `liero_settings_result_free`.
+ *
+ * # Safety
+ * `r` must come from one of the functions above and not be freed.
+ */
+const struct LieroSettings *liero_settings_result_settings(const struct LieroSettingsResult *r);
+
+/**
+ * The worm settings, or null if the call doesn't return any. Valid until
+ * `liero_settings_result_free`.
+ *
+ * # Safety
+ * `r` must come from one of the functions above and not be freed.
+ */
+const struct LieroWormSettings *liero_settings_result_worm(const struct LieroSettingsResult *r);
+
+/**
+ * The bytes written. Valid until `liero_settings_result_free`.
+ *
+ * # Safety
+ * `r` must come from one of the functions above and not be freed.
+ */
+struct LieroStr liero_settings_result_bytes(const struct LieroSettingsResult *r);
+
+/**
+ * # Safety
+ * `r` must come from one of the functions above and not be freed.
+ */
+struct LieroHash liero_settings_result_hash(const struct LieroSettingsResult *r);
+
+/**
+ * # Safety
+ * `r` must come from one of the functions above, or be null, and not be
+ * used afterwards.
+ */
+void liero_settings_result_free(struct LieroSettingsResult *r);
 
 /**
  * Copies `len` bytes from `data` into `out`.

@@ -16,7 +16,7 @@
 //! `obj`, `arr`, `i32`, `b`, `str`, `reference`. A missing key is an error.
 
 use crate::Error;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -291,17 +291,26 @@ fn from_hex(c: u8) -> u8 {
 pub struct Reader {
     cur: Value,
     name: String,
+    /// Whether the last error was a missing field, which the C++ reader
+    /// reported with `std::out_of_range` rather than `parse_error`.
+    missing: Cell<bool>,
 }
 
 impl Reader {
     pub fn parse(data: &[u8], name: &str) -> Result<Self, Error> {
         let mut p = Parser { data, pos: 0, c: 0, name };
         let root = p.parse()?;
-        Ok(Reader { cur: root, name: name.to_string() })
+        Ok(Reader { cur: root, name: name.to_string(), missing: Cell::new(false) })
     }
 
     fn error(&self, what: &str) -> Error {
+        self.missing.set(false);
         Error(format!("{}: {}", self.name, what))
+    }
+
+    /// Whether the last error came from a missing field.
+    pub fn missing_key(&self) -> bool {
+        self.missing.get()
     }
 
     /// `reader::f`: the field `name` of the current table, or the current
@@ -312,7 +321,11 @@ impl Reader {
             Some(name) => {
                 let Value::Obj(o) = &self.cur else { return Err(self.error(&format!("{name} is not in a table"))) };
                 let v = o.borrow().get(name.as_bytes()).cloned();
-                v.ok_or_else(|| self.error(&format!("missing {name}")))
+                v.ok_or_else(|| {
+                    let e = self.error(&format!("missing {name}"));
+                    self.missing.set(true);
+                    e
+                })
             }
         }
     }
@@ -353,6 +366,33 @@ impl Reader {
     ) -> Result<[T; N], Error> {
         let v = self.arr(name, item)?;
         v.try_into().map_err(|v: Vec<T>| self.error(&format!("{name} has {} entries, not {N}", v.len())))
+    }
+
+    /// An array that must have exactly `len` elements, checked before any
+    /// is read, like `reader::arr` on a C++ fixed array. Calls `item` with
+    /// each index and its element as the current value.
+    pub fn arr_each(
+        &mut self,
+        name: &str,
+        len: usize,
+        mut item: impl FnMut(&mut Self, usize) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        let Value::Arr(a) = self.f(Some(name))? else { return Err(self.error(&format!("{name} is not an array"))) };
+        let elements = a.borrow().clone();
+        if elements.len() != len {
+            return Err(self.error(&format!("{name} has {} entries, not {len}", elements.len())));
+        }
+        let parent = self.cur.clone();
+        let mut r = Ok(());
+        for (i, e) in elements.into_iter().enumerate() {
+            self.cur = e;
+            r = item(self, i);
+            if r.is_err() {
+                break;
+            }
+        }
+        self.cur = parent;
+        r
     }
 
     pub fn i32(&mut self, name: Option<&str>) -> Result<i32, Error> {
