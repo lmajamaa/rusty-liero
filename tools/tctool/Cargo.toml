@@ -10,3 +10,4 @@ name = "tctool"
 path = "src/main.rs"
 
 [dependencies]
+liero-data = { path = "../../rust/liero-data" }

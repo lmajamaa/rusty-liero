@@ -122,7 +122,6 @@ struct Common : gvl::shared
 
 	void load(FsNode node);
 	void drawTextSmall(Bitmap& scr, char const* str, int x, int y);
-	void precompute();
 
 	std::string guessName() const;
 

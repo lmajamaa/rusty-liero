@@ -1,7 +1,7 @@
-//! Game data read from the original files, mirroring the fields of `Common`
-//! in `src/game/common.hpp` that tctool writes out.
+//! Game data, mirroring the fields of `Common` in `src/game/common.hpp` that
+//! a TC folder holds.
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct Weapon {
     pub name: Vec<u8>,
     pub id_str: String,
@@ -56,7 +56,7 @@ pub struct Weapon {
     pub chain_explosion: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct NObject {
     pub id_str: String,
     pub detect_distance: i32,
@@ -89,7 +89,7 @@ pub struct NObject {
     pub time_to_explo_v: i32,
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct SObject {
     pub id_str: String,
     pub start_sound: i32,
@@ -106,7 +106,7 @@ pub struct SObject {
     pub dirt_effect: i32,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, PartialEq)]
 pub struct Texture {
     pub n_draw_back: bool,
     pub m_frame: i32,
@@ -115,6 +115,7 @@ pub struct Texture {
 }
 
 /// Square sprites stored one after another, each row-major.
+#[derive(PartialEq)]
 pub struct SpriteSet {
     pub width: usize,
     pub height: usize,
@@ -129,18 +130,22 @@ impl SpriteSet {
     }
 }
 
+#[derive(PartialEq)]
 pub struct FontChar {
-    /// 7x8 pixels, row-major.
+    /// 7x8 pixels, row-major. Read from a TC folder, set pixels are 8.
     pub data: [u8; 56],
     pub width: usize,
 }
 
+#[derive(PartialEq)]
 pub struct Sound {
     pub name: String,
-    /// Signed 8-bit samples, as stored in LIERO.SND.
-    pub data: Vec<u8>,
+    /// Signed 8-bit samples, as stored in LIERO.SND. `None` when a TC's WAV
+    /// file isn't 8-bit mono 22050 Hz: the game then plays nothing for it.
+    pub data: Option<Vec<u8>>,
 }
 
+#[derive(PartialEq)]
 pub struct Common {
     pub constants: Vec<(&'static str, i32)>,
     pub texts: Vec<(&'static str, Vec<u8>)>,

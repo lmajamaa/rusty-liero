@@ -4,11 +4,11 @@
 #include "gfx/blit.hpp"
 #include "filesystem.hpp"
 #include "worm.hpp"
-#include <gvl/io2/convert.hpp>
-#include <gvl/io2/fstream.hpp>
+#include <gvl/io2/stream.hpp>
 #include <map>
 #include <string>
-#include "common_model.hpp"
+#include <algorithm>
+#include <stdexcept>
 
 int Common::fireConeOffset[2][7][2] =
 {
@@ -234,294 +234,251 @@ void Common::drawTextSmall(Bitmap& scr, char const* str, int x, int y)
 }
 
 
-struct OctetTextReader : gvl::octet_reader
+namespace
 {
-	OctetTextReader(gvl::octet_reader r)
-	: gvl::octet_reader(std::move(r))
-	, r(*this)
-	{
-	}
 
-	gvl::toml::reader<gvl::octet_reader> r;
+// Reads `path` (folders separated by '/') under the FsNode in `ctx`, which
+// may be a folder, a zip file or joined folders.
+bool readTcFile(void* ctx, LieroStr path, LieroTcFile* out)
+{
+	try
+	{
+		FsNode node = *static_cast<FsNode*>(ctx);
+		std::string p(reinterpret_cast<char const*>(path.ptr), path.len);
+		std::size_t start = 0;
+		for (;;)
+		{
+			std::size_t slash = p.find('/', start);
+			node = node / p.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+			if (slash == std::string::npos)
+				break;
+			start = slash + 1;
+		}
+
+		gvl::octet_reader r(node.toOctetReader());
+		std::vector<uint8_t> data;
+		uint8_t b;
+		while (r.try_get(b))
+			data.push_back(b);
+		liero_tc_file_set(out, data.data(), data.size());
+		return true;
+	}
+	catch (std::exception&)
+	{
+		return false;
+	}
+}
+
+std::string str(LieroStr s)
+{
+	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
+}
+
+void copySprites(SpriteSet& dest, LieroTcSprites const& src)
+{
+	dest.allocate(src.width, src.height, src.count);
+	std::copy(src.data, src.data + dest.data.size(), dest.data.begin());
+}
+
+struct TcHandle
+{
+	LieroTc* tc;
+	~TcHandle() { liero_tc_free(tc); }
 };
 
+} // namespace
 
-
-#define CHECK(c) if(!(c)) goto fail
-
-int readSpriteTga(
-	gvl::octet_reader& r,
-	int destImageWidth,
-	int destImageHeight,
-	int destCount,
-	uint8_t* data,
-	Palette* pal)
-{
-	auto idLen = r.get();
-	CHECK(r.get() == 1);
-	CHECK(r.get() == 1);
-
-	// Palette spec
-	CHECK(gvl::read_uint16_le(r) == 0);
-	CHECK(gvl::read_uint16_le(r) == 256);
-	CHECK(r.get() == 24);
-
-	int imageWidth, imageHeight;
-
-	CHECK(gvl::read_uint16_le(r) == 0);
-	CHECK(gvl::read_uint16_le(r) == 0);
-
-	imageWidth = gvl::read_uint16_le(r);
-	imageHeight = gvl::read_uint16_le(r);
-	CHECK(r.get() == 8);
-	CHECK(r.get() == 0);
-
-	r.try_skip(idLen); // Skip ID
-
-	// TODO: Support more sprites?
-	CHECK(imageWidth == destImageWidth);
-	CHECK(imageHeight == destImageHeight);
-
-	if (pal)
-	{
-		for (auto& entry : pal->entries)
-		{
-			entry.b = r.get() >> 2;
-			entry.g = r.get() >> 2;
-			entry.r = r.get() >> 2;
-		}
-	}
-	else
-	{
-		r.try_skip(256 * 3); // Ignore palette
-	}
-
-	// Bottom to top
-	for (std::size_t y = (std::size_t)imageHeight; y-- > 0; )
-	{
-		auto* src = &data[y * imageWidth];
-		r.get((uint8_t*)src, imageWidth);
-	}
-
-	return 1;
-
-fail:
-	return 0;
-}
-
-int readSpriteTga(
-	gvl::octet_reader& r,
-	SpriteSet& ss,
-	Palette* pal)
-{
-	return readSpriteTga(r, ss.width, ss.count * ss.height, ss.count, &ss.data[0], pal);
-}
-
-#undef CHECK
-
-
-inline uint32_t quad(char a, char b, char c, char d)
-{
-	return (uint32_t)a + ((uint32_t)b << 8) + ((uint32_t)c << 16) + ((uint32_t)d << 24);
-}
-
+// The TC is read in Rust (liero_data::load); this copies the result in.
 void Common::load(FsNode node)
 {
-	OctetTextReader textReader((node / "tc.cfg").toOctetReader());
-	archive_text(*this, textReader.r);
+	LieroTcHooks hooks = { &node, readTcFile };
+	TcHandle handle = { liero_tc_load(&hooks) };
+	LieroTcData const* d = liero_tc_data(handle.tc);
+	if (!d)
+		throw std::runtime_error("Could not load the TC: " + str(liero_tc_error(handle.tc)));
+	if (d->constant_count != MaxC || d->text_count != MaxS || d->hack_count != MaxH)
+		throw std::runtime_error("The TC's constants, texts and hacks don't match the game's");
 
-	for (auto& s : sounds)
+	sounds.clear();
+	sounds.resize(d->sound_count);
+	for (std::size_t i = 0; i < d->sound_count; ++i)
 	{
-		auto dir = node / "sounds";
-
-		gvl::octet_reader r((dir / (s.name + ".wav")).toOctetReader());
-
-		if (gvl::read_uint32_le(r) == quad('R', 'I', 'F', 'F'))
+		LieroTcSound const& src = d->sounds[i];
+		SfxSample& s = sounds[i];
+		s.name = str(src.name);
+		if (src.valid)
 		{
-			std::size_t roundedSize = gvl::read_uint32_le(r) + 8;
-
-			(void)roundedSize; // Ignore
-
-			if (gvl::read_uint32_le(r) == quad('W', 'A', 'V', 'E')
-			 && gvl::read_uint32_le(r) == quad('f', 'm', 't', ' ')
-			 && gvl::read_uint32_le(r) == 16
-			 && gvl::read_uint16_le(r) == 1
-			 && gvl::read_uint16_le(r) == 1
-			 && gvl::read_uint32_le(r) == 22050
-			 && gvl::read_uint32_le(r) == 22050 * 1 * 1
-			 && gvl::read_uint16_le(r) == 1 * 1
-			 && gvl::read_uint16_le(r) == 8
-			 && gvl::read_uint32_le(r) == quad('d', 'a', 't', 'a'))
-			{
-				std::size_t dataSize = gvl::read_uint32_le(r);
-
-				s.originalData.resize(dataSize);
-
-				for (auto& z : s.originalData)
-					z = r.get() - 128;
-
-				s.sound = sfx_new_sound(dataSize * 2);
-
-				s.createSound();
-			}
+			s.originalData.assign(src.data, src.data + src.len);
+			s.sound = sfx_new_sound(src.len * 2);
+			s.createSound();
 		}
 	}
 
+	weapons.resize(d->weapon_count);
+	for (std::size_t i = 0; i < d->weapon_count; ++i)
 	{
-		auto dir = node / "sprites";
-
-		largeSprites.allocate(16, 16, 110);
-		smallSprites.allocate(7, 7, 130);
-		textSprites.allocate(4, 4, 26);
-
-		{
-			gvl::octet_reader r((dir / "small.tga").toOctetReader());
-
-			readSpriteTga(r, smallSprites, &exepal);
-		}
-
-		{
-			gvl::octet_reader r((dir / "large.tga").toOctetReader());
-			readSpriteTga(r, largeSprites, 0);
-		}
-
-		{
-			gvl::octet_reader r((dir / "text.tga").toOctetReader());
-			readSpriteTga(r, textSprites, 0);
-		}
-
-		{
-			gvl::octet_reader r((dir / "font.tga").toOctetReader());
-
-			std::vector<uint8_t> data(font.chars.size() * 7 * 8, 10);
-
-			readSpriteTga(r, 7, (int)font.chars.size() * 8, (int)font.chars.size(), &data[0], 0);
-
-			for (std::size_t i = 0; i < font.chars.size(); ++i)
-			{
-				Font::Char& ch = font.chars[i];
-				uint8_t* dest = &data[i * 7 * 8];
-
-				ch.width = 0;
-
-				for (std::size_t y = 0; y < 8; ++y)
-				for (std::size_t x = 0; x < 7; ++x)
-				{
-					auto p = dest[y * 7 + x];
-					if (p == 0)
-					{
-						ch.data[y * 7 + x] = 0;
-					}
-					else if (p == 50)
-					{
-						ch.data[y * 7 + x] = 8;
-					}
-					else
-					{
-						ch.width = (int)x;
-						break;
-					}
-				}
-			}
-		}
+		LieroTcWeapon const& src = d->weapons[i];
+		Weapon& w = weapons[i];
+		w.name = str(src.name);
+		w.idStr = str(src.id_str);
+		w.id = (int)i;
+		w.detectDistance = src.detect_distance;
+		w.affectByWorm = src.affect_by_worm;
+		w.blowAway = src.blow_away;
+		w.gravity = src.gravity;
+		w.shadow = src.shadow;
+		w.laserSight = src.laser_sight;
+		w.launchSound = src.launch_sound;
+		w.loopSound = src.loop_sound;
+		w.exploSound = src.explo_sound;
+		w.speed = src.speed;
+		w.addSpeed = src.add_speed;
+		w.distribution = src.distribution;
+		w.parts = src.parts;
+		w.recoil = src.recoil;
+		w.multSpeed = src.mult_speed;
+		w.delay = src.delay;
+		w.loadingTime = src.loading_time;
+		w.ammo = src.ammo;
+		w.createOnExp = src.create_on_exp;
+		w.dirtEffect = src.dirt_effect;
+		w.leaveShells = src.leave_shells;
+		w.leaveShellDelay = src.leave_shell_delay;
+		w.playReloadSound = src.play_reload_sound;
+		w.wormExplode = src.worm_explode;
+		w.explGround = src.expl_ground;
+		w.wormCollide = src.worm_collide;
+		w.fireCone = src.fire_cone;
+		w.collideWithObjects = src.collide_with_objects;
+		w.affectByExplosions = src.affect_by_explosions;
+		w.bounce = src.bounce;
+		w.timeToExplo = src.time_to_explo;
+		w.timeToExploV = src.time_to_explo_v;
+		w.hitDamage = src.hit_damage;
+		w.bloodOnHit = src.blood_on_hit;
+		w.startFrame = src.start_frame;
+		w.numFrames = src.num_frames;
+		w.loopAnim = src.loop_anim;
+		w.shotType = src.shot_type;
+		w.colorBullets = src.color_bullets;
+		w.splinterAmount = src.splinter_amount;
+		w.splinterColour = src.splinter_colour;
+		w.splinterType = src.splinter_type;
+		w.splinterScatter = src.splinter_scatter;
+		w.objTrailType = src.obj_trail_type;
+		w.objTrailDelay = src.obj_trail_delay;
+		w.partTrailType = src.part_trail_type;
+		w.partTrailObj = src.part_trail_obj;
+		w.partTrailDelay = src.part_trail_delay;
+		w.chainExplosion = src.chain_explosion;
 	}
 
-	for (auto& w : weapons)
+	nobjectTypes.resize(d->nobject_count);
+	for (std::size_t i = 0; i < d->nobject_count; ++i)
 	{
-		auto dir = node / "weapons";
-
-		OctetTextReader wReader((dir / (w.idStr + ".cfg")).toOctetReader());
-		archive_text(*this, w, wReader.r);
+		LieroTcNObject const& src = d->nobjects[i];
+		NObjectType& n = nobjectTypes[i];
+		n.idStr = str(src.id_str);
+		n.id = (int)i;
+		n.detectDistance = src.detect_distance;
+		n.gravity = src.gravity;
+		n.speed = src.speed;
+		n.speedV = src.speed_v;
+		n.distribution = src.distribution;
+		n.blowAway = src.blow_away;
+		n.bounce = src.bounce;
+		n.hitDamage = src.hit_damage;
+		n.wormExplode = src.worm_explode;
+		n.explGround = src.expl_ground;
+		n.wormDestroy = src.worm_destroy;
+		n.bloodOnHit = src.blood_on_hit;
+		n.startFrame = src.start_frame;
+		n.numFrames = src.num_frames;
+		n.drawOnMap = src.draw_on_map;
+		n.colorBullets = src.color_bullets;
+		n.createOnExp = src.create_on_exp;
+		n.affectByExplosions = src.affect_by_explosions;
+		n.dirtEffect = src.dirt_effect;
+		n.splinterAmount = src.splinter_amount;
+		n.splinterColour = src.splinter_colour;
+		n.splinterType = src.splinter_type;
+		n.bloodTrail = src.blood_trail;
+		n.bloodTrailDelay = src.blood_trail_delay;
+		n.leaveObj = src.leave_obj;
+		n.leaveObjDelay = src.leave_obj_delay;
+		n.timeToExplo = src.time_to_explo;
+		n.timeToExploV = src.time_to_explo_v;
 	}
 
-	for (auto& w : nobjectTypes)
+	sobjectTypes.resize(d->sobject_count);
+	for (std::size_t i = 0; i < d->sobject_count; ++i)
 	{
-		auto dir = node / "nobjects";
-
-		OctetTextReader nReader((dir / (w.idStr + ".cfg")).toOctetReader());
-		archive_text(*this, w, nReader.r);
+		LieroTcSObject const& src = d->sobjects[i];
+		SObjectType& s = sobjectTypes[i];
+		s.idStr = str(src.id_str);
+		s.id = (int)i;
+		s.startSound = src.start_sound;
+		s.numSounds = src.num_sounds;
+		s.animDelay = src.anim_delay;
+		s.startFrame = src.start_frame;
+		s.numFrames = src.num_frames;
+		s.detectRange = src.detect_range;
+		s.damage = src.damage;
+		s.blowAway = src.blow_away;
+		s.shadow = src.shadow;
+		s.shake = src.shake;
+		s.flash = src.flash;
+		s.dirtEffect = src.dirt_effect;
 	}
 
-	for (auto& w : sobjectTypes)
-	{
-		auto dir = node / "sobjects";
+	for (int i = 0; i < MaxC; ++i)
+		C[i] = d->constants[i];
+	for (int i = 0; i < MaxS; ++i)
+		S[i] = str(d->texts[i]);
+	for (int i = 0; i < MaxH; ++i)
+		H[i] = d->hacks[i];
 
-		OctetTextReader sReader((dir / (w.idStr + ".cfg")).toOctetReader());
-		archive_text(*this, w, sReader.r);
+	for (int i = 0; i < 2; ++i)
+	{
+		bonusRandTimer[i][0] = d->bonus_rand_timer[i * 2];
+		bonusRandTimer[i][1] = d->bonus_rand_timer[i * 2 + 1];
+		bonusFrames[i] = d->bonus_frames[i];
+		bonusSObjects[i] = d->bonus_sobjects[i];
+	}
+	for (int i = 0; i < LIERO_TEXTURE_COUNT; ++i)
+		textures[i] = d->textures[i];
+	for (int i = 0; i < 4; ++i)
+	{
+		colorAnim[i].from = d->color_anim[i * 2];
+		colorAnim[i].to = d->color_anim[i * 2 + 1];
+	}
+	for (int i = 0; i < 256; ++i)
+		materials[i].flags = d->materials[i];
+	for (int on = 0; on < 2; ++on)
+	for (int k = 0; k < 7; ++k)
+		aiParams.k[on][k] = d->ai_params[on * 7 + k];
+
+	copySprites(smallSprites, d->small_sprites);
+	copySprites(largeSprites, d->large_sprites);
+	copySprites(textSprites, d->text_sprites);
+	for (int i = 0; i < 256; ++i)
+	{
+		exepal.entries[i].r = d->palette[i * 3];
+		exepal.entries[i].g = d->palette[i * 3 + 1];
+		exepal.entries[i].b = d->palette[i * 3 + 2];
 	}
 
-	precompute();
-}
-
-void Common::precompute()
-{
-	weapOrder.resize(weapons.size());
-	for (int i = 0; i < (int)weapons.size(); ++i)
+	static_assert(LIERO_TC_FONT_CHARS == 250, "Font has 250 characters");
+	font.chars.resize(LIERO_TC_FONT_CHARS);
+	for (std::size_t i = 0; i < LIERO_TC_FONT_CHARS; ++i)
 	{
-		weapOrder[i] = i;
-		weapons[i].id = i;
+		std::copy(d->font[i].data, d->font[i].data + 56, font.chars[i].data);
+		font.chars[i].width = d->font[i].width;
 	}
 
-	std::sort(weapOrder.begin(), weapOrder.end(), [&](int a, int b) {
-		return this->weapons[a].name < this->weapons[b].name;
-	});
-
-	for (int i = 0; i < (int)nobjectTypes.size(); ++i)
-	{
-		nobjectTypes[i].id = i;
-	}
-
-	for (int i = 0; i < (int)sobjectTypes.size(); ++i)
-	{
-		sobjectTypes[i].id = i;
-	}
-
-	// Precompute sprites
-	wormSprites.allocate(16, 16, 2 * 2 * 21);
-
-	for(int i = 0; i < 21; ++i)
-	{
-		for(int y = 0; y < 16; ++y)
-		for(int x = 0; x < 16; ++x)
-		{
-			PalIdx pix = (largeSprites.spritePtr(16 + i) + y*16)[x];
-
-			(wormSprite(i, 1, 0) + y*16)[x] = pix;
-			if(x == 15)
-				(wormSprite(i, 0, 0) + y*16)[15] = 0;
-			else
-				(wormSprite(i, 0, 0) + y*16)[14 - x] = pix;
-
-			if(pix >= 30 && pix <= 34)
-				pix += 9; // Change worm color
-
-			(wormSprite(i, 1, 1) + y*16)[x] = pix;
-
-			if(x == 15)
-				(wormSprite(i, 0, 1) + y*16)[15] = 0; // A bit haxy, but works
-			else
-				(wormSprite(i, 0, 1) + y*16)[14 - x] = pix;
-		}
-	}
-
-	fireConeSprites.allocate(16, 16, 2 * 7);
-
-	for(int i = 0; i < 7; ++i)
-	{
-		for(int y = 0; y < 16; ++y)
-		for(int x = 0; x < 16; ++x)
-		{
-			PalIdx pix = (largeSprites.spritePtr(9 + i) + y*16)[x];
-
-			(fireConeSprite(i, 1) + y*16)[x] = pix;
-
-			if(x == 15)
-				(fireConeSprite(i, 0) + y*16)[15] = 0;
-			else
-				(fireConeSprite(i, 0) + y*16)[14 - x] = pix;
-
-		}
-	}
+	weapOrder.assign(d->weap_order, d->weap_order + d->weapon_count);
+	copySprites(wormSprites, d->worm_sprites);
+	copySprites(fireConeSprites, d->fire_cone_sprites);
 }
 
 Common::Common()
@@ -544,6 +501,9 @@ std::string Common::guessName() const
 void SfxSample::createSound()
 {
 	int16_t* ptr = reinterpret_cast<int16_t*>(sfx_sound_data(sound));
+
+	if (originalData.empty())
+		return;
 
 	int prev = ((int8_t)originalData[0]) * 30;
 	*ptr++ = prev;

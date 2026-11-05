@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
+name = "liero-data"
+version = "0.1.0"
+
+[[package]]
 name = "liero-tctool"
 version = "0.1.0"
+dependencies = [
+ "liero-data",
+]
