@@ -686,39 +686,6 @@ void Game::doHealing(Worm& w, int amount)
 
 }
 
-bool checkRespawnPosition(Game& game, int x2, int y2, int oldX, int oldY, int x, int y)
-{
-	Common& common = *game.common;
-
-	int deltaX = oldX;
-	int deltaY = oldY - y;
-	int enemyDX = x2 - x;
-	int enemyDY = y2 - y;
-
-	if((std::abs(deltaX) <= LC(WormMinSpawnDistLast) && std::abs(deltaY) <= LC(WormMinSpawnDistLast))
-	|| (std::abs(enemyDX) <= LC(WormMinSpawnDistEnemy) && std::abs(enemyDY) <= LC(WormMinSpawnDistEnemy)))
-		return false;
-
-	int maxX = x + 3;
-	int maxY = y + 4;
-	int minX = x - 3;
-	int minY = y - 4;
-
-	if(maxX >= game.level.width) maxX = game.level.width - 1;
-	if(maxY >= game.level.height) maxY = game.level.height - 1;
-	if(minX < 0) minX = 0;
-	if(minY < 0) minY = 0;
-
-	for(int i = minX; i != maxX; ++i)
-	for(int j = minY; j != maxY; ++j)
-	{
-		if(game.level.mat(i, j).rock()) // TODO: The special rock respawn bug is here, consider an option to turn it off
-			return false;
-	}
-
-	return true;
-}
-
 void Game::postClone(Game& original, bool complete)
 {
 	if (!complete)

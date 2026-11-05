@@ -11,6 +11,7 @@ pub mod math;
 pub mod object;
 pub mod rand;
 pub mod weapon;
+pub mod worm;
 
 use std::ffi::c_char;
 

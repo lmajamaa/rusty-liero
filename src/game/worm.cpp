@@ -15,10 +15,6 @@
 #include <gvl/crypt/gash.hpp>
 #include <gvl/io2/fstream.hpp>
 
-struct Point
-{
-	int x, y;
-};
 
 gvl::gash::value_type& WormSettings::updateHash()
 {
@@ -80,455 +76,322 @@ void WormSettings::loadProfile(FsNode node)
 	color = oldColor;  // We preserve the color
 }
 
-void Worm::calculateReactionForce(Game& game, int newX, int newY, int dir)
+namespace
 {
-	static Point const colPoints[4][7] =
+
+// Rust works on the weapon slots, the rope and the respawn camera in place.
+static_assert(sizeof(WormWeapon) == sizeof(LieroWormWeapon), "WormWeapon layout");
+static_assert(offsetof(WormWeapon, type) == offsetof(LieroWormWeapon, kind), "WormWeapon layout");
+static_assert(offsetof(WormWeapon, ammo) == offsetof(LieroWormWeapon, ammo), "WormWeapon layout");
+static_assert(offsetof(WormWeapon, delayLeft) == offsetof(LieroWormWeapon, delay_left), "WormWeapon layout");
+static_assert(offsetof(WormWeapon, loadingLeft) == offsetof(LieroWormWeapon, loading_left), "WormWeapon layout");
+static_assert(Settings::selectableWeapons == LIERO_SELECTABLE_WEAPONS, "weapon count");
+static_assert(sizeof(Worm::ControlState) == sizeof(uint32_t), "ControlState layout");
+static_assert(Worm::Up == LIERO_CONTROL_UP && Worm::Down == LIERO_CONTROL_DOWN
+	&& Worm::Left == LIERO_CONTROL_LEFT && Worm::Right == LIERO_CONTROL_RIGHT
+	&& Worm::Fire == LIERO_CONTROL_FIRE && Worm::Change == LIERO_CONTROL_CHANGE
+	&& Worm::Jump == LIERO_CONTROL_JUMP, "control bits");
+static_assert(Settings::GMKillEmAll == LIERO_GAME_KILL_EM_ALL
+	&& Settings::GMGameOfTag == LIERO_GAME_GAME_OF_TAG
+	&& Settings::GMHoldazone == LIERO_GAME_HOLDAZONE
+	&& Settings::GMScalesOfJustice == LIERO_GAME_SCALES_OF_JUSTICE, "game modes");
+
+// What liero_worm_process, liero_worm_fire and liero_worm_process_weapons
+// call back for.
+struct WormContext
+{
+	WormContext(Game& game, Worm& worm)
+	: game(game), worm(worm)
+	, bonuses(game.bonuses.all())
+	, wobjects(game.wobjects.all())
 	{
-		{ //DOWN reaction points
-			{-1, -4},
-			{ 0, -4},
-			{ 1, -4},
-			{ 0,  0},
-			{ 0,  0},
-			{ 0,  0},
-			{ 0,  0}
-		},
-		{ //LEFT reaction points
-			{1, -3},
-			{1, -2},
-			{1, -1},
-			{1,  0},
-			{1,  1},
-			{1,  2},
-			{1,  3}
-		},
-		{ //UP reaction points
-			{-1, 4},
-			{ 0, 4},
-			{ 1, 4},
-			{ 0, 0},
-			{ 0, 0},
-			{ 0, 0},
-			{ 0, 0}
-		},
-		{ //RIGHT reaction points
-			{-1, -3},
-			{-1, -2},
-			{-1, -1},
-			{-1,  0},
-			{-1,  1},
-			{-1,  2},
-			{-1,  3}
-		}
+	}
 
-	};
+	Game& game;
+	Worm& worm;
+	Game::BonusList::range bonuses;
+	Game::WObjectList::range wobjects;
+};
 
-	static int const colPointCount[4] =
+WormContext& context(void* ctx)
+{
+	return *static_cast<WormContext*>(ctx);
+}
+
+void hookLaunchSound(void* ctx)
+{
+	auto& c = context(ctx);
+	Worm& worm = c.worm;
+	Weapon const& w = *worm.weapons[worm.currentWeapon].type;
+
+	if(w.launchSound >= 0)
 	{
-		3,
-		7,
-		3,
-		7
-	};
-
-	reacts[dir] = 0;
-
-	// newX should be x + velX at the first call
-
-	for(int i = 0; i < colPointCount[dir]; ++i)
-	{
-		int colX = newX + colPoints[dir][i].x;
-		int colY = newY + colPoints[dir][i].y;
-
-		if(!game.level.checkedMatWrap(colX, colY).background())
+		if(w.loopSound)
 		{
-			++reacts[dir];
+			if(!c.game.soundPlayer->isPlaying(&worm.weapons[worm.currentWeapon]))
+			{
+				c.game.soundPlayer->play(w.launchSound, &worm.weapons[worm.currentWeapon], -1);
+			}
+		}
+		else
+		{
+			c.game.soundPlayer->play(w.launchSound);
 		}
 	}
 }
 
-void Worm::processPhysics(Game& game)
+void hookFirePart(void* ctx, int32_t angle, LieroIVec2 vel, int32_t speed, LieroIVec2 pos)
 {
-	Common& common = *game.common;
-
-	if(reacts[RFUp] > 0)
-		vel.x = (vel.x * LC(WormFricMult)) / LC(WormFricDiv);
-
-	fixedvec absvel(std::abs(vel.x), std::abs(vel.y));
-
-	int32 rh, rv, mbh, mbv;
-
-	rh = reacts[vel.x >= 0 ? RFLeft : RFRight];
-	rv = reacts[vel.y >= 0 ? RFUp : RFDown];
-	mbh = vel.x > 0 ? LC(MinBounceRight) : -LC(MinBounceLeft);
-	mbv = vel.y > 0 ? LC(MinBounceDown) : -LC(MinBounceUp);
-
-	if (vel.x && rh) // TODO: We wouldn't need the vel.x check if we knew that mbh/mbv were always non-zero
-	{
-		if(absvel.x > mbh)
-		{
-			if(common.H[HFallDamage])
-				health -= LC(FallDamageRight);
-			else
-				game.soundPlayer->play(14);
-			vel.x = -vel.x / 3;
-		}
-		else
-			vel.x = 0;
-	}
-
-	if(vel.y && rv)
-	{
-		if(absvel.y > mbv)
-		{
-			if(common.H[HFallDamage])
-				health -= LC(FallDamageDown);
-			else
-				game.soundPlayer->play(14);
-			vel.y = -vel.y / 3;
-		}
-		else
-			vel.y = 0;
-	}
-
-	if(reacts[RFUp] == 0)
-	{
-		vel.y += LC(WormGravity);
-	}
-
-	// No, we can't use rh/rv here, they are out of date
-	if(reacts[vel.x >= 0 ? RFLeft : RFRight] < 2)
-		pos.x += vel.x;
-
-	if(reacts[vel.y >= 0 ? RFUp : RFDown] < 2)
-		pos.y += vel.y;
+	auto& c = context(ctx);
+	Worm& worm = c.worm;
+	WormWeapon& ww = worm.weapons[worm.currentWeapon];
+	ww.type->fire(c.game, angle, fromRust(vel), speed, fromRust(pos), worm.index, &ww);
 }
+
+void hookPlaySound(void* ctx, int32_t sound)
+{
+	context(ctx).game.soundPlayer->play(sound);
+}
+
+void hookCreateNObject1(void* ctx, int32_t kind, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
+{
+	auto& c = context(ctx);
+	c.game.common->nobjectTypes[kind].create1(c.game, fromRust(vel), fromRust(pos), color, c.worm.index, 0);
+}
+
+LieroWeapon hookWeapon(void*, void const* kind)
+{
+	return toRust(*static_cast<Weapon const*>(kind));
+}
+
+void hookGiveWeapon(void* ctx, int32_t slot, int32_t weapon)
+{
+	auto& c = context(ctx);
+	WormWeapon& ww = c.worm.weapons[slot];
+	ww.type = &c.game.common->weapons[weapon];
+	ww.ammo = ww.type->ammo;
+}
+
+void hookBonusesBegin(void* ctx)
+{
+	auto& c = context(ctx);
+	c.bonuses = c.game.bonuses.all();
+}
+
+LieroBonusRef hookBonusNext(void* ctx)
+{
+	LieroBonusRef r = {};
+	if(Bonus* b = context(ctx).bonuses.next())
+	{
+		r.found = true;
+		r.x = b->x;
+		r.y = b->y;
+		r.frame = b->frame;
+		r.weapon = b->weapon;
+	}
+	return r;
+}
+
+void hookBonusFree(void* ctx)
+{
+	auto& c = context(ctx);
+	c.game.bonuses.free(c.bonuses);
+}
+
+void hookHeal(void* ctx, int32_t amount)
+{
+	auto& c = context(ctx);
+	c.game.doHealing(c.worm, amount);
+}
+
+void hookCreateSObject(void* ctx, int32_t kind, int32_t x, int32_t y)
+{
+	auto& c = context(ctx);
+	c.game.common->sobjectTypes[kind].create(c.game, x, y, c.worm.index, 0);
+}
+
+void hookCreateNObject2(void* ctx, int32_t kind, int32_t angle, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
+{
+	auto& c = context(ctx);
+	c.game.common->nobjectTypes[kind].create2(c.game, angle, fromRust(vel), fromRust(pos), color, c.worm.index, 0);
+}
+
+void hookPlayWormSound(void* ctx, int32_t sound)
+{
+	auto& c = context(ctx);
+	c.game.soundPlayer->play(sound, &c.worm);
+}
+
+bool hookWormSoundPlaying(void* ctx)
+{
+	auto& c = context(ctx);
+	return c.game.soundPlayer->isPlaying(&c.worm);
+}
+
+void hookStopLoopSound(void* ctx)
+{
+	auto& c = context(ctx);
+	c.game.soundPlayer->stop(&c.worm.weapons[c.worm.currentWeapon]);
+}
+
+bool hookWormHit(void* ctx, int32_t x, int32_t y)
+{
+	auto& c = context(ctx);
+	return checkForWormHit(c.game, x, y, 0, &c.worm);
+}
+
+void hookSteerablesBegin(void* ctx)
+{
+	auto& c = context(ctx);
+	c.wobjects = c.game.wobjects.all();
+}
+
+LieroSteerable hookSteerableNext(void* ctx)
+{
+	auto& c = context(ctx);
+	Weapon const* type = c.worm.weapons[c.worm.currentWeapon].type;
+	LieroSteerable r = {};
+	while(WObject* i = c.wobjects.next())
+	{
+		if(i->type == type && i->ownerIdx == c.worm.index)
+		{
+			r.cur_frame = &i->curFrame;
+			r.pos = toRust(i->pos);
+			break;
+		}
+	}
+	return r;
+}
+
+bool hookEnemyPos(void* ctx, LieroIVec2* pos)
+{
+	auto& c = context(ctx);
+	if(c.game.worms.size() != 2)
+		return false;
+	*pos = toRust(ftoi(c.game.worms[c.worm.index ^ 1]->pos));
+	return true;
+}
+
+void hookAddKill(void* ctx, int32_t idx)
+{
+	++context(ctx).game.wormByIdx(idx)->kills;
+}
+
+void hookAfterDeath(void* ctx)
+{
+	auto& c = context(ctx);
+	c.game.statsRecorder->afterDeath(&c.worm);
+}
+
+void hookAfterSpawn(void* ctx)
+{
+	auto& c = context(ctx);
+	c.game.statsRecorder->afterSpawn(&c.worm);
+}
+
+LieroWormConstants wormConstants(Common& common)
+{
+	LieroWormConstants k;
+	k.min_bounce_up = LC(MinBounceUp);
+	k.min_bounce_down = LC(MinBounceDown);
+	k.min_bounce_left = LC(MinBounceLeft);
+	k.min_bounce_right = LC(MinBounceRight);
+	k.worm_gravity = LC(WormGravity);
+	k.walk_vel_left = LC(WalkVelLeft);
+	k.max_vel_left = LC(MaxVelLeft);
+	k.walk_vel_right = LC(WalkVelRight);
+	k.max_vel_right = LC(MaxVelRight);
+	k.jump_force = LC(JumpForce);
+	k.max_aim_vel_left = LC(MaxAimVelLeft);
+	k.aim_acc_left = LC(AimAccLeft);
+	k.max_aim_vel_right = LC(MaxAimVelRight);
+	k.aim_acc_right = LC(AimAccRight);
+	k.nr_initial_length = LC(NRInitialLength);
+	k.nr_min_length = LC(NRMinLength);
+	k.nr_max_length = LC(NRMaxLength);
+	k.nr_throw_vel_x = LC(NRThrowVelX);
+	k.nr_throw_vel_y = LC(NRThrowVelY);
+	k.nr_pull_vel = LC(NRPullVel);
+	k.nr_release_vel = LC(NRReleaseVel);
+	k.worm_fric_mult = LC(WormFricMult);
+	k.worm_fric_div = LC(WormFricDiv);
+	k.worm_min_spawn_dist_last = LC(WormMinSpawnDistLast);
+	k.worm_min_spawn_dist_enemy = LC(WormMinSpawnDistEnemy);
+	k.worm_spawn_rect_x = LC(WormSpawnRectX);
+	k.worm_spawn_rect_y = LC(WormSpawnRectY);
+	k.worm_spawn_rect_w = LC(WormSpawnRectW);
+	k.worm_spawn_rect_h = LC(WormSpawnRectH);
+	k.aim_fric_mult = LC(AimFricMult);
+	k.aim_fric_div = LC(AimFricDiv);
+	k.aim_max_right = LC(AimMaxRight);
+	k.aim_min_right = LC(AimMinRight);
+	k.aim_max_left = LC(AimMaxLeft);
+	k.aim_min_left = LC(AimMinLeft);
+	k.bonus_explode_risk = LC(BonusExplodeRisk);
+	k.bonus_health_var = LC(BonusHealthVar);
+	k.bonus_min_health = LC(BonusMinHealth);
+	k.laser_weapon = LC(LaserWeapon);
+	k.fall_damage_right = LC(FallDamageRight);
+	k.fall_damage_down = LC(FallDamageDown);
+	k.worm_float_level = LC(WormFloatLevel);
+	k.worm_float_power = LC(WormFloatPower);
+	k.fall_damage = common.H[HFallDamage];
+	k.worm_float = common.H[HWormFloat];
+	k.bonus_reload_only = common.H[HBonusReloadOnly];
+	k.air_jump = common.H[HAirJump];
+	k.multi_jump = common.H[HMultiJump];
+	k.signed_recoil = common.H[HSignedRecoil];
+	return k;
+}
+
+} // namespace
 
 void Worm::process(Game& game)
 {
 	Common& common = *game.common;
+	WormContext context(game, *this);
 
-	if(health > settings->health)
-		health = settings->health;
+	LieroWormFields fields = {
+		toRust(&pos), toRust(&vel), toRust(&logicRespawn),
+		&hotspotX, &hotspotY, &aimingAngle, &aimingSpeed,
+		&ableToJump, &ableToDig, &keyChangePressed, &movable, &animate,
+		&visible, &ready, &makeSightGreen,
+		&health, &lives, &killedTimer, &currentFrame,
+		reinterpret_cast<LieroNinjarope*>(&ninjarope),
+		&currentWeapon, &lastKilledByIdx, &fireCone, &leaveShellTimer,
+		reacts, reinterpret_cast<LieroWormWeapon*>(weapons), &direction,
+		&controlStates.istate,
+		&steerableSumX, &steerableSumY, &steerableCount,
+		index, settings->health,
+	};
 
-	if((game.settings->gameMode != Settings::GMKillEmAll && game.settings->gameMode != Settings::GMScalesOfJustice)
-	|| lives > 0)
-	{
-		if(visible)
-		{
-			// Liero.exe: 291C
+	LieroWormConstants k = wormConstants(common);
 
-			auto next = pos + vel;
-			auto iNext = ftoi(next);
+	LieroWormEnv env = {
+		game.level.view(), common.levelCommon(), &game.rand, int32_t(game.cycles),
+		int32_t(game.settings->gameMode), game.settings->blood, game.settings->loadingTime,
+		game.settings->loadChange, game.settings->shadow, game.quickSim,
+		{ Settings::wormAnimTab[0], Settings::wormAnimTab[1], Settings::wormAnimTab[2], Settings::wormAnimTab[3] },
+		&game.lastKilledIdx, &game.gotChanged,
+	};
 
-			{ // Calculate reaction forces
+	LieroWormFiringHooks firing = { &context, hookLaunchSound, hookFirePart, hookPlaySound, hookCreateNObject1 };
 
-				for(int i = 0; i < 4; i++)
-				{
-					calculateReactionForce(game, iNext.x, iNext.y, i);
+	LieroWormHooks hooks = {
+		&context, &firing, hookWeapon, hookGiveWeapon,
+		hookBonusesBegin, hookBonusNext, hookBonusFree, hookHeal,
+		hookCreateSObject, hookCreateNObject2,
+		hookPlayWormSound, hookWormSoundPlaying, hookStopLoopSound, hookWormHit,
+		hookSteerablesBegin, hookSteerableNext, hookEnemyPos, hookAddKill,
+		hookAfterDeath, hookAfterSpawn,
+	};
 
-					// Yes, Liero does this in every iteration. Keep it this way.
-
-
-					if(iNext.x < 4)
-					{
-						reacts[RFRight] += 5;
-					}
-					else if(iNext.x > game.level.width - 5)
-					{
-						reacts[RFLeft] += 5;
-					}
-
-					if(iNext.y < 5)
-					{
-						reacts[RFDown] += 5;
-					}
-					else
-					{
-						if(common.H[HWormFloat])
-						{
-							if(iNext.y > LC(WormFloatLevel))
-								vel.y -= LC(WormFloatPower);
-						}
-						else if(iNext.y > game.level.height - 6)
-						{
-							reacts[RFUp] += 5;
-						}
-					}
-				}
-
-				if(reacts[RFDown] < 2)
-				{
-					if(reacts[RFUp] > 0)
-					{
-						if(reacts[RFLeft] > 0 || reacts[RFRight] > 0)
-						{
-							//Low or none push down,
-							//Push up and
-							//Push left or right
-
-							pos.y -= itof(1);
-							next.y = pos.y + vel.y;
-							iNext.y = ftoi(next.y);
-
-							calculateReactionForce(game, iNext.x, iNext.y, RFLeft);
-							calculateReactionForce(game, iNext.x, iNext.y, RFRight);
-						}
-					}
-				}
-
-				if(reacts[RFUp] < 2)
-				{
-					if(reacts[RFDown] > 0)
-					{
-						if(reacts[RFLeft] > 0 || reacts[RFRight] > 0)
-						{
-							//Low or none push up,
-							//Push down and
-							//Push left or right
-
-							pos.y += itof(1);
-							next.y = pos.y + vel.y;
-							iNext.y = ftoi(next.y);
-
-							calculateReactionForce(game, iNext.x, iNext.y, RFLeft);
-							calculateReactionForce(game, iNext.x, iNext.y, RFRight);
-						}
-					}
-				}
-			}
-
-			auto ipos = ftoi(pos);
-
-			auto br = game.bonuses.all();
-			for (Bonus* i; (i = br.next()); )
-			{
-				if(ipos.x + 5 > ftoi(i->x)
-				&& ipos.x - 5 < ftoi(i->x)
-				&& ipos.y + 5 > ftoi(i->y)
-				&& ipos.y - 5 < ftoi(i->y))
-				{
-					if(i->frame == 1)
-					{
-						if(health < settings->health)
-						{
-							game.bonuses.free(br);
-
-							game.doHealing(*this, (game.rand(LC(BonusHealthVar)) + LC(BonusMinHealth)) * settings->health / 100);
-
-						}
-					}
-					else if(i->frame == 0)
-					{
-						if(game.rand(LC(BonusExplodeRisk)) > 1)
-						{
-							WormWeapon& ww = weapons[currentWeapon];
-
-							if(!common.H[HBonusReloadOnly])
-							{
-								fireCone = 0;
-
-								ww.type = &common.weapons[i->weapon];
-								ww.ammo = ww.type->ammo;
-							}
-
-							game.soundPlayer->play(24);
-
-							game.bonuses.free(br);
-
-							ww.loadingLeft = 0;
-						}
-						else
-						{
-							int bix = ftoi(i->x);
-							int biy = ftoi(i->y);
-							game.bonuses.free(br);
-							common.sobjectTypes[0].create(game, bix, biy, index, 0);
-						}
-					}
-				}
-			}
-
-			processSteerables(game);
-
-			if(!movable && !pressed(Left) && !pressed(Right)) // processSteerables sets movable to false, does this interfer?
-			{
-				movable = true;
-			} // 2FB1
-
-			processAiming(game);
-			processTasks(game);
-			processWeapons(game);
-
-			if(pressed(Fire) && !pressed(Change)
-			&& weapons[currentWeapon].available()
-			&& weapons[currentWeapon].delayLeft <= 0)
-			{
-				fire(game);
-			}
-			else
-			{
-				if(weapons[currentWeapon].type->loopSound)
-					game.soundPlayer->stop(&weapons[currentWeapon]);
-			}
-
-			processPhysics(game);
-			processSight(game);
-
-			if(pressed(Change))
-			{
-				processWeaponChange(game);
-			}
-			else
-			{
-				keyChangePressed = false;
-				processMovement(game);
-			}
-
-
-			if(health < settings->health / 4)
-			{
-				if(game.rand(health + 6) == 0)
-				{
-					if(game.rand(3) == 0)
-					{
-						int snd = 18 + game.rand(3); // NOTE: MUST be outside the unpredictable branch below
-						if(!game.soundPlayer->isPlaying(this))
-						{
-							game.soundPlayer->play(snd, this);
-						}
-					}
-
-					common.nobjectTypes[6].create1(game, vel, pos, 0, index, 0);
-				}
-			}
-
-			if(health <= 0)
-			{
-				leaveShellTimer = 0;
-				makeSightGreen = false;
-
-				Weapon const& w = *weapons[currentWeapon].type;
-				if(w.loopSound)
-				{
-					game.soundPlayer->stop(&weapons[currentWeapon]);
-				}
-
-				int deathSnd = 15 + game.rand(3);
-				game.soundPlayer->play(deathSnd, this);
-
-				fireCone = 0;
-				ninjarope.out = false;
-
-				if (game.settings->gameMode == Settings::GMScalesOfJustice)
-				{
-					while (health <= 0)
-					{
-						health += settings->health;
-						--lives;
-					}
-				}
-				else
-				{
-					--lives;
-				}
-
-				int oldLastKilled = game.lastKilledIdx;
-				// For GameOfTag, 'it' doesn't change if the killer
-				// was not 'it', itself, unknown or there were no 'it'.
-				if(game.settings->gameMode != Settings::GMGameOfTag
-				|| game.lastKilledIdx < 0
-				|| lastKilledByIdx < 0
-				|| lastKilledByIdx == index
-				|| lastKilledByIdx == game.lastKilledIdx)
-				{
-					game.lastKilledIdx = index;
-				}
-				game.gotChanged = (oldLastKilled != game.lastKilledIdx);
-
-				if(lastKilledByIdx >= 0 && lastKilledByIdx != index)
-				{
-					++game.wormByIdx(lastKilledByIdx)->kills;
-				}
-
-				visible = false;
-				killedTimer = 150;
-
-				int max = 120 * game.settings->blood / 100;
-
-				if(max > 1)
-				{
-					for(int i = 1; i <= max; ++i)
-					{
-						common.nobjectTypes[6].create2(
-							game,
-							game.rand(128),
-							vel / 3,
-							pos,
-							0,
-							index, 0);
-					}
-				}
-
-				for(int i = 7; i <= 105; i += 14)
-				{
-					common.nobjectTypes[index].create2(
-						game,
-						i + game.rand(14),
-						vel / 3,
-						pos,
-						0,
-						index, 0);
-				}
-
-				game.statsRecorder->afterDeath(this);
-
-				release(Fire);
-			}
-
-			// Update frame
-			int animFrame = animate ? ((game.cycles & 31) >> 3) : 0;
-			currentFrame = angleFrame() + game.settings->wormAnimTab[animFrame];
-		}
-		else
-		{
-			// Worm is dead
-			steerableCount = 0;
-
-			if(pressedOnce(Fire))
-				ready = true;
-
-			if(killedTimer > 0)
-				--killedTimer;
-
-			if(killedTimer == 0 && !game.quickSim) // Don't respawn in quicksim
-				beginRespawn(game);
-
-			if(killedTimer < 0)
-				doRespawning(game);
-		}
-	}
-
-
+	liero_worm_process(&fields, &k, &env, &hooks);
 }
 
 int Worm::angleFrame() const
 {
-	int x = ftoi(aimingAngle) - 12;
-
-	if(direction != 0)
-		x -= 49;
-
-	x >>= 3;
-	if(x < 0) x = 0;
-	else if(x > 6) x = 6;
-
-	if(direction != 0)
-	{
-		x = 6 - x;
-	} // 9581
-
-	return x;
+	return liero_worm_angle_frame(aimingAngle, direction);
 }
 
 int sqrVectorLength(int x, int y)
@@ -821,487 +684,6 @@ void Worm::initWeapons(Game& game)
 	}
 }
 
-void Worm::beginRespawn(Game& game)
-{
-	Common& common = *game.common;
-
-	auto temp = ftoi(pos);
-
-	logicRespawn = temp - gvl::ivec2(80, 80);
-
-	auto enemy = temp;
-
-	if(game.worms.size() == 2)
-	{
-		enemy = ftoi(game.worms[index ^ 1]->pos);
-	}
-
-	int trials = 0;
-	do
-	{
-		pos.x = itof(LC(WormSpawnRectX) + game.rand(LC(WormSpawnRectW)));
-		pos.y = itof(LC(WormSpawnRectY) + game.rand(LC(WormSpawnRectH)));
-
-		// The original didn't have + 4 in both, which seems
-		// to be done in the exe and makes sense.
-		while(ftoi(pos.y) + 4 < game.level.height
-		&& game.level.mat(ftoi(pos.x), ftoi(pos.y) + 4).background())
-		{
-			pos.y += itof(1);
-		}
-
-		if(++trials >= 50000)
-			break;
-	}
-	while(!checkRespawnPosition(game, enemy.x, enemy.y, temp.x, temp.y, ftoi(pos.x), ftoi(pos.y)));
-
-	killedTimer = -1;
-}
-
-void limitXY(int& x, int& y, int maxX, int maxY)
-{
-	if(x < 0)
-		x = 0;
-	else if(x > maxX)
-		x = maxX;
-
-	if(y < 0)
-		y = 0;
-	if(y > maxY)
-		y = maxY;
-}
-
-void Worm::doRespawning(Game& game)
-{
-	Common& common = *game.common;
-
-	for(int c = 0; c < 4; c++)
-	{
-		if(logicRespawn.x < ftoi(pos.x) - 80) ++logicRespawn.x;
-		else if(logicRespawn.x > ftoi(pos.x) - 80) --logicRespawn.x;
-
-		if(logicRespawn.y < ftoi(pos.y) - 80) ++logicRespawn.y;
-		else if(logicRespawn.y > ftoi(pos.y) - 80) --logicRespawn.y;
-	}
-
-	limitXY(logicRespawn.x, logicRespawn.y, game.level.width - 158, game.level.height - 158);
-
-	int destX = ftoi(pos.x) - 80;
-	int destY = ftoi(pos.y) - 80;
-	limitXY(destX, destY, game.level.width - 158, game.level.height - 158);
-
-	if(logicRespawn.x < destX + 5
-	&& logicRespawn.x > destX - 5
-	&& logicRespawn.y < destY + 5
-	&& logicRespawn.y > destY - 5
-	&& ready) // Don't spawn in quicksim
-	{
-		auto ipos = ftoi(pos);
-		drawDirtEffect(common, game.rand, game.level, 0, ipos.x - 7, ipos.y - 7);
-		if(game.settings->shadow)
-			correctShadow(common, game.level, gvl::rect(ipos.x - 10, ipos.y - 10, ipos.x + 11, ipos.y + 11));
-
-		ready = false;
-		game.soundPlayer->play(21);
-
-		visible = true;
-		fireCone = 0;
-		vel.zero();
-		if (game.settings->gameMode != Settings::GMScalesOfJustice)
-			health = settings->health;
-
-		// NOTE: This was done at death before, but doing it here seems to make more sense
-		if(game.rand() & 1)
-		{
-			aimingAngle = itof(32);
-			direction = 0;
-		}
-		else
-		{
-			aimingAngle = itof(96);
-			direction = 1;
-		}
-
-		game.statsRecorder->afterSpawn(this);
-	}
-}
-
-namespace
-{
-
-// Rust works on the weapon slots in place.
-static_assert(sizeof(WormWeapon) == sizeof(LieroWormWeapon), "WormWeapon layout");
-static_assert(offsetof(WormWeapon, type) == offsetof(LieroWormWeapon, kind), "WormWeapon layout");
-static_assert(offsetof(WormWeapon, ammo) == offsetof(LieroWormWeapon, ammo), "WormWeapon layout");
-static_assert(offsetof(WormWeapon, delayLeft) == offsetof(LieroWormWeapon, delay_left), "WormWeapon layout");
-static_assert(offsetof(WormWeapon, loadingLeft) == offsetof(LieroWormWeapon, loading_left), "WormWeapon layout");
-static_assert(Settings::selectableWeapons == LIERO_SELECTABLE_WEAPONS, "weapon count");
-
-// What liero_worm_fire and liero_worm_process_weapons call back for.
-struct FiringContext
-{
-	Game& game;
-	Worm& worm;
-};
-
-void hookLaunchSound(void* ctx)
-{
-	auto& c = *static_cast<FiringContext*>(ctx);
-	Worm& worm = c.worm;
-	Weapon const& w = *worm.weapons[worm.currentWeapon].type;
-
-	if(w.launchSound >= 0)
-	{
-		if(w.loopSound)
-		{
-			if(!c.game.soundPlayer->isPlaying(&worm.weapons[worm.currentWeapon]))
-			{
-				c.game.soundPlayer->play(w.launchSound, &worm.weapons[worm.currentWeapon], -1);
-			}
-		}
-		else
-		{
-			c.game.soundPlayer->play(w.launchSound);
-		}
-	}
-}
-
-void hookFirePart(void* ctx, int32_t angle, LieroIVec2 vel, int32_t speed, LieroIVec2 pos)
-{
-	auto& c = *static_cast<FiringContext*>(ctx);
-	Worm& worm = c.worm;
-	WormWeapon& ww = worm.weapons[worm.currentWeapon];
-	ww.type->fire(c.game, angle, fromRust(vel), speed, fromRust(pos), worm.index, &ww);
-}
-
-void hookPlaySound(void* ctx, int32_t sound)
-{
-	auto& c = *static_cast<FiringContext*>(ctx);
-	c.game.soundPlayer->play(sound);
-}
-
-void hookCreateNObject1(void* ctx, int32_t kind, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
-{
-	auto& c = *static_cast<FiringContext*>(ctx);
-	c.game.common->nobjectTypes[kind].create1(c.game, fromRust(vel), fromRust(pos), color, c.worm.index, 0);
-}
-
-LieroWormFiring firingFields(Worm& worm)
-{
-	LieroWormFiring f = {
-		toRust(&worm.pos), toRust(&worm.vel), worm.aimingAngle,
-		&worm.fireCone, &worm.leaveShellTimer,
-		reinterpret_cast<LieroWormWeapon*>(worm.weapons), worm.currentWeapon,
-	};
-	return f;
-}
-
-} // namespace
-
-void Worm::processWeapons(Game& game)
-{
-	FiringContext context = { game, *this };
-	LieroWormFiring fields = firingFields(*this);
-	LieroWeapon current = toRust(*weapons[currentWeapon].type);
-	LieroWormFiringHooks hooks = { &context, hookLaunchSound, hookFirePart, hookPlaySound, hookCreateNObject1 };
-
-	liero_worm_process_weapons(&fields, &current, game.settings->loadingTime, &game.rand, &hooks);
-}
-
-void Worm::processMovement(Game& game)
-{
-	Common& common = *game.common;
-
-	if(movable)
-	{
-		bool left = pressed(Left);
-		bool right = pressed(Right);
-
-		if(left && !right)
-		{
-			if(vel.x > LC(MaxVelLeft))
-				vel.x -= LC(WalkVelLeft);
-
-			if(direction != 0)
-			{
-				aimingSpeed = 0;
-				if(aimingAngle >= itof(64))
-					aimingAngle = itof(128) - aimingAngle;
-				direction = 0;
-			}
-
-			animate = true;
-		}
-
-		if(!left && right)
-		{
-			if(vel.x < LC(MaxVelRight))
-				vel.x += LC(WalkVelRight);
-
-			if(direction != 1)
-			{
-				aimingSpeed = 0;
-				if(aimingAngle <= itof(64))
-					aimingAngle = itof(128) - aimingAngle;
-				direction = 1;
-			}
-
-			animate = true;
-		}
-
-		if(left && right)
-		{
-			if(ableToDig)
-			{
-				ableToDig = false;
-
-				fixedvec dir(cossinTable[ftoi(aimingAngle)]);
-
-				auto digPos = dir * 2 + pos;
-
-				/* TODO
-				long iDigx = ftoi(fTempx) - 4;
-				if(iDigx < 0)    iDigx = 0;
-				if(iDigx >= levwidth) iDigx = levwidth-1;
-
-				long iDigenx = ftoi(fTempx) + 4;
-				if(iDigenx < 0)    iDigenx = 0;
-				if(iDigenx >= levwidth) iDigenx = levwidth-1;
-
-				long iDigy;
-
-				long iDigsty = ftoi(fTempy) - 4;
-				if(iDigsty < 0)    iDigsty = 0;
-				if(iDigsty >= levheight) iDigsty = levheight-1;
-
-				long iDigeny = ftoi(fTempy) + 4;
-				if(iDigeny < 0)    iDigeny = 0;
-				if(iDigeny >= levheight) iDigeny = levheight-1;
-
-				for(; iDigx <= iDigenx; iDigx++)
-				{
-					for(iDigy = iDigsty; iDigy <= iDigeny; iDigy++)
-					{
-						//Throw away every third pixel
-						if(materials.Dirt[lev(iDigx, iDigy)] && random(3) == 0)
-						{
-							CreateObject2(random(128), 0, 0, itof(iDigx), itof(iDigy), lev(iDigx, iDigy), 2, BYTE(w));
-						} // 419A
-					} // 41A9
-				} // 41BB
-*/
-
-				digPos.x -= itof(7);
-				digPos.y -= itof(7);
-
-				auto idigPos = ftoi(digPos);
-				drawDirtEffect(common, game.rand, game.level, 7, idigPos.x, idigPos.y);
-				if(game.settings->shadow)
-					correctShadow(common, game.level, gvl::rect(idigPos.x - 3, idigPos.y - 3, idigPos.x + 18, idigPos.y + 18));
-
-				digPos += dir * 2;
-
-//l_43EB:
-				idigPos = ftoi(digPos);
-				drawDirtEffect(common, game.rand, game.level, 7, idigPos.x, idigPos.y);
-				if(game.settings->shadow)
-					correctShadow(common, game.level, gvl::rect(idigPos.x - 3, idigPos.y - 3, idigPos.x + 18, idigPos.y + 18));
-
-				//NOTE! Maybe the shadow corrections can be joined into one? Mmm?
-			} // 4552
-		}
-		else
-		{
-			ableToDig = true;
-		}
-
-		if(!left && !right)
-		{
-			animate = false; //Don't animate the this unless he is moving
-		} // 458C
-	}
-}
-
-void Worm::processTasks(Game& game)
-{
-	Common& common = *game.common;
-
-	if(pressed(Change))
-	{
-		if(ninjarope.out)
-		{
-			if(pressed(Up))
-				ninjarope.length -= LC(NRPullVel);
-			if(pressed(Down))
-				ninjarope.length += LC(NRReleaseVel);
-
-			if(ninjarope.length < LC(NRMinLength))
-				ninjarope.length = LC(NRMinLength);
-			if(ninjarope.length > LC(NRMaxLength))
-				ninjarope.length = LC(NRMaxLength);
-		}
-
-		if(pressedOnce(Jump))
-		{
-			ninjarope.out = true;
-			ninjarope.attached = false;
-
-			game.soundPlayer->play(5);
-
-			ninjarope.pos = pos;
-			ninjarope.vel = fixedvec(cossinTable[ftoi(aimingAngle)].x << LC(NRThrowVelX), cossinTable[ftoi(aimingAngle)].y << LC(NRThrowVelY));
-
-			ninjarope.length = LC(NRInitialLength);
-		}
-	}
-	else
-	{
-		//Jump = remove ninjarope, jump
-		if(pressed(Jump))
-		{
-			ninjarope.out = false;
-			ninjarope.attached = false;
-
-			if((reacts[RFUp] > 0 || common.H[HAirJump])
-			&& (ableToJump || common.H[HMultiJump]))
-			{
-				vel.y -= LC(JumpForce);
-				ableToJump = false;
-			}
-		}
-		else
-			ableToJump = true;
-	}
-}
-
-void Worm::processAiming(Game& game)
-{
-	Common& common = *game.common;
-
-	bool up = pressed(Up);
-	bool down = pressed(Down);
-
-	if(aimingSpeed != 0)
-	{
-		aimingAngle += aimingSpeed;
-
-		if(!up && !down)
-		{
-			aimingSpeed = (aimingSpeed * LC(AimFricMult)) / LC(AimFricDiv);
-		}
-
-		if(direction == 1)
-		{
-			if(ftoi(aimingAngle) > LC(AimMaxRight))
-			{
-				aimingSpeed = 0;
-				aimingAngle = itof(LC(AimMaxRight));
-			}
-			if(ftoi(aimingAngle) < LC(AimMinRight))
-			{
-				aimingSpeed = 0;
-				aimingAngle = itof(LC(AimMinRight));
-			}
-		}
-		else
-		{
-			if(ftoi(aimingAngle) < LC(AimMaxLeft))
-			{
-				aimingSpeed = 0;
-				aimingAngle = itof(LC(AimMaxLeft));
-			}
-			if(ftoi(aimingAngle) > LC(AimMinLeft))
-			{
-				aimingSpeed = 0;
-				aimingAngle = itof(LC(AimMinLeft));
-			}
-		}
-	}
-
-	if(movable && (!ninjarope.out || !pressed(Change)))
-	{
-		if(up)
-		{
-			if(direction == 0)
-			{
-				if(aimingSpeed < LC(MaxAimVelLeft))
-					aimingSpeed += LC(AimAccLeft);
-			}
-			else
-			{
-				if(aimingSpeed > LC(MaxAimVelRight))
-					aimingSpeed -= LC(AimAccRight);
-			}
-		}
-
-		if(down)
-		{
-			if(direction == 1)
-			{
-				if(aimingSpeed < LC(MaxAimVelLeft))
-					aimingSpeed += LC(AimAccLeft);
-			}
-			else
-			{
-				if(aimingSpeed > LC(MaxAimVelRight))
-					aimingSpeed -= LC(AimAccRight);
-			}
-		}
-	}
-}
-
-void Worm::processWeaponChange(Game& game)
-{
-	if(!keyChangePressed)
-	{
-		release(Left);
-		release(Right);
-
-		keyChangePressed = true;
-	}
-
-	fireCone = 0;
-	animate = false;
-
-	if(weapons[currentWeapon].type->loopSound)
-	{
-		game.soundPlayer->stop(&weapons[currentWeapon]);
-	}
-
-	if(weapons[currentWeapon].available() || game.settings->loadChange)
-	{
-		if(pressedOnce(Left))
-		{
-			if(--currentWeapon < 0)
-				currentWeapon = Settings::selectableWeapons - 1;
-
-			hotspotX = ftoi(pos.x);
-			hotspotY = ftoi(pos.y);
-		}
-
-		if(pressedOnce(Right))
-		{
-			if(++currentWeapon >= Settings::selectableWeapons)
-				currentWeapon = 0;
-
-			hotspotX = ftoi(pos.x);
-			hotspotY = ftoi(pos.y);
-		}
-	}
-}
-
-void Worm::fire(Game& game)
-{
-	Common& common = *game.common;
-
-	FiringContext context = { game, *this };
-	LieroWormFiring fields = firingFields(*this);
-	LieroWeapon w = toRust(*weapons[currentWeapon].type);
-	LieroWormFiringHooks hooks = { &context, hookLaunchSound, hookFirePart, hookPlaySound, hookCreateNObject1 };
-
-	liero_worm_fire(&fields, &w, &game.rand, common.H[HSignedRecoil], &hooks);
-}
-
 bool checkForWormHit(Game& game, int x, int y, int dist, Worm* ownWorm)
 {
 	for(std::size_t i = 0; i < game.worms.size(); ++i)
@@ -1342,68 +724,4 @@ bool checkForSpecWormHit(Game& game, int x, int y, int dist, Worm& w)
 	}
 
 	return false;
-}
-
-void Worm::processSight(Game& game)
-{
-	Common& common = *game.common;
-
-	WormWeapon& ww = weapons[currentWeapon];
-	Weapon const& w = *ww.type;
-
-	if(ww.available()
-	&& (w.laserSight || ww.type - &common.weapons[0] == LC(LaserWeapon) - 1))
-	{
-		fixedvec dir = cossinTable[ftoi(aimingAngle)];
-		fixedvec temp = fixedvec(pos.x + dir.x * 6, pos.y + dir.y * 6 - itof(1));
-
-		do
-		{
-			temp += dir;
-			makeSightGreen = checkForWormHit(game, ftoi(temp.x), ftoi(temp.y), 0, this);
-		}
-		while(
-			temp.x >= 0 &&
-			temp.y >= 0 &&
-			temp.x < itof(game.level.width) &&
-			temp.y < itof(game.level.height) &&
-			game.level.mat(ftoi(temp)).background() &&
-			!makeSightGreen);
-
-		hotspotX = ftoi(temp.x);
-		hotspotY = ftoi(temp.y);
-	}
-	else
-		makeSightGreen = false;
-}
-
-void Worm::processSteerables(Game& game)
-{
-	steerableCount = 0;
-	steerableSumX = 0;
-	steerableSumY = 0;
-
-	WormWeapon& ww = weapons[currentWeapon];
-	if(ww.type->shotType == Weapon::STSteerable)
-	{
-		auto wr = game.wobjects.all();
-		for (WObject* i; (i = wr.next()); )
-		{
-			if(i->type == ww.type && i->ownerIdx == index)
-			{
-				if(pressed(Left))
-					i->curFrame -= (game.cycles & 1) + 1;
-
-				if(pressed(Right))
-					i->curFrame += (game.cycles & 1) + 1;
-
-				i->curFrame &= 127; // Wrap
-				movable = false;
-
-				steerableSumX += ftoi(i->pos.x);
-				steerableSumY += ftoi(i->pos.y);
-				++steerableCount;
-			}
-		}
-	}
 }

@@ -57,6 +57,8 @@ LieroWeapon toRust(Weapon const& w)
 	r.part_trail_type = w.partTrailType;
 	r.part_trail_obj = w.partTrailObj;
 	r.part_trail_delay = w.partTrailDelay;
+	r.loop_sound = w.loopSound;
+	r.laser_sight = w.laserSight;
 	return r;
 }
 
