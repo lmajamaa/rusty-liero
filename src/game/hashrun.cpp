@@ -329,6 +329,7 @@ int hashRun(int argc, char* argv[])
 		runGame(common, config, ticks, interval);
 
 	hashMenus(common);
+	hashSettings();
 
 	return 0;
 }

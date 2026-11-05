@@ -16,6 +16,9 @@ struct Common;
 // of what they show. See hashmenus.cpp.
 void hashMenus(gvl::shared_ptr<Common> common);
 void hashTc(Common& common);
+// Hashes settings written, read and broken in every format. See
+// hashsettings.cpp.
+void hashSettings();
 
 // 64-bit FNV-1a over 32-bit words, the same as the Rust tests use.
 struct Fnv
