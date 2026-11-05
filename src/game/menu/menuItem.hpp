@@ -30,8 +30,6 @@ struct MenuItem
 		return m;
 	}
 
-	void draw(Common& common, Renderer& renderer, int x, int y, bool selected, bool disabled, bool centered, int valueOffsetX);
-
 	PalIdx color;
 	PalIdx disColour;
 	std::string string;

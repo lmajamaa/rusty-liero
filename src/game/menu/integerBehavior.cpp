@@ -10,15 +10,7 @@
 
 bool IntegerBehavior::onLeftRight(Menu& menu, MenuItem& item, int dir)
 {
-	if ((gfx.menuCycles % scrollInterval) != 0)
-		return true;
-
-	int newV = v;
-	if((dir < 0 && newV > min)
-	|| (dir > 0 && newV < max))
-	{
-		newV += dir * step;
-	}
+	int newV = liero_menu_integer_left_right(v, min, max, step, dir, gfx.menuCycles, scrollInterval);
 
 	if(newV != v)
 	{
@@ -49,8 +41,13 @@ int IntegerBehavior::onEnter(Menu& menu, MenuItem& item)
 
 void IntegerBehavior::onUpdate(Menu& menu, MenuItem& item)
 {
-	item.value = toString(v);
+	item.value = valueText(v, percentage ? LIERO_MENU_VALUE_PERCENTAGE : LIERO_MENU_VALUE_INTEGER);
 	item.hasValue = true;
-	if(percentage)
-		item.value += "%";
+}
+
+std::string valueText(int v, int kind)
+{
+	char buf[32];
+	std::size_t len = liero_menu_value_text(v, kind, reinterpret_cast<uint8_t*>(buf), sizeof(buf));
+	return std::string(buf, len);
 }

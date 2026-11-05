@@ -63,10 +63,7 @@ void HiddenMenu::drawItemOverlay(Common& common, MenuItem& item, int x, int y, b
 {
 	if(item.id == PaletteSelect) //Color settings
 	{
-		int w = 30;
-		int offsX = 44;
-
-		drawRoundedBox(gfx.playRenderer.bmp, x + offsX, y, selected ? 168 : 0, 7, w);
-		fillRect(gfx.playRenderer.bmp, x + offsX + 1, y + 1, w + 1, 5, paletteColor);
+		LieroBitmap scr = gfx.playRenderer.bmp.view();
+		liero_menu_draw_palette_overlay(&scr, x, y, selected, paletteColor);
 	}
 }

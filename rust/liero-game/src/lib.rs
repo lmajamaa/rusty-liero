@@ -9,11 +9,14 @@ pub mod game;
 pub mod gfx;
 pub mod level;
 pub mod material;
+pub mod menu;
 pub mod math;
 pub mod object;
 pub mod rand;
+pub mod text;
 pub mod viewport;
 pub mod weapon;
+pub mod weapsel;
 pub mod worm;
 
 use std::ffi::c_char;

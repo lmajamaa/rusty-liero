@@ -38,6 +38,23 @@
 #define LIERO_MATERIAL_WORM (1 << 5)
 
 /**
+ * Kinds of value text for `liero_menu_value_text`.
+ */
+#define LIERO_MENU_VALUE_INTEGER 0
+
+#define LIERO_MENU_VALUE_PERCENTAGE 1
+
+/**
+ * Seconds as "MM:SS".
+ */
+#define LIERO_MENU_VALUE_TIME 2
+
+/**
+ * Frames as seconds with hundredths.
+ */
+#define LIERO_MENU_VALUE_FRAMES 3
+
+/**
  * Number of entries in the cos/sin table: a full turn in 128 steps.
  */
 #define LIERO_COS_SIN_ENTRIES 128
@@ -81,6 +98,11 @@
  * `hit_worms` result: the object should disappear.
  */
 #define LIERO_HIT_REMOVE 2
+
+/**
+ * Size of `Settings::weapTable`.
+ */
+#define LIERO_WEAPON_TABLE_SIZE 40
 
 /**
  * Bits of `control_states` (`Worm::Control`).
@@ -396,6 +418,88 @@ typedef struct LieroLevelCommon {
 } LieroLevelCommon;
 
 /**
+ * A menu's state, the fields of C++'s `Menu`.
+ */
+typedef struct LieroMenu {
+  int32_t x;
+  int32_t y;
+  /**
+   * How many items fit.
+   */
+  int32_t height;
+  int32_t item_height;
+  /**
+   * Where values are drawn, from `x`.
+   */
+  int32_t value_offset_x;
+  /**
+   * The first item in view, and the one after the last, counting visible
+   * items only.
+   */
+  int32_t top_item;
+  int32_t bottom_item;
+  int32_t visible_item_count;
+  /**
+   * The selected item, counting all items.
+   */
+  int32_t selection;
+  /**
+   * When the search text was last typed, in milliseconds.
+   */
+  uint32_t search_time;
+  bool centered;
+} LieroMenu;
+
+/**
+ * Text from C++: `len` bytes from `ptr`.
+ */
+typedef struct LieroStr {
+  const uint8_t *ptr;
+  uintptr_t len;
+} LieroStr;
+
+/**
+ * A menu item, laid out for Rust.
+ */
+typedef struct LieroMenuItem {
+  struct LieroStr string;
+  struct LieroStr value;
+  uint8_t color;
+  /**
+   * The colour when the menu is disabled.
+   */
+  uint8_t dis_colour;
+  bool has_value;
+  bool visible;
+  bool selectable;
+} LieroMenuItem;
+
+/**
+ * How typing a key changed the search text: keep its first `keep` bytes,
+ * then add the key if `add`.
+ */
+typedef struct LieroMenuSearch {
+  uintptr_t keep;
+  bool add;
+} LieroMenuSearch;
+
+/**
+ * The game font, `Font` in C++.
+ */
+typedef struct LieroFont {
+  const struct LieroFontChar *chars;
+  uintptr_t count;
+} LieroFont;
+
+/**
+ * Draws what a menu adds after item `item` (a position in the item list).
+ */
+typedef struct LieroMenuHooks {
+  void *ctx;
+  void (*draw_overlay)(void *ctx, int32_t item, int32_t x, int32_t y, bool selected, bool disabled);
+} LieroMenuHooks;
+
+/**
  * A blood particle, laid out like C++'s `BObject`.
  */
 typedef struct LieroBObject {
@@ -587,14 +691,6 @@ typedef struct LieroViewport {
    */
   struct LieroRand *rand;
 } LieroViewport;
-
-/**
- * Text from C++: `len` bytes from `ptr`.
- */
-typedef struct LieroStr {
-  const uint8_t *ptr;
-  uintptr_t len;
-} LieroStr;
 
 /**
  * One of a worm's weapon slots.
@@ -1074,6 +1170,75 @@ typedef struct LieroBlowUpHooks {
                           struct LieroIVec2 pos,
                           int32_t color);
 } LieroBlowUpHooks;
+
+/**
+ * The game's weapon tables.
+ */
+typedef struct LieroWeapselEnv {
+  /**
+   * `Settings::weapTable`, 40 entries: 0 when a weapon can be chosen.
+   */
+  const uint32_t *weap_table;
+  /**
+   * `Common::weapOrder`: the weapon for each number, minus one.
+   */
+  const int32_t *weap_order;
+  int32_t weapon_count;
+  /**
+   * `gfx.rand`, which the menus use.
+   */
+  struct LieroRand *rand;
+} LieroWeapselEnv;
+
+/**
+ * One worm's weapon menu.
+ */
+typedef struct LieroWeapselMenu {
+  struct LieroMenu menu;
+  /**
+   * "Randomize", the five weapons and "Done".
+   */
+  struct LieroMenuItem *items;
+  int32_t item_count;
+  /**
+   * The worm's chosen weapon numbers (`WormSettings::weapons`), 5 of them.
+   */
+  uint32_t *weapons;
+  /**
+   * The worm has chosen.
+   */
+  bool ready;
+  struct LieroStr name;
+  int32_t color;
+} LieroWeapselMenu;
+
+/**
+ * What C++ does for weapon selection. `menu` is a position in the menu list.
+ */
+typedef struct LieroWeapselHooks {
+  void *ctx;
+  /**
+   * `Worm::pressed`.
+   */
+  bool (*pressed)(void *ctx, int32_t menu, uint32_t control);
+  /**
+   * `Worm::release`.
+   */
+  void (*release)(void *ctx, int32_t menu, uint32_t control);
+  /**
+   * `Worm::pressedOnce`: whether it was pressed, then clears it.
+   */
+  bool (*pressed_once)(void *ctx, int32_t menu, uint32_t control);
+  void (*play_sound)(void *ctx, int32_t sound);
+  /**
+   * Gives the worm weapon `weapon` in `slot` and names it in the menu.
+   */
+  void (*set_weapon)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
+  /**
+   * Names weapon `weapon` in the menu for `slot`, without giving it yet.
+   */
+  void (*set_item_name)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
+} LieroWeapselHooks;
 
 /**
  * Pointers to the fields of a C++ `Worm`.
@@ -1943,6 +2108,226 @@ void liero_level_correct_shadow(const struct LieroLevel *level,
                                 int32_t x2,
                                 int32_t y2);
 
+/**
+ * The C functions below take a menu's state and its `count` items, which
+ * must be valid for the call.
+ */
+void liero_menu_move_to(struct LieroMenu *m,
+                        struct LieroMenuItem *items,
+                        int32_t count,
+                        int32_t item);
+
+/**
+ * Selects the next selectable item up (`direction` < 0) or down.
+ *
+ * # Safety
+ * See `liero_menu_move_to`.
+ */
+void liero_menu_movement(struct LieroMenu *m,
+                         struct LieroMenuItem *items,
+                         int32_t count,
+                         int32_t direction);
+
+/**
+ * Moves half a page up or down.
+ *
+ * # Safety
+ * See `liero_menu_move_to`.
+ */
+void liero_menu_movement_page(struct LieroMenu *m,
+                              struct LieroMenuItem *items,
+                              int32_t count,
+                              int32_t direction);
+
+/**
+ * Scrolls so the visible item `top` is first.
+ *
+ * # Safety
+ * See `liero_menu_move_to`.
+ */
+void liero_menu_set_top(struct LieroMenu *m,
+                        struct LieroMenuItem *items,
+                        int32_t count,
+                        int32_t top);
+
+/**
+ * Scrolls by `amount` items.
+ *
+ * # Safety
+ * See `liero_menu_move_to`.
+ */
+void liero_menu_scroll(struct LieroMenu *m,
+                       struct LieroMenuItem *items,
+                       int32_t count,
+                       int32_t amount);
+
+/**
+ * Shows or hides `item`.
+ *
+ * # Safety
+ * See `liero_menu_move_to`.
+ */
+void liero_menu_set_visibility(struct LieroMenu *m,
+                               struct LieroMenuItem *items,
+                               int32_t count,
+                               int32_t item,
+                               bool state);
+
+/**
+ * Where `item` is drawn into `x` and `y`, or false if it is out of view.
+ *
+ * # Safety
+ * See `liero_menu_move_to`.
+ */
+bool liero_menu_item_position(struct LieroMenu *m,
+                              struct LieroMenuItem *items,
+                              int32_t count,
+                              int32_t item,
+                              int32_t *x,
+                              int32_t *y);
+
+/**
+ * One key typed to search the menu: `key` is the character, or -1 for Tab.
+ * `prefix` is the search text so far, `prefix_len` bytes.
+ *
+ * # Safety
+ * See `liero_menu_move_to`; `prefix` holds `prefix_len` bytes.
+ */
+struct LieroMenuSearch liero_menu_search(struct LieroMenu *m,
+                                         struct LieroMenuItem *items,
+                                         int32_t count,
+                                         const uint8_t *prefix,
+                                         uintptr_t prefix_len,
+                                         int32_t key,
+                                         bool contains,
+                                         uint32_t time);
+
+/**
+ * Draws the menu: `Menu::draw`.
+ *
+ * # Safety
+ * See `liero_menu_move_to` and `LieroBitmap`; the items' strings must be
+ * valid.
+ */
+void liero_menu_draw(struct LieroMenu *m,
+                     struct LieroMenuItem *items,
+                     int32_t count,
+                     const struct LieroBitmap *scr,
+                     const struct LieroFont *font,
+                     const struct LieroMenuHooks *hooks,
+                     bool disabled,
+                     int32_t x,
+                     bool show_disabled_selection);
+
+/**
+ * A number item's value after pressing left or right: `IntegerBehavior`.
+ * Held keys repeat every `scroll_interval` menu frames.
+ */
+int32_t liero_menu_integer_left_right(int32_t v,
+                                      int32_t min,
+                                      int32_t max,
+                                      int32_t step,
+                                      int32_t dir,
+                                      uint32_t menu_cycles,
+                                      int32_t scroll_interval);
+
+/**
+ * A choice item's value after moving `dir` choices, wrapping around from
+ * `max` to `min`: `EnumBehavior::change`.
+ */
+uint32_t liero_menu_enum_change(uint32_t v, uint32_t min, uint32_t max, int32_t dir);
+
+/**
+ * How a number item shows `v`, written with a NUL to `out` (`cap` bytes).
+ * Returns the length.
+ *
+ * # Safety
+ * `out` must hold `cap` bytes.
+ */
+uintptr_t liero_menu_value_text(int32_t v, int32_t kind, uint8_t *out, uintptr_t cap);
+
+/**
+ * The name closest to `search` for typing a weapon's name, relative to the
+ * name's length; the first of equally close ones. Returns -1 if none
+ * compares (C++ left the result unset then).
+ *
+ * # Safety
+ * `names` holds `count` valid strings, and `search` `search_len` bytes.
+ */
+int32_t liero_menu_closest_name(const struct LieroStr *names,
+                                int32_t count,
+                                const uint8_t *search,
+                                uintptr_t search_len);
+
+/**
+ * A colour component's bar in the player menu: `PlayerMenu::drawItemOverlay`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_menu_draw_rgb_overlay(const struct LieroBitmap *scr,
+                                 int32_t x,
+                                 int32_t y,
+                                 bool selected,
+                                 int32_t value,
+                                 int32_t color);
+
+/**
+ * The palette entry shown in the options menu: `HiddenMenu::drawItemOverlay`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_menu_draw_palette_overlay(const struct LieroBitmap *scr,
+                                     int32_t x,
+                                     int32_t y,
+                                     bool selected,
+                                     int32_t color);
+
+/**
+ * The level, "A vs B" and the worms' colours, twice as big, as the spectator
+ * window shows them: `drawVersusInfo`. `level` is the level's line of text.
+ *
+ * # Safety
+ * See `LieroBitmap`; the strings must be valid.
+ */
+void liero_menu_draw_versus(const struct LieroBitmap *scr,
+                            const struct LieroFont *font,
+                            struct LieroStr level,
+                            struct LieroStr name0,
+                            struct LieroStr name1,
+                            int32_t color0,
+                            int32_t color1,
+                            int32_t center_x,
+                            int32_t center_y);
+
+/**
+ * A message in a box centred on (x, y): `drawInfoBox`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `text` must be valid.
+ */
+void liero_menu_draw_info_box(const struct LieroBitmap *scr,
+                              const struct LieroFont *font,
+                              struct LieroStr text,
+                              int32_t x,
+                              int32_t y);
+
+/**
+ * Text being typed in a box at (x, y), over a strip of `frozen`, the screen
+ * before the box: `drawInputBox`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `text` must be valid.
+ */
+void liero_menu_draw_input_box(const struct LieroBitmap *scr,
+                               const struct LieroBitmap *frozen,
+                               const struct LieroFont *font,
+                               struct LieroStr text,
+                               int32_t x,
+                               int32_t y,
+                               bool centered);
+
 int32_t liero_vector_length(int32_t x, int32_t y);
 
 /**
@@ -2057,6 +2442,22 @@ uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
 double liero_rand_double_below(struct LieroRand *rand, double max);
 
 /**
+ * `timeToString`: writes "MM:SS" and a NUL to `out` (6 bytes).
+ *
+ * # Safety
+ * `out` must hold 6 bytes.
+ */
+void liero_time_to_string(int32_t sec, uint8_t *out);
+
+/**
+ * `timeToStringEx`: writes the time and a NUL to `out` (10 bytes).
+ *
+ * # Safety
+ * `out` must hold 10 bytes.
+ */
+void liero_time_to_string_ex(int32_t ms, bool force_hours, bool force_minutes, uint8_t *out);
+
+/**
  * Moves the camera one tick: `Viewport::process` for `LIERO_VIEWPORT_WORM`,
  * `SpectatorViewport::process` for `LIERO_VIEWPORT_SPECTATOR`. `worms` has
  * `worm_count` entries in the order of `Game::worms`.
@@ -2150,6 +2551,62 @@ void liero_wobject_blow_up(const struct LieroWeapon *w,
                            struct LieroIVec2 vel,
                            const struct LieroWObjectEnv *env,
                            const struct LieroBlowUpHooks *hooks);
+
+/**
+ * A worm's starting weapons, from the constructor of `WeaponSelection`:
+ * keeps `weapons` (5 numbers) where allowed and replaces the rest, or all
+ * of them if `random`, with random ones that differ if there are enough.
+ * Writes the weapons to `out`.
+ *
+ * # Safety
+ * See `LieroWeapselEnv`; `weapons` and `out` hold 5 entries.
+ */
+void liero_weapsel_choose(uint32_t *weapons,
+                          bool random,
+                          const struct LieroWeapselEnv *env,
+                          int32_t *out);
+
+/**
+ * One frame of weapon selection: `WeaponSelection::processFrame`. Each
+ * worm not ready changes the selected weapon with left and right, moves
+ * with up and down, and picks random weapons or finishes with fire.
+ * Returns whether every worm is ready.
+ *
+ * # Safety
+ * See `LieroWeapselEnv`; `menus` holds `count` menus with valid items and
+ * weapons.
+ */
+bool liero_weapsel_process(struct LieroWeapselMenu *menus,
+                           int32_t count,
+                           const struct LieroWeapselEnv *env,
+                           const struct LieroWeapselHooks *hooks);
+
+/**
+ * The split-screen weapon selection over the frozen game: the title, each
+ * worm's name and the menus of worms not ready. `menu_scr` is where the
+ * menus go, as C++ drew them on the play screen.
+ *
+ * # Safety
+ * See `LieroBitmap` and `liero_weapsel_process`; the strings must be valid.
+ */
+void liero_weapsel_draw(struct LieroWeapselMenu *menus,
+                        int32_t count,
+                        const struct LieroBitmap *scr,
+                        const struct LieroBitmap *menu_scr,
+                        const struct LieroFont *font,
+                        struct LieroStr title);
+
+/**
+ * The spectator window's weapon selection: the first two worms' menus, at
+ * the sides, while not ready.
+ *
+ * # Safety
+ * See `liero_weapsel_draw`.
+ */
+void liero_weapsel_draw_spectator(struct LieroWeapselMenu *menus,
+                                  int32_t count,
+                                  const struct LieroBitmap *scr,
+                                  const struct LieroFont *font);
 
 /**
  * The sprite frame for a worm aiming at `aiming_angle` (fixed-point) in

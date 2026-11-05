@@ -2,6 +2,7 @@
 #define UUID_C5F17B0F3E6B43526CD95D90435B7596
 
 #include "itemBehavior.hpp"
+#include <liero_game.h>
 
 struct Common;
 struct Menu;
@@ -28,5 +29,11 @@ struct IntegerBehavior : ItemBehavior
 	bool percentage;
 	bool allowEntry;
 };
+
+#include <string>
+
+// How a number item shows `v`, one of the LIERO_MENU_VALUE_* kinds. Implemented
+// in Rust (rust/liero-game/src/menu.rs).
+std::string valueText(int v, int kind);
 
 #endif // UUID_C5F17B0F3E6B43526CD95D90435B7596

@@ -5,6 +5,7 @@
 #include <string>
 
 #include <gvl/io2/convert.hpp>
+#include <liero_game.h>
 
 struct Bitmap;
 
@@ -85,6 +86,13 @@ struct Font
 	}
 
 	void drawFramedText(Bitmap& scr, std::string const& text, int x, int y, int color);
+
+	// The font as Rust draws with it.
+	LieroFont view() const
+	{
+		LieroFont f = { reinterpret_cast<LieroFontChar const*>(chars.data()), chars.size() };
+		return f;
+	}
 
 	std::vector<Char> chars;
 };

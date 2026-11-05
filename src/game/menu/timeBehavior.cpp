@@ -8,6 +8,6 @@
 
 void TimeBehavior::onUpdate(Menu& menu, MenuItem& item)
 {
-	item.value = frames ? timeToStringFrames(v) : timeToString(v);
+	item.value = valueText(v, frames ? LIERO_MENU_VALUE_FRAMES : LIERO_MENU_VALUE_TIME);
 	item.hasValue = true;
 }

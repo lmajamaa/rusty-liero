@@ -22,6 +22,18 @@
 #include "common.hpp"
 #include "filesystem.hpp"
 
+// The level name, "A vs B" and the worms' colours, as the spectator window
+// shows them in the menus and weapon selection. The name is taken from
+// `levelFileForName`, which weapon selection takes from other settings.
+void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::string const& levelFileForName, int centerX, int centerY);
+
+// A message in a box centred on (x, y), as `Gfx::infoBox` shows it.
+void drawInfoBox(Common& common, Bitmap& bmp, std::string const& text, int x, int y);
+
+// The text being typed, `str`, in a box at (x, y) over `frozen`, as
+// `Gfx::inputString` shows it.
+void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const& str, int x, int y, bool centered);
+
 struct Key
 {
 	Key(int sym, char ch)
