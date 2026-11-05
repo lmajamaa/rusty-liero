@@ -11,6 +11,7 @@ path = "src/lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
+liero-data = { path = "../liero-data" }
 
 # A panic must never unwind into C++, so it aborts instead.
 [profile.dev]

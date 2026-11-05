@@ -62,6 +62,11 @@
 #define LIERO_RAND_DEFAULT_SEED 4919
 
 /**
+ * Characters in the font (`Font::chars`).
+ */
+#define LIERO_TC_FONT_CHARS 250
+
+/**
  * The viewport that follows one worm, in split screen.
  */
 #define LIERO_VIEWPORT_WORM 0
@@ -131,6 +136,17 @@
 #define LIERO_GAME_HOLDAZONE 2
 
 #define LIERO_GAME_SCALES_OF_JUSTICE 3
+
+/**
+ * A loaded TC, or the error that stopped loading it.
+ */
+typedef struct LieroTc LieroTc;
+
+/**
+ * A file's contents, filled in by the C++ read hook with
+ * `liero_tc_file_set`.
+ */
+typedef struct LieroTcFile LieroTcFile;
 
 /**
  * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
@@ -659,6 +675,199 @@ typedef struct LieroNinjaropeHooks {
                           struct LieroIVec2 pos,
                           int32_t color);
 } LieroNinjaropeHooks;
+
+typedef struct LieroTcHooks {
+  void *ctx;
+  /**
+   * Reads `path` (inside the TC, with `/` between folders) into `out`.
+   * Returns false if the file can't be read.
+   */
+  bool (*read)(void *ctx, struct LieroStr path, struct LieroTcFile *out);
+} LieroTcHooks;
+
+typedef struct LieroTcWeapon {
+  struct LieroStr name;
+  struct LieroStr id_str;
+  int32_t detect_distance;
+  bool affect_by_worm;
+  int32_t blow_away;
+  int32_t gravity;
+  bool shadow;
+  bool laser_sight;
+  int32_t launch_sound;
+  int32_t loop_sound;
+  int32_t explo_sound;
+  int32_t speed;
+  int32_t add_speed;
+  int32_t distribution;
+  int32_t parts;
+  int32_t recoil;
+  int32_t mult_speed;
+  int32_t delay;
+  int32_t loading_time;
+  int32_t ammo;
+  int32_t create_on_exp;
+  int32_t dirt_effect;
+  int32_t leave_shells;
+  int32_t leave_shell_delay;
+  bool play_reload_sound;
+  bool worm_explode;
+  bool expl_ground;
+  bool worm_collide;
+  int32_t fire_cone;
+  bool collide_with_objects;
+  bool affect_by_explosions;
+  int32_t bounce;
+  int32_t time_to_explo;
+  int32_t time_to_explo_v;
+  int32_t hit_damage;
+  int32_t blood_on_hit;
+  int32_t start_frame;
+  int32_t num_frames;
+  bool loop_anim;
+  int32_t shot_type;
+  int32_t color_bullets;
+  int32_t splinter_amount;
+  int32_t splinter_colour;
+  int32_t splinter_type;
+  int32_t splinter_scatter;
+  int32_t obj_trail_type;
+  int32_t obj_trail_delay;
+  int32_t part_trail_type;
+  int32_t part_trail_obj;
+  int32_t part_trail_delay;
+  bool chain_explosion;
+} LieroTcWeapon;
+
+typedef struct LieroTcNObject {
+  struct LieroStr id_str;
+  int32_t detect_distance;
+  int32_t gravity;
+  int32_t speed;
+  int32_t speed_v;
+  int32_t distribution;
+  int32_t blow_away;
+  int32_t bounce;
+  int32_t hit_damage;
+  bool worm_explode;
+  bool expl_ground;
+  bool worm_destroy;
+  int32_t blood_on_hit;
+  int32_t start_frame;
+  int32_t num_frames;
+  bool draw_on_map;
+  int32_t color_bullets;
+  int32_t create_on_exp;
+  bool affect_by_explosions;
+  int32_t dirt_effect;
+  int32_t splinter_amount;
+  int32_t splinter_colour;
+  int32_t splinter_type;
+  bool blood_trail;
+  int32_t blood_trail_delay;
+  int32_t leave_obj;
+  int32_t leave_obj_delay;
+  int32_t time_to_explo;
+  int32_t time_to_explo_v;
+} LieroTcNObject;
+
+typedef struct LieroTcSObject {
+  struct LieroStr id_str;
+  int32_t start_sound;
+  int32_t num_sounds;
+  int32_t anim_delay;
+  int32_t start_frame;
+  int32_t num_frames;
+  int32_t detect_range;
+  int32_t damage;
+  int32_t blow_away;
+  bool shadow;
+  int32_t shake;
+  int32_t flash;
+  int32_t dirt_effect;
+} LieroTcSObject;
+
+typedef struct LieroTcSound {
+  struct LieroStr name;
+  /**
+   * Signed 8-bit samples.
+   */
+  const uint8_t *data;
+  uintptr_t len;
+  /**
+   * False when the WAV file had another format: the game has no sound.
+   */
+  bool valid;
+} LieroTcSound;
+
+typedef struct LieroTcSprites {
+  const uint8_t *data;
+  int32_t width;
+  int32_t height;
+  int32_t count;
+} LieroTcSprites;
+
+typedef struct LieroTcFontChar {
+  /**
+   * 7x8 pixels, row-major: 8 where set.
+   */
+  uint8_t data[56];
+  int32_t width;
+} LieroTcFontChar;
+
+/**
+ * Everything `Common` gets from a TC.
+ */
+typedef struct LieroTcData {
+  const struct LieroTcWeapon *weapons;
+  uintptr_t weapon_count;
+  const struct LieroTcNObject *nobjects;
+  uintptr_t nobject_count;
+  const struct LieroTcSObject *sobjects;
+  uintptr_t sobject_count;
+  const struct LieroTcSound *sounds;
+  uintptr_t sound_count;
+  /**
+   * In the order of `LIERO_CDEFS`, `LIERO_SDEFS` and `LIERO_HDEFS`.
+   */
+  const int32_t *constants;
+  uintptr_t constant_count;
+  const struct LieroStr *texts;
+  uintptr_t text_count;
+  const bool *hacks;
+  uintptr_t hack_count;
+  /**
+   * 6-bit VGA palette, red, green and blue for each of 256 entries.
+   */
+  uint8_t palette[768];
+  /**
+   * (from, to) for each of 4 colour animations.
+   */
+  int32_t color_anim[8];
+  uint8_t materials[256];
+  struct LieroTexture textures[LIERO_TEXTURE_COUNT];
+  /**
+   * [bonus * 2 + (0 = timer, 1 = timerV)].
+   */
+  int32_t bonus_rand_timer[4];
+  int32_t bonus_sobjects[2];
+  int32_t bonus_frames[2];
+  /**
+   * [(0 = off, 1 = on) * 7 + key].
+   */
+  int32_t ai_params[14];
+  struct LieroTcSprites small_sprites;
+  struct LieroTcSprites large_sprites;
+  struct LieroTcSprites text_sprites;
+  struct LieroTcFontChar font[LIERO_TC_FONT_CHARS];
+  /**
+   * Precomputed: weapon indexes sorted by name, and the worm and fire cone
+   * sprites facing both ways (`Common::precompute`).
+   */
+  const int32_t *weap_order;
+  struct LieroTcSprites worm_sprites;
+  struct LieroTcSprites fire_cone_sprites;
+} LieroTcData;
 
 /**
  * A viewport's state, laid out like the fields of C++'s `Viewport`.
@@ -2440,6 +2649,45 @@ uint32_t liero_rand_below(struct LieroRand *rand, uint32_t max);
 uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
 
 double liero_rand_double_below(struct LieroRand *rand, double max);
+
+/**
+ * Copies `len` bytes from `data` into `out`.
+ *
+ * # Safety
+ * `out` must come from the read hook and `data` must be valid for `len` bytes.
+ */
+void liero_tc_file_set(struct LieroTcFile *out, const uint8_t *data, uintptr_t len);
+
+/**
+ * Loads a TC, reading its files through `hooks`. Always returns a TC to free
+ * with `liero_tc_free`; `liero_tc_error` says whether loading failed.
+ *
+ * # Safety
+ * `hooks` must be valid for the call.
+ */
+struct LieroTc *liero_tc_load(const struct LieroTcHooks *hooks);
+
+/**
+ * Why loading failed, or an empty string.
+ *
+ * # Safety
+ * `tc` must come from `liero_tc_load`.
+ */
+struct LieroStr liero_tc_error(const struct LieroTc *tc);
+
+/**
+ * The loaded data, or null if loading failed. Valid until `liero_tc_free`.
+ *
+ * # Safety
+ * `tc` must come from `liero_tc_load`.
+ */
+const struct LieroTcData *liero_tc_data(const struct LieroTc *tc);
+
+/**
+ * # Safety
+ * `tc` must come from `liero_tc_load` and not be used afterwards.
+ */
+void liero_tc_free(struct LieroTc *tc);
 
 /**
  * `timeToString`: writes "MM:SS" and a NUL to `out` (6 bytes).

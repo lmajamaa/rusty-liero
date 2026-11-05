@@ -95,3 +95,6 @@ jobs:
 
       - name: Build the Rust tctool
         run: cargo build --release --manifest-path tools/tctool/Cargo.toml
+
+      - name: Test reading and writing TCs (liero-data)
+        run: cargo test --manifest-path rust/liero-data/Cargo.toml

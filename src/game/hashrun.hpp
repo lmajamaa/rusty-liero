@@ -15,6 +15,7 @@ struct Common;
 // Drives the menus and weapon selection with scripted keys and prints hashes
 // of what they show. See hashmenus.cpp.
 void hashMenus(gvl::shared_ptr<Common> common);
+void hashTc(Common& common);
 
 // 64-bit FNV-1a over 32-bit words, the same as the Rust tests use.
 struct Fnv

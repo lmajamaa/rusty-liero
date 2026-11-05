@@ -13,6 +13,7 @@ pub mod menu;
 pub mod math;
 pub mod object;
 pub mod rand;
+pub mod tc;
 pub mod text;
 pub mod viewport;
 pub mod weapon;

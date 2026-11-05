@@ -1,0 +1,12 @@
+[package]
+name = "liero-data"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause"
+description = "Liero game data: reads LIERO.EXE, CHR and SND, and reads and writes OpenLiero TC folders"
+
+[lib]
+name = "liero_data"
+path = "src/lib.rs"
+
+[dependencies]

@@ -103,7 +103,7 @@ const SINT8: &[(&str, usize)] = &[
 ];
 
 /// Constants in the order they are written to tc.cfg (LIERO_CDEFS).
-const CONSTANT_ORDER: &[&str] = &[
+pub(crate) const CONSTANT_ORDER: &[&str] = &[
     "NRInitialLength", "NRAttachLength", "MinBounceUp", "MinBounceDown", "MinBounceLeft",
     "MinBounceRight", "WormGravity", "WalkVelLeft", "MaxVelLeft", "WalkVelRight", "MaxVelRight",
     "JumpForce", "MaxAimVelLeft", "AimAccLeft", "MaxAimVelRight", "AimAccRight",
@@ -122,7 +122,7 @@ const CONSTANT_ORDER: &[&str] = &[
 ];
 
 /// Pascal strings, in the order they are written to tc.cfg (LIERO_SDEFS).
-const TEXTS: &[(&str, usize)] = &[
+pub(crate) const TEXTS: &[(&str, usize)] = &[
     ("InitSound", 0x177F),
     ("LoadingSounds", 0x18F2),
     ("LoadingAndThinking", 0xFB92),
@@ -167,7 +167,7 @@ const TEXTS: &[(&str, usize)] = &[
 
 /// A hack is active when all of its (offset, byte) indicators match.
 /// Listed in the order they are written to tc.cfg (LIERO_HDEFS).
-const HACKS: &[(&str, &[(usize, u8)])] = &[
+pub(crate) const HACKS: &[(&str, &[(usize, u8)])] = &[
     ("FallDamage", &[(0x3A0A, 0x26), (0x3A87, 0x26), (0x3B04, 0x26), (0x3B81, 0x26)]),
     // One byte only, because ProMode has a silly jump destination
     ("BonusReloadOnly", &[(0x2DB1, 0xEB)]),
@@ -641,7 +641,7 @@ fn load_sounds(snd: R) -> Result<Vec<Sound>, Error> {
             snd.seek(entry_end)?;
         }
 
-        sounds.push(Sound { name, data });
+        sounds.push(Sound { name, data: Some(data) });
     }
 
     Ok(sounds)

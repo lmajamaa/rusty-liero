@@ -323,6 +323,7 @@ int hashRun(int argc, char* argv[])
 
 	gvl::shared_ptr<Common> common(new Common());
 	common->load(FsNode(std::string("TC/openliero")));
+	hashTc(*common);
 
 	for (RunConfig const& config : configs)
 		runGame(common, config, ticks, interval);

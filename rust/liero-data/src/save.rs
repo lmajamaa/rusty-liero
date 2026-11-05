@@ -2,7 +2,7 @@
 //! `archive_text` functions in `src/game/common_model.hpp`.
 
 use crate::model::*;
-use crate::toml::Writer;
+use crate::toml_writer::Writer;
 use crate::Error;
 use std::fs;
 use std::path::Path;
@@ -15,7 +15,9 @@ pub fn save(common: &Common, path: &Path) -> Result<(), Error> {
         let dir = path.join("sounds");
         fs::create_dir_all(&dir)?;
         for sound in &common.sounds {
-            write(&dir.join(format!("{}.wav", sound.name)), &wav(&sound.data))?;
+            if let Some(data) = &sound.data {
+                write(&dir.join(format!("{}.wav", sound.name)), &wav(data))?;
+            }
         }
     }
 
