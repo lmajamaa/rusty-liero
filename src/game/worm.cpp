@@ -18,14 +18,10 @@
 
 gvl::gash::value_type& WormSettings::updateHash()
 {
-	GameSerializationContext context;
-	gvl::hash_accumulator<gvl::gash> ha;
-
-
-	archive(gvl::out_archive<gvl::hash_accumulator<gvl::gash>, GameSerializationContext>(ha, context), *this);
-
-	ha.flush();
-	hash = ha.final();
+	LieroWormSettings view = wormSettingsView(*this);
+	SettingsResult r(liero_worm_settings_hash(&view));
+	setWormSettings(*this, r.worm());
+	hash = r.hash();
 	return hash;
 }
 

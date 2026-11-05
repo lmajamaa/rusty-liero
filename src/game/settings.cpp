@@ -4,12 +4,11 @@
 #include "gfx.hpp"
 #include "filesystem.hpp"
 
-#include <gvl/io2/fstream.hpp>
-#include <gvl/serialization/context.hpp>
-#include <gvl/serialization/archive.hpp>
-#include <gvl/serialization/toml.hpp>
+#include <gvl/io2/stream.hpp>
+#include <gvl/serialization/except.hpp>
 
-#include <gvl/crypt/gash.hpp>
+#include <stdexcept>
+#include <vector>
 
 int const Settings::wormAnimTab[] =
 {
@@ -19,127 +18,218 @@ int const Settings::wormAnimTab[] =
 	14
 };
 
-Extensions::Extensions()
-: recordReplays(true)
-, loadPowerlevelPalette(true)
-, bloodParticleMax(700)
-, aiFrames(70*2), aiMutations(2)
-, aiTraces(false)
-, aiParallels(3)
-, fullscreen(false)
-, zoneTimeout(30)
-, selectBotWeapons(true)
-, allowViewingSpawnPoint(false)
-, singleScreenReplay(false)
-, spectatorWindow(false)
-, tc(std::string("openliero"))
-{
-}
-
 Settings::Settings()
-: maxBonuses(4)
-, blood(100)
-, timeToLose(600)
-, flagsToWin(20)
-, gameMode(0)
-, shadow(true)
-, loadChange(true)
-, namesOnBonuses(false)
-, regenerateLevel(false)
-, lives(15)
-, loadingTime(100)
-, randomLevel(true)
-, map(true)
-, screenSync(true)
 {
-	std::memset(weapTable, 0, sizeof(weapTable));
-
 	wormSettings[0].reset(new WormSettings);
 	wormSettings[1].reset(new WormSettings);
 
-	wormSettings[0]->color = 32;
-	wormSettings[1]->color = 41;
-
-	// DOS scan codes for up, down, left, right, fire, change and jump.
-	// Player 1: R, F, D, G, Left Ctrl, Left Shift, Left Alt.
-	// Player 2: I, K, J, L, Slash, Right Alt, Right Shift. The original
-	// arrows and Right Ctrl don't work on a Mac: there is no Right Ctrl, and
-	// with player 1 holding Left Ctrl, Ctrl+arrows switch Spaces.
-	unsigned char defControls[2][7] =
-	{
-		{0x13, 0x21, 0x20, 0x22, 0x1D, 0x2A, 0x38},
-		{0x17, 0x25, 0x24, 0x26, 0x35, 0x90, 0x36}
-	};
-
-	unsigned char defRGB[2][3] =
-	{
-		{26, 26, 63},
-		{15, 43, 15}
-	};
-
-	for(int i = 0; i < 2; ++i)
-	{
-		for(int j = 0; j < 7; ++j)
-		{
-			wormSettings[i]->controls[j] = defControls[i][j];
-			wormSettings[i]->controlsEx[j] = defControls[i][j];
-		}
-
-		for(int j = 0; j < 3; ++j)
-		{
-			wormSettings[i]->rgb[j] = defRGB[i][j];
-		}
-	}
+	SettingsResult r(liero_settings_default());
+	setSettings(*this, r.settings());
 }
 
-typedef gvl::in_archive<gvl::octet_reader> in_archive_t;
-typedef gvl::out_archive<gvl::octet_writer> out_archive_t;
+namespace
+{
+
+LieroStr str(std::string const& s)
+{
+	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
+	return r;
+}
+
+void setStr(std::string& s, LieroStr v)
+{
+	s.assign(reinterpret_cast<char const*>(v.ptr), v.len);
+}
+
+template<typename T, typename U, std::size_t N>
+void copyArray(T (&dest)[N], U const (&src)[N])
+{
+	for (std::size_t i = 0; i < N; ++i)
+		dest[i] = src[i];
+}
+
+// The whole file, or a std::runtime_error if it can't be opened.
+std::vector<uint8_t> readAll(FsNode const& node)
+{
+	gvl::octet_reader reader(node.toOctetReader());
+	std::vector<uint8_t> data;
+	uint8_t b;
+	while (reader.try_get(b))
+		data.push_back(b);
+	return data;
+}
+
+}
+
+LieroWormSettings wormSettingsView(WormSettings const& ws)
+{
+	LieroWormSettings v;
+	v.health = ws.health;
+	v.controller = ws.controller;
+	copyArray(v.controls, ws.controls);
+	copyArray(v.weapons, ws.weapons);
+	v.name = str(ws.name);
+	copyArray(v.rgb, ws.rgb);
+	v.random_name = ws.randomName;
+	v.color = ws.color;
+	copyArray(v.controls_ex, ws.controlsEx);
+	return v;
+}
+
+void setWormSettings(WormSettings& ws, LieroWormSettings const& v)
+{
+	ws.health = v.health;
+	ws.controller = v.controller;
+	copyArray(ws.controls, v.controls);
+	copyArray(ws.weapons, v.weapons);
+	setStr(ws.name, v.name);
+	copyArray(ws.rgb, v.rgb);
+	ws.randomName = v.random_name;
+	ws.color = v.color;
+	copyArray(ws.controlsEx, v.controls_ex);
+}
+
+LieroSettings settingsView(Settings const& s)
+{
+	LieroSettings v;
+	v.record_replays = s.recordReplays;
+	v.load_powerlevel_palette = s.loadPowerlevelPalette;
+	v.blood_particle_max = s.bloodParticleMax;
+	v.ai_frames = s.aiFrames;
+	v.ai_mutations = s.aiMutations;
+	v.ai_traces = s.aiTraces;
+	v.ai_parallels = s.aiParallels;
+	v.fullscreen = s.fullscreen;
+	v.zone_timeout = s.zoneTimeout;
+	v.select_bot_weapons = s.selectBotWeapons;
+	v.allow_viewing_spawn_point = s.allowViewingSpawnPoint;
+	v.single_screen_replay = s.singleScreenReplay;
+	v.spectator_window = s.spectatorWindow;
+	v.tc = str(s.tc);
+
+	copyArray(v.weap_table, s.weapTable);
+	v.max_bonuses = s.maxBonuses;
+	v.blood = s.blood;
+	v.time_to_lose = s.timeToLose;
+	v.flags_to_win = s.flagsToWin;
+	v.game_mode = s.gameMode;
+	v.shadow = s.shadow;
+	v.load_change = s.loadChange;
+	v.names_on_bonuses = s.namesOnBonuses;
+	v.regenerate_level = s.regenerateLevel;
+	v.lives = s.lives;
+	v.loading_time = s.loadingTime;
+	v.random_level = s.randomLevel;
+	v.level_file = str(s.levelFile);
+	v.map = s.map;
+	v.screen_sync = s.screenSync;
+
+	for (int i = 0; i < 2; ++i)
+		v.worms[i] = wormSettingsView(*s.wormSettings[i]);
+	return v;
+}
+
+void setSettings(Settings& s, LieroSettings const& v)
+{
+	s.recordReplays = v.record_replays;
+	s.loadPowerlevelPalette = v.load_powerlevel_palette;
+	s.bloodParticleMax = v.blood_particle_max;
+	s.aiFrames = v.ai_frames;
+	s.aiMutations = v.ai_mutations;
+	s.aiTraces = v.ai_traces;
+	s.aiParallels = v.ai_parallels;
+	s.fullscreen = v.fullscreen;
+	s.zoneTimeout = v.zone_timeout;
+	s.selectBotWeapons = v.select_bot_weapons;
+	s.allowViewingSpawnPoint = v.allow_viewing_spawn_point;
+	s.singleScreenReplay = v.single_screen_replay;
+	s.spectatorWindow = v.spectator_window;
+	setStr(s.tc, v.tc);
+
+	copyArray(s.weapTable, v.weap_table);
+	s.maxBonuses = v.max_bonuses;
+	s.blood = v.blood;
+	s.timeToLose = v.time_to_lose;
+	s.flagsToWin = v.flags_to_win;
+	s.gameMode = v.game_mode;
+	s.shadow = v.shadow;
+	s.loadChange = v.load_change;
+	s.namesOnBonuses = v.names_on_bonuses;
+	s.regenerateLevel = v.regenerate_level;
+	s.lives = v.lives;
+	s.loadingTime = v.loading_time;
+	s.randomLevel = v.random_level;
+	setStr(s.levelFile, v.level_file);
+	s.map = v.map;
+	s.screenSync = v.screen_sync;
+
+	for (int i = 0; i < 2; ++i)
+		setWormSettings(*s.wormSettings[i], v.worms[i]);
+}
+
+void throwArchiveError(LieroSettingsStatus status, std::exception_ptr const& readerError)
+{
+	switch (status)
+	{
+	case LieroSettingsStatus_ReadError:
+		if (readerError)
+			std::rethrow_exception(readerError);
+		throw std::runtime_error("Read error in get()");
+	case LieroSettingsStatus_CheckError:
+		throw gvl::archive_check_error("Expected checkpoint here");
+	default:
+		return;
+	}
+}
 
 bool Settings::load(FsNode node, Rand& rand)
 {
 	try
 	{
-		auto reader = node.toOctetReader();
-		gvl::default_serialization_context context;
+		std::vector<uint8_t> data = readAll(node);
+		LieroSettings view = settingsView(*this);
+		SettingsResult r(liero_settings_read_text(&view, data.data(), data.size()));
+		setSettings(*this, r.settings());
 
-		gvl::toml::reader<gvl::octet_reader> ar(reader);
-
-		archive_text(*this, ar);
+		switch (r.status())
+		{
+		case LieroSettingsStatus_Ok:
+			return true;
+		case LieroSettingsStatus_MissingKey:
+			// What std::map::at threw in the C++ reader. Nothing catches it.
+			throw std::out_of_range("Missing setting in liero.cfg");
+		default:
+			return false;
+		}
 	}
 	catch (std::runtime_error&)
 	{
 		return false;
 	}
-
-	return true;
 }
 
 bool Settings::loadLegacy(FsNode node, Rand& rand)
 {
 	try
 	{
-		auto reader = node.toOctetReader();
-		gvl::default_serialization_context context;
-
-		archive_liero(in_archive_t(reader, context), *this, rand);
+		std::vector<uint8_t> data = readAll(node);
+		LieroSettings view = settingsView(*this);
+		SettingsResult r(liero_settings_read_legacy(&view, data.data(), data.size()));
+		setSettings(*this, r.settings());
+		return r.status() == LieroSettingsStatus_Ok;
 	}
 	catch (std::runtime_error&)
 	{
 		return false;
 	}
-
-	return true;
 }
 
 gvl::gash::value_type& Settings::updateHash()
 {
-	gvl::default_serialization_context context;
-	gvl::hash_accumulator<gvl::gash> ha;
-
-	archive(gvl::out_archive<gvl::hash_accumulator<gvl::gash>, gvl::default_serialization_context>(ha, context), *this);
-
-	ha.flush();
-	hash = ha.final();
+	LieroSettings view = settingsView(*this);
+	SettingsResult r(liero_settings_hash(&view));
+	setSettings(*this, r.settings());
+	hash = r.hash();
 	return hash;
 }
 
@@ -147,9 +237,9 @@ void Settings::save(FsNode node, Rand& rand)
 {
 	auto writer = node.toOctetWriter();
 
-	gvl::toml::writer<gvl::octet_writer> ar(writer);
-
-	archive_text(*this, ar);
+	LieroSettings view = settingsView(*this);
+	SettingsResult r(liero_settings_write_text(&view));
+	r.writeTo(writer);
 }
 
 void Settings::generateName(WormSettings& ws, Rand& rand)

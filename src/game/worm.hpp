@@ -13,6 +13,7 @@
 #include <gvl/serialization/archive.hpp> // For gvl::enable_when
 #include <gvl/crypt/gash.hpp>
 #include "filesystem.hpp"
+#include "settingsffi.hpp"
 
 struct Worm;
 struct Game;
@@ -75,32 +76,18 @@ struct WormSettingsExtensions
 		MaxControl = Dig,
 		MaxControlEx
 	};
-	//static const int MaxControl = Dig;
-
-	WormSettingsExtensions()
-	{
-		std::memset(controlsEx, 0, sizeof(controlsEx));
-	}
 
 	uint32_t controlsEx[MaxControlEx];
 };
 
+// The fields and their defaults match LieroWormSettings and
+// liero_data::settings::WormSettings.
 struct WormSettings : gvl::shared, WormSettingsExtensions
 {
 	WormSettings()
-	: health(100)
-	, controller(0)
-	, randomName(true)
-	, color(0)
 	{
-		rgb[0] = 26;
-		rgb[1] = 26;
-		rgb[2] = 62;
-
-        for (int i = 0; i < 5; ++i) {
-            weapons[i] = 1;
-        }
-		std::memset(controls, 0, sizeof(controls));
+		SettingsResult r(liero_worm_settings_default());
+		setWormSettings(*this, r.worm());
 	}
 
 	gvl::gash::value_type& updateHash();
@@ -124,43 +111,25 @@ struct WormSettings : gvl::shared, WormSettingsExtensions
 	gvl::gash::value_type hash;
 };
 
-template<typename Archive>
-void archive(Archive ar, WormSettings& ws)
+// A worm's settings in a replay of context.replayVersion, or in a profile.
+// The format is in liero_data::settings::read_worm and write_worm.
+template<typename Reader, typename Context>
+void archive(gvl::in_archive<Reader, Context> ar, WormSettings& ws)
 {
-	ar
-	.ui32(ws.color)
-	.ui32(ws.health)
-	.ui16(ws.controller);
-	for(int i = 0; i < WormSettings::MaxControl; ++i)
-		ar.ui16(ws.controls[i]); // TODO: Initialize controlsEx from this earlier
-	for(int i = 0; i < 5; ++i)
-		ar.ui16(ws.weapons[i]);
-	for(int i = 0; i < 3; ++i)
-		ar.ui16(ws.rgb[i]);
-	ar.b(ws.randomName);
-	ar.str(ws.name);
-	if(ar.context.replayVersion <= 1)
-	{
-		ws.WormSettingsExtensions::operator=(WormSettingsExtensions());
-		return;
-	}
+	ArchiveByteSource<Reader> source(ar.reader);
+	LieroWormSettings view = wormSettingsView(ws);
+	SettingsResult r(liero_worm_settings_read_archive(&view, ar.context.replayVersion, &source.hooks));
+	setWormSettings(ws, r.worm());
+	source.rethrow(r.status());
+}
 
-	int wsVersion = myGameVersion;
-	ar.ui8(wsVersion);
-
-	for(int c = 0; c < WormSettings::MaxControl; ++c)
-	{
-		int dummy = 0;
-		gvl::enable_when(ar, wsVersion >= 2)
-			.ui8(dummy, 255)
-			.ui8(dummy, 255);
-	}
-
-	for(int c = 0; c < WormSettings::MaxControlEx; ++c)
-	{
-		gvl::enable_when(ar, wsVersion >= 3)
-			.ui32(ws.controlsEx[c], ws.controls[c]);
-	}
+template<typename Writer, typename Context, bool Reread>
+void archive(gvl::out_archive<Writer, Context, Reread> ar, WormSettings& ws)
+{
+	LieroWormSettings view = wormSettingsView(ws);
+	SettingsResult r(liero_worm_settings_write_archive(&view, ar.context.replayVersion));
+	setWormSettings(ws, r.worm());
+	r.writeTo(ar.writer);
 }
 
 struct Viewport;

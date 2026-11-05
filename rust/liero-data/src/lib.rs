@@ -5,13 +5,18 @@
 //! - `load` reads a TC folder the way the C++ game's `Common::load` did.
 //!
 //! All three use the same `model::Common`.
+//!
+//! `settings` holds the game settings and their formats: liero.cfg,
+//! LIERO.DAT and the replay and profile archives, hashed with `gash`.
 
 pub mod exe;
+pub mod gash;
 pub mod load;
 pub mod model;
 mod rand;
 mod reader;
 pub mod save;
+pub mod settings;
 mod toml_reader;
 mod toml_writer;
 
