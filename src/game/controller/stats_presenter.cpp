@@ -1,400 +1,86 @@
 #include "stats_presenter.hpp"
 
 #include <algorithm>
-#include <type_traits>
-#include <gvl/io2/convert.hpp>
 #include <gvl/system/system.hpp>
-#include "game/text.hpp"
-#include "game/stats.hpp"
 #include "game/game.hpp"
 #include "game/gfx.hpp"
 
-using gvl::cell;
-using std::vector;
-
-std::string percent(int nom, int den)
+StatsScreen::StatsScreen(NormalStatsRecorder& recorder, Game& game, Renderer& renderer)
+: recorder(recorder)
+, game(game)
+, renderer(renderer)
+, screen(liero_stats_screen_new(recorder.s, renderer.renderResX))
 {
-	if (den == 0)
-		return "";
-
-	char buf[256];
-	sprintf(buf, "%.2f%%", double(nom)*100.0/den);
-	return buf;
+	for (auto const& w : game.common->weapons)
+	{
+		LieroStr name = { reinterpret_cast<uint8_t const*>(w.name.data()), w.name.size() };
+		weaponNames.push_back(name);
+	}
 }
 
-struct StatsRenderer
+StatsScreen::~StatsScreen()
 {
-	static int const textColor = 7;
+	liero_stats_screen_free(screen);
+}
 
-	StatsRenderer(
-		Renderer& renderer,
-		Game& game,
-		NormalStatsRecorder& stats,
-		Common& common)
-	: renderer(renderer)
-	, game(game)
-	, stats(stats)
-	, common(common)
-	, paneWidth(renderer.renderResX - 20)
-	{
-	}
-
-	static int const paneX = 10;
-
-	template<typename P>
-	void pane(int n, int leftX, int topY, P const& p)
-	{
-		offsX = n * renderer.renderResX + leftX;
-
-		if (offsX >= -renderer.renderResX && offsX < renderer.renderResX)
-		{
-			y = topY;
-			y += 10;
-
-			drawRoundedBox(renderer.bmp, offsX + paneX, y, 0, 2000, paneWidth);
-
-			y += 10;
-
-			p();
-		}
-	}
-
-	template<typename B>
-	bool hblock(int height, B const& b)
-	{
-		bool ran = false;
-		if (y < renderer.renderResY
-		 && y + height > 0)
-		{
-			b();
-			ran = true;
-		}
-		y += height;
-		return ran;
-	}
-
-	void drawWorms()
-	{
-		hblock(20, [this] {
-			for (int i = 0; i < 2; ++i)
-			{
-				int x = renderer.renderResX / 2 + (i == 0 ? -1 : 1) * (renderer.renderResX / 4) + offsX;
-				blitImage(renderer.bmp, common.wormSpriteObj(2, i == 0 ? 1 : 0, i), x - 8, y);
-
-				cell c(i == 0 ? cell::right : cell::left);
-				common.font.drawText(
-					renderer.bmp,
-					c << game.worms[i]->settings->name,
-					x + (i == 0 ? -16 : 16),
-					y + 2,
-					textColor);
-			}
-		});
-	}
-
-	void drawWorm(int i)
-	{
-		bool visible = hblock(20, [this, i] {
-			int x = renderer.renderResX / 2 + offsX;
-			blitImage(renderer.bmp, common.wormSpriteObj(2, i == 0 ? 1 : 0, i), x - 8, y);
-
-			cell c(i == 0 ? cell::right : cell::left);
-			common.font.drawText(
-				renderer.bmp,
-				c << game.worms[i]->settings->name,
-				x + (i == 0 ? -16 : 16),
-				y + 2,
-				textColor);
-		});
-
-		if (!visible)
-		{
-			int x = 18 + offsX;
-			blitImage(renderer.bmp, common.wormSpriteObj(2, i == 0 ? 1 : 0, i), x - 8, 10);
-		}
-	}
-
-	template<typename Ws>
-	void drawWormStat(char const* name, Ws wormStat)
-	{
-		hblock(11, [this, name, &wormStat] {
-			common.font.drawText(
-				renderer.bmp,
-				cell(cell::center).ref() << name, renderer.renderResX / 2 + offsX, y, textColor);
-
-			for (int i = 0; i < 2; ++i)
-			{
-				cell::placement p = i == 0 ? cell::right : cell::left;
-				int x = renderer.renderResX / 2 + (i == 0 ? -40 : 40) + offsX;
-
-				WormStats& w = stats.worms[i];
-				cell c(p);
-				wormStat(w, c);
-				common.font.drawText(
-					renderer.bmp,
-					c, x, y, textColor);
-			}
-		});
-	}
-
-	template<typename Stat>
-	void drawStat(char const* name, Stat stat)
-	{
-		hblock(11, [this, name, &stat] {
-			common.font.drawText(
-				renderer.bmp,
-				cell(cell::right).ref() << name, renderer.renderResX / 2 + offsX, y, textColor);
-
-			int x = renderer.renderResX / 2 + 10 + offsX;
-
-			cell c(cell::left);
-			stat(c);
-			common.font.drawText(
-				renderer.bmp,
-				c, x, y, textColor);
-		});
-	}
-
-	void drawWormStat(char const* name, int (WormStats::*field))
-	{
-		drawWormStat(name, [field](WormStats& w, cell& c) { c << w.*field; });
-	}
-
-	void section(cell const& c, int level = 1)
-	{
-		int x = offsX + 20;
-		int color = textColor;
-		if (level > 0)
-		{
-			x += 20;
-			color = 3;
-		}
-
-		common.font.drawText(
-			renderer.bmp,
-			c, x, y, color);
-
-		if (level == 0)
-			y += 11;
-	}
-
-	void gap(int n = 5)
-	{
-		y += n;
-	}
-
-	void weaponStats(vector<WeaponStats> const& list)
-	{
-		for (auto& ws : list)
-		{
-			if (ws.totalHp > 0)
-			{
-				section(cell().ref() << common.weapons[ws.index].name);
-				drawStat("hits", [ws](cell& c) {
-					c << ws.actualHits << "/" << ws.potentialHits
-						<< " (" << percent(ws.actualHits, ws.potentialHits) << ")";
-				});
-				if (ws.potentialHp > 0)
-				{
-					drawStat("damage", [ws](cell& c) {
-						c << ws.actualHp << "/" << ws.potentialHp
-							<< " (" << percent(ws.actualHp, ws.potentialHp) << ")";
-					});
-				}
-				if (ws.totalHp != ws.actualHp)
-				{
-					drawStat("total damage", [ws](cell& c) {
-						c << ws.totalHp;
-					});
-				}
-				gap();
-			}
-		}
-	}
-
-	void graph(vector<double> const& data, int height, int color, int negColor, bool balanced)
-	{
-		y += 2;
-		hblock(height, [&, this] {
-			int start = 20 + offsX;
-			drawGraph(renderer.bmp, data, height, start, y, color, negColor, balanced);
-		});
-		y += 7;
-	}
-
-	void heatmap(Heatmap& hm)
-	{
-		y += 2;
-		hblock(hm.height, [&] {
-			int startX = paneX + paneWidth / 2 - (hm.width / 2) + offsX;
-			int startY = y;
-
-			drawHeatmap(renderer.bmp, startX, startY, hm);
-		});
-		y += 7;
-	}
-
-	Renderer& renderer;
-	Game& game;
-	NormalStatsRecorder& stats;
-	Common& common;
-    int paneWidth = 300;
-	int offsX, y;
-};
-
-void sortWeaponStats(vector<WeaponStats>& ws)
+namespace
 {
-	std::sort(ws.begin(), ws.end(),
-		[](WeaponStats const& a, WeaponStats const& b) { return a.actualHp > b.actualHp; });
+
+LieroStr str(std::string const& s)
+{
+	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
+	return r;
+}
+
+} // namespace
+
+void StatsScreen::draw(double pane, double offset)
+{
+	Common& common = *game.common;
+
+	LieroStatsScene scene;
+	scene.font = common.font.view();
+	for (int i = 0; i < 2; ++i)
+	{
+		Sprite spr = common.wormSpriteObj(2, i == 0 ? 1 : 0, i);
+		scene.worm_sprites[i].mem = spr.mem;
+		scene.worm_sprites[i].width = spr.width;
+		scene.worm_sprites[i].height = spr.height;
+		scene.worm_sprites[i].pitch = spr.pitch;
+		scene.names[i] = str(game.worms[i]->settings->name);
+	}
+	scene.game_mode = game.settings->gameMode;
+	scene.game_mode_name = str(common.texts.gameModes[game.settings->gameMode]);
+	scene.weapon_names = weaponNames.data();
+	scene.weapon_count = weaponNames.size();
+	scene.render_res_x = renderer.renderResX;
+	scene.render_res_y = renderer.renderResY;
+	scene.ticks_per_sec = gvl::hires_ticks_per_sec();
+
+	LieroBitmap v = renderer.bmp.view();
+	liero_stats_screen_draw(screen, recorder.s, &scene, &v, pane, offset);
+
+	renderer.pal = common.exepal; // We don't use gfx.origpal because the colors are unpredictable
 }
 
 void presentStats(NormalStatsRecorder& recorder, Game& game)
 {
 	gfx.clearKeys();
 
-	Common& common = *game.common;
-
 	Bitmap bg;
 
 	bg.copy(gfx.playRenderer.bmp);
 
-	StatsRenderer renderer(gfx.playRenderer, game, recorder, common);
+	StatsScreen screen(recorder, game, gfx.playRenderer);
 
 	double offset = 0, destOffset = 0;
 	double pane = 0;
 	double destPane = pane;
 
-	vector<WeaponStats> combinedWeaponStats, weaponStats[2];
-
-	vector<double> wormDamages[2], wormTotalHp[2];
-
-	int const graphWidth = renderer.paneWidth - 20;
-
-	for (int i = 0; i < 2; ++i)
-	{
-		wormDamages[i] = stretch(
-			convert<double>(pluck(recorder.worms[i].wormFrameStats, &WormFrameStats::damage)), graphWidth);
-		cumulative(wormDamages[i]);
-		normalize(wormDamages[i], 50);
-
-		wormTotalHp[i] = convert<double>(pluck(recorder.worms[i].wormFrameStats, &WormFrameStats::totalHp));
-	}
-
-	vector<double> wormTotalHpDiff(
-		stretch(zip(wormTotalHp[0], wormTotalHp[1], std::minus<double>()), graphWidth));
-
-	normalize(wormTotalHpDiff, 100);
-
-	for (int i = 0; i < 40; ++i)
-	{
-		auto ws = recorder.worms[0].weapons[i];
-		ws.combine(recorder.worms[1].weapons[i]);
-		combinedWeaponStats.push_back(ws);
-
-		weaponStats[0].push_back(recorder.worms[0].weapons[i]);
-		weaponStats[1].push_back(recorder.worms[1].weapons[i]);
-	}
-
-	sortWeaponStats(combinedWeaponStats);
-	sortWeaponStats(weaponStats[0]);
-	sortWeaponStats(weaponStats[1]);
-
 	while (true)
 	{
 		gfx.playRenderer.bmp.copy(bg);
-
-		int offsX = (int)std::floor(pane * -renderer.renderer.renderResX);
-		int offsY = (int)offset;
-
-		renderer.pane(0, offsX, offsY, [&] {
-			renderer.drawWorms();
-
-			int oldy = renderer.y;
-			renderer.y -= 20;
-
-			renderer.drawStat(
-				common.texts.gameModes[game.settings->gameMode].c_str(),
-				[&](cell& c) { c << timeToStringFrames(recorder.gameTime); });
-
-			renderer.y = oldy;
-
-			{
-				uint64_t ticks_per_sec = gvl::hires_ticks_per_sec();
-
-				renderer.drawWormStat("ai processing", [&](WormStats& w, cell& c) {
-					c << (int)(w.aiProcessTime * 1000 / ticks_per_sec) << "ms";
-				});
-			}
-
-
-			if (game.settings->gameMode == Settings::GMHoldazone
-			 || game.settings->gameMode == Settings::GMGameOfTag)
-			{
-				renderer.drawWormStat("timer", [&](WormStats& w, cell& c) {
-					c << timeToString(w.timer);
-				});
-			}
-			else
-			{
-				renderer.drawWormStat("lives left", &WormStats::lives);
-			}
-			renderer.drawWormStat("kills", &WormStats::kills);
-			renderer.drawWormStat("damage dealt", &WormStats::damageDealt);
-			renderer.drawWormStat("damage received", &WormStats::damage);
-			renderer.drawWormStat("damage to self", &WormStats::selfDamage);
-
-			renderer.drawWormStat("shortest life", [](WormStats& w, cell& c) {
-				int min, max;
-				w.lifeStats(min, max);
-				c << timeToStringFrames(min);
-			});
-
-			renderer.drawWormStat("longest life", [](WormStats& w, cell& c) {
-				int min, max;
-				w.lifeStats(min, max);
-				c << timeToStringFrames(max);
-			});
-
-			renderer.drawWormStat("loading efficiency", [](WormStats& w, cell& c) {
-				c << percent(w.weaponChangeGood, w.weaponChangeGood + w.weaponChangeBad);
-			});
-
-			renderer.gap();
-
-			renderer.weaponStats(combinedWeaponStats);
-
-			renderer.section(cell().ref() << "Total health difference", 0);
-
-			renderer.graph(
-					wormTotalHpDiff,
-					100,
-					Palette::wormColourIndexes[0],
-					Palette::wormColourIndexes[1],
-					true);
-
-			renderer.section(cell().ref() << "Presence", 0);
-			renderer.heatmap(recorder.presence);
-		});
-
-		for (int i = 0; i < 2; ++i)
-		{
-			WormStats& wormStats = recorder.worms[i];
-			renderer.pane(i == 0 ? -1 : 1, offsX, offsY, [&] {
-				renderer.drawWorm(i);
-
-				renderer.weaponStats(weaponStats[i]);
-
-				renderer.section(cell().ref() << "Damage over time", 0);
-				renderer.graph(wormDamages[i], 50, Palette::wormColourIndexes[i], 0, false);
-
-				renderer.section(cell().ref() << "Presence", 0);
-				renderer.heatmap(wormStats.presence);
-				renderer.section(cell().ref() << "Damage", 0);
-				renderer.heatmap(wormStats.damageHm);
-			});
-		}
-
-		gfx.playRenderer.pal = common.exepal; // We don't use gfx.origpal because the colors are unpredictable
+		screen.draw(pane, offset);
 
 		gfx.flip();
 		gfx.process();

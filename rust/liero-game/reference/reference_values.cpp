@@ -1,6 +1,7 @@
 // Prints the expected values for the tests in rust/liero-game/src/rand.rs,
-// math.rs and level.rs by running the same loops through the original C++
-// code: gvl::mwc and prng_common from src/gvl, and math.cpp's, level.cpp's and
+// math.rs, level.rs, cpp_sort.rs and stats.rs by running the same loops
+// through the original C++ code: gvl::mwc and prng_common from src/gvl, libc++'s
+// std::sort, the stats screen's percent, and math.cpp's, level.cpp's and
 // blit.cpp's functions as they were before the port (copied below, unchanged
 // apart from the minimal Level and Common they work on).
 //
@@ -15,11 +16,13 @@
 
 #include <gvl/math/cmwc.hpp>
 #include <gvl/math/rect.hpp>
+#include <algorithm>
 #include <cassert>
 #include <vector>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 // ---- From src/game/math.cpp before the Rust port ----
 
@@ -983,6 +986,101 @@ void levelHashes()
 	}
 }
 
+// ---- std::sort and the stats screen's percent, for cpp_sort.rs and stats.rs ----
+
+struct SortItem { int key, id; };
+
+// Mostly up to 80 elements, sometimes up to 2,000, with few distinct keys, in
+// several layouts. The same arrays as cpp_sort.rs's tests.
+template<typename F>
+void sortArrays(uint32_t seed, F f)
+{
+	gvl::mwc r(seed);
+	for (uint32_t t = 0; t < 20000; ++t)
+	{
+		uint32_t n = t % 50 == 0 ? r(2000) : r(81);
+		uint32_t keys = 1 + r(t % 3 == 0 ? 3 : 40);
+		uint32_t pattern = r(6);
+		uint32_t d = std::max(n, 1u);
+		std::vector<SortItem> v;
+		for (uint32_t i = 0; i < n; ++i)
+		{
+			uint32_t key;
+			switch (pattern)
+			{
+			case 1: key = i * keys / d; break;
+			case 2: case 4: key = (n - i) * keys / d; break;
+			case 3: key = std::min(i, n - i) * keys * 2 / d; break;
+			case 5: key = 0; break;
+			default: key = r(keys);
+			}
+			v.push_back(SortItem{int(key), int(i)});
+		}
+		if (pattern == 4 && n > 1)
+		{
+			for (int k = 0; k < 3; ++k)
+			{
+				uint32_t a = r(n);
+				uint32_t b = r(n);
+				std::swap(v[a], v[b]);
+			}
+		}
+		f(v);
+	}
+}
+
+template<typename Sort>
+uint64_t sortHash(uint32_t seed, Sort sort)
+{
+	Fnv h;
+	sortArrays(seed, [&](std::vector<SortItem>& v) {
+		sort(v, [](SortItem const& a, SortItem const& b) { return a.key > b.key; });
+		h.add(uint32_t(v.size()));
+		for (SortItem const& e : v)
+			h.add(uint32_t(e.id));
+	});
+	return h.h;
+}
+
+// From src/game/controller/stats_presenter.cpp.
+std::string percent(int nom, int den)
+{
+	if (den == 0)
+		return "";
+
+	char buf[256];
+	sprintf(buf, "%.2f%%", double(nom)*100.0/den);
+	return buf;
+}
+
+void sortHashes()
+{
+	std::printf("EXPECTED_SORT: u64 = 0x%016llx\n", (unsigned long long)sortHash(4242, [](std::vector<SortItem>& v, bool (*c)(SortItem const&, SortItem const&)) {
+		std::sort(v.begin(), v.end(), c);
+	}));
+	std::printf("EXPECTED_HEAP_SORT: u64 = 0x%016llx\n", (unsigned long long)sortHash(4243, [](std::vector<SortItem>& v, bool (*c)(SortItem const&, SortItem const&)) {
+		std::partial_sort(v.begin(), v.end(), v.end(), c);
+	}));
+
+	Fnv h;
+	for (int den = 0; den <= 1000; ++den)
+	{
+		for (int nom = 0; nom <= den + 3; ++nom)
+		{
+			for (char ch : percent(nom, den))
+				h.add(uint32_t(uint8_t(ch)));
+			h.add(0xffffffffu);
+		}
+	}
+	for (int nom : { -5, 1000000, 2147483647, -2147483647 - 1 })
+	{
+		for (char ch : percent(nom, 7))
+			h.add(uint32_t(uint8_t(ch)));
+		h.add(0xffffffffu);
+	}
+	std::printf("EXPECTED_PERCENT: u64 = 0x%016llx\n", (unsigned long long)h.h);
+}
+
 int main()
 {
 	std::printf("EXPECTED_NEXT: u64 = 0x%016llx\n", (unsigned long long)streamHash(0x1337, [](gvl::mwc& r, uint32_t) { return r(); }));
@@ -1027,4 +1125,5 @@ int main()
 	}
 
 	levelHashes();
+	sortHashes();
 }

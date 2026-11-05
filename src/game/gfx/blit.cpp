@@ -155,25 +155,6 @@ void drawLine(Bitmap& scr, int fromX, int fromY, int toX, int toY, int color)
 	liero_gfx_draw_line(&v, fromX, fromY, toX, toY, uint8_t(color));
 }
 
-void drawGraph(Bitmap& scr,
-	std::vector<double> const& data,
-	int height,
-	int startX,
-	int startY,
-	int color,
-	int negColor,
-	bool balanced)
-{
-	LieroBitmap v = scr.view();
-	liero_gfx_draw_graph(&v, data.data(), data.size(), height, startX, startY, uint8_t(color), uint8_t(negColor), balanced);
-}
-
-void drawHeatmap(Bitmap& scr, int x, int y, Heatmap& hm)
-{
-	LieroBitmap v = scr.view();
-	liero_gfx_draw_heatmap(&v, x, y, hm.map.data(), hm.width, hm.height);
-}
-
 void scaleDraw(
 	PalIdx* src, int w, int h, std::size_t srcPitch,
 	uint8_t* dest, std::size_t destPitch, int mag, uint32_t* pal32)

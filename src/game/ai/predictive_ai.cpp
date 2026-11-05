@@ -3,7 +3,6 @@
 #include "game/game.hpp"
 #include "game/gfx/blit.hpp"
 #include "game/gfx/renderer.hpp"
-#include "game/stats.hpp"
 #include <sstream>
 #include <cfloat>
 #include <limits>
