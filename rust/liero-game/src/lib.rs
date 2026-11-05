@@ -5,6 +5,7 @@
 //! turns them into `include/liero_game.h`; regenerate it after changing them
 //! (see README).
 
+pub mod cpp_sort;
 pub mod game;
 pub mod gfx;
 pub mod level;
@@ -14,6 +15,7 @@ pub mod math;
 pub mod object;
 pub mod rand;
 pub mod settings;
+pub mod stats;
 pub mod tc;
 pub mod text;
 pub mod viewport;

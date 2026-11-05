@@ -3,6 +3,7 @@
 #include "worm.hpp"
 #include "game.hpp"
 #include "viewport.hpp"
+#include "gfx/blit.hpp"
 #include "gfx/renderer.hpp"
 #include "mixer/player.hpp"
 #include "console.hpp"

@@ -5,6 +5,9 @@
 #include "game.hpp"
 #include "text.hpp"
 
+#include <cassert>
+#include <vector>
+
 void StatsRecorder::damagePotential(Worm* byWorm, WormWeapon* weapon, int hp)
 {
 }
@@ -52,197 +55,105 @@ void StatsRecorder::write(Common& common, gvl::stream_ptr sink)
 {
 }*/
 
+namespace
+{
+
+int wormIndex(Worm const* worm)
+{
+	return worm ? worm->index : -1;
+}
+
+int weaponIndex(WormWeapon const* weapon)
+{
+	return weapon ? weapon->type->id : -1;
+}
+
+LieroStatsWorm statsWorm(Worm const& w)
+{
+	LieroStatsWorm v;
+	v.index = w.index;
+	v.x = ftoi(w.pos.x);
+	v.y = ftoi(w.pos.y);
+	v.visible = w.visible;
+	v.health = w.health;
+	v.lives = w.lives;
+	v.timer = w.timer;
+	v.kills = w.kills;
+	v.max_health = w.settings->health;
+	v.fire = w.controlStates[Worm::Control::Fire];
+	v.change = w.controlStates[Worm::Control::Change];
+	v.left = w.controlStates[Worm::Control::Left];
+	v.right = w.controlStates[Worm::Control::Right];
+	v.current_weapon = w.currentWeapon;
+	for (int i = 0; i < 5; ++i)
+		v.loading_left[i] = w.weapons[i].loadingLeft;
+	return v;
+}
+
+std::vector<LieroStatsWorm> statsWorms(Game& game)
+{
+	std::vector<LieroStatsWorm> v;
+	for (Worm* w : game.worms)
+		v.push_back(statsWorm(*w));
+	return v;
+}
+
+} // namespace
+
 void NormalStatsRecorder::damagePotential(Worm* byWorm, WormWeapon* weapon, int hp)
 {
-	if (!byWorm || !weapon)
-		return;
-
-	WormStats& ws = worms[byWorm->index];
-	WeaponStats& weap = ws.weapons[weapon->type->id];
-	weap.potentialHp += hp;
+	liero_stats_damage_potential(s, wormIndex(byWorm), weaponIndex(weapon), hp);
 }
 
 void NormalStatsRecorder::damageDealt(Worm* byWorm, WormWeapon* weapon, Worm* toWorm, int hp, bool hasHit)
 {
 	assert(toWorm);
-
-	auto& w = worms[toWorm->index];
-	w.damage += hp;
-	w.wormFrameStats.back().damage += hp;
-	w.damageHm.incArea(ftoi(toWorm->pos.x), ftoi(toWorm->pos.y), hp);
-
-	if(byWorm)
-	{
-		if(byWorm != toWorm)
-			worms[byWorm->index].damageDealt += hp;
-		else
-			worms[byWorm->index].selfDamage += hp;
-	}
-
-	if(!byWorm || !weapon)
-		return;
-
-	if(byWorm != toWorm) // Don't count if projectile already hit
-	{
-		WormStats& ws = worms[byWorm->index];
-		WeaponStats& weap = ws.weapons[weapon->type->id];
-		if (!hasHit)
-			weap.actualHp += hp;
-		weap.totalHp += hp;
-	}
+	liero_stats_damage_dealt(s, wormIndex(byWorm), weaponIndex(weapon), toWorm->index,
+		ftoi(toWorm->pos.x), ftoi(toWorm->pos.y), hp, hasHit);
 }
 
 void NormalStatsRecorder::shot(Worm* byWorm, WormWeapon* weapon)
 {
-	if (!byWorm || !weapon)
-		return;
-
-	WormStats& ws = worms[byWorm->index];
-	WeaponStats& weap = ws.weapons[weapon->type->id];
-	weap.potentialHits += 1;
+	liero_stats_shot(s, wormIndex(byWorm), weaponIndex(weapon));
 }
 
 void NormalStatsRecorder::hit(Worm* byWorm, WormWeapon* weapon, Worm* toWorm)
 {
 	assert(toWorm);
-
-	if (!byWorm || !weapon)
-		return;
-
-	if (byWorm != toWorm)
-	{
-		WormStats& ws = worms[byWorm->index];
-		WeaponStats& weap = ws.weapons[weapon->type->id];
-		weap.actualHits += 1;
-	}
+	liero_stats_hit(s, wormIndex(byWorm), weaponIndex(weapon), toWorm->index);
 }
 
 void NormalStatsRecorder::afterSpawn(Worm* worm)
 {
-	WormStats& w = worms[worm->index];
-	w.spawnTime = frame;
+	liero_stats_after_spawn(s, worm->index);
 }
 
 void NormalStatsRecorder::afterDeath(Worm* worm)
 {
-	WormStats& w = worms[worm->index];
-	w.lifeSpans.push_back(std::make_pair(w.spawnTime, frame));
-	w.spawnTime = -1;
+	liero_stats_after_death(s, worm->index);
 }
-
 
 void NormalStatsRecorder::preTick(Game& game)
 {
-	frameStart = gvl::get_hires_ticks();
-
-	for (auto& w : worms)
-	{
-		w.wormFrameStats.push_back(WormFrameStats());
-
-		Worm& worm = *game.worms[w.index];
-
-		int h = std::max(worm.health, 0);
-		if (!worm.visible)
-			h = worm.settings->health;
-
-		w.wormFrameStats.back().totalHp = worm.lives * worm.settings->health + h;
-	}
+	uint64_t ticks = gvl::get_hires_ticks();
+	std::vector<LieroStatsWorm> worms = statsWorms(game);
+	liero_stats_pre_tick(s, ticks, worms.data(), worms.size());
 }
 
 void NormalStatsRecorder::tick(Game& game)
 {
-	uint64_t frameEnd = gvl::get_hires_ticks();
-	processTimeTotal += (frameEnd - frameStart);
-
-	for (auto* w : game.worms)
-	{
-		auto& ws = worms[w->index];
-		if (w->visible)
-		{
-			presence.inc(ftoi(w->pos.x), ftoi(w->pos.y));
-			ws.presence.inc(ftoi(w->pos.x), ftoi(w->pos.y));
-
-			bool ok = true;
-			if (!w->controlStates[Worm::Control::Fire]
-			 && (!w->controlStates[Worm::Control::Change] || (!w->controlStates[Worm::Control::Left] && !w->controlStates[Worm::Control::Right]))
-			 && w->weapons[w->currentWeapon].loadingLeft == 0
-			 && std::find_if(w->weapons, w->weapons + 5, [](WormWeapon& ww) { return ww.loadingLeft > 0; }) != w->weapons + 5)
-			{
-				ok = false;
-			}
-
-			ws.weaponChangeGood += ok;
-			ws.weaponChangeBad += !ok;
-		}
-	}
-
-	++frame;
+	uint64_t ticks = gvl::get_hires_ticks();
+	std::vector<LieroStatsWorm> worms = statsWorms(game);
+	liero_stats_tick(s, ticks, worms.data(), worms.size());
 }
 
 void NormalStatsRecorder::finish(Game& game)
 {
-	for (int i = 0; i < 2; ++i)
-	{
-		auto* gw = game.worms[i];
-		WormStats& w = worms[i];
-		if (w.spawnTime >= 0)
-		{
-			w.lifeSpans.push_back(std::make_pair(w.spawnTime, frame));
-			w.spawnTime = -1;
-		}
-		w.lives = gw->lives;
-		w.timer = gw->timer;
-		w.kills = gw->kills;
-	}
-
-	gameTime = frame;
+	std::vector<LieroStatsWorm> worms = statsWorms(game);
+	liero_stats_finish(s, worms.data(), worms.size());
 }
 
 void NormalStatsRecorder::aiProcessTime(Worm* worm, uint64_t time)
 {
-	WormStats& w = worms[worm->index];
-	w.aiProcessTime += time;
+	liero_stats_ai_process_time(s, worm->index, time);
 }
-
-/*
-void NormalStatsRecorder::write(Common& common, gvl::stream_ptr sink)
-{
-	gvl::octet_stream_writer w(sink);
-
-	w << "Stats\n\n";
-
-	uint64_t ticks_per_sec = gvl::hires_ticks_per_sec();
-
-	w << "Process time: " << (int)(processTimeTotal * 1000 / ticks_per_sec) << "ms, "
-	  << (int)(frame * ticks_per_sec / processTimeTotal) << " fps\n";
-
-	for (int i = 0; i < 2; ++i)
-	{
-		WormStats& worm = worms[i];
-		w << "Worm " << i << '\n';
-		w << "Damage received: " << worm.damage << '\n';
-		w << "Damage dealt: " << worm.damageDealt << '\n';
-		w << "Damage to self: " << worm.selfDamage << '\n';
-
-		int min, max;
-		worm.lifeStats(min, max);
-		w << "Longest life: " << timeToStringFrames(max) << "\n";
-		w << "Shortest life: " << timeToStringFrames(min) << "\n";
-
-		for (int j = 0; j < 40; ++j)
-		{
-			WeaponStats& weapon = worm.weapons[j];
-			if (weapon.potentialHits > 0)
-			{
-				w << "Weapon " << common.weapons[j].name << '\n';
-				w << "  " << weapon.actualHits << "/" << weapon.potentialHits << " hits (" << (weapon.actualHits * 100 / weapon.potentialHits) << "%)\n";
-				if (weapon.potentialHp > 0)
-					w << "  " << weapon.actualHp << "/" << weapon.potentialHp << " hp (" << (weapon.actualHp * 100 / weapon.potentialHp) << "%)\n";
-				if (weapon.actualHp != weapon.totalHp)
-					w << "  " << weapon.totalHp << " total hp\n";
-			}
-		}
-		w << '\n';
-	}
-}
-*/

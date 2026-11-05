@@ -177,6 +177,17 @@ typedef enum LieroSettingsStatus {
 typedef struct LieroSettingsResult LieroSettingsResult;
 
 /**
+ * `NormalStatsRecorder`'s data.
+ */
+typedef struct LieroStats LieroStats;
+
+/**
+ * What the stats screen shows, worked out once: `StatsScreen`'s
+ * constructor.
+ */
+typedef struct LieroStatsScreen LieroStatsScreen;
+
+/**
  * A loaded TC, or the error that stopped loading it.
  */
 typedef struct LieroTc LieroTc;
@@ -776,6 +787,159 @@ typedef struct LieroByteSource {
 typedef struct LieroHash {
   uint64_t value[4];
 } LieroHash;
+
+/**
+ * A heatmap's size and counts, for C++ to read.
+ */
+typedef struct LieroHeatmapView {
+  int32_t width;
+  int32_t height;
+  int32_t org_width;
+  int32_t org_height;
+  const int32_t *map;
+  uintptr_t len;
+} LieroHeatmapView;
+
+/**
+ * One worm's results with one weapon.
+ */
+typedef struct LieroWeaponStats {
+  /**
+   * Damage the weapon's shots could have done.
+   */
+  int32_t potential_hp;
+  /**
+   * Damage done by each shot's first hit on the other worm.
+   */
+  int32_t actual_hp;
+  int32_t potential_hits;
+  int32_t actual_hits;
+  /**
+   * All damage done to the other worm.
+   */
+  int32_t total_hp;
+  /**
+   * The weapon's index in the TC.
+   */
+  int32_t index;
+} LieroWeaponStats;
+
+/**
+ * A worm's damage taken during a frame, and its health then, counting the
+ * lives left.
+ */
+typedef struct LieroWormFrameStats {
+  int32_t damage;
+  int32_t total_hp;
+} LieroWormFrameStats;
+
+/**
+ * A worm's stats, for C++ to read. The pointers are valid until the stats
+ * next change.
+ */
+typedef struct LieroWormStatsView {
+  /**
+   * Pairs of spawn and death frames.
+   */
+  const int32_t (*life_spans)[2];
+  uintptr_t life_span_count;
+  /**
+   * 40 weapons, by index.
+   */
+  const struct LieroWeaponStats *weapons;
+  int32_t damage;
+  int32_t damage_dealt;
+  int32_t self_damage;
+  struct LieroHeatmapView damage_hm;
+  struct LieroHeatmapView presence;
+  int32_t weapon_change_good;
+  int32_t weapon_change_bad;
+  const struct LieroWormFrameStats *frame_stats;
+  uintptr_t frame_stat_count;
+  int32_t spawn_time;
+  int32_t index;
+  int32_t lives;
+  int32_t timer;
+  int32_t kills;
+  uint64_t ai_process_time;
+} LieroWormStatsView;
+
+/**
+ * All the stats, for C++ to read.
+ */
+typedef struct LieroStatsView {
+  int32_t frame;
+  int32_t game_time;
+  struct LieroHeatmapView presence;
+  struct LieroWormStatsView worms[2];
+  uint64_t frame_start;
+  uint64_t process_time_total;
+} LieroStatsView;
+
+/**
+ * What the recorder reads from a worm, copied from C++'s `Worm`.
+ */
+typedef struct LieroStatsWorm {
+  int32_t index;
+  /**
+   * `ftoi(pos)`.
+   */
+  int32_t x;
+  int32_t y;
+  bool visible;
+  int32_t health;
+  int32_t lives;
+  int32_t timer;
+  int32_t kills;
+  /**
+   * `settings->health`.
+   */
+  int32_t max_health;
+  /**
+   * The fire, change, left and right controls.
+   */
+  bool fire;
+  bool change;
+  bool left;
+  bool right;
+  int32_t current_weapon;
+  int32_t loading_left[5];
+} LieroStatsWorm;
+
+/**
+ * A sprite in the TC, `Sprite` in C++.
+ */
+typedef struct LieroSprite {
+  const uint8_t *mem;
+  int32_t width;
+  int32_t height;
+  int32_t pitch;
+} LieroSprite;
+
+/**
+ * What the stats screen draws with, besides the stats.
+ */
+typedef struct LieroStatsScene {
+  struct LieroFont font;
+  /**
+   * Each worm facing the middle: `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
+   */
+  struct LieroSprite worm_sprites[2];
+  struct LieroStr names[2];
+  int32_t game_mode;
+  struct LieroStr game_mode_name;
+  /**
+   * The TC's weapon names, by index.
+   */
+  const struct LieroStr *weapon_names;
+  uintptr_t weapon_count;
+  int32_t render_res_x;
+  int32_t render_res_y;
+  /**
+   * `gvl::hires_ticks_per_sec()`, for the AI's processing time.
+   */
+  uint64_t ticks_per_sec;
+} LieroStatsScene;
 
 typedef struct LieroTcHooks {
   void *ctx;
@@ -2888,6 +3052,92 @@ struct LieroHash liero_settings_result_hash(const struct LieroSettingsResult *r)
  * used afterwards.
  */
 void liero_settings_result_free(struct LieroSettingsResult *r);
+
+/**
+ * New, empty stats. Free them with `liero_stats_free`.
+ */
+struct LieroStats *liero_stats_new(void);
+
+/**
+ * A copy of `s`, for a copy of the game. Free it with `liero_stats_free`.
+ */
+struct LieroStats *liero_stats_clone(const struct LieroStats *s);
+
+/**
+ * # Safety
+ * `s` must come from `liero_stats_new` or `liero_stats_clone`, or be null.
+ */
+void liero_stats_free(struct LieroStats *s);
+
+struct LieroStatsView liero_stats_view(const struct LieroStats *s);
+
+void liero_stats_damage_potential(struct LieroStats *s, int32_t by, int32_t weapon, int32_t hp);
+
+void liero_stats_damage_dealt(struct LieroStats *s,
+                              int32_t by,
+                              int32_t weapon,
+                              int32_t to,
+                              int32_t x,
+                              int32_t y,
+                              int32_t hp,
+                              bool has_hit);
+
+void liero_stats_shot(struct LieroStats *s, int32_t by, int32_t weapon);
+
+void liero_stats_hit(struct LieroStats *s, int32_t by, int32_t weapon, int32_t to);
+
+void liero_stats_after_spawn(struct LieroStats *s, int32_t worm);
+
+void liero_stats_after_death(struct LieroStats *s, int32_t worm);
+
+/**
+ * # Safety
+ * `worms` must point to `count` worms.
+ */
+void liero_stats_pre_tick(struct LieroStats *s,
+                          uint64_t ticks,
+                          const struct LieroStatsWorm *w,
+                          uintptr_t count);
+
+/**
+ * # Safety
+ * `worms` must point to `count` worms.
+ */
+void liero_stats_tick(struct LieroStats *s,
+                      uint64_t ticks,
+                      const struct LieroStatsWorm *w,
+                      uintptr_t count);
+
+/**
+ * # Safety
+ * `worms` must point to `count` worms.
+ */
+void liero_stats_finish(struct LieroStats *s, const struct LieroStatsWorm *w, uintptr_t count);
+
+void liero_stats_ai_process_time(struct LieroStats *s, int32_t worm, uint64_t time);
+
+/**
+ * The stats screen for `s`, laid out for a screen `render_res_x` wide. Free
+ * it with `liero_stats_screen_free`.
+ */
+struct LieroStatsScreen *liero_stats_screen_new(const struct LieroStats *s, int32_t render_res_x);
+
+/**
+ * # Safety
+ * `screen` must come from `liero_stats_screen_new`, or be null.
+ */
+void liero_stats_screen_free(struct LieroStatsScreen *screen);
+
+/**
+ * # Safety
+ * See `LieroBitmap` and `LieroStatsScene`.
+ */
+void liero_stats_screen_draw(const struct LieroStatsScreen *screen,
+                             const struct LieroStats *s,
+                             const struct LieroStatsScene *scene,
+                             const struct LieroBitmap *scr,
+                             double pane,
+                             double offset);
 
 /**
  * Copies `len` bytes from `data` into `out`.

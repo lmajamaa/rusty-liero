@@ -13,12 +13,12 @@
 namespace
 {
 
-void addHeatmap(Fnv& f, Heatmap const& hm)
+void addHeatmap(Fnv& f, LieroHeatmapView const& hm)
 {
 	f.add(int32_t(hm.width)); f.add(int32_t(hm.height));
-	f.add(int32_t(hm.orgWidth)); f.add(int32_t(hm.orgHeight));
-	for (int v : hm.map)
-		f.add(int32_t(v));
+	f.add(int32_t(hm.org_width)); f.add(int32_t(hm.org_height));
+	for (std::size_t i = 0; i < hm.len; ++i)
+		f.add(int32_t(hm.map[i]));
 }
 
 } // namespace
@@ -26,41 +26,43 @@ void addHeatmap(Fnv& f, Heatmap const& hm)
 // Everything but the process times, which are measured with the clock.
 uint64_t hashStats(Game& game)
 {
-	NormalStatsRecorder& s = static_cast<NormalStatsRecorder&>(*game.statsRecorder);
+	NormalStatsRecorder& recorder = static_cast<NormalStatsRecorder&>(*game.statsRecorder);
+	LieroStatsView s = recorder.view();
 	Fnv f;
 	f.add(int32_t(s.frame));
-	f.add(int32_t(s.gameTime));
+	f.add(int32_t(s.game_time));
 	addHeatmap(f, s.presence);
 
-	for (WormStats const& w : s.worms)
+	for (LieroWormStatsView const& w : s.worms)
 	{
-		f.add(uint32_t(w.lifeSpans.size()));
-		for (auto const& l : w.lifeSpans)
+		f.add(uint32_t(w.life_span_count));
+		for (std::size_t i = 0; i < w.life_span_count; ++i)
 		{
-			f.add(int32_t(l.first));
-			f.add(int32_t(l.second));
+			f.add(int32_t(w.life_spans[i][0]));
+			f.add(int32_t(w.life_spans[i][1]));
 		}
 
-		for (WeaponStats const& ws : w.weapons)
+		for (int i = 0; i < 40; ++i)
 		{
-			f.add(int32_t(ws.potentialHp)); f.add(int32_t(ws.actualHp));
-			f.add(int32_t(ws.potentialHits)); f.add(int32_t(ws.actualHits));
-			f.add(int32_t(ws.totalHp)); f.add(int32_t(ws.index));
+			LieroWeaponStats const& ws = w.weapons[i];
+			f.add(int32_t(ws.potential_hp)); f.add(int32_t(ws.actual_hp));
+			f.add(int32_t(ws.potential_hits)); f.add(int32_t(ws.actual_hits));
+			f.add(int32_t(ws.total_hp)); f.add(int32_t(ws.index));
 		}
 
-		f.add(int32_t(w.damage)); f.add(int32_t(w.damageDealt)); f.add(int32_t(w.selfDamage));
-		addHeatmap(f, w.damageHm);
+		f.add(int32_t(w.damage)); f.add(int32_t(w.damage_dealt)); f.add(int32_t(w.self_damage));
+		addHeatmap(f, w.damage_hm);
 		addHeatmap(f, w.presence);
-		f.add(int32_t(w.weaponChangeGood)); f.add(int32_t(w.weaponChangeBad));
+		f.add(int32_t(w.weapon_change_good)); f.add(int32_t(w.weapon_change_bad));
 
-		f.add(uint32_t(w.wormFrameStats.size()));
-		for (WormFrameStats const& fs : w.wormFrameStats)
+		f.add(uint32_t(w.frame_stat_count));
+		for (std::size_t i = 0; i < w.frame_stat_count; ++i)
 		{
-			f.add(int32_t(fs.damage));
-			f.add(int32_t(fs.totalHp));
+			f.add(int32_t(w.frame_stats[i].damage));
+			f.add(int32_t(w.frame_stats[i].total_hp));
 		}
 
-		f.add(int32_t(w.spawnTime)); f.add(int32_t(w.index));
+		f.add(int32_t(w.spawn_time)); f.add(int32_t(w.index));
 		f.add(int32_t(w.lives)); f.add(int32_t(w.timer)); f.add(int32_t(w.kills));
 	}
 	return f.h;
