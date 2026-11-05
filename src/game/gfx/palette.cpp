@@ -4,63 +4,38 @@
 #include "../reader.hpp"
 #include "../gfx.hpp"
 
+// The palette effects are implemented in Rust (rust/liero-game/src/gfx.rs).
+
+static_assert(sizeof(Color) == sizeof(LieroColor), "Color layout");
+
+namespace
+{
+
+LieroColor* toRust(Color* c)
+{
+	return reinterpret_cast<LieroColor*>(c);
+}
+
+}
+
 void Palette::activate(Color realPal[256])
 {
-	for(int i = 0; i < 256; ++i)
-	{
-		realPal[i].r = entries[i].r << 2;
-		realPal[i].g = entries[i].g << 2;
-		realPal[i].b = entries[i].b << 2;
-	}
-}
-
-int fadeValue(int v, int amount)
-{
-	assert(v < 64);
-	v = (v * amount) >> 5;
-	if(v < 0) v = 0;
-	return v;
-}
-
-int lightUpValue(int v, int amount)
-{
-	v = (v * (32 - amount) + amount*63) >> 5;
-	if(v > 63) v = 63;
-	return v;
+	liero_palette_activate(toRust(entries), toRust(realPal));
 }
 
 void Palette::fade(int amount)
 {
-	if(amount >= 32)
-		return;
-
-	for(int i = 0; i < 256; ++i)
-	{
-		entries[i].r = fadeValue(entries[i].r, amount);
-		entries[i].g = fadeValue(entries[i].g, amount);
-		entries[i].b = fadeValue(entries[i].b, amount);
-	}
+	liero_palette_fade(toRust(entries), amount);
 }
 
 void Palette::lightUp(int amount)
 {
-	for(int i = 0; i < 256; ++i)
-	{
-		entries[i].r = lightUpValue(entries[i].r, amount);
-		entries[i].g = lightUpValue(entries[i].g, amount);
-		entries[i].b = lightUpValue(entries[i].b, amount);
-	}
+	liero_palette_light_up(toRust(entries), amount);
 }
 
 void Palette::rotateFrom(Palette& source, int from, int to, unsigned dist)
 {
-	int count = (to - from + 1);
-	dist %= count;
-
-	for(int i = 0; i < count; ++i)
-	{
-		entries[from + i] = source.entries[from + ((i + count - dist) % count)];
-	}
+	liero_palette_rotate_from(toRust(entries), toRust(source.entries), from, to, dist);
 }
 
 void Palette::clear()
@@ -85,19 +60,7 @@ int const Palette::wormColourIndexes[2] = {0x58, 0x78}; // TODO: Read from EXE?
 
 void Palette::setWormColour(int i, WormSettings const& settings)
 {
-	int idx = settings.color;
-
-	setWormColoursSpan(idx, settings.rgb);
-
-	for(int j = 0; j < 6; ++j)
-	{
-		entries[wormColourIndexes[i] + j] = entries[idx + (j % 3) - 1];
-	}
-
-	for(int j = 0; j < 3; ++j)
-	{
-		entries[129 + i * 4 + j] = entries[idx + j];
-	}
+	liero_palette_set_worm_colour(toRust(entries), i, settings.color, &settings.rgb);
 }
 
 

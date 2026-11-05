@@ -1,6 +1,7 @@
 // Runs the web build's headless hash mode (`--hash-run`, see
-// src/game/hashrun.cpp) with Bun and compares the game-state hashes with
-// expected.txt, which was made from the original C++ game logic.
+// src/game/hashrun.cpp) with Bun and compares the game-state and frame hashes
+// with expected.txt, which was made from the original C++ game and drawing
+// code.
 //
 //   bun tools/hashrun/run.ts [dir]            # dir defaults to build/web
 //   bun tools/hashrun/run.ts [dir] --update   # rewrite expected.txt
@@ -39,10 +40,11 @@ const lines: string[] = await new Promise(async (done, fail) => {
         const status = (globalThis as any).Module.callMain(["--hash-run", String(TICKS), String(INTERVAL)]);
         if (status) fail(new Error(`--hash-run exited with ${status}`));
         // The first line is the game's version banner on normal runs; hash
-        // lines have three or four fields.
+        // lines have three fields, and a fourth for the end of a game or a
+        // frame hash.
         else {
           for (const l of out) if (l.includes(" summary: ")) console.log(l);
-          done(out.filter((l) => /^\S+ \d+ [0-9a-f]{16}( end)?$/.test(l)));
+          done(out.filter((l) => /^\S+ \d+ [0-9a-f]{16}( end| frame)?$/.test(l)));
         }
       } catch (e) {
         fail(e);
@@ -75,8 +77,8 @@ for (let i = 0; i < count; ++i) {
     console.error(`First difference at line ${i + 1}:`);
     console.error(`  expected: ${expected[i] ?? "(nothing)"}`);
     console.error(`  actual:   ${lines[i] ?? "(nothing)"}`);
-    console.error("The game logic no longer matches the original C++.");
+    console.error("The game no longer matches the original C++.");
     process.exit(1);
   }
 }
-console.log(`All ${lines.length} game-state hashes match`);
+console.log(`All ${lines.length} game-state and frame hashes match`);

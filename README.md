@@ -75,7 +75,8 @@ prints the values the tests expect, by running the same loops through the C++
 code (see the comment at its top for how to run it).
 
 Whole games are checked too: `openliero --hash-run` plays fixed-seed bot games
-without a window and prints game-state hashes, and `tools/hashrun/run.ts`
+without a window and prints hashes of the game state and of the drawn frames,
+and `tools/hashrun/run.ts`
 compares them with `tools/hashrun/expected.txt`, made from the original C++.
 After building the web game:
 ```bash

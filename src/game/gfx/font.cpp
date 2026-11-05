@@ -3,70 +3,26 @@
 #include "../gfx.hpp"
 #include "macros.hpp"
 #include "color.hpp"
+#include "bitmap.hpp"
+#include <cstddef>
+
+// Text drawing is implemented in Rust (rust/liero-game/src/gfx.rs).
+
+static_assert(sizeof(Font::Char) == sizeof(LieroFontChar), "Font::Char layout");
+static_assert(offsetof(Font::Char, data) == offsetof(LieroFontChar, data), "Font::Char layout");
+static_assert(offsetof(Font::Char, width) == offsetof(LieroFontChar, width), "Font::Char layout");
 
 void Font::drawChar(Bitmap& scr, unsigned char c, int x, int y, int color, int size)
 {
-	if(c >= 2 && c < 252) // TODO: Is this correct, shouldn't it be c >= 0 && c < 250, since drawText subtracts 2?
-	{
-		uint8_t* mem = chars[c].data;
-		int width = 7;
-		int height = 8;
-		int pitch = 7;
-
-		CLIP_IMAGE(scr.clip_rect);
-
-		PalIdx* scrptr = static_cast<PalIdx*>(scr.pixels) + y*scr.pitch + x;
-
-		for(int cy = 0; cy < height; ++cy)
-		{
-			for(int i = 0; i < size; i++)
-			{
-				PalIdx* rowdest = scrptr;
-				PalIdx* rowsrc = mem;
-
-				for(int cx = 0; cx < width; ++cx)
-				{
-					PalIdx c = *rowsrc;
-					for(int k = 0; k < size; k++)
-					{
-						if(c)
-						{
-							*rowdest = color;
-						}
-						++rowdest;
-					}
-					++rowsrc;
-				}
-
-				scrptr += scr.pitch;
-			}
-			mem += pitch;
-		}
-	}
+	LieroBitmap v = scr.view();
+	liero_font_draw_char(&v, reinterpret_cast<LieroFontChar const*>(chars.data()), chars.size(), c, x, y, uint8_t(color), size);
 }
 
 void Font::drawText(Bitmap& scr, char const* str, std::size_t len, int x, int y, int color, int size)
 {
-	int orgX = x;
-
-	for(std::size_t i = 0; i < len; ++str, ++i)
-	{
-		unsigned char c = static_cast<unsigned char>(*str);
-
-		if(!c)
-		{
-			x = orgX;
-			y += 8 * size;
-		}
-		else if(c >= 2 && c < 252)
-		{
-			c -= 2;
-
-			drawChar(scr, c, x, y, color, size);
-
-			x += chars[c].width * size;
-		}
-	}
+	LieroBitmap v = scr.view();
+	liero_font_draw_text(&v, reinterpret_cast<LieroFontChar const*>(chars.data()), chars.size(),
+		reinterpret_cast<uint8_t const*>(str), len, x, y, uint8_t(color), size);
 }
 
 void Font::drawFramedText(Bitmap& scr, std::string const& text, int x, int y, int color)
@@ -77,26 +33,6 @@ void Font::drawFramedText(Bitmap& scr, std::string const& text, int x, int y, in
 
 int Font::getDims(char const* str, std::size_t len, int* height)
 {
-	int width = 0;
-	int maxHeight = 8;
-
-	int maxWidth = 0;
-
-	for(std::size_t i = 0; i < len; ++str, ++i)
-	{
-		unsigned char c = static_cast<unsigned char>(*str);
-		if(c >= 2 && c < 252)
-			width += chars[c - 2].width;
-		else if(!c)
-		{
-			maxWidth = std::max(maxWidth, width);
-			width = 0;
-			maxHeight += 8;
-		}
-	}
-
-	if(height)
-		*height = maxHeight;
-
-	return std::max(maxWidth, width);
+	return liero_font_get_dims(reinterpret_cast<LieroFontChar const*>(chars.data()), chars.size(),
+		reinterpret_cast<uint8_t const*>(str), len, height);
 }

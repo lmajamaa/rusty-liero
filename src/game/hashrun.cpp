@@ -2,7 +2,9 @@
 //
 // `openliero --hash-run [ticks] [interval]` plays bot-vs-bot games from fixed
 // seeds on the bundled TC, without a window or sound, and prints a hash of the
-// whole game state every `interval` ticks. tools/hashrun/run.ts runs it with
+// whole game state every `interval` ticks, then draws the split-screen and
+// spectator views off-screen and prints a hash of their pixels and palettes
+// (the lines ending in "frame"). tools/hashrun/run.ts runs it with
 // Bun and compares the output with tools/hashrun/expected.txt, which was made
 // from the original C++ game logic. A port that changes any behaviour changes
 // a hash.
@@ -18,6 +20,7 @@
 #include "gfx.hpp"
 #include "math.hpp"
 #include "mixer/player.hpp"
+#include "gfx/renderer.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -54,6 +57,29 @@ struct Fnv
 		}
 	}
 };
+
+// Draws the game as the split-screen and spectator windows would show it,
+// and hashes the pixels and palettes.
+uint64_t hashFrame(Game& game, Renderer& split, Renderer& spectator)
+{
+	Fnv f;
+	Renderer* renderers[] = { &split, &spectator };
+	for (int i = 0; i < 2; ++i)
+	{
+		Renderer& r = *renderers[i];
+		r.clear();
+		game.draw(r, StateGame, i == 1);
+		for (int y = 0; y < r.bmp.h; ++y)
+			f.bytes(&r.bmp.getPixel(0, y), r.bmp.w);
+		for (Color const& c : r.pal.entries)
+		{
+			f.add(uint32_t(c.r));
+			f.add(uint32_t(c.g));
+			f.add(uint32_t(c.b));
+		}
+	}
+	return f.h;
+}
 
 int wormIndex(Worm const* w)
 {
@@ -274,7 +300,18 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 
 	game.startGame();
 
+	// Drawing doesn't change the game, so the game hashes don't depend on it.
+	Renderer split, spectator;
+	split.init(320, 200);
+	spectator.init(640, 400);
+	for (Renderer* r : { &split, &spectator })
+	{
+		r->loadPalette(*common);
+		game.focus(*r);
+	}
+
 	std::printf("%s 0 %016llx\n", config.name, (unsigned long long)hashGame(game));
+	std::printf("%s 0 %016llx frame\n", config.name, (unsigned long long)hashFrame(game, split, spectator));
 
 	for (int tick = 1; tick <= ticks; ++tick)
 	{
@@ -290,7 +327,10 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 
 		bool over = game.isGameOver();
 		if (over || tick % interval == 0)
+		{
 			std::printf("%s %d %016llx%s\n", config.name, tick, (unsigned long long)hashGame(game), over ? " end" : "");
+			std::printf("%s %d %016llx frame\n", config.name, tick, (unsigned long long)hashFrame(game, split, spectator));
+		}
 		if (over)
 			break;
 	}
