@@ -14,6 +14,7 @@ pub mod menu;
 pub mod math;
 pub mod object;
 pub mod rand;
+pub mod replay;
 pub mod settings;
 pub mod stats;
 pub mod tc;

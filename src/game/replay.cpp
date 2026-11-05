@@ -3,421 +3,270 @@
 #include "game.hpp"
 #include "worm.hpp"
 #include "viewport.hpp"
-#include <gvl/support/type_info.hpp>
-#include <gvl/serialization/archive.hpp>
+#include "settingsffi.hpp"
+#include <gvl/serialization/except.hpp>
 #include <gvl/io2/deflate_filter.hpp>
 
-//#define DEBUG_REPLAYS 1
+#include <algorithm>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
-struct WormCreator
-{
-	Worm* operator()(GameSerializationContext& context)
-	{
-		return new Worm();
-	}
-};
+// The replay format is in Rust (rust/liero-game/src/replay.rs). C++ keeps the
+// deflate streams, makes the Game, Worms and Viewports a replay starts with,
+// and copies settings back after each call, since reading and writing
+// replays both change them.
 
-struct ViewportCreator
+namespace
 {
-	Viewport* operator()(GameSerializationContext& context)
-	{
-		return new Viewport();
-	}
-};
 
-struct WormIdxRefCreator
+// Owns a LieroReplayResult.
+struct ReplayResult
 {
-	Worm* operator()(int idx, GameSerializationContext& context)
+	explicit ReplayResult(LieroReplayResult* r)
+	: r(r)
 	{
-		if (idx < 0) return 0;
-		return context.game->worms.at(idx);
 	}
 
-	int operator()(Worm* w, GameSerializationContext&)
+	~ReplayResult()
 	{
-		if (!w) return -1;
-		return w->index;
-	}
-};
-
-struct WeaponIdxRefCreator
-{
-	template<typename Archive>
-	Weapon* operator()(Archive& ar, GameSerializationContext& context)
-	{
-		int idx;
-		ar.i32(idx);
-		return &context.game->common->weapons[idx];
+		liero_replay_result_free(r);
 	}
 
-	template<typename Archive>
-	void operator()(Weapon const* w, Archive& ar, GameSerializationContext& context)
+	ReplayResult(ReplayResult const&) = delete;
+	ReplayResult& operator=(ReplayResult const&) = delete;
+
+	LieroReplayStatus status() const { return liero_replay_result_status(r); }
+	LieroSettings const& settings() const { return *liero_replay_result_settings(r); }
+	LieroWormSettings const& worm(std::size_t i) const { return *liero_replay_result_worm_settings(r, i); }
+	bool touched(std::size_t i) const { return liero_replay_result_touched(r, i); }
+
+	void writeTo(gvl::octet_writer& writer) const
 	{
-		int idx = (int)(w - &context.game->common->weapons[0]);
-		ar.i32(idx);
-	}
-};
-
-template<typename Archive>
-void archive(Archive ar, Worm::ControlState& cs)
-{
-	ar.ui8(cs.istate);
-}
-
-template<typename Archive>
-void archive(Archive ar, Worm& worm)
-{
-	bool dummy = false;
-
-	ar
-	.i32(worm.pos.x)
-	.i32(worm.pos.y)
-	.i32(worm.vel.x)
-	.i32(worm.vel.y)
-	.i32(worm.logicRespawn.x)
-	.i32(worm.logicRespawn.y)
-	.i32(worm.hotspotX)
-	.i32(worm.hotspotY)
-	.i32(worm.aimingAngle)
-	.i32(worm.aimingSpeed)
-	.b(worm.ableToJump)
-	.b(worm.ableToDig)
-	.b(worm.keyChangePressed)
-	.b(worm.movable)
-	.b(worm.animate)
-	.b(worm.visible)
-	.b(worm.ready)
-	.b(worm.flag)
-	.b(worm.makeSightGreen)
-	.i32(worm.health)
-	.i32(worm.lives)
-	.i32(worm.kills)
-	.i32(worm.timer)
-	.i32(worm.killedTimer)
-	.i32(worm.currentFrame)
-	.i32(worm.flags)
-
-	.obj(worm.ninjarope.anchor, WormCreator())
-	.b(worm.ninjarope.attached)
-	.i32(worm.ninjarope.curLen)
-	.i32(worm.ninjarope.length)
-	.b(worm.ninjarope.out)
-	.i32(worm.ninjarope.vel.x)
-	.i32(worm.ninjarope.vel.y)
-	.i32(worm.ninjarope.pos.x)
-	.i32(worm.ninjarope.pos.y)
-	.i32(worm.currentWeapon)
-	.b(dummy)
-	.template obj<Worm>(worm.lastKilledByIdx, WormCreator(), WormIdxRefCreator())
-	.i32(worm.fireCone)
-	.i32(worm.leaveShellTimer);
-	ar.fobj(worm.settings)
-	.i32(worm.index)
-	.i32(worm.reacts[0])
-	.i32(worm.reacts[1])
-	.i32(worm.reacts[2])
-	.i32(worm.reacts[3]);
-
-	for(int i = 0; i < 5; ++i)
-	{
-		bool dummy = false;
-
-		ar
-		.i32(worm.weapons[i].ammo)
-		.b(dummy)
-		.i32(worm.weapons[i].delayLeft)
-		.objref(worm.weapons[i].type, WeaponIdxRefCreator())
-
-		.i32(worm.weapons[i].loadingLeft);
+		LieroStr b = liero_replay_result_bytes(r);
+		if (b.len)
+			writer.put(b.ptr, b.len);
 	}
 
-	ar.ui8(worm.direction);
-
-	archive(ar, worm.controlStates);
-	archive(ar, worm.prevControlStates);
-
-	ar.check();
-}
-
-template<typename Archive>
-void archive(Archive ar, Viewport& vp)
-{
-	int32_t dummy_int = 0;
-
-	ar
-	.i32(vp.x)
-	.i32(vp.y)
-	.i32(vp.shake)
-	.i32(vp.maxX)
-	.i32(vp.maxY)
-	.i32(vp.centerX)
-	.i32(vp.centerY)
-	.template obj<Worm>(vp.wormIdx, WormCreator(), WormIdxRefCreator())
-	.i32(vp.bannerY)
-	// dummy for old ingameX variable
-	.i32(dummy_int)
-	.i32(vp.rect.x1)
-	.i32(vp.rect.y1)
-	.i32(vp.rect.x2)
-	.i32(vp.rect.y2)
-	;
-
-	uint32_t dummy = 0;
-
-	// Dummys for unused rand
-	ar.ui32(dummy);
-	ar.ui32(dummy);
-}
-
-struct mtf
-{
-	uint8_t order[256];
-
-	mtf()
+	// Throws what the C++ replay code threw for the status.
+	void rethrow(std::exception_ptr const& readerError) const
 	{
-		for(int i = 0; i < 256; ++i)
-			order[i] = i;
-	}
-
-	uint8_t byte_to_rank(uint8_t v)
-	{
-		for(int i = 0; i < 256; ++i)
+		switch (status())
 		{
-			if(order[i] == v)
-				return i;
-		}
-
-		return 0; // Will never reach here
-	}
-
-	uint8_t rank_to_byte(uint8_t v)
-	{
-		return order[v];
-	}
-
-	void promote_rank(uint8_t rank)
-	{
-		uint8_t byte = order[rank];
-		for(uint32_t i = rank; i-- > 0; )
+		case LieroReplayStatus_ReadError:
+			if (readerError)
+				std::rethrow_exception(readerError);
+			throw std::runtime_error("Read error in get()");
+		case LieroReplayStatus_CheckError:
 		{
-			order[i+1] = order[i];
+			LieroStr m = liero_replay_result_message(r);
+			throw gvl::archive_check_error(std::string(reinterpret_cast<char const*>(m.ptr), m.len));
 		}
-		order[0] = byte;
+		case LieroReplayStatus_OutOfRange:
+			// What std::vector::at throws in libc++.
+			throw std::out_of_range("vector");
+		default:
+			return;
+		}
 	}
+
+	LieroReplayResult* r;
 };
 
-template<typename Archive>
-void archive(Archive ar, Palette& pal)
+typedef ArchiveByteSource<gvl::octet_reader> ReplaySource;
+
+LieroReplayWorm wormFields(Worm const& worm, Game& game)
 {
-	for(int i = 0; i < 256; ++i)
+	LieroReplayWorm f;
+	f.pos[0] = worm.pos.x; f.pos[1] = worm.pos.y;
+	f.vel[0] = worm.vel.x; f.vel[1] = worm.vel.y;
+	f.logic_respawn[0] = worm.logicRespawn.x; f.logic_respawn[1] = worm.logicRespawn.y;
+	f.hotspot[0] = worm.hotspotX; f.hotspot[1] = worm.hotspotY;
+	f.aiming_angle = worm.aimingAngle;
+	f.aiming_speed = worm.aimingSpeed;
+	f.able_to_jump = worm.ableToJump;
+	f.able_to_dig = worm.ableToDig;
+	f.key_change_pressed = worm.keyChangePressed;
+	f.movable = worm.movable;
+	f.animate = worm.animate;
+	f.visible = worm.visible;
+	f.ready = worm.ready;
+	f.flag = worm.flag;
+	f.make_sight_green = worm.makeSightGreen;
+	f.health = worm.health;
+	f.lives = worm.lives;
+	f.kills = worm.kills;
+	f.timer = worm.timer;
+	f.killed_timer = worm.killedTimer;
+	f.current_frame = worm.currentFrame;
+	f.flags = worm.flags;
+
+	// The anchor by its place among the game's worms. The game's ropes only
+	// attach to its own worms.
+	auto anchor = std::find(game.worms.begin(), game.worms.end(), worm.ninjarope.anchor);
+	f.rope_anchor = worm.ninjarope.anchor && anchor != game.worms.end() ? int(anchor - game.worms.begin()) : -1;
+	f.rope_attached = worm.ninjarope.attached;
+	f.rope_cur_len = worm.ninjarope.curLen;
+	f.rope_length = worm.ninjarope.length;
+	f.rope_out = worm.ninjarope.out;
+	f.rope_vel[0] = worm.ninjarope.vel.x; f.rope_vel[1] = worm.ninjarope.vel.y;
+	f.rope_pos[0] = worm.ninjarope.pos.x; f.rope_pos[1] = worm.ninjarope.pos.y;
+	f.current_weapon = worm.currentWeapon;
+	f.last_killed_by = worm.lastKilledByIdx;
+	f.fire_cone = worm.fireCone;
+	f.leave_shell_timer = worm.leaveShellTimer;
+	f.index = worm.index;
+	for (int i = 0; i < 4; ++i)
+		f.reacts[i] = worm.reacts[i];
+	for (int i = 0; i < 5; ++i)
 	{
-		ar.ui8(pal.entries[i].r);
-		ar.ui8(pal.entries[i].g);
-		ar.ui8(pal.entries[i].b);
+		WormWeapon const& w = worm.weapons[i];
+		f.weapons[i].ammo = w.ammo;
+		f.weapons[i].delay_left = w.delayLeft;
+		f.weapons[i].weapon = int(w.type - &game.common->weapons[0]);
+		f.weapons[i].loading_left = w.loadingLeft;
 	}
+	f.direction = worm.direction;
+	f.control_states = worm.controlStates.pack();
+	f.prev_control_states = worm.prevControlStates.pack();
+	return f;
 }
 
-typedef gvl::octet_reader reader_t;
-
-typedef gvl::in_archive<reader_t, GameSerializationContext> in_archive_t;
-//typedef gvl::out_archive<gvl::octet_stream_reader, GameSerializationContext> out_archive_t;
-
-void archive(in_archive_t ar, Level& level)
+void setWormFields(Worm& worm, LieroReplayWorm const& f, std::vector<Worm*> const& all, Common& common)
 {
-	unsigned int w = gvl::read_uint16(ar.reader);
-	unsigned int h = gvl::read_uint16(ar.reader);
-	level.resize(w, h);
+	worm.pos.x = f.pos[0]; worm.pos.y = f.pos[1];
+	worm.vel.x = f.vel[0]; worm.vel.y = f.vel[1];
+	worm.logicRespawn.x = f.logic_respawn[0]; worm.logicRespawn.y = f.logic_respawn[1];
+	worm.hotspotX = f.hotspot[0]; worm.hotspotY = f.hotspot[1];
+	worm.aimingAngle = f.aiming_angle;
+	worm.aimingSpeed = f.aiming_speed;
+	worm.ableToJump = f.able_to_jump;
+	worm.ableToDig = f.able_to_dig;
+	worm.keyChangePressed = f.key_change_pressed;
+	worm.movable = f.movable;
+	worm.animate = f.animate;
+	worm.visible = f.visible;
+	worm.ready = f.ready;
+	worm.flag = f.flag;
+	worm.makeSightGreen = f.make_sight_green;
+	worm.health = f.health;
+	worm.lives = f.lives;
+	worm.kills = f.kills;
+	worm.timer = f.timer;
+	worm.killedTimer = f.killed_timer;
+	worm.currentFrame = f.current_frame;
+	worm.flags = f.flags;
 
-	if(ar.context.replayVersion > 1)
-		archive(ar, level.origpal);
-
-	Common& common = *ar.context.game->common;
-
-#if 1
-	for(unsigned int y = 0; y < h; ++y)
-	for(unsigned int x = 0; x < w; ++x)
+	worm.ninjarope.anchor = f.rope_anchor < 0 ? 0 : all[f.rope_anchor];
+	worm.ninjarope.attached = f.rope_attached;
+	worm.ninjarope.curLen = f.rope_cur_len;
+	worm.ninjarope.length = f.rope_length;
+	worm.ninjarope.out = f.rope_out;
+	worm.ninjarope.vel.x = f.rope_vel[0]; worm.ninjarope.vel.y = f.rope_vel[1];
+	worm.ninjarope.pos.x = f.rope_pos[0]; worm.ninjarope.pos.y = f.rope_pos[1];
+	worm.currentWeapon = f.current_weapon;
+	worm.lastKilledByIdx = f.last_killed_by;
+	worm.fireCone = f.fire_cone;
+	worm.leaveShellTimer = f.leave_shell_timer;
+	worm.index = f.index;
+	for (int i = 0; i < 4; ++i)
+		worm.reacts[i] = f.reacts[i];
+	for (int i = 0; i < 5; ++i)
 	{
-		level.setPixel(x, y, ar.reader.get(), common);
+		WormWeapon& w = worm.weapons[i];
+		w.ammo = f.weapons[i].ammo;
+		w.delayLeft = f.weapons[i].delay_left;
+		// Unchecked, as before.
+		w.type = &common.weapons[0] + f.weapons[i].weapon;
+		w.loadingLeft = f.weapons[i].loading_left;
 	}
-#else
-	mtf level_mtf;
-	for(unsigned int y = 0; y < h; ++y)
-	for(unsigned int x = 0; x < w; ++x)
-	{
-		uint8_t rank = ar.reader.get();
-		uint8_t pix = level_mtf.rank_to_byte(rank);
-		level.data[y*w + x] = pix;
-		level_mtf.promote_rank(rank);
-	}
-#endif
-
-	for(unsigned int i = 0; i < 256; ++i)
-	{
-		level.origpal.entries[i].r = ar.reader.get();
-		level.origpal.entries[i].g = ar.reader.get();
-		level.origpal.entries[i].b = ar.reader.get();
-	}
+	worm.direction = f.direction;
+	worm.controlStates.istate = f.control_states;
+	worm.prevControlStates.istate = f.prev_control_states;
 }
 
-template<typename Writer>
-void archive(gvl::out_archive<Writer, GameSerializationContext> ar, Level& level)
+LieroReplayViewport viewportFields(Viewport const& vp)
 {
-	ar.ui16(level.width);
-	ar.ui16(level.height);
-	unsigned int w = level.width;
-	unsigned int h = level.height;
-
-	if(ar.context.replayVersion > 1)
-		archive(ar, level.origpal);
-
-#if 1
-	ar.writer.put(&level.data[0], w * h);
-#else
-	mtf level_mtf;
-
-	for(unsigned int y = 0; y < h; ++y)
-	for(unsigned int x = 0; x < w; ++x)
-	{
-		uint8_t pix = level.data[y*w + x];
-		uint8_t rank = level_mtf.byte_to_rank(pix);
-		ar.writer.put(rank);
-		level_mtf.promote_rank(rank);
-	}
-#endif
-
-	for(unsigned int i = 0; i < 256; ++i)
-	{
-		ar.writer.put(level.origpal.entries[i].r);
-		ar.writer.put(level.origpal.entries[i].g);
-		ar.writer.put(level.origpal.entries[i].b);
-	}
+	LieroReplayViewport f;
+	f.x = vp.x;
+	f.y = vp.y;
+	f.shake = vp.shake;
+	f.max_x = vp.maxX;
+	f.max_y = vp.maxY;
+	f.center_x = vp.centerX;
+	f.center_y = vp.centerY;
+	f.worm_idx = vp.wormIdx;
+	f.banner_y = vp.bannerY;
+	f.rect[0] = vp.rect.x1;
+	f.rect[1] = vp.rect.y1;
+	f.rect[2] = vp.rect.x2;
+	f.rect[3] = vp.rect.y2;
+	return f;
 }
 
-void archive_worms(in_archive_t ar, Game& game)
+void setViewportFields(Viewport& vp, LieroReplayViewport const& f)
 {
-	uint8_t cont;
-	while(ar.ui8(cont), cont)
-	{
-		//int wormId = ar.context.nextWormId++;
-
-		Worm* worm;
-		ar.obj(worm, WormCreator());
-
-		//printf("Worm ID %d: %s\n", wormId, worm->settings->name.c_str());
-
-		//GameSerializationContext::WormData& data = ar.context.wormData[worm];
-
-		game.addWorm(worm);
-		//ar.context.idToWorm[wormId] = worm;
-	}
-
-	while(ar.ui8(cont), cont)
-	{
-		Viewport* vp;
-		ar.fobj(vp, ViewportCreator());
-
-		game.addViewport(vp);
-	}
+	vp.x = f.x;
+	vp.y = f.y;
+	vp.shake = f.shake;
+	vp.maxX = f.max_x;
+	vp.maxY = f.max_y;
+	vp.centerX = f.center_x;
+	vp.centerY = f.center_y;
+	vp.wormIdx = f.worm_idx;
+	vp.bannerY = f.banner_y;
+	vp.rect.x1 = f.rect[0];
+	vp.rect.y1 = f.rect[1];
+	vp.rect.x2 = f.rect[2];
+	vp.rect.y2 = f.rect[3];
 }
 
-template<typename Writer>
-void archive_worms(gvl::out_archive<Writer, GameSerializationContext> ar, Game& game)
+// What frames read and write of the game's worms.
+std::vector<LieroReplayFrameWorm> frameWorms(Game& game, GameSerializationContext& context, bool withSettings)
 {
-/*
-	for(std::size_t i = 0; i < game.worms.size(); ++i)
+	std::vector<LieroReplayFrameWorm> worms(game.worms.size());
+	for (std::size_t i = 0; i < worms.size(); ++i)
 	{
 		Worm& worm = *game.worms[i];
-
-		int wormId = ar.context.nextWormId++;
-
-		//printf("Worm from game, ID %d: %s\n", wormId, worm.settings->name.c_str());
-		ar.context.idToWorm[wormId] = &worm;
-	}*/
-
-	//for(GameSerializationContext::IdToWormMap::iterator i = ar.context.idToWorm.begin(); i != ar.context.idToWorm.end(); ++i)
-	for (auto* worm : game.worms)
-	{
-		ar.writer.put(1);
-
-		//Worm* worm = i->second;
-		GameSerializationContext::WormData& data = ar.context.wormData[worm];
-
-		ar.obj(worm, WormCreator());
-
-		//printf("Worm ID %d: %s\n", i->first, worm->settings->name.c_str());
-
-		data.settingsExpired = false; // We just serialized them, so they have to be up to date
-
+		LieroReplayFrameWorm& f = worms[i];
+		f.index = worm.index;
+		f.control_states = worm.controlStates.pack();
+		f.prev_control_states = worm.prevControlStates.pack();
+		f.settings_expired = withSettings && context.wormData[&worm].settingsExpired;
+		f.settings = wormSettingsView(*worm.settings);
 	}
-	ar.writer.put(0);
+	return worms;
+}
 
-	for(std::size_t i = 0; i < game.viewports.size(); ++i)
+// Copies back the settings a frame read or wrote. The game's settings go
+// first: their worms can be the same as the game's worms' settings, which
+// the frame may have changed after.
+void copyFrameSettings(ReplayResult const& r, Game& game)
+{
+	if (r.touched(0))
+		setSettings(*game.settings, r.settings());
+	for (std::size_t i = 0; i < game.worms.size(); ++i)
 	{
-		ar.writer.put(1);
-		Viewport* vp = game.viewports[i];
-		ar.fobj(vp);
-	}
-	ar.writer.put(0);
-}
-
-template<typename Archive>
-void archive(Archive ar, Game& game)
-{
-	ar.context.game = &game;
-
-	ar
-	.fobj(game.settings)
-	.i32(game.cycles)
-	.b(game.gotChanged)
-	.template obj<Worm>(game.lastKilledIdx, WormCreator(), WormIdxRefCreator())
-	.i32(game.screenFlash);
-	archive(ar, game.rand);
-
-	archive_worms(ar, game);
-
-	archive(ar, game.level);
-}
-
-template<typename Reader, typename T>
-void read(Reader& reader, GameSerializationContext& context, T& x)
-{
-	archive(gvl::in_archive<Reader, GameSerializationContext>(reader, context), x);
-}
-
-template<typename Writer, typename T>
-void write(Writer& writer, GameSerializationContext& context, T& x)
-{
-	archive(gvl::out_archive<Writer, GameSerializationContext>(writer, context), x);
-}
-
-/*
-template<typename T>
-gvl::gash::value_type hash(T& x)
-{
-	GameSerializationContext context;
-	gvl::hash_accumulator<gvl::gash> ha;
-
-	archive(gvl::out_archive<GameSerializationContext, gvl::hash_accumulator<gvl::gash> >(ha, context), x);
-
-	ha.flush();
-	return ha.final();
-}
- */
-
-/*
-template<typename Archive>
-void archive(Archive ar, gvl::gash::value_type& x)
-{
-	for(int i = 0; i < gvl::gash::value_type::size; ++i)
-	{
-		uint32_t h = uint32_t(x.value[i] >> 32);
-		uint32_t l = uint32_t(x.value[i] & 0xffffffff);
-		ar.ui32(l);
-		ar.ui32(h);
-		x.value[i] = (uint64_t(h) << 32) | l;
+		if (r.touched(1 + i))
+			setWormSettings(*game.worms[i]->settings, r.worm(i));
 	}
 }
-*/
+
+}
+
+uint32_t fastGameChecksum(Game& game)
+{
+	std::vector<int32_t> worms(game.worms.size() * 4);
+	for (std::size_t i = 0; i < game.worms.size(); ++i)
+	{
+		Worm& worm = *game.worms[i];
+		worms[i * 4 + 0] = worm.pos.x;
+		worms[i * 4 + 1] = worm.pos.y;
+		worms[i * 4 + 2] = worm.vel.x;
+		worms[i * 4 + 3] = worm.vel.y;
+	}
+	return liero_replay_checksum(game.rand.x, reinterpret_cast<int32_t const (*)[4]>(worms.data()), game.worms.size());
+}
 
 ReplayWriter::ReplayWriter(gvl::sink str_init)
 : settingsExpired(true)
@@ -439,244 +288,168 @@ ReplayReader::ReplayReader(gvl::source str_init)
 	reader.attach(gvl::to_source(new gvl::deflate_source(str_init, false)));
 }
 
-//#define DEBUG_REPLAYS
-
-uint32_t const replayMagic = ('L' << 24) | ('R' << 16) | ('P' << 8) | 'F';
-
 std::unique_ptr<Game> ReplayReader::beginPlayback(gvl::shared_ptr<Common> common, gvl::shared_ptr<SoundPlayer> soundPlayer)
 {
-	uint32_t readMagic = gvl::read_uint32(reader);
-	if(readMagic != replayMagic)
-		throw gvl::archive_check_error("File does not appear to be a replay");
-	context.replayVersion = reader.get();
-	if(context.replayVersion > myReplayVersion)
-		throw gvl::archive_check_error("Replay version is too recent");
+	ReplaySource source(reader);
+	ReplayResult r(liero_replay_read_start(&source.hooks));
+	r.rethrow(source.error);
+	LieroReplayGameOut const& g = *liero_replay_result_game(r.r);
+	context.replayVersion = g.version;
 
 	gvl::shared_ptr<Settings> settings(new Settings);
+	setSettings(*settings, g.settings);
 
 	std::unique_ptr<Game> game(new Game(common, settings, soundPlayer));
+	context.game = game.get();
 
-#if ENABLE_TRACING
-	if (true)
+	game->cycles = g.fields.cycles;
+	game->gotChanged = g.fields.got_changed;
+	game->lastKilledIdx = g.fields.last_killed;
+	game->screenFlash = g.fields.screen_flash;
+	game->rand.x = g.fields.rand_x;
+	game->rand.c = g.fields.rand_c;
+
+	// Every worm read, including any only referred to, which the game
+	// doesn't own, as before.
+	std::vector<Worm*> all(g.worm_count);
+	for (auto& w : all)
+		w = new Worm();
+	for (std::size_t i = 0; i < g.worm_count; ++i)
 	{
-		common->trace_writer.detach();
-		common->trace_reader.attach(gvl::to_source(new gvl::file_bucket_pipe("trace.dat", "rb")));
-		common->writeTrace = false;
+		setWormFields(*all[i], g.worms[i], all, *common);
+		all[i]->settings.reset(new WormSettings);
+		setWormSettings(*all[i]->settings, g.worm_settings[i]);
 	}
-	else
+	for (std::size_t i = 0; i < g.list_len; ++i)
+		game->addWorm(g.list[i] < 0 ? 0 : all[g.list[i]]);
+
+	for (std::size_t i = 0; i < g.viewport_count; ++i)
 	{
-		common->trace_reader.detach();
-		common->trace_writer.attach(gvl::sink(new gvl::file_bucket_pipe("trace.dat", "wb")));
-		common->writeTrace = true;
+		Viewport* vp = new Viewport();
+		setViewportFields(*vp, g.viewports[i]);
+		game->addViewport(vp);
 	}
-#endif
 
-	read(reader, context, *game);
-#ifdef DEBUG_REPLAYS
-	gvl::gash::value_type actualH = hash(*game);
-	gvl::gash::value_type expectedH;
-	read(reader, context, expectedH);
+	Level& level = game->level;
+	level.resize(g.level_width, g.level_height);
+	for (unsigned int y = 0; y < g.level_height; ++y)
+	for (unsigned int x = 0; x < g.level_width; ++x)
+		level.setPixel(x, y, g.level_pixels[y * g.level_width + x], *common);
+	for (int i = 0; i < 256; ++i)
+	{
+		level.origpal.entries[i].r = g.level_palette[i * 3 + 0];
+		level.origpal.entries[i].g = g.level_palette[i * 3 + 1];
+		level.origpal.entries[i].b = g.level_palette[i * 3 + 2];
+	}
 
-	if(actualH != expectedH)
-		printf("Differing hashes\n");
-#endif
 	return game;
 }
 
 void ReplayWriter::beginRecord(Game& game)
 {
-	gvl::write_uint32(writer, replayMagic);
-	writer.put(context.replayVersion);
+	context.game = &game;
 
-	write(writer, context, game);
-	settingsExpired = false; // We just serialized them, so they have to be up to date
+	std::vector<LieroReplayWorm> worms;
+	std::vector<LieroWormSettings> wormSettings;
+	for (auto* worm : game.worms)
+	{
+		worms.push_back(wormFields(*worm, game));
+		wormSettings.push_back(wormSettingsView(*worm->settings));
+	}
+	std::vector<LieroReplayViewport> viewports;
+	for (auto* vp : game.viewports)
+		viewports.push_back(viewportFields(*vp));
+	uint8_t palette[768];
+	for (int i = 0; i < 256; ++i)
+	{
+		palette[i * 3 + 0] = game.level.origpal.entries[i].r;
+		palette[i * 3 + 1] = game.level.origpal.entries[i].g;
+		palette[i * 3 + 2] = game.level.origpal.entries[i].b;
+	}
 
-#if ENABLE_TRACING
-	game.common->trace_reader.detach();
-	game.common->trace_writer.attach(gvl::sink(new gvl::file_bucket_pipe("trace.dat", "wb")));
-	game.common->writeTrace = true;
-#endif
+	LieroReplayGameIn g;
+	g.settings = settingsView(*game.settings);
+	g.fields.cycles = game.cycles;
+	g.fields.got_changed = game.gotChanged;
+	g.fields.last_killed = game.lastKilledIdx;
+	g.fields.screen_flash = game.screenFlash;
+	g.fields.rand_x = game.rand.x;
+	g.fields.rand_c = game.rand.c;
+	g.worms = worms.data();
+	g.worm_settings = wormSettings.data();
+	g.worm_count = worms.size();
+	g.viewports = viewports.data();
+	g.viewport_count = viewports.size();
+	g.level_width = game.level.width;
+	g.level_height = game.level.height;
+	g.level_pixels = game.level.data.data();
+	g.level_palette = palette;
 
-#ifdef DEBUG_REPLAYS
-	gvl::gash::value_type h = hash(game);
-	write(writer, context, h);
-#endif
+	ReplayResult r(liero_replay_write_start(&g, context.replayVersion));
+	setSettings(*game.settings, r.settings());
+	for (std::size_t i = 0; i < game.worms.size(); ++i)
+		setWormSettings(*game.worms[i]->settings, r.worm(i));
+	r.writeTo(writer);
+	r.rethrow(std::exception_ptr());
+
+	// They were just written, so they're up to date.
+	for (auto* worm : game.worms)
+		context.wormData[worm].settingsExpired = false;
+	settingsExpired = false;
 }
 
 void ReplayWriter::endRecord()
 {
-	writer.put(0x83);
-}
-
-uint32_t fastGameChecksum(Game& game)
-{
-	// game.rand is like a golden thread
-	uint32_t checksum = game.rand.x;
-	for(std::size_t i = 0; i < game.worms.size(); ++i)
-	{
-		Worm& worm = *game.worms[i];
-		checksum ^= worm.pos.x;
-		checksum += worm.vel.x;
-		checksum ^= worm.pos.y;
-		checksum += worm.vel.y;
-	}
-
-	return checksum;
+	ReplayResult r(liero_replay_write_end());
+	r.writeTo(writer);
 }
 
 bool ReplayReader::playbackFrame(Renderer& renderer)
 {
 	Game& game = *context.game;
 
-	bool settingsChanged = false;
+	std::vector<LieroReplayFrameWorm> worms = frameWorms(game, context, false);
+	LieroSettings settings = settingsView(*game.settings);
+	ReplaySource source(reader);
+	ReplayResult r(liero_replay_read_frame(&source.hooks, context.replayVersion, &settings, worms.data(), worms.size()));
 
-	while(true)
-	{
-		uint8_t first = reader.get();
+	// What was read stays, even when the frame broke off.
+	copyFrameSettings(r, game);
+	for (std::size_t i = 0; i < game.worms.size(); ++i)
+		game.worms[i]->controlStates.istate = liero_replay_result_frame_state(r.r, i);
+	r.rethrow(source.error);
 
-		if(first == 0x80)
-			break;
-		else if(first == 0x81)
-		{
-			read(reader, context, *game.settings);
-			settingsChanged = true;
-		}
-		else if(first == 0x82)
-		{
-			uint32_t wormId = gvl::read_uint32(reader);
-			//GameSerializationContext::IdToWormMap::iterator i = context.idToWorm.find(wormId);
-			Worm* w = game.wormByIdx(wormId);
-			//if(i != context.idToWorm.end())
-			if (w)
-			{
-				//read(reader, context, *i->second->settings);
-				read(reader, context, *w->settings);
-				settingsChanged = true;
-			}
-		}
-		else if(first == 0x83)
-		{
-			// End of replay
-			return false;
-		}
-		else if(first < 0x80)
-		{
-			uint8_t state = first;
-			bool hasState = true;
+	if (liero_replay_result_end(r.r))
+		return false;
 
-			for (auto* worm : game.worms)
-			{
-				if (!hasState)
-					state = reader.get();
-				else
-					hasState = false;
-
-				worm->controlStates.unpack(state ^ worm->prevControlStates.pack());
-			}
-
-			break; // Read frame
-		}
-		else
-			throw gvl::archive_check_error("Unexpected header byte");
-	}
-
-	if(settingsChanged)
-	{
+	if (liero_replay_result_settings_changed(r.r))
 		game.updateSettings(renderer);
-	}
 
-	if((game.cycles % (70 * 15)) == 0)
-	{
-		uint32_t expected = gvl::read_uint32(reader);
-		uint32_t actual = fastGameChecksum(game);
-#if !ENABLE_TRACING
-		if(actual != expected)
-			throw gvl::archive_check_error("Replay has desynced");
-#endif
-	}
-
-#ifdef DEBUG_REPLAYS
-	uint32_t expected = gvl::read_uint32(reader);
-	uint32_t expected2 = gvl::read_uint32(reader);
-	gvl::gash::value_type actual = hash(game);
-	if(expected != (uint32_t)actual.value[0])
-	{
-		std::cout << "Expected: " << expected << ", was: " << (uint32_t)actual.value[0] << std::endl;
-		std::cout << "Frame: " << game.cycles << std::endl;
-		throw gvl::archive_check_error("Desynced state");
-	}
-	if(expected2 != game.cycles)
-	{
-		throw gvl::archive_check_error("Descyned stream");
-	}
-#endif
-
+	ReplayResult c(liero_replay_read_checksum(&source.hooks, game.cycles, fastGameChecksum(game)));
+	c.rethrow(source.error);
 	return true;
 }
-
 
 void ReplayWriter::recordFrame()
 {
 	Game& game = *context.game;
 
-	if(settingsExpired)
-	{
-		writer.put(0x81);
-		write(writer, context, *context.game->settings);
+	// Worms' settings are only written with more than three worms.
+	std::vector<LieroReplayFrameWorm> worms = frameWorms(game, context, game.worms.size() > 3);
+	LieroSettings settings = settingsView(*game.settings);
+	ReplayResult r(liero_replay_write_frame(
+		context.replayVersion, &settings, settingsExpired,
+		worms.data(), worms.size(), game.cycles, fastGameChecksum(game)));
+
+	copyFrameSettings(r, game);
+	if (r.touched(0))
 		settingsExpired = false;
-	}
-
-	bool writeStates = false;
-
-	if(game.worms.size() <= 3) // TODO: What limit do we want here? None?
-		writeStates = true;
-	else
+	for (std::size_t i = 0; i < game.worms.size(); ++i)
 	{
-		for (auto* worm : game.worms)
-		{
-			GameSerializationContext::WormData& data = context.wormData[worm];
-			if(worm->controlStates != worm->prevControlStates)
-			{
-				writeStates = true;
-			}
-
-			if(data.settingsExpired)
-			{
-				writer.put(0x82);
-				gvl::write_uint32(writer, worm->index);
-				write(writer, context, *worm->settings);
-				data.settingsExpired = false;
-			}
-		}
+		if (r.touched(1 + i))
+			context.wormData[game.worms[i]].settingsExpired = false;
 	}
-
-	if(writeStates)
-	{
-		for (auto* worm : game.worms)
-		{
-			uint8_t state = worm->controlStates.pack() ^ worm->prevControlStates.pack();
-
-			sassert(state < 0x80);
-
-			writer.put(state);
-		}
-	}
-	else
-	{
-		writer.put(0x80); // Bit 7 means empty frame
-	}
-
-	if((game.cycles % (70 * 15)) == 0)
-	{
-		uint32_t checksum = fastGameChecksum(game);
-		gvl::write_uint32(writer, checksum);
-	}
-
-#ifdef DEBUG_REPLAYS
-	gvl::gash::value_type actual = hash(game);
-	gvl::write_uint32(writer, (uint32_t)actual.value[0]);
-	gvl::write_uint32(writer, game.cycles);
-#endif
+	r.writeTo(writer);
 }
 
 void ReplayWriter::unfocus()

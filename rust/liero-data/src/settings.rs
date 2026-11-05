@@ -347,30 +347,30 @@ impl Source for Bytes<'_> {
 
 /// `gvl::in_archive`'s reads. Integers are assigned only once all their
 /// bytes are read; strings are cleared and grow a byte at a time.
-struct In<'a, S: Source + ?Sized>(&'a mut S);
+pub struct In<'a, S: Source + ?Sized>(pub &'a mut S);
 
 impl<S: Source + ?Sized> In<'_, S> {
-    fn u8(&mut self) -> Result<u32, ReadError> {
+    pub fn u8(&mut self) -> Result<u32, ReadError> {
         self.0.get().map(u32::from)
     }
 
-    fn b(&mut self) -> Result<bool, ReadError> {
+    pub fn b(&mut self) -> Result<bool, ReadError> {
         Ok(self.0.get()? != 0)
     }
 
-    fn u16(&mut self) -> Result<u32, ReadError> {
+    pub fn u16(&mut self) -> Result<u32, ReadError> {
         Ok(self.u8()? << 8 | self.u8()?)
     }
 
-    fn u16_le(&mut self) -> Result<u32, ReadError> {
+    pub fn u16_le(&mut self) -> Result<u32, ReadError> {
         Ok(self.u8()? | self.u8()? << 8)
     }
 
-    fn u32(&mut self) -> Result<u32, ReadError> {
+    pub fn u32(&mut self) -> Result<u32, ReadError> {
         Ok(self.u16()? << 16 | self.u16()?)
     }
 
-    fn str(&mut self, v: &mut Vec<u8>) -> Result<(), ReadError> {
+    pub fn str(&mut self, v: &mut Vec<u8>) -> Result<(), ReadError> {
         let len = self.u32()?;
         v.clear();
         for _ in 0..len {
@@ -380,7 +380,7 @@ impl<S: Source + ?Sized> In<'_, S> {
     }
 
     /// A length byte and `field_len - 1` bytes of text and padding.
-    fn pascal_str(&mut self, v: &mut Vec<u8>, field_len: usize) -> Result<(), ReadError> {
+    pub fn pascal_str(&mut self, v: &mut Vec<u8>, field_len: usize) -> Result<(), ReadError> {
         let len = (self.0.get()? as usize).min(field_len - 1);
         v.clear();
         for _ in 0..len {
@@ -394,28 +394,28 @@ impl<S: Source + ?Sized> In<'_, S> {
 }
 
 /// `gvl::out_archive`'s writes, with its asserts.
-struct Out(Vec<u8>);
+pub struct Out(pub Vec<u8>);
 
 impl Out {
-    fn u8(&mut self, v: u32) {
+    pub fn u8(&mut self, v: u32) {
         assert!(v < 0x100, "{v} doesn't fit in 8 bits");
         self.0.push(v as u8);
     }
 
-    fn b(&mut self, v: bool) {
+    pub fn b(&mut self, v: bool) {
         self.0.push(v as u8);
     }
 
-    fn u16(&mut self, v: u32) {
+    pub fn u16(&mut self, v: u32) {
         assert!(v < 0x10000, "{v} doesn't fit in 16 bits");
         self.0.extend_from_slice(&(v as u16).to_be_bytes());
     }
 
-    fn u32(&mut self, v: u32) {
+    pub fn u32(&mut self, v: u32) {
         self.0.extend_from_slice(&v.to_be_bytes());
     }
 
-    fn str(&mut self, v: &[u8]) {
+    pub fn str(&mut self, v: &[u8]) {
         self.u32(v.len() as u32);
         self.0.extend_from_slice(v);
     }

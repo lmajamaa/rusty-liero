@@ -96,7 +96,7 @@ pub struct LieroByteSource {
     pub get: unsafe extern "C" fn(ctx: *mut c_void) -> i32,
 }
 
-struct Hooked<'a>(&'a LieroByteSource);
+pub(crate) struct Hooked<'a>(pub(crate) &'a LieroByteSource);
 
 impl Source for Hooked<'_> {
     fn get(&mut self) -> Result<u8, ReadError> {
@@ -124,11 +124,11 @@ pub struct LieroSettingsResult {
     worm_view: Option<LieroWormSettings>,
 }
 
-fn str(s: &[u8]) -> LieroStr {
+pub(crate) fn str(s: &[u8]) -> LieroStr {
     LieroStr { ptr: s.as_ptr(), len: s.len() }
 }
 
-fn worm_view(ws: &WormSettings) -> LieroWormSettings {
+pub(crate) fn worm_view(ws: &WormSettings) -> LieroWormSettings {
     LieroWormSettings {
         health: ws.health,
         controller: ws.controller,
@@ -142,7 +142,7 @@ fn worm_view(ws: &WormSettings) -> LieroWormSettings {
     }
 }
 
-fn settings_view(s: &Settings) -> LieroSettings {
+pub(crate) fn settings_view(s: &Settings) -> LieroSettings {
     let e = &s.ext;
     LieroSettings {
         record_replays: e.record_replays,
@@ -181,7 +181,7 @@ fn settings_view(s: &Settings) -> LieroSettings {
 
 /// # Safety
 /// The view's strings must be valid.
-unsafe fn worm_from(v: &LieroWormSettings) -> WormSettings {
+pub(crate) unsafe fn worm_from(v: &LieroWormSettings) -> WormSettings {
     WormSettings {
         health: v.health,
         controller: v.controller,
@@ -197,7 +197,7 @@ unsafe fn worm_from(v: &LieroWormSettings) -> WormSettings {
 
 /// # Safety
 /// The view's strings must be valid.
-unsafe fn settings_from(v: &LieroSettings) -> Settings {
+pub(crate) unsafe fn settings_from(v: &LieroSettings) -> Settings {
     Settings {
         ext: Extensions {
             record_replays: v.record_replays,
