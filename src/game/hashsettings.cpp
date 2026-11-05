@@ -286,7 +286,7 @@ Bytes corruptText(Xorshift& r, Bytes b)
 	for (int i = 0; i < ops; ++i)
 	{
 		std::size_t n = b.size();
-		switch (r.below(6))
+		switch (r.below(7))
 		{
 		case 0: // Change a byte
 			if (n)
@@ -327,6 +327,20 @@ Bytes corruptText(Xorshift& r, Bytes b)
 					b.erase(b.begin() + beg, b.begin() + end);
 			}
 			break;
+		case 6: // Add an element to an array
+		{
+			std::vector<std::size_t> ends;
+			for (std::size_t j = 0; j < n; ++j)
+				if (b[j] == ']' && j > 0 && b[j - 1] != ']')
+					ends.push_back(j);
+			if (!ends.empty())
+			{
+				static uint8_t const extra[] = { ',', ' ', '1' };
+				std::size_t at = ends[r.below(uint32_t(ends.size()))];
+				b.insert(b.begin() + at, extra, extra + 3);
+			}
+			break;
+		}
 		}
 	}
 	return b;
