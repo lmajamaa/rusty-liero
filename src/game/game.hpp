@@ -58,12 +58,12 @@ struct Game
 	void onKey(uint32_t key, bool state);
 	Worm* findControlForKey(uint32_t key, Worm::Control& control);
 	void releaseControls();
+	// Runs the game for one tick, in Rust (rust/liero-game/src/game.rs).
 	void processFrame();
 	void focus(Renderer& renderer);
 	void updateSettings(Renderer& renderer);
 
 	void createBObject(fixedvec pos, fixedvec vel);
-	void createBonus();
 
 	void clearViewports();
 	void addViewport(Viewport*);
@@ -77,8 +77,6 @@ struct Game
 	void draw(Renderer& renderer, GameState state, bool useSpectatorViewports, bool isReplay = false);
 	void startGame();
 	bool isGameOver();
-	void doDamageDirect(Worm& w, int amount, int byIdx);
-	void doHealingDirect(Worm& w, int amount);
 	void doDamage(Worm& w, int amount, int byIdx);
 	void doHealing(Worm& w, int amount);
 	void postClone(Game& original, bool complete = false);
