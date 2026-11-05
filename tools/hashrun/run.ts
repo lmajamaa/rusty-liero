@@ -18,6 +18,14 @@ const update = args.includes("--update");
 const dir = resolve(args.find((a) => !a.startsWith("--")) ?? "build/web");
 const expectedPath = join(import.meta.dir, "expected.txt");
 
+// Without these Emscripten keeps retrying, so a failed build would hang here.
+for (const file of ["openliero.js", "openliero.wasm", "openliero.data"]) {
+  if (!(await Bun.file(join(dir, file)).exists())) {
+    console.error(`${join(dir, file)} is missing; build the web game first`);
+    process.exit(1);
+  }
+}
+
 const lines: string[] = await new Promise(async (done, fail) => {
   const out: string[] = [];
   // Emscripten's generated script uses a global Module object if one exists.
@@ -25,6 +33,7 @@ const lines: string[] = await new Promise(async (done, fail) => {
     locateFile: (path: string) => join(dir, path),
     print: (line: string) => out.push(line),
     printErr: (line: string) => console.error(line),
+    onAbort: (what: unknown) => fail(new Error(`The game aborted: ${what}`)),
     onRuntimeInitialized() {
       try {
         const status = (globalThis as any).Module.callMain(["--hash-run", String(TICKS), String(INTERVAL)]);

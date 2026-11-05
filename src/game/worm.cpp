@@ -1,3 +1,4 @@
+#include <cstddef>
 #include "worm.hpp"
 #include "game.hpp"
 #include "mixer/player.hpp"
@@ -925,49 +926,86 @@ void Worm::doRespawning(Game& game)
 	}
 }
 
+namespace
+{
+
+// Rust works on the weapon slots in place.
+static_assert(sizeof(WormWeapon) == sizeof(LieroWormWeapon), "WormWeapon layout");
+static_assert(offsetof(WormWeapon, type) == offsetof(LieroWormWeapon, kind), "WormWeapon layout");
+static_assert(offsetof(WormWeapon, ammo) == offsetof(LieroWormWeapon, ammo), "WormWeapon layout");
+static_assert(offsetof(WormWeapon, delayLeft) == offsetof(LieroWormWeapon, delay_left), "WormWeapon layout");
+static_assert(offsetof(WormWeapon, loadingLeft) == offsetof(LieroWormWeapon, loading_left), "WormWeapon layout");
+static_assert(Settings::selectableWeapons == LIERO_SELECTABLE_WEAPONS, "weapon count");
+
+// What liero_worm_fire and liero_worm_process_weapons call back for.
+struct FiringContext
+{
+	Game& game;
+	Worm& worm;
+};
+
+void hookLaunchSound(void* ctx)
+{
+	auto& c = *static_cast<FiringContext*>(ctx);
+	Worm& worm = c.worm;
+	Weapon const& w = *worm.weapons[worm.currentWeapon].type;
+
+	if(w.launchSound >= 0)
+	{
+		if(w.loopSound)
+		{
+			if(!c.game.soundPlayer->isPlaying(&worm.weapons[worm.currentWeapon]))
+			{
+				c.game.soundPlayer->play(w.launchSound, &worm.weapons[worm.currentWeapon], -1);
+			}
+		}
+		else
+		{
+			c.game.soundPlayer->play(w.launchSound);
+		}
+	}
+}
+
+void hookFirePart(void* ctx, int32_t angle, LieroIVec2 vel, int32_t speed, LieroIVec2 pos)
+{
+	auto& c = *static_cast<FiringContext*>(ctx);
+	Worm& worm = c.worm;
+	WormWeapon& ww = worm.weapons[worm.currentWeapon];
+	ww.type->fire(c.game, angle, fromRust(vel), speed, fromRust(pos), worm.index, &ww);
+}
+
+void hookPlaySound(void* ctx, int32_t sound)
+{
+	auto& c = *static_cast<FiringContext*>(ctx);
+	c.game.soundPlayer->play(sound);
+}
+
+void hookCreateNObject1(void* ctx, int32_t kind, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
+{
+	auto& c = *static_cast<FiringContext*>(ctx);
+	c.game.common->nobjectTypes[kind].create1(c.game, fromRust(vel), fromRust(pos), color, c.worm.index, 0);
+}
+
+LieroWormFiring firingFields(Worm& worm)
+{
+	LieroWormFiring f = {
+		toRust(&worm.pos), toRust(&worm.vel), worm.aimingAngle,
+		&worm.fireCone, &worm.leaveShellTimer,
+		reinterpret_cast<LieroWormWeapon*>(worm.weapons), worm.currentWeapon,
+	};
+	return f;
+}
+
+} // namespace
+
 void Worm::processWeapons(Game& game)
 {
-	Common& common = *game.common;
+	FiringContext context = { game, *this };
+	LieroWormFiring fields = firingFields(*this);
+	LieroWeapon current = toRust(*weapons[currentWeapon].type);
+	LieroWormFiringHooks hooks = { &context, hookLaunchSound, hookFirePart, hookPlaySound, hookCreateNObject1 };
 
-	for(int i = 0; i < Settings::selectableWeapons; ++i)
-	{
-		if(weapons[i].delayLeft >= 0)
-			--weapons[i].delayLeft;
-	}
-
-	WormWeapon& ww = weapons[currentWeapon];
-	Weapon const& w = *ww.type;
-
-	if(ww.ammo <= 0)
-	{
-		int computedLoadingTime = w.computedLoadingTime(*game.settings);
-		ww.loadingLeft = computedLoadingTime;
-		ww.ammo = w.ammo;
-	}
-
-	if(ww.loadingLeft > 0) // NOTE: computedLoadingTime is never 0, so this works
-	{
-		--ww.loadingLeft;
-		if(ww.loadingLeft <= 0 && w.playReloadSound)
-		{
-			game.soundPlayer->play(24);
-		}
-	}
-
-	if(fireCone > 0)
-	{
-		--fireCone;
-	}
-
-	if(leaveShellTimer > 0)
-	{
-		if(--leaveShellTimer <= 0)
-		{
-			auto velY = -int(game.rand(20000));
-			auto velX = game.rand(16000) - 8000;
-			common.nobjectTypes[7].create1(game, fixedvec(velX, velY), pos, 0, index, 0);
-		}
-	}
+	liero_worm_process_weapons(&fields, &current, game.settings->loadingTime, &game.rand, &hooks);
 }
 
 void Worm::processMovement(Game& game)
@@ -1255,69 +1293,13 @@ void Worm::processWeaponChange(Game& game)
 void Worm::fire(Game& game)
 {
 	Common& common = *game.common;
-	WormWeapon& ww = weapons[currentWeapon];
-	Weapon const& w = *ww.type;
 
-	--ww.ammo;
-	ww.delayLeft = w.delay;
+	FiringContext context = { game, *this };
+	LieroWormFiring fields = firingFields(*this);
+	LieroWeapon w = toRust(*weapons[currentWeapon].type);
+	LieroWormFiringHooks hooks = { &context, hookLaunchSound, hookFirePart, hookPlaySound, hookCreateNObject1 };
 
-	fireCone = w.fireCone;
-
-	fixedvec firing(
-		cossinTable[ftoi(aimingAngle)] * (w.detectDistance + 5) + pos - fixedvec(0, itof(1)));
-
-	if(w.leaveShells > 0)
-	{
-		if(game.rand(w.leaveShells) == 0)
-		{
-			leaveShellTimer = w.leaveShellDelay;
-		}
-	}
-
-	if(w.launchSound >= 0)
-	{
-		if(w.loopSound)
-		{
-			if(!game.soundPlayer->isPlaying(&weapons[currentWeapon]))
-			{
-				game.soundPlayer->play(w.launchSound, &weapons[currentWeapon], -1);
-			}
-		}
-		else
-		{
-			game.soundPlayer->play(w.launchSound);
-		}
-	}
-
-	int speed = w.speed;
-	fixedvec firingVel;
-	int parts = w.parts;
-
-	if(w.affectByWorm)
-	{
-		if(speed < 100)
-			speed = 100;
-
-		firingVel = vel * 100 / speed;
-	}
-
-	for(int i = 0; i < parts; ++i)
-	{
-		w.fire(
-			game,
-			ftoi(aimingAngle),
-			firingVel,
-			speed,
-			firing,
-			index, &ww);
-	}
-
-	int recoil = w.recoil;
-
-	if(common.H[HSignedRecoil] && recoil >= 128)
-		recoil -= 256;
-
-	vel -= cossinTable[ftoi(aimingAngle)] * recoil / 100;
+	liero_worm_fire(&fields, &w, &game.rand, common.H[HSignedRecoil], &hooks);
 }
 
 bool checkForWormHit(Game& game, int x, int y, int dist, Worm* ownWorm)

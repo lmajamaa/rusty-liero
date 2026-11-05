@@ -161,13 +161,17 @@ struct RunConfig
 	char const* const* weapons;
 };
 
-// Objects that explosions push, leave trails or explode on worms. Random
-// loadouts seldom have them out when something explodes.
+// Fixed loadouts that together cover all 40 weapons of the bundled TC.
 char const* const explosives[] = { "GRENADE", "MINE", "CLUSTER BOMB", "BIG NUKE", "BOUNCY MINE" };
 char const* const bombs[] = { "GRASSHOPPER", "CHIQUITA BOMB", "NAPALM", "MINI NUKE", "FLOAT MINE" };
+char const* const guns[] = { "MINIGUN", "UZI", "HANDGUN", "RIFLE", "WINCHESTER" };
+char const* const shotguns[] = { "SHOTGUN", "SUPER SHOTGUN", "CHAINGUN", "GAUSS GUN", "BLASTER" };
+char const* const rockets[] = { "BAZOOKA", "MISSILE", "MINI ROCKETS", "DOOMSDAY", "HELLRAIDER" };
+char const* const beams[] = { "LASER", "LARPA", "BOUNCY LARPA", "CRACKLER", "ZIMM" };
+char const* const throwers[] = { "FLAMER", "FAN", "DART", "DIRTBALL", "GREENBALL" };
+char const* const traps[] = { "BOOBY TRAP", "EXPLOSIVES", "SPIKEBALLS", "CANNON", "RB RAMPAGE" };
 
-// Kill 'em all exercises the most weapons. The other modes add the bonus,
-// timer and Holdazone code.
+// Random weapons in each game mode, then each fixed loadout.
 RunConfig const configs[] = {
 	{ "kill-1", 1, Settings::GMKillEmAll },
 	{ "kill-2", 2, Settings::GMKillEmAll },
@@ -177,6 +181,12 @@ RunConfig const configs[] = {
 	{ "zone-6", 6, Settings::GMHoldazone },
 	{ "explosives-7", 7, Settings::GMKillEmAll, explosives },
 	{ "bombs-8", 8, Settings::GMKillEmAll, bombs },
+	{ "guns-9", 9, Settings::GMKillEmAll, guns },
+	{ "shotguns-10", 10, Settings::GMKillEmAll, shotguns },
+	{ "rockets-11", 11, Settings::GMKillEmAll, rockets },
+	{ "beams-12", 12, Settings::GMKillEmAll, beams },
+	{ "throwers-13", 13, Settings::GMKillEmAll, throwers },
+	{ "traps-14", 14, Settings::GMKillEmAll, traps },
 };
 
 // Sets a worm's weapons to the menu positions of the named weapons.
@@ -184,10 +194,16 @@ void setWeapons(Common& common, WormSettings& ws, char const* const* names)
 {
 	for (int j = 0; j < Settings::selectableWeapons; ++j)
 	{
+		ws.weapons[j] = 0;
 		for (std::size_t k = 0; k < common.weapOrder.size(); ++k)
 		{
 			if (common.weapons[common.weapOrder[k]].name == names[j])
 				ws.weapons[j] = int(k) + 1;
+		}
+		if (ws.weapons[j] == 0)
+		{
+			std::fprintf(stderr, "No weapon called %s in the TC\n", names[j]);
+			std::exit(1);
 		}
 	}
 }
@@ -202,9 +218,9 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 		if (config.weapons)
 			setWeapons(*common, *settings->wormSettings[i], config.weapons);
 	}
-	// 2 keeps the weapons set above instead of giving bots random ones.
-	if (config.weapons)
-		settings->selectBotWeapons = 2;
+	// 0 gives bots random weapons; 2 keeps the ones set above. (The
+	// default, 1, would keep the menu's default weapons: all bazookas.)
+	settings->selectBotWeapons = config.weapons ? 2 : 0;
 
 	// Everything random comes from these seeds. Weapon selection and the
 	// level use gfx.rand, as in the menus.
