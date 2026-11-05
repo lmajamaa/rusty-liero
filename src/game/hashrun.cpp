@@ -21,15 +21,12 @@
 #include "math.hpp"
 #include "mixer/player.hpp"
 #include "gfx/renderer.hpp"
+#include "replay.hpp"
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
-
-namespace
-{
-
 
 // Draws the game as the split-screen and spectator windows would show it,
 // and hashes the pixels and palettes.
@@ -53,6 +50,9 @@ uint64_t hashFrame(Game& game, Renderer& split, Renderer& spectator)
 	}
 	return f.h;
 }
+
+namespace
+{
 
 int wormIndex(Worm const* w)
 {
@@ -91,6 +91,8 @@ void hashWorm(Fnv& f, Worm& w)
 	f.add(w.controlStates.pack());
 	f.add(w.prevControlStates.pack());
 }
+
+} // namespace
 
 uint64_t hashGame(Game& game)
 {
@@ -151,6 +153,9 @@ uint64_t hashGame(Game& game)
 	return f.h;
 }
 
+namespace
+{
+
 struct RunConfig
 {
 	char const* name;
@@ -210,28 +215,30 @@ void setWeapons(Common& common, WormSettings& ws, char const* const* names)
 	}
 }
 
-void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks, int interval)
+} // namespace
+
+std::unique_ptr<Game> setUpGame(gvl::shared_ptr<Common> common, uint32_t seed, int gameMode, char const* const* weapons)
 {
 	gvl::shared_ptr<Settings> settings(new Settings);
-	settings->gameMode = config.gameMode;
+	settings->gameMode = gameMode;
 	for (int i = 0; i < 2; ++i)
 	{
 		settings->wormSettings[i]->controller = 1; // DumbLieroAI
-		if (config.weapons)
-			setWeapons(*common, *settings->wormSettings[i], config.weapons);
+		if (weapons)
+			setWeapons(*common, *settings->wormSettings[i], weapons);
 	}
 	// 0 gives bots random weapons; 2 keeps the ones set above. (The
 	// default, 1, would keep the menu's default weapons: all bazookas.)
-	settings->selectBotWeapons = config.weapons ? 2 : 0;
+	settings->selectBotWeapons = weapons ? 2 : 0;
 
 	// Everything random comes from these seeds. Weapon selection and the
 	// level use gfx.rand, as in the menus.
-	gfx.rand.seed(config.seed);
+	gfx.rand.seed(seed);
 
 	// Game holds its object lists by value, too big for the wasm stack.
 	std::unique_ptr<Game> gamePtr(new Game(common, settings, gvl::shared_ptr<SoundPlayer>(new NullSoundPlayer)));
 	Game& game = *gamePtr;
-	game.rand.seed(config.seed * 7919);
+	game.rand.seed(seed * 7919);
 
 	// The same setup as LocalController.
 	for (int i = 0; i < 2; ++i)
@@ -248,7 +255,7 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 		worm->ninjarope.length = 0;
 		worm->ninjarope.curLen = 0;
 		DumbLieroAI* ai = new DumbLieroAI();
-		ai->rand.seed(config.seed * 104729 + i);
+		ai->rand.seed(seed * 104729 + i);
 		worm->ai.reset(ai);
 		game.addWorm(worm);
 	}
@@ -271,6 +278,33 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 	for (Worm* w : game.worms)
 		w->lives = settings->lives;
 
+	return gamePtr;
+}
+
+void botTick(Game& game)
+{
+	// The same order as LocalController::process.
+	int phase = game.cycles % 2;
+	for (std::size_t i = 0; i < game.worms.size(); ++i)
+	{
+		Worm& worm = *game.worms[(i + phase) % game.worms.size()];
+		worm.ai->process(game, worm);
+	}
+}
+
+namespace
+{
+
+void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks, int interval)
+{
+	std::unique_ptr<Game> gamePtr = setUpGame(common, config.seed, config.gameMode, config.weapons);
+	Game& game = *gamePtr;
+	// Records a replay of the game, as LocalController does when replays
+	// are on, to play it back afterwards.
+	FsNode replayNode(std::string("/tmp/") + config.name + ".lrp");
+	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(replayNode.toSink()));
+	replay->beginRecord(game);
+
 	game.startGame();
 
 	// Drawing doesn't change the game, so the game hashes don't depend on it.
@@ -288,14 +322,8 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 
 	for (int tick = 1; tick <= ticks; ++tick)
 	{
-		// The same order as LocalController::process.
-		int phase = game.cycles % 2;
-		for (std::size_t i = 0; i < game.worms.size(); ++i)
-		{
-			Worm& worm = *game.worms[(i + phase) % game.worms.size()];
-			worm.ai->process(game, worm);
-		}
-
+		botTick(game);
+		replay->recordFrame();
 		game.processFrame();
 
 		bool over = game.isGameOver();
@@ -310,6 +338,8 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 	}
 
 	hashStatsScreen(config.name, game, split);
+	replay.reset();
+	hashReplay(common, config.name, replayNode, 1000, ticks);
 
 	std::printf("%s summary: %d ticks, kills %d-%d, lives %d-%d\n", config.name, game.cycles,
 		game.worms[0]->kills, game.worms[1]->kills, game.worms[0]->lives, game.worms[1]->lives);
@@ -333,6 +363,7 @@ int hashRun(int argc, char* argv[])
 
 	hashMenus(common);
 	hashSettings();
+	hashReplays(common);
 
 	return 0;
 }

@@ -8,11 +8,21 @@ int hashRun(int argc, char* argv[]);
 #include <gvl/resman/shared_ptr.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include "math.hpp"
 
 struct Common;
+struct FsNode;
 struct Game;
 struct Renderer;
+
+// The hash of the whole game state that the hash run prints.
+uint64_t hashGame(Game& game);
+// A bot-vs-bot game as the hash run sets it up, before startGame, with
+// random weapons when `weapons` is null.
+std::unique_ptr<Game> setUpGame(gvl::shared_ptr<Common> common, uint32_t seed, int gameMode, char const* const* weapons);
+// The bots' controls for the next tick.
+void botTick(Game& game);
 
 // Drives the menus and weapon selection with scripted keys and prints hashes
 // of what they show. See hashmenus.cpp.
@@ -24,6 +34,10 @@ void hashSettings();
 // Hashes the stats recorder and the stats screen. See hashstats.cpp.
 uint64_t hashStats(Game& game);
 void hashStatsScreen(char const* name, Game& game, Renderer& renderer);
+// Plays back and hashes a replay file, and replays recorded, changed and
+// broken in other ways. See hashreplays.cpp.
+void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks);
+void hashReplays(gvl::shared_ptr<Common> common);
 
 // 64-bit FNV-1a over 32-bit words, the same as the Rust tests use.
 struct Fnv
