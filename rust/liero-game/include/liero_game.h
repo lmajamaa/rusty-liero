@@ -311,6 +311,39 @@ typedef struct LieroGameHooks {
 } LieroGameHooks;
 
 /**
+ * View of a C++ `Bitmap`: `h` rows of `pitch` bytes, of which the first
+ * `w` are the image. Drawing stays inside `clip` (x2 and y2 excluded),
+ * except where the C++ didn't clip either.
+ */
+typedef struct LieroBitmap {
+  uint8_t *pixels;
+  int32_t w;
+  int32_t h;
+  int32_t pitch;
+  struct LieroRect clip;
+} LieroBitmap;
+
+/**
+ * A palette entry, laid out like C++'s `Color`. Components are 0 to 63 in
+ * `Palette`, 0 to 255 once activated.
+ */
+typedef struct LieroColor {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+  uint8_t unused;
+} LieroColor;
+
+/**
+ * One character of the bitmap font, laid out like `Font::Char`: 7 x 8
+ * pixels, non-zero where the character is, and how far to move after it.
+ */
+typedef struct LieroFontChar {
+  uint8_t data[56];
+  int32_t width;
+} LieroFontChar;
+
+/**
  * A dirt effect: how explosions and digging change the terrain. C++ uses it
  * as `Texture` in `Common::textures`.
  */
@@ -1091,6 +1124,410 @@ void liero_game_spawn_zone(const struct LieroGameFields *game,
  */
 bool liero_game_is_over(const struct LieroGameFields *game,
                         const struct LieroGameSettings *settings);
+
+/**
+ * Fills a rectangle, clipped: `fillRect`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_fill_rect(const struct LieroBitmap *scr,
+                         int32_t x,
+                         int32_t y,
+                         int32_t w,
+                         int32_t h,
+                         uint8_t color);
+
+/**
+ * Fills the whole buffer: `fill`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_fill(const struct LieroBitmap *scr, uint8_t color);
+
+/**
+ * A bar `width` long and `height` high, not clipped: `drawBar`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_draw_bar(const struct LieroBitmap *scr,
+                        int32_t x,
+                        int32_t y,
+                        int32_t width,
+                        int32_t height,
+                        uint8_t color);
+
+/**
+ * A vertical line from y1 to y2 (excluded), clipped: `vline`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_vline(const struct LieroBitmap *scr,
+                     int32_t x,
+                     int32_t y1,
+                     int32_t y2,
+                     uint8_t color);
+
+/**
+ * A filled box with cut corners: `drawRoundedBox`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_draw_rounded_box(const struct LieroBitmap *scr,
+                                int32_t x,
+                                int32_t y,
+                                uint8_t color,
+                                int32_t height,
+                                int32_t width);
+
+/**
+ * The outline of a box with cut corners: `drawRoundedLineBox`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_draw_rounded_line_box(const struct LieroBitmap *scr,
+                                     int32_t x,
+                                     int32_t y,
+                                     uint8_t color,
+                                     int32_t width,
+                                     int32_t height);
+
+/**
+ * A dashed outline, going round anticlockwise from the top-left corner,
+ * in `color2` for the first `num / den` of the way and `color` for the
+ * rest: `drawDashedLineBox`, which shows Holdazone's zone and how far it
+ * is taken.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_draw_dashed_line_box(const struct LieroBitmap *scr,
+                                    int32_t x,
+                                    int32_t y,
+                                    uint8_t color,
+                                    uint8_t color2,
+                                    int32_t num,
+                                    int32_t den,
+                                    int32_t width,
+                                    int32_t height,
+                                    int32_t phase);
+
+/**
+ * Copies an image, colour 0 included: `blitImageNoKeyColour`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `mem` holds `height` rows `pitch` apart.
+ */
+void liero_gfx_blit_image_no_key_colour(const struct LieroBitmap *scr,
+                                        const uint8_t *mem,
+                                        int32_t x,
+                                        int32_t y,
+                                        int32_t width,
+                                        int32_t height,
+                                        int32_t pitch);
+
+/**
+ * Draws a sprite, colour 0 transparent: `blitImage`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `mem` holds `height` rows `pitch` apart.
+ */
+void liero_gfx_blit_image(const struct LieroBitmap *scr,
+                          const uint8_t *mem,
+                          int32_t x,
+                          int32_t y,
+                          int32_t width,
+                          int32_t height,
+                          int32_t pitch);
+
+/**
+ * Draws every other pixel of a sprite, in a checkerboard that `phase`
+ * shifts: `blitImageTrans`, for worms flickering at respawn. The pattern
+ * follows the visible part, as in C++.
+ *
+ * # Safety
+ * See `LieroBitmap`; `mem` holds `height` rows `pitch` apart.
+ */
+void liero_gfx_blit_image_trans(const struct LieroBitmap *scr,
+                                const uint8_t *mem,
+                                int32_t x,
+                                int32_t y,
+                                int32_t width,
+                                int32_t height,
+                                int32_t pitch,
+                                int32_t phase);
+
+/**
+ * Draws a sprite only over colours 160 to 167: `blitImageR`, for
+ * bonuses showing through the fog.
+ *
+ * # Safety
+ * See `LieroBitmap`; `mem` holds `height` rows `width` apart.
+ */
+void liero_gfx_blit_image_r(const struct LieroBitmap *scr,
+                            const uint8_t *mem,
+                            int32_t x,
+                            int32_t y,
+                            int32_t width,
+                            int32_t height);
+
+/**
+ * Draws the 16 x 16 fire cone sprite, darker as `fc` counts down:
+ * `blitFireCone`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `mem` holds 16 x 16 pixels.
+ */
+void liero_gfx_blit_fire_cone(const struct LieroBitmap *scr,
+                              int32_t fc,
+                              const uint8_t *mem,
+                              int32_t x,
+                              int32_t y);
+
+/**
+ * Darkens the screen under a sprite's non-zero pixels where the material
+ * shows shadows: `blitShadowImage`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `mem` holds `height` rows `width` apart, and
+ * `materials` has 256 entries.
+ */
+void liero_gfx_blit_shadow_image(const struct LieroBitmap *scr,
+                                 const struct LieroMaterial *materials,
+                                 const uint8_t *mem,
+                                 int32_t x,
+                                 int32_t y,
+                                 int32_t width,
+                                 int32_t height);
+
+/**
+ * The ninja rope, cycling through colours `begin` to `end` (excluded):
+ * `drawNinjarope`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_draw_ninjarope(const struct LieroBitmap *scr,
+                              int32_t begin,
+                              int32_t end,
+                              int32_t from_x,
+                              int32_t from_y,
+                              int32_t to_x,
+                              int32_t to_y);
+
+/**
+ * A sparkling laser sight: a fifth of the points, in colour 83 or 84.
+ * `drawLaserSight`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `rand` must be valid for the call.
+ */
+void liero_gfx_draw_laser_sight(const struct LieroBitmap *scr,
+                                struct LieroRand *rand,
+                                int32_t from_x,
+                                int32_t from_y,
+                                int32_t to_x,
+                                int32_t to_y);
+
+/**
+ * The ninja rope's shadow: `drawShadowLine`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `materials` has 256 entries.
+ */
+void liero_gfx_draw_shadow_line(const struct LieroBitmap *scr,
+                                const struct LieroMaterial *materials,
+                                int32_t from_x,
+                                int32_t from_y,
+                                int32_t to_x,
+                                int32_t to_y);
+
+/**
+ * A line, clipped: `drawLine`.
+ *
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_gfx_draw_line(const struct LieroBitmap *scr,
+                         int32_t from_x,
+                         int32_t from_y,
+                         int32_t to_x,
+                         int32_t to_y,
+                         uint8_t color);
+
+/**
+ * A bar graph of `len` values in a framed box `height` high, from the
+ * bottom or, when `balanced`, from the middle: `drawGraph`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `data` holds `len` values.
+ */
+void liero_gfx_draw_graph(const struct LieroBitmap *scr,
+                          const double *data,
+                          uintptr_t len,
+                          int32_t height,
+                          int32_t start_x,
+                          int32_t start_y,
+                          uint8_t color,
+                          uint8_t neg_color,
+                          bool balanced);
+
+/**
+ * A heatmap of `width` x `height` counts, in colours 104 to 119 by rank,
+ * so each colour covers about as many pixels: `drawHeatmap`.
+ *
+ * # Safety
+ * See `LieroBitmap`; `map` holds `width * height` counts.
+ */
+void liero_gfx_draw_heatmap(const struct LieroBitmap *scr,
+                            int32_t x,
+                            int32_t y,
+                            const int32_t *map,
+                            int32_t width,
+                            int32_t height);
+
+/**
+ * Converts `w` x `h` palette indices (rows `src_pitch` apart) to 32-bit
+ * pixels with `pal32`, each `mag` x `mag` pixels big: `scaleDraw`. Above
+ * 1x, only whole groups of 4 pixels in a row are drawn, as in C++.
+ *
+ * # Safety
+ * `src` holds the image, `dest` `h * mag` rows `dest_pitch` bytes apart
+ * with room for `w * mag` pixels, and `pal32` 256 entries.
+ */
+void liero_gfx_scale_draw(const uint8_t *src,
+                          int32_t w,
+                          int32_t h,
+                          uintptr_t src_pitch,
+                          uint8_t *dest,
+                          uintptr_t dest_pitch,
+                          int32_t mag,
+                          const uint32_t *pal32);
+
+/**
+ * 32-bit pixels for an activated palette: `preparePaletteBgra`.
+ *
+ * # Safety
+ * Both hold 256 entries.
+ */
+void liero_gfx_prepare_palette_bgra(const struct LieroColor *pal, uint32_t *pal32);
+
+/**
+ * The largest whole magnification that fits a `scr_w` x `scr_h` screen in
+ * `back_w` x `back_h`, and where to put it to centre it: `fitScreen`.
+ */
+int32_t liero_gfx_fit_screen(int32_t back_w,
+                             int32_t back_h,
+                             int32_t scr_w,
+                             int32_t scr_h,
+                             int32_t *offset_x,
+                             int32_t *offset_y);
+
+/**
+ * Palette functions. Each palette is 256 entries.
+ *
+ * The VGA palette (0 to 63) as 8-bit colours: `Palette::activate`.
+ *
+ * # Safety
+ * Both hold 256 entries.
+ */
+void liero_palette_activate(const struct LieroColor *pal, struct LieroColor *real);
+
+/**
+ * Darkens the palette to `amount` / 32; 32 and more leave it:
+ * `Palette::fade`.
+ *
+ * # Safety
+ * `pal` holds 256 entries.
+ */
+void liero_palette_fade(struct LieroColor *pal, int32_t amount);
+
+/**
+ * Brightens the palette towards white by `amount` / 32, for the screen
+ * flash: `Palette::lightUp`.
+ *
+ * # Safety
+ * `pal` holds 256 entries.
+ */
+void liero_palette_light_up(struct LieroColor *pal, int32_t amount);
+
+/**
+ * Sets entries `from` to `to` of `pal` to those of `source`, rotated by
+ * `dist`: `Palette::rotateFrom`, for animated colours.
+ *
+ * # Safety
+ * Both hold 256 entries, and 0 <= from <= to < 256.
+ */
+void liero_palette_rotate_from(struct LieroColor *pal,
+                               const struct LieroColor *source,
+                               int32_t from,
+                               int32_t to,
+                               uint32_t dist);
+
+/**
+ * Worm `i`'s colours from its settings' colour index and `rgb`:
+ * `Palette::setWormColour`.
+ *
+ * # Safety
+ * `pal` holds 256 entries, and `color` is at least 2 and at most 253.
+ */
+void liero_palette_set_worm_colour(struct LieroColor *pal,
+                                   int32_t i,
+                                   int32_t color,
+                                   const int32_t (*rgb)[3]);
+
+/**
+ * Font functions. `chars` holds `count` characters; text bytes 2 to 251
+ * are characters 0 to 249, and 0 starts a new line.
+ *
+ * Draws character `c` in `color`, `size` times as big: `Font::drawChar`.
+ * Clipping is for the unscaled size, as in C++.
+ *
+ * # Safety
+ * See `LieroBitmap`; `chars` holds `count` characters.
+ */
+void liero_font_draw_char(const struct LieroBitmap *scr,
+                          const struct LieroFontChar *chars,
+                          uintptr_t count,
+                          uint8_t c,
+                          int32_t x,
+                          int32_t y,
+                          uint8_t color,
+                          int32_t size);
+
+/**
+ * Draws `len` bytes of text: `Font::drawText`.
+ *
+ * # Safety
+ * See `liero_font_draw_char`; `text` holds `len` bytes.
+ */
+void liero_font_draw_text(const struct LieroBitmap *scr,
+                          const struct LieroFontChar *chars,
+                          uintptr_t count,
+                          const uint8_t *text,
+                          uintptr_t len,
+                          int32_t x,
+                          int32_t y,
+                          uint8_t color,
+                          int32_t size);
+
+/**
+ * The width of `len` bytes of text, its widest line if there are several,
+ * and its height in `height` unless null: `Font::getDims`.
+ *
+ * # Safety
+ * `chars` holds `count` characters and `text` `len` bytes.
+ */
+int32_t liero_font_get_dims(const struct LieroFontChar *chars,
+                            uintptr_t count,
+                            const uint8_t *text,
+                            uintptr_t len,
+                            int32_t *height);
 
 /**
  * Sets every pixel's material from its colour.

@@ -6,6 +6,7 @@
 //! (see README).
 
 pub mod game;
+pub mod gfx;
 pub mod level;
 pub mod material;
 pub mod math;

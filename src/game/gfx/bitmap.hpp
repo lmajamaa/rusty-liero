@@ -5,6 +5,7 @@
 #include <cstring>
 #include <gvl/math/rect.hpp>
 #include <gvl/support/platform.hpp>
+#include <liero_game.h>
 
 struct Bitmap : gvl::noncopyable
 {
@@ -49,6 +50,13 @@ struct Bitmap : gvl::noncopyable
 	{
 		if (clip_rect.inside(x, y))
 			(static_cast<unsigned char*>(pixels) + y*pitch)[x] = v;
+	}
+
+	// The view Rust draws on (rust/liero-game/src/gfx.rs).
+	LieroBitmap view()
+	{
+		LieroBitmap v = { pixels, w, h, int(pitch), { clip_rect.x1, clip_rect.y1, clip_rect.x2, clip_rect.y2 } };
+		return v;
 	}
 
 	void copy(Bitmap const& other)

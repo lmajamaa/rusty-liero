@@ -26,15 +26,6 @@ pub struct LieroRect {
     pub y2: i32,
 }
 
-impl LieroRect {
-    /// `gvl::rect::inside`.
-    fn inside(&self, x: i32, y: i32) -> bool {
-        let dx = x.wrapping_sub(self.x1);
-        let dy = y.wrapping_sub(self.y1);
-        dx < self.x2 - self.x1 && dx >= 0 && dy < self.y2 - self.y1 && dy >= 0
-    }
-}
-
 /// Holdazone's zone, laid out like C++'s `Holdazone`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -385,7 +376,7 @@ impl Game<'_> {
 
         for (_, w) in self.worms() {
             let pos = unsafe { *w.pos };
-            if unsafe { *w.visible } && z.rect.inside(ftoi(pos.x), ftoi(pos.y)) {
+            if unsafe { *w.visible } && z.rect.contains(ftoi(pos.x), ftoi(pos.y)) {
                 contender_idx = w.index;
                 contenders += 1;
             }
@@ -694,9 +685,9 @@ mod tests {
     }
 
     #[test]
-    fn rect_inside_excludes_far_edges() {
+    fn rect_contains_excludes_far_edges() {
         let r = LieroRect { x1: 10, y1: 20, x2: 15, y2: 22 };
-        assert!(r.inside(10, 20) && r.inside(14, 21));
-        assert!(!r.inside(15, 20) && !r.inside(10, 22) && !r.inside(9, 20));
+        assert!(r.contains(10, 20) && r.contains(14, 21));
+        assert!(!r.contains(15, 20) && !r.contains(10, 22) && !r.contains(9, 20));
     }
 }
