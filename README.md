@@ -1,5 +1,5 @@
-The game is only built for the web, with Docker (see below). The C++ tctool
-and the optional videotool are native command-line tools.
+The game is only built for the web, with Docker (see below). tctool, written
+in Rust, and the optional videotool are native command-line tools.
 
 Bots
 ====
@@ -44,13 +44,16 @@ in the idle parts of its plans; the second player's doesn't.
 How to build the native tools (Linux and Mac)
 =============================================
 
-* Make sure you have CMake, SDL2, SDL2_image and gcc installed
-* Run cmake:
-* $ cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
-* Run "make" to build tctool
+tctool needs only Rust:
+```bash
+cargo build --release --manifest-path tools/tctool/Cargo.toml
+```
+It is written to `tools/tctool/target/release/tctool`.
 
 (Optional) Enabling and building the video tool
 -------------------------------
+* Make sure you have CMake, SDL2, SDL2_image and gcc installed
+* Run cmake: cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
 * Download latest libx264: git clone git://git.videolan.org/x264.git
 * Build it: cd x264; ./configure --enable-shared --enable-pic && make -j8
 * Download latest ffmpeg: git clone git://source.ffmpeg.org/ffmpeg.git ffmpeg
@@ -63,15 +66,25 @@ How to build (Docker)
 With Docker installed, no other build tools are needed. The repository is mounted
 into the containers and build output ends up in `build/`.
 
-Native Linux build of the C++ tctool:
+Native Linux build of tctool (writes `tools/tctool/target/release/tctool`):
 ```bash
 docker compose run --rm native
 ```
 
 Running tctool from that build (writes to `TC/` in the repository):
 ```bash
-docker compose run --rm native build/native/tctool --tc-name "Liero v1.33" liero-1.36-bundle
+docker compose run --rm native tools/tctool/target/release/tctool --tc-name "Liero v1.33" liero-1.36-bundle
 ```
+
+tctool's tests convert a generated installation and compare the result with
+`tools/tctool/tests/synthetic.sha256`. With `LIERO_133_DIR` set to a folder with
+Liero 1.33's `LIERO.EXE`, `LIERO.CHR` and `LIERO.SND`, they also check its
+conversion against `tools/tctool/tests/liero133.sha256`:
+```bash
+docker compose run --rm native cargo test --manifest-path tools/tctool/Cargo.toml
+```
+After an intended change to the output, rewrite the listings with
+`TCTOOL_UPDATE_LISTINGS=1` and say why in the commit.
 
 Shell with the web build tools (Emscripten and Bun):
 ```bash
@@ -88,13 +101,6 @@ Serving the web build locally with Bun (then open http://localhost:8080):
 bun web/serve.ts build/web
 ```
 
-Building the Rust version of tctool (in `tools/tctool`):
-```bash
-docker compose run --rm native cargo build --release --manifest-path tools/tctool/Cargo.toml
-```
-```bash
-docker compose run --rm native tools/tctool/target/release/tctool --tc-name "Liero v1.33" liero-1.36-bundle
-```
 With Rust installed locally, `cargo run --release --manifest-path tools/tctool/Cargo.toml -- <path-to-tc>` works too.
 
 Game code ported to Rust lives in `rust/liero-game`. The web build compiles it
@@ -140,8 +146,7 @@ Linux/Mac
 ```bash
 curl https://www.liero.be/download/liero-1.36-bundle.zip -O
 unzip liero-1.36-bundle.zip
-./tctool liero-1.36-bundle
-mv TC/liero-1.36-bundle TC/"Liero v1.33"
+cargo run --release --manifest-path tools/tctool/Cargo.toml -- --tc-name "Liero v1.33" liero-1.36-bundle
 rm liero-1.36-bundle.zip
 rm -rf liero-1.36-bundle
 ```
