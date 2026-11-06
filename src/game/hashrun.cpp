@@ -248,12 +248,6 @@ std::unique_ptr<Game> setUpGame(gvl::shared_ptr<Common> common, uint32_t seed, i
 		worm->health = worm->settings->health;
 		worm->index = i;
 		worm->statsX = i == 0 ? 0 : 218;
-		// Worm's constructor leaves these to whatever was in memory. The game
-		// sets them before using them, but the hash would read them first.
-		for (int& r : worm->reacts)
-			r = 0;
-		worm->ninjarope.length = 0;
-		worm->ninjarope.curLen = 0;
 		DumbLieroAI* ai = new DumbLieroAI();
 		ai->rand.seed(seed * 104729 + i);
 		worm->ai.reset(ai);

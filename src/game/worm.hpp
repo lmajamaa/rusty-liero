@@ -25,6 +25,8 @@ struct Ninjarope
 	: out(false)
 	, attached(false)
 	, anchor(0)
+	, length(0)
+	, curLen(0)
 	{
 	}
 
@@ -259,6 +261,11 @@ struct Worm : gvl::shared
 
 		visible = false;
 		killedTimer = 150;
+
+		// The worm's first tick sets these, but the CPU bot reads `reacts`
+		// before it, and a replay records them all when it starts.
+		for (int& r : reacts)
+			r = 0;
 	}
 
 	bool pressed(Control control) const
