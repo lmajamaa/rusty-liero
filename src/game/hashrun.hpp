@@ -41,6 +41,8 @@ void hashReplays(gvl::shared_ptr<Common> common);
 // Games between the predictive bots, hashing their state too. See
 // hashai.cpp.
 void hashAiGames(gvl::shared_ptr<Common> common);
+// The sound mixer and the key handling. See hashsfx.cpp.
+void hashSfxAndInput(gvl::shared_ptr<Common> common);
 
 // 64-bit FNV-1a over 32-bit words, the same as the Rust tests use.
 struct Fnv

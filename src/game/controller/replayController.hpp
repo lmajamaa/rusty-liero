@@ -15,7 +15,6 @@
 #include <ctime>
 extern "C"
 {
-#include "../mixer/mixer.h"
 }
 
 struct Game;

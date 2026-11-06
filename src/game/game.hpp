@@ -56,7 +56,6 @@ struct Game
 	~Game();
 
 	void onKey(uint32_t key, bool state);
-	Worm* findControlForKey(uint32_t key, Worm::Control& control);
 	void releaseControls();
 	// Runs the game for one tick, in Rust (rust/liero-game/src/game.rs).
 	void processFrame();

@@ -611,6 +611,20 @@ void Gfx::setDoubleRes(bool newDoubleRes)
 	hiddenMenu.updateItems(*common);
 }
 
+namespace
+{
+
+// Passes joystick buttons that changed to the controller.
+void sendKeys(Controller* controller, LieroKeyChanges const& changes)
+{
+	if (!controller)
+		return;
+	for (uint32_t i = 0; i < changes.count; ++i)
+		controller->onKey(changes.keys[i], changes.states[i]);
+}
+
+} // namespace
+
 void Gfx::processEvent(SDL_Event& ev, Controller* controller)
 {
 	switch(ev.type)
@@ -623,13 +637,9 @@ void Gfx::processEvent(SDL_Event& ev, Controller* controller)
 			if (keyBufPtr < keyBuf + 32)
 				*keyBufPtr++ = ev.key.keysym;
 
-			Uint32 dosScan = SDLToDOSKey(ev.key.keysym.scancode);
-			if(dosScan)
-			{
-				dosKeys[dosScan] = true;
-				if(controller)
-					controller->onKey(dosScan, true);
-			}
+			Uint32 dosScan = liero_keys_event(&dosKeys, s, true);
+			if(dosScan && controller)
+				controller->onKey(dosScan, true);
 
 			if(s == SDL_SCANCODE_F11)
 			{
@@ -650,13 +660,9 @@ void Gfx::processEvent(SDL_Event& ev, Controller* controller)
 		{
 			SDL_Scancode s = ev.key.keysym.scancode;
 
-			Uint32 dosScan = SDLToDOSKey(s);
-			if(dosScan)
-			{
-				dosKeys[dosScan] = false;
-				if(controller)
-					controller->onKey(dosScan, false);
-			}
+			Uint32 dosScan = liero_keys_event(&dosKeys, s, false);
+			if(dosScan && controller)
+				controller->onKey(dosScan, false);
 		}
 		break;
 
@@ -683,61 +689,16 @@ void Gfx::processEvent(SDL_Event& ev, Controller* controller)
 		break;
 
 		case SDL_JOYAXISMOTION:
-		{
-			Joystick& js = joysticks[ev.jaxis.which];
-			int jbtnBase = 4 + 2 * ev.jaxis.axis;
-
-			bool newBtnStates[2];
-			newBtnStates[0] = (ev.jaxis.value > JoyAxisThreshold);
-			newBtnStates[1] = (ev.jaxis.value < -JoyAxisThreshold);
-
-			for(int i = 0; i < 2; ++i)
-			{
-				int jbtn = jbtnBase + i;
-				bool newState = newBtnStates[i];
-
-				if(newState != js.btnState[jbtn])
-				{
-					js.btnState[jbtn] = newState;
-					if (controller)
-						controller->onKey(joyButtonToExKey(ev.jaxis.which, jbtn), newState);
-				}
-			}
-		}
+			sendKeys(controller, liero_joy_axis(joysticks[ev.jaxis.which].btnState, ev.jaxis.which, ev.jaxis.axis, ev.jaxis.value));
 		break;
 
 		case SDL_JOYHATMOTION:
-		{
-			Joystick& js = joysticks[ev.jhat.which];
-
-			bool newBtnStates[4];
-			newBtnStates[0] = (ev.jhat.value & SDL_HAT_UP) != 0;
-			newBtnStates[1] = (ev.jhat.value & SDL_HAT_DOWN) != 0;
-			newBtnStates[2] = (ev.jhat.value & SDL_HAT_LEFT) != 0;
-			newBtnStates[3] = (ev.jhat.value & SDL_HAT_RIGHT) != 0;
-
-			for(int jbtn = 0; jbtn < 4; ++jbtn)
-			{
-				bool newState = newBtnStates[jbtn];
-				if(newState != js.btnState[jbtn])
-				{
-					js.btnState[jbtn] = newState;
-					if(controller)
-						controller->onKey(joyButtonToExKey(ev.jhat.which, jbtn), newState);
-				}
-			}
-		}
+			sendKeys(controller, liero_joy_hat(joysticks[ev.jhat.which].btnState, ev.jhat.which, ev.jhat.value));
 		break;
 
 		case SDL_JOYBUTTONDOWN:
 		case SDL_JOYBUTTONUP: /* Fall-through */
-		{
-			Joystick& js = joysticks[ev.jbutton.which];
-			int jbtn = 16 + ev.jbutton.button;
-			js.btnState[jbtn] = (ev.jbutton.state == SDL_PRESSED);
-			if(controller)
-				controller->onKey(joyButtonToExKey(ev.jbutton.which, jbtn), js.btnState[jbtn]);
-		}
+			sendKeys(controller, liero_joy_button(joysticks[ev.jbutton.which].btnState, ev.jbutton.which, ev.jbutton.button, ev.jbutton.state == SDL_PRESSED));
 		break;
 
 		default:
@@ -782,25 +743,15 @@ uint32_t Gfx::waitForKeyEx()
 			return SDLToDOSKey(ev.key.keysym);
 
 		case SDL_JOYAXISMOTION:
-			if(ev.jaxis.value > JoyAxisThreshold)
-				return joyButtonToExKey( ev.jaxis.which, 4 + 2 * ev.jaxis.axis );
-			else if ( ev.jaxis.value < -JoyAxisThreshold )
-				return joyButtonToExKey( ev.jaxis.which, 5 + 2 * ev.jaxis.axis );
-
+			if (uint32_t k = liero_joy_axis_key(ev.jaxis.which, ev.jaxis.axis, ev.jaxis.value))
+				return k;
 			break;
 		case SDL_JOYHATMOTION:
-			if(ev.jhat.value & SDL_HAT_UP)
-				return joyButtonToExKey(ev.jhat.which, 0);
-			else if(ev.jhat.value & SDL_HAT_DOWN)
-				return joyButtonToExKey(ev.jhat.which, 1);
-			else if (ev.jhat.value & SDL_HAT_LEFT)
-				return joyButtonToExKey(ev.jhat.which, 2);
-			else if (ev.jhat.value & SDL_HAT_RIGHT)
-				return joyButtonToExKey(ev.jhat.which, 3);
-
+			if (uint32_t k = liero_joy_hat_key(ev.jhat.which, ev.jhat.value))
+				return k;
 			break;
 		case SDL_JOYBUTTONDOWN:
-			return joyButtonToExKey(ev.jbutton.which, 16 + ev.jbutton.button);
+			return liero_joy_button_key(ev.jbutton.which, ev.jbutton.button);
 		default:
 			break;
 		}
@@ -811,24 +762,18 @@ uint32_t Gfx::waitForKeyEx()
 
 std::string Gfx::getKeyName(uint32_t key)
 {
-	if(key < MaxDOSKey)
+	int joy, button;
+	switch (liero_key_name_kind(key, &joy, &button))
 	{
-		return common->texts.keyNames[key];
+	case 0: return common->texts.keyNames[key];
+	case 1: return "J" + toString(joy) + "_" + toString(button);
+	default: return "";
 	}
-	else if(key >= JoyKeysStart)
-	{
-		key -= JoyKeysStart;
-		int joyNum = key / MaxJoyButtons;
-		key -= joyNum * MaxJoyButtons;
-		return "J" + toString(joyNum) + "_" + toString(key);
-	}
-
-	return "";
 }
 
 void Gfx::clearKeys()
 {
-	std::memset(dosKeys, 0, sizeof(dosKeys));
+	liero_keys_clear(&dosKeys);
 }
 
 void Gfx::preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256])
@@ -2175,7 +2120,7 @@ int Gfx::menuLoop()
 #if 1
 		if (testSDLKeyOnce(SDL_SCANCODE_F8))
 		{
-			uint32 s = 14;
+			uint32_t s = 14;
 
 			Rand r;
 			r.seed(s);
@@ -2236,7 +2181,7 @@ int Gfx::menuLoop()
 				w.splinterColour = r(256);
 				w.splinterScatter = r(2);
 				w.splinterType = r(common.nobjectTypes.size());
-				w.startFrame = r((uint32)common.smallSprites.count - 13);
+				w.startFrame = r((uint32_t)common.smallSprites.count - 13);
 				w.numFrames = r(5);
 				w.timeToExplo = 50 + r(200);
 				w.timeToExploV = 10 + r(50);
@@ -2265,7 +2210,7 @@ int Gfx::menuLoop()
 				n.hitDamage = r(10);
 				n.leaveObj = r(5) == 0 ? r(common.sobjectTypes.size()) : -1;
 				n.leaveObjDelay = 10 + r(80);
-				n.startFrame = r((uint32)common.smallSprites.count - 13);
+				n.startFrame = r((uint32_t)common.smallSprites.count - 13);
 				n.numFrames = r(5);
 				n.speed = r(150);
 				n.splinterAmount = idx > 0 && r(5) == 0 ? r(10) : 0;
@@ -2285,7 +2230,7 @@ int Gfx::menuLoop()
 				s.detectRange = r(20);
 				s.dirtEffect = r(9);
 				s.flash = r(5);
-				s.startFrame = r((uint32)common.largeSprites.count - 7);
+				s.startFrame = r((uint32_t)common.largeSprites.count - 7);
 				s.numFrames = r(7);
 				s.startSound = r(common.sounds.size());
 				s.shake = r(10);

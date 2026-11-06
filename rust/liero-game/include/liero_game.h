@@ -57,6 +57,27 @@
 #define JUMP 6
 
 /**
+ * DOS scancodes are below this.
+ */
+#define LIERO_MAX_DOS_KEY 177
+
+#define LIERO_JOY_KEYS_START 512
+
+#define LIERO_MAX_JOY_BUTTONS 32
+
+#define LIERO_DK_ESCAPE 1
+
+/**
+ * How far an axis must move from the centre to count as pressed.
+ */
+#define LIERO_JOY_AXIS_THRESHOLD 10000
+
+/**
+ * What SDL scancodes without a DOS key become. Nothing uses 89.
+ */
+#define LIERO_UNKNOWN_DOS_KEY 89
+
+/**
  * Width and height of the large sprites (stones, dirt textures...).
  */
 #define LIERO_LARGE_SPRITE_SIZE 16
@@ -120,6 +141,18 @@
  * The same and dig.
  */
 #define LIERO_MAX_CONTROL_EX 8
+
+/**
+ * Number of channels; more sounds than this at once aren't played.
+ */
+#define LIERO_MIXER_CHANNELS 8
+
+/**
+ * Flags for `liero_mixer_add`.
+ */
+#define LIERO_SOUND_NORMAL 0
+
+#define LIERO_SOUND_LOOP 1
 
 /**
  * Characters in the font (`Font::chars`).
@@ -249,6 +282,11 @@ typedef enum LieroSettingsStatus {
  * A predictive AI for C++'s `FollowAI` to own.
  */
 typedef struct LieroFollowAi LieroFollowAi;
+
+/**
+ * The mixer's channels and time. Opaque to C++.
+ */
+typedef struct LieroMixer LieroMixer;
 
 /**
  * What a replay call gives back. C++ copies out what it needs and frees it.
@@ -645,6 +683,41 @@ typedef struct LieroFontChar {
   uint8_t data[56];
   int32_t width;
 } LieroFontChar;
+
+/**
+ * Which DOS keys are down.
+ */
+typedef struct LieroKeys {
+  bool down[LIERO_MAX_DOS_KEY];
+} LieroKeys;
+
+/**
+ * Key presses and releases that a joystick event made.
+ */
+typedef struct LieroKeyChanges {
+  uint32_t count;
+  uint32_t keys[4];
+  bool states[4];
+} LieroKeyChanges;
+
+/**
+ * One worm's controls and states for `liero_local_controller_key`.
+ */
+typedef struct LieroWormKeys {
+  /**
+   * The key for each control: up, down, left, right, fire, change,
+   * jump and dig.
+   */
+  const uint32_t *controls;
+  /**
+   * The worm's control states (`Worm::controlStates`), one bit each.
+   */
+  uint32_t *states;
+  /**
+   * The keys' real states, dig included (`cleanControlStates`).
+   */
+  uint32_t *clean;
+} LieroWormKeys;
 
 /**
  * A dirt effect: how explosions and digging change the terrain. C++ uses it
@@ -2887,6 +2960,92 @@ int32_t liero_font_get_dims(const struct LieroFontChar *chars,
                             int32_t *height);
 
 /**
+ * The DOS key for an SDL scancode, or 89 for one without.
+ */
+uint32_t liero_sdl_to_dos_key(int32_t scancode);
+
+/**
+ * As `liero_sdl_to_dos_key` for a key pressed. (C also turned keys from 177
+ * up into 89, but the table has no such keys.)
+ */
+uint32_t liero_sdl_to_dos_keysym(int32_t scancode);
+
+bool liero_key_is_extended(uint32_t key);
+
+uint32_t liero_joy_key(int32_t joy, int32_t button);
+
+/**
+ * For a key's name: 0 for a DOS key (named by the TC), 1 for a joystick
+ * button, setting `joy` and `button`, and -1 for neither.
+ */
+int32_t liero_key_name_kind(uint32_t key, int32_t *joy, int32_t *button);
+
+void liero_keys_clear(struct LieroKeys *k);
+
+bool liero_keys_test(const struct LieroKeys *k, uint32_t key);
+
+bool liero_keys_test_once(struct LieroKeys *k, uint32_t key);
+
+void liero_keys_set(struct LieroKeys *k, uint32_t key, bool state);
+
+void liero_keys_toggle(struct LieroKeys *k, uint32_t key);
+
+bool liero_keys_test_sdl(const struct LieroKeys *k, int32_t scancode);
+
+bool liero_keys_test_sdl_once(struct LieroKeys *k, int32_t scancode);
+
+void liero_keys_release_sdl(struct LieroKeys *k, int32_t scancode);
+
+/**
+ * An SDL key going down or up. Returns the DOS key to pass to the
+ * controller, or 0 for none.
+ */
+uint32_t liero_keys_event(struct LieroKeys *k, int32_t scancode, bool down);
+
+/**
+ * The frame skip keys (`CommonController::process`).
+ */
+void liero_keys_frame_skip(struct LieroKeys *k, int32_t *frame_skip, bool *inverse);
+
+/**
+ * # Safety
+ * `buttons` must point to a joystick's 32 button states.
+ */
+struct LieroKeyChanges liero_joy_axis(bool *buttons, int32_t joy, uint8_t axis, int16_t value);
+
+/**
+ * # Safety
+ * As `liero_joy_axis`.
+ */
+struct LieroKeyChanges liero_joy_hat(bool *buttons, int32_t joy, uint8_t value);
+
+/**
+ * # Safety
+ * As `liero_joy_axis`.
+ */
+struct LieroKeyChanges liero_joy_button(bool *buttons, int32_t joy, uint8_t button, bool pressed);
+
+uint32_t liero_joy_axis_key(int32_t joy, uint8_t axis, int16_t value);
+
+uint32_t liero_joy_hat_key(int32_t joy, uint8_t value);
+
+uint32_t liero_joy_button_key(int32_t joy, uint8_t button);
+
+/**
+ * A key going down or up in a local game (`LocalController::onKey`): sets
+ * the control of the first worm with that key, and returns true for
+ * Escape, which leaves the game.
+ *
+ * # Safety
+ * `worms` must point to `count` worms, each with `control_count` controls.
+ */
+bool liero_local_controller_key(const struct LieroWormKeys *worms,
+                                uintptr_t count,
+                                uintptr_t control_count,
+                                int32_t key,
+                                bool key_state);
+
+/**
  * Sets every pixel's material from its colour.
  *
  * # Safety
@@ -3609,6 +3768,62 @@ struct LieroHash liero_settings_result_hash(const struct LieroSettingsResult *r)
  * used afterwards.
  */
 void liero_settings_result_free(struct LieroSettingsResult *r);
+
+/**
+ * Fills `out` with the `2 * len` samples of an 8-bit TC sound of `len`
+ * bytes (`SfxSample::createSound`).
+ *
+ * # Safety
+ * `data` must point to `len` bytes and `out` to `2 * len` samples, or both
+ * be anything with `len` 0.
+ */
+void liero_sound_from_tc(const uint8_t *data, uintptr_t len, int16_t *out);
+
+/**
+ * A mixer with every channel free. Free it with `liero_mixer_free`.
+ */
+struct LieroMixer *liero_mixer_new(void);
+
+/**
+ * # Safety
+ * `m` must come from `liero_mixer_new`, or be null.
+ */
+void liero_mixer_free(struct LieroMixer *m);
+
+/**
+ * The frame time the next mix starts at.
+ */
+int32_t liero_mixer_now(const struct LieroMixer *m);
+
+/**
+ * Plays the `len` samples at `samples` from frame `time` with `id` and
+ * `flags` (`LIERO_SOUND_LOOP`). Returns `id`, or null when every channel
+ * is busy.
+ *
+ * # Safety
+ * `samples` must point to `len` samples (or be anything with `len` 0)
+ * that stay alive while the mixer plays them.
+ */
+void *liero_mixer_add(struct LieroMixer *m,
+                      const int16_t *samples,
+                      uintptr_t len,
+                      uint32_t time,
+                      void *id,
+                      uint32_t flags);
+
+void liero_mixer_stop(struct LieroMixer *m, void *id);
+
+bool liero_mixer_is_playing(const struct LieroMixer *m, void *id);
+
+void liero_mixer_set_volume(struct LieroMixer *m, void *id, double volume);
+
+/**
+ * Mixes the next `frames` frames into `out`.
+ *
+ * # Safety
+ * `out` must point to `frames` samples.
+ */
+void liero_mixer_mix(struct LieroMixer *m, int16_t *out, uintptr_t frames);
 
 /**
  * New, empty stats. Free them with `liero_stats_free`.

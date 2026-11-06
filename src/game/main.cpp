@@ -122,8 +122,6 @@ try
 	SDL_StopTextInput();
 #endif
 
-	initKeys();
-
 	precomputeTables();
 
 	gfx.loadMenus();

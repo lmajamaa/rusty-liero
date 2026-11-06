@@ -2,13 +2,10 @@
 #define LIERO_MIXER_PLAYER_HPP
 
 #include <gvl/resman/shared.hpp>
+#include <liero_game.h>
+#include "../common.hpp"
 
-extern "C" {
-#include "mixer.h"
-}
-
-struct Common;
-
+// Plays the game's sounds. The mixer is in Rust (rust/liero-game/src/sfx.rs).
 struct SoundPlayer : gvl::shared
 {
 	virtual void play(int sound, void* id = 0, int loops = 0) = 0;
@@ -16,27 +13,38 @@ struct SoundPlayer : gvl::shared
 	virtual void stop(void* id) = 0;
 };
 
+// Starts a sound on a mixer at the mixer's current time.
+inline void playOnMixer(LieroMixer* mixer, Common& common, int sound, void* id, int loops)
+{
+	std::vector<int16_t> const& s = common.sounds[sound].samples;
+	liero_mixer_add(mixer, s.data(), s.size(), uint32_t(liero_mixer_now(mixer)), id, loops ? LIERO_SOUND_LOOP : LIERO_SOUND_NORMAL);
+}
+
+// Plays sounds on a mixer it doesn't own, for the hash run and videotool.
 struct RecordSoundPlayer : SoundPlayer
 {
-	RecordSoundPlayer(Common& common, sfx_mixer* mixer)
+	RecordSoundPlayer(Common& common, LieroMixer* mixer)
 	: mixer(mixer)
 	, common(common)
 	{
 	}
 
-	sfx_mixer* mixer;
+	LieroMixer* mixer;
 	Common& common;
 
-	void play(int sound, void* id = 0, int loops = 0);
+	void play(int sound, void* id = 0, int loops = 0)
+	{
+		playOnMixer(mixer, common, sound, id, loops);
+	}
 
 	bool isPlaying(void* id)
 	{
-		return sfx_is_playing(mixer, id) != 0;
+		return liero_mixer_is_playing(mixer, id);
 	}
 
 	void stop(void* id)
 	{
-		sfx_mixer_stop(mixer, id);
+		liero_mixer_stop(mixer, id);
 	}
 };
 
