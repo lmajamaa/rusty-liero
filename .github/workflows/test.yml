@@ -78,23 +78,18 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v7
 
-      - name: Install SDL2 and SDL2_image
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-image-dev
-
       - name: Install Rust
         run: |
           rustup toolchain install "$RUST_VERSION" --profile minimal
           rustup default "$RUST_VERSION"
 
-      - name: Build the C++ tctool
-        run: |
-          cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/native -j
-
-      - name: Build the Rust tctool
+      - name: Build tctool
         run: cargo build --release --manifest-path tools/tctool/Cargo.toml
+
+      # Converts a generated installation and compares the TC folder with
+      # tools/tctool/tests/synthetic.sha256.
+      - name: Test tctool's output
+        run: cargo test --release --manifest-path tools/tctool/Cargo.toml
 
       - name: Test reading and writing TCs (liero-data)
         run: cargo test --manifest-path rust/liero-data/Cargo.toml
