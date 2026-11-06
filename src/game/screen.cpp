@@ -70,15 +70,6 @@ void hostIdle(void*)
 	gfx.idle();
 }
 
-struct LegacyMainScreen : Screen
-{
-	Tick tick() override
-	{
-		gfx.mainLoop();
-		return Tick::close();
-	}
-};
-
 }
 
 void runScreens(std::unique_ptr<Screen> first)
@@ -106,9 +97,4 @@ void runScreens(std::unique_ptr<Screen> first)
 		pending = nullptr;
 		std::rethrow_exception(e);
 	}
-}
-
-std::unique_ptr<Screen> legacyMainScreen()
-{
-	return std::unique_ptr<Screen>(new LegacyMainScreen);
 }

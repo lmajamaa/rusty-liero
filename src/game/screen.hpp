@@ -41,7 +41,8 @@ struct Screen
 // thrown by a screen closes them all and is rethrown here.
 void runScreens(std::unique_ptr<Screen> first);
 
-// Today's Gfx::mainLoop as one screen, whose single tick runs the whole app.
-std::unique_ptr<Screen> legacyMainScreen();
+// The app: the main menu and what it opens (gfx.cpp). It closes when the
+// player quits.
+std::unique_ptr<Screen> mainScreen();
 
 #endif // LIERO_SCREEN_HPP

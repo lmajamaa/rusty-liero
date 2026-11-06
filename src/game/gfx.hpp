@@ -168,6 +168,9 @@ struct Gfx
 	void draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer);
 	void flip();
 	void menuFlip(bool quitting = false);
+	// The menus' palette for the next frame: fading in, cycling, the worms'
+	// colours. `menuFlip` sets it and shows the frame.
+	void menuFade(bool quitting = false);
 
 	void clearKeys();
 
@@ -234,8 +237,11 @@ struct Gfx
 
 	void processEvent(SDL_Event& ev, Controller* controller = 0);
 
-	int menuLoop();
-	void mainLoop();
+	// The main menu (MenuScreen in gfx.cpp): its setup, which returns the
+	// item F1 picks, and one pass of its loop, without the flip. False when
+	// the menu closes at once, with `selected`, instead of fading out.
+	int menuStart();
+	bool menuStep(int startItemId, int& selected);
 	void drawBasicMenu(/*int curSel*/);
 	void drawSpectatorInfo();
 	void playerSettings(int player);
