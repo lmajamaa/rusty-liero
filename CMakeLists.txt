@@ -53,7 +53,6 @@ set(SOURCES
     src/game/viewport.cpp
     src/game/weapon.cpp
     src/game/worm.cpp
-    src/game/ai/dijkstra.cpp
     src/game/ai/predictive_ai.cpp
     src/game/gfx/blit.cpp
     src/game/gfx/font.cpp
@@ -80,6 +79,7 @@ set(GAME_SOURCES ${SOURCES}
     src/game/hashsettings.cpp
     src/game/hashstats.cpp
     src/game/hashreplays.cpp
+    src/game/hashai.cpp
     src/game/hashtc.cpp
     src/game/keys.cpp
     src/game/main.cpp

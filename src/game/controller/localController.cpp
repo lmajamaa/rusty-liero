@@ -22,8 +22,7 @@ gvl::shared_ptr<WormAI> createAi(int controller, Worm& worm, Settings& settings)
 	if (controller == 1)
 		return gvl::shared_ptr<WormAI>(new DumbLieroAI());
 	else if (controller == 2)
-		return gvl::shared_ptr<WormAI>(new FollowAI(
-			Weights(), settings.aiParallels, worm.index == 0));
+		return gvl::shared_ptr<WormAI>(new FollowAI(settings.aiParallels, worm.index == 0));
 
 	return gvl::shared_ptr<WormAI>();
 }

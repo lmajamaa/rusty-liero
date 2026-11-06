@@ -1,6 +1,46 @@
 The game is only built for the web, with Docker (see below). The C++ tctool
 and the optional videotool are native command-line tools.
 
+Bots
+====
+
+Each player's menu (LEFT PLAYER or RIGHT PLAYER, then CONTROLLER) sets who
+plays that worm: Human, CPU or AI. CPU and AI are different bots.
+
+* **CPU** is the original Liero's bot. Each tick it heads for the nearest
+  worm, turns to aim roughly at it and fires when it's in range of the
+  current weapon. When it walks into a wall, it jumps or turns back. It also
+  jumps, changes weapons and swings on the rope at random, with chances set by
+  the TC. It doesn't look ahead or find paths, so it's cheap and easy to beat.
+* **AI** is OpenLiero's predictive bot. It keeps a few plans, which are
+  sequences of key presses, and plays each one out on copies of the game.
+  Each tick it tries changed versions of the plans and keeps whichever scores
+  best, then presses the first keys of the best plan. Plans are scored on
+  health, ammo, the distance to the other worm along a path through the level
+  (around rock, and through dirt at double cost), aiming along that path,
+  steering missiles and the game mode's goals. On the copies, it models the
+  other worm as a simple bot that aims and shoots. It plays much better than
+  CPU, but costs a lot more: every tick it plays out about AI FRAMES x (AI
+  MUTATIONS + 1) frames of the game per bot.
+
+The AI's options are in OPTIONS (F2):
+
+* **AI FRAMES** (default 140, 2 seconds): how far ahead each plan is played out.
+* **AI MUTATIONS** (default 2): how many changed plans it tries each tick.
+* **AI PARALLELS** (default 3): how many plans it keeps.
+* **AI TRACES** (default off): draws the positions the plans pass through.
+
+The first player's AI also tries switching to weapons that are still loading
+in the idle parts of its plans; the second player's doesn't.
+
+**BOT WEAPONS** in the same menu applies to both bots:
+
+* **RANDOM**: bots get random weapons and skip the weapon screen.
+* **PICK** (the default): you pick a bot's weapons on the weapon screen, with
+  that player's keys, and choose DONE for it.
+* **KEEP**: bots keep the weapons set in their player menu and skip the weapon
+  screen.
+
 How to build the native tools (Linux and Mac)
 =============================================
 
