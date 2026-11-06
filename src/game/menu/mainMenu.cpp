@@ -13,9 +13,13 @@ struct ReplaySelectBehavior : ItemBehavior
 	int onEnter(Menu& menu, MenuItem& item)
 	{
 		sfx.play(common, 27);
-		int ret = gfx.selectReplay();
-		sfx.play(common, 27);
-		return ret;
+		Common& common = this->common;
+		gfx.open(selectReplayScreen(), [&common](int ret)
+		{
+			sfx.play(common, 27);
+			return ret;
+		});
+		return -1;
 	}
 
 	Common& common;
@@ -31,13 +35,17 @@ struct TcSelectBehavior : ItemBehavior
 	int onEnter(Menu& menu, MenuItem& item)
 	{
 		sfx.play(common, 27);
-		auto newCommon = gfx.selectTc();
-		if (newCommon)
+		std::shared_ptr<std::unique_ptr<Common>> chosen(new std::unique_ptr<Common>());
+		gfx.open(selectTcScreen(chosen), [chosen](int)
 		{
-			// TODO: mixer may still be using sounds from the old common
-			gfx.common.reset(newCommon.release());
-			return MainMenu::MaTc;
-		}
+			if (*chosen)
+			{
+				// TODO: mixer may still be using sounds from the old common
+				gfx.common.reset(chosen->release());
+				return int(MainMenu::MaTc);
+			}
+			return -1;
+		});
 		return -1;
 	}
 

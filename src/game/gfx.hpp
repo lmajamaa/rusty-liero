@@ -23,6 +23,10 @@
 #include "common.hpp"
 #include "filesystem.hpp"
 #include "appclock.hpp"
+#include "screen.hpp"
+
+#include <functional>
+#include <memory>
 
 // The level name, "A vs B" and the worms' colours, as the spectator window
 // shows them in the menus and weapon selection. The name is taken from
@@ -118,6 +122,24 @@ struct SettingsMenu : Menu
 
 	virtual void onUpdate();
 };
+
+// Where a pass of the main menu's loop (Gfx::menuStep) stopped for a screen
+// a menu item opened, and what to do with what the item returns.
+struct MenuPass
+{
+	enum Part { Top, AfterEnter, AfterF3 } part = Top;
+	enum Use { Ignore, Select, Tc } use = Ignore;
+};
+
+// The file selectors and weapon options (gfx.cpp). The TC selector puts the
+// TC chosen in `chosen`. The replay selector closes with MainMenu::MaReplay
+// when one is chosen, -1 if not.
+std::unique_ptr<Screen> selectLevelScreen();
+std::unique_ptr<Screen> selectProfileScreen(WormSettings& ws);
+std::unique_ptr<Screen> selectReplayScreen();
+std::unique_ptr<Screen> selectOptionsScreen();
+std::unique_ptr<Screen> selectTcScreen(std::shared_ptr<std::unique_ptr<Common>> chosen);
+std::unique_ptr<Screen> weaponOptionsScreen();
 
 struct Joystick {
 	SDL_GameController *sdlGameController;
@@ -238,10 +260,25 @@ struct Gfx
 	void processEvent(SDL_Event& ev, Controller* controller = 0);
 
 	// The main menu (MenuScreen in gfx.cpp): its setup, which returns the
-	// item F1 picks, and one pass of its loop, without the flip. False when
-	// the menu closes at once, with `selected`, instead of fading out.
+	// item F1 picks, and one pass of its loop, without the flip, which goes
+	// on from where `pass` stopped with `entered`, what the item that stopped
+	// it returned.
+	enum { MenuDone, MenuOpened, MenuClose };
 	int menuStart();
-	bool menuStep(int startItemId, int& selected);
+	// MenuDone: the pass drew a frame. MenuOpened: an item opened a screen
+	// (`opening`). MenuClose: the menu closes at once with `selected`.
+	int menuStep(int startItemId, int& selected, MenuPass& pass, int entered);
+
+	// A menu item opens `screen` from its onEnter; the menu pushes it, and
+	// when it closes calls `then` with its result, which returns what
+	// onEnter would have.
+	void open(std::unique_ptr<Screen> screen, std::function<int(int)> then)
+	{
+		opening = std::move(screen);
+		openingThen = std::move(then);
+	}
+	std::unique_ptr<Screen> opening;
+	std::function<int(int)> openingThen;
 	void drawBasicMenu(/*int curSel*/);
 	void drawSpectatorInfo();
 	void playerSettings(int player);
@@ -249,12 +286,6 @@ struct Gfx
 
 	bool inputString(std::string& dest, std::size_t maxLen, int x, int y, int (*filter)(int) = 0, std::string const& prefix = "", bool centered = true);
 	void inputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y);
-	void selectLevel();
-	int  selectReplay();
-	void selectProfile(WormSettings& ws);
-	std::unique_ptr<Common> selectTc();
-	void selectOptions();
-	void weaponOptions();
 	void infoBox(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
 
 	static void preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256]);

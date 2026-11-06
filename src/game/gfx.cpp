@@ -944,9 +944,13 @@ struct ProfileLoadBehavior : ItemBehavior
 	int onEnter(Menu& menu, MenuItem& item)
 	{
 		sfx.play(common, 27);
-		gfx.selectProfile(ws);
-		sfx.play(common, 27);
-		menu.updateItems(common);
+		Common& common = this->common;
+		gfx.open(selectProfileScreen(ws), [&common, &menu](int)
+		{
+			sfx.play(common, 27);
+			menu.updateItems(common);
+			return -1;
+		});
 		return -1;
 	}
 
@@ -985,9 +989,13 @@ struct LevelSelectBehavior : ItemBehavior
 	int onEnter(Menu& menu, MenuItem& item)
 	{
 		sfx.play(common, 27);
-		gfx.selectLevel();
-		sfx.play(common, 27);
-		onUpdate(menu, item);
+		Common& common = this->common;
+		gfx.open(selectLevelScreen(), [&common, &menu, &item](int)
+		{
+			sfx.play(common, 27);
+			LevelSelectBehavior(common).onUpdate(menu, item);
+			return -1;
+		});
 		return -1;
 	}
 
@@ -1019,8 +1027,12 @@ struct WeaponOptionsBehavior : ItemBehavior
 	int onEnter(Menu& menu, MenuItem& item)
 	{
 		sfx.play(common, 27);
-		gfx.weaponOptions();
-		sfx.play(common, 27);
+		Common& common = this->common;
+		gfx.open(weaponOptionsScreen(), [&common](int)
+		{
+			sfx.play(common, 27);
+			return -1;
+		});
 		return -1;
 	}
 
@@ -1076,9 +1088,13 @@ struct OptionsSelectBehavior : ItemBehavior
 	int onEnter(Menu& menu, MenuItem& item)
 	{
 		sfx.play(common, 27);
-		gfx.selectOptions();
-		sfx.play(common, 27);
-		menu.updateItems(common);
+		Common& common = this->common;
+		gfx.open(selectOptionsScreen(), [&common, &menu](int)
+		{
+			sfx.play(common, 27);
+			menu.updateItems(common);
+			return -1;
+		});
 		return -1;
 	}
 
@@ -1165,56 +1181,109 @@ using std::vector;
 using std::pair;
 using gvl::shared_ptr;
 
-void Gfx::selectLevel()
+namespace
 {
-	Common& common = *this->common;
-	FileSelector levSel(common);
 
-	shared_ptr<FileNode> random(new FileNode(
-		LS(Random), "", "", false, &levSel.rootNode));
+// A file selector over the frozen menu. Each tick reads the events of the
+// frame before it, draws, and closes on Escape or a chosen file.
+struct SelectorScreen : Screen
+{
+	FileSelector sel;
+	bool shown = false;
 
+	explicit SelectorScreen(int x = 178)
+	: sel(*gfx.common, x)
 	{
-		levSel.fill(getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LEV"); });
-
-		random->id = 1;
-		levSel.rootNode.children.insert(levSel.rootNode.children.begin(), random);
-		levSel.setFolder(levSel.rootNode);
-		levSel.select(settings->levelFile);
 	}
 
-	FileNode* previewNode = 0;
-
-	do
+	Tick tick() override
 	{
-		playRenderer.bmp.copy(frozenScreen);
+		if (shown)
+			gfx.process();
 
-		string title = LS(SelLevel);
-		if (!levSel.currentNode->fullPath.empty())
+		gfx.playRenderer.bmp.copy(gfx.frozenScreen);
+		drawTitle();
+		sel.draw();
+
+		if (!sel.process())
+			return Tick::close(-1);
+
+		if(gfx.testSDLKeyOnce(SDL_SCANCODE_RETURN)
+		|| gfx.testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
+		{
+			int result = -1;
+			if (enter(result))
+				return Tick::close(result);
+		}
+
+		gfx.menuFade();
+		shown = true;
+		return Tick::stay(true);
+	}
+
+	// The title, and anything else drawn before the list.
+	virtual void drawTitle() = 0;
+	// Enter was pressed: true to close with `result`.
+	virtual bool enter(int& result) = 0;
+
+	void drawFramedTitle(string title)
+	{
+		if (!sel.currentNode->fullPath.empty())
 		{
 			title += ' ';
-			title += levSel.currentNode->fullPath;
+			title += sel.currentNode->fullPath;
+		}
+
+		gfx.common->font.drawFramedText(gfx.playRenderer.bmp, title, 178, 20, 50);
+	}
+};
+
+struct LevelSelectScreen : SelectorScreen
+{
+	shared_ptr<FileNode> random;
+	FileNode* previewNode = 0;
+
+	LevelSelectScreen()
+	{
+		Common& common = *gfx.common;
+		random.reset(new FileNode(LS(Random), "", "", false, &sel.rootNode));
+
+		sel.fill(gfx.getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LEV"); });
+
+		random->id = 1;
+		sel.rootNode.children.insert(sel.rootNode.children.begin(), random);
+		sel.setFolder(sel.rootNode);
+		sel.select(gfx.settings->levelFile);
+	}
+
+	void drawTitle() override
+	{
+		Common& common = *gfx.common;
+		string title = LS(SelLevel);
+		if (!sel.currentNode->fullPath.empty())
+		{
+			title += ' ';
+			title += sel.currentNode->fullPath;
 		}
 
 		int wid = common.font.getDims(title);
 
-		drawRoundedBox(playRenderer.bmp, 178, 20, 0, 7, wid);
-		common.font.drawText(playRenderer.bmp, title, 180, 21, 50);
+		drawRoundedBox(gfx.playRenderer.bmp, 178, 20, 0, 7, wid);
+		common.font.drawText(gfx.playRenderer.bmp, title, 180, 21, 50);
 
-		FileNode* sel = levSel.curSel();
-		if (previewNode != sel && sel && sel != random.get() && !sel->folder)
+		FileNode* cur = sel.curSel();
+		if (previewNode != cur && cur && cur != random.get() && !cur->folder)
 		{
 			Level level(common);
 
-			ReaderFile f;
-
 			try
 			{
-				if (level.load(common, *settings, sel->getFsNode().toOctetReader()))
+				if (level.load(common, *gfx.settings, cur->getFsNode().toOctetReader()))
 				{
-					int centerX = singleScreenRenderer.renderResX / 2;
+					int centerX = gfx.singleScreenRenderer.renderResX / 2;
 
-					level.drawMiniature(frozenScreen, 134, 162, 10);
-					level.drawMiniature(frozenSpectatorScreen, centerX - 126, singleScreenRenderer.renderResY - 208, 2);
+					level.drawMiniature(gfx.frozenScreen, 134, 162, 10);
+					level.drawMiniature(gfx.frozenSpectatorScreen, centerX - 126, gfx.singleScreenRenderer.renderResY - 208, 2);
 				}
 			}
 			catch (std::runtime_error&)
@@ -1222,257 +1291,169 @@ void Gfx::selectLevel()
 				// Ignore
 			}
 
-			previewNode = sel;
+			previewNode = cur;
 		}
-
-		levSel.draw();
-
-		if (!levSel.process())
-			break;
-
-		if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
-		|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-		{
-			sfx.play(common, 27);
-
-			auto* sel = levSel.enter();
-
-			if (sel)
-			{
-				if (sel == random.get())
-				{
-					settings->randomLevel = true;
-					settings->levelFile.clear();
-				}
-				else
-				{
-					settings->randomLevel = false;
-					settings->levelFile = sel->fullPath;
-				}
-				break;
-			}
-		}
-
-		menuFlip();
-		process();
 	}
-	while(true);
-}
 
-void Gfx::selectProfile(WormSettings& ws)
+	bool enter(int& result) override
+	{
+		sfx.play(*gfx.common, 27);
+
+		auto* chosen = sel.enter();
+		if (!chosen)
+			return false;
+
+		if (chosen == random.get())
+		{
+			gfx.settings->randomLevel = true;
+			gfx.settings->levelFile.clear();
+		}
+		else
+		{
+			gfx.settings->randomLevel = false;
+			gfx.settings->levelFile = chosen->fullPath;
+		}
+		return true;
+	}
+};
+
+struct ProfileSelectScreen : SelectorScreen
 {
-	FileSelector profileSel(*common, 28);
+	WormSettings& ws;
 
+	explicit ProfileSelectScreen(WormSettings& ws)
+	: SelectorScreen(28)
+	, ws(ws)
 	{
-		profileSel.fill(getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LPF"); });
+		sel.fill(gfx.getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LPF"); });
 
-		profileSel.setFolder(profileSel.rootNode);
-		profileSel.select(joinPath(getConfigNode().fullPath(), "Profiles"));
+		sel.setFolder(sel.rootNode);
+		sel.select(joinPath(gfx.getConfigNode().fullPath(), "Profiles"));
 	}
 
-	do
+	void drawTitle() override
 	{
-		playRenderer.bmp.copy(frozenScreen);
-
-		string title = "Select profile:";
-		if (!profileSel.currentNode->fullPath.empty())
-		{
-			title += ' ';
-			title += profileSel.currentNode->fullPath;
-		}
-
-		common->font.drawFramedText(playRenderer.bmp, title, 178, 20, 50);
-
-		profileSel.draw();
-
-		if (!profileSel.process())
-			break;
-
-		if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
-		|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-		{
-			auto* sel = profileSel.enter();
-
-			if (sel)
-			{
-				ws.loadProfile(sel->getFsNode());
-				return;
-			}
-		}
-
-		menuFlip();
-		process();
+		drawFramedTitle("Select profile:");
 	}
-	while(true);
 
-	return;
-}
+	bool enter(int& result) override
+	{
+		auto* chosen = sel.enter();
+		if (!chosen)
+			return false;
+		ws.loadProfile(chosen->getFsNode());
+		return true;
+	}
+};
 
-int Gfx::selectReplay()
+struct ReplaySelectScreen : SelectorScreen
 {
-	FileSelector replaySel(*common, 28);
-
+	ReplaySelectScreen()
+	: SelectorScreen(28)
 	{
-		replaySel.fill(getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LRP"); });
+		sel.fill(gfx.getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LRP"); });
 
-		replaySel.setFolder(replaySel.rootNode);
-		if (prevSelectedReplayPath.empty()
-		  || !replaySel.select(prevSelectedReplayPath))
+		sel.setFolder(sel.rootNode);
+		if (gfx.prevSelectedReplayPath.empty()
+		  || !sel.select(gfx.prevSelectedReplayPath))
 		{
-			replaySel.select(joinPath(getConfigNode().fullPath(), "Replays"));
+			sel.select(joinPath(gfx.getConfigNode().fullPath(), "Replays"));
 		}
 	}
 
-	do
+	void drawTitle() override
 	{
-		playRenderer.bmp.copy(frozenScreen);
-
-		string title = "Select replay:";
-		if (!replaySel.currentNode->fullPath.empty())
-		{
-			title += ' ';
-			title += replaySel.currentNode->fullPath;
-		}
-
-		common->font.drawFramedText(playRenderer.bmp, title, 178, 20, 50);
-
-		replaySel.draw();
-
-		if (!replaySel.process())
-			break;
-
-		if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
-		|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-		{
-			auto* sel = replaySel.enter();
-
-			if (sel)
-			{
-				prevSelectedReplayPath = sel->fullPath;
-
-				// Reset controller before opening the replay, since we may be recording it
-				controller.reset();
-
-				controller.reset(new ReplayController(common, sel->getFsNode().toSource()));
-
-				return MainMenu::MaReplay;
-			}
-		}
-		menuFlip();
-		process();
+		drawFramedTitle("Select replay:");
 	}
-	while(true);
 
-	return -1;
-}
+	bool enter(int& result) override
+	{
+		auto* chosen = sel.enter();
+		if (!chosen)
+			return false;
 
-void Gfx::selectOptions()
+		gfx.prevSelectedReplayPath = chosen->fullPath;
+
+		// Reset controller before opening the replay, since we may be recording it
+		gfx.controller.reset();
+
+		gfx.controller.reset(new ReplayController(gfx.common, chosen->getFsNode().toSource()));
+
+		result = MainMenu::MaReplay;
+		return true;
+	}
+};
+
+struct OptionsSelectScreen : SelectorScreen
 {
-	FileSelector optionsSel(*common, 28);
-
+	OptionsSelectScreen()
+	: SelectorScreen(28)
 	{
-		optionsSel.fill(getConfigNode(), [](string const& name, string const& ext) {
+		sel.fill(gfx.getConfigNode(), [](string const& name, string const& ext) {
 			return ciCompare(ext, "CFG");
 		});
 
-		optionsSel.setFolder(optionsSel.rootNode);
+		sel.setFolder(sel.rootNode);
 	}
 
-	do
+	void drawTitle() override
 	{
-		playRenderer.bmp.copy(frozenScreen);
-
-		string title = "Select options:";
-		if (!optionsSel.currentNode->fullPath.empty())
-		{
-			title += ' ';
-			title += optionsSel.currentNode->fullPath;
-		}
-
-		common->font.drawFramedText(playRenderer.bmp, title, 178, 20, 50);
-
-		optionsSel.draw();
-
-		if (!optionsSel.process())
-			break;
-
-		if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
-		|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-		{
-			auto* sel = optionsSel.enter();
-
-			if (sel)
-			{
-				gfx.loadSettings(sel->getFsNode());
-				return;
-			}
-		}
-		menuFlip();
-		process();
+		drawFramedTitle("Select options:");
 	}
-	while(true);
-}
 
-std::unique_ptr<Common> Gfx::selectTc()
+	bool enter(int& result) override
+	{
+		auto* chosen = sel.enter();
+		if (!chosen)
+			return false;
+		gfx.loadSettings(chosen->getFsNode());
+		return true;
+	}
+};
+
+struct TcSelectScreen : SelectorScreen
 {
-	FileSelector tcSel(*common, 28);
+	std::shared_ptr<std::unique_ptr<Common>> chosenTc;
 
+	explicit TcSelectScreen(std::shared_ptr<std::unique_ptr<Common>> chosenTc)
+	: SelectorScreen(28)
+	, chosenTc(chosenTc)
 	{
-		tcSel.fill(getTcNode(), 0);
+		sel.fill(gfx.getTcNode(), 0);
 
-		tcSel.setFolder(tcSel.rootNode);
+		sel.setFolder(sel.rootNode);
 
-		auto end = std::remove_if(tcSel.rootNode.children.begin(), tcSel.rootNode.children.end(), [](shared_ptr<FileNode> const& n) {
+		auto end = std::remove_if(sel.rootNode.children.begin(), sel.rootNode.children.end(), [](shared_ptr<FileNode> const& n) {
 			auto tc = n->getFsNode() / "tc.cfg";
 			return !tc.exists();
 		});
 
-		tcSel.rootNode.children.erase(end, tcSel.rootNode.children.end());
+		sel.rootNode.children.erase(end, sel.rootNode.children.end());
 
-		for (auto& c : tcSel.rootNode.children)
+		for (auto& c : sel.rootNode.children)
 		{
 			c->folder = false;
 		}
 	}
 
-	do
+	void drawTitle() override
 	{
-		playRenderer.bmp.copy(frozenScreen);
-
-		string title = "Select TC:";
-		if (!tcSel.currentNode->fullPath.empty())
-		{
-			title += ' ';
-			title += tcSel.currentNode->fullPath;
-		}
-
-		common->font.drawFramedText(playRenderer.bmp, title, 178, 20, 50);
-
-		tcSel.draw();
-
-		if (!tcSel.process())
-			break;
-
-		if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
-		|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-		{
-			auto* sel = tcSel.enter();
-
-			if (sel)
-			{
-				gvl::unique_ptr<Common> common(new Common());
-				common->load(sel->getFsNode());
-				settings->tc = sel->name;
-				return common;
-			}
-		}
-		menuFlip();
-		process();
+		drawFramedTitle("Select TC:");
 	}
-	while(true);
 
-	return std::unique_ptr<Common>();
-}
+	bool enter(int& result) override
+	{
+		auto* chosen = sel.enter();
+		if (!chosen)
+			return false;
+
+		std::unique_ptr<Common> common(new Common());
+		common->load(chosen->getFsNode());
+		gfx.settings->tc = chosen->name;
+		*chosenTc = std::move(common);
+		return true;
+	}
+};
 
 struct WeaponMenu : Menu
 {
@@ -1488,68 +1469,99 @@ struct WeaponMenu : Menu
 	}
 };
 
-void Gfx::weaponOptions()
+// Which weapons a game has. Escape closes it while one weapon or more is on.
+struct WeaponOptionsScreen : Screen
 {
-	Common& common = *this->common;
-	WeaponMenu weaponMenu(179, 28);
+	WeaponMenu weaponMenu;
+	bool shown = false;
 
-	weaponMenu.setHeight(14);
-	weaponMenu.valueOffsetX = 89;
-
-	for(int i = 0; i < (int)common.weapons.size(); ++i)
+	WeaponOptionsScreen()
+	: weaponMenu(179, 28)
 	{
-		int index = common.weapOrder[i];
-		weaponMenu.addItem(MenuItem(48, 7, common.weapons[index].name, i));
+		Common& common = *gfx.common;
+
+		weaponMenu.setHeight(14);
+		weaponMenu.valueOffsetX = 89;
+
+		for(int i = 0; i < (int)common.weapons.size(); ++i)
+		{
+			int index = common.weapOrder[i];
+			weaponMenu.addItem(MenuItem(48, 7, common.weapons[index].name, i));
+		}
+
+		weaponMenu.moveToFirstVisible();
+		weaponMenu.updateItems(common);
 	}
 
-	weaponMenu.moveToFirstVisible();
-	weaponMenu.updateItems(common);
-
-	while(true)
+	Tick tick() override
 	{
-		playRenderer.bmp.copy(frozenScreen);
+		Gfx& g = gfx;
+		Common& common = *g.common;
 
-		drawBasicMenu();
+		if (shown)
+		{
+			g.process();
 
-		drawRoundedBox(playRenderer.bmp, 179, 20, 0, 7, common.font.getDims(LS(Weapon)));
-		drawRoundedBox(playRenderer.bmp, 249, 20, 0, 7, common.font.getDims(LS(Availability)));
+			if(g.testSDLKeyOnce(SDL_SCANCODE_ESCAPE))
+			{
+				int count = 0;
 
-		common.font.drawText(playRenderer.bmp, LS(Weapon), 181, 21, 50);
-		common.font.drawText(playRenderer.bmp, LS(Availability), 251, 21, 50);
+				for(int i = 0; i < 40; ++i)
+				{
+					if(g.settings->weapTable[i] == 0)
+						++count;
+				}
 
-		weaponMenu.draw(common, playRenderer, false);
+				if(count > 0)
+					return Tick::close(); // Enough weapons available
 
-		if(testSDLKeyOnce(SDL_SCANCODE_UP))
+				g.infoBox(LS(NoWeaps), 223, 68, false);
+			}
+		}
+
+		g.playRenderer.bmp.copy(g.frozenScreen);
+
+		g.drawBasicMenu();
+
+		drawRoundedBox(g.playRenderer.bmp, 179, 20, 0, 7, common.font.getDims(LS(Weapon)));
+		drawRoundedBox(g.playRenderer.bmp, 249, 20, 0, 7, common.font.getDims(LS(Availability)));
+
+		common.font.drawText(g.playRenderer.bmp, LS(Weapon), 181, 21, 50);
+		common.font.drawText(g.playRenderer.bmp, LS(Availability), 251, 21, 50);
+
+		weaponMenu.draw(common, g.playRenderer, false);
+
+		if(g.testSDLKeyOnce(SDL_SCANCODE_UP))
 		{
 			sfx.play(common, 26);
 			weaponMenu.movement(-1);
 		}
 
-		if(testSDLKeyOnce(SDL_SCANCODE_DOWN))
+		if(g.testSDLKeyOnce(SDL_SCANCODE_DOWN))
 		{
 			sfx.play(common, 25);
 			weaponMenu.movement(1);
 		}
 
-		if(testSDLKeyOnce(SDL_SCANCODE_LEFT))
+		if(g.testSDLKeyOnce(SDL_SCANCODE_LEFT))
 		{
 			weaponMenu.onLeftRight(common, -1);
 		}
-		if(testSDLKeyOnce(SDL_SCANCODE_RIGHT))
+		if(g.testSDLKeyOnce(SDL_SCANCODE_RIGHT))
 		{
 			weaponMenu.onLeftRight(common, 1);
 		}
 
-		if(settings->extensions)
+		if(g.settings->extensions)
 		{
-			if(testSDLKeyOnce(SDL_SCANCODE_PAGEUP))
+			if(g.testSDLKeyOnce(SDL_SCANCODE_PAGEUP))
 			{
 				sfx.play(common, 26);
 
 				weaponMenu.movementPage(-1);
 			}
 
-			if(testSDLKeyOnce(SDL_SCANCODE_PAGEDOWN))
+			if(g.testSDLKeyOnce(SDL_SCANCODE_PAGEDOWN))
 			{
 				sfx.play(common, 25);
 
@@ -1557,27 +1569,44 @@ void Gfx::weaponOptions()
 			}
 		}
 
-		weaponMenu.onKeys(gfx.keyBuf, gfx.keyBufPtr);
+		weaponMenu.onKeys(g.keyBuf, g.keyBufPtr);
 
-		menuFlip();
-		process();
-
-		if(testSDLKeyOnce(SDL_SCANCODE_ESCAPE))
-		{
-			int count = 0;
-
-			for(int i = 0; i < 40; ++i)
-			{
-				if(settings->weapTable[i] == 0)
-					++count;
-			}
-
-			if(count > 0)
-				break; // Enough weapons available
-
-			infoBox(LS(NoWeaps), 223, 68, false);
-		}
+		g.menuFade();
+		shown = true;
+		return Tick::stay(true);
 	}
+};
+
+}
+
+std::unique_ptr<Screen> selectLevelScreen()
+{
+	return std::unique_ptr<Screen>(new LevelSelectScreen);
+}
+
+std::unique_ptr<Screen> selectProfileScreen(WormSettings& ws)
+{
+	return std::unique_ptr<Screen>(new ProfileSelectScreen(ws));
+}
+
+std::unique_ptr<Screen> selectReplayScreen()
+{
+	return std::unique_ptr<Screen>(new ReplaySelectScreen);
+}
+
+std::unique_ptr<Screen> selectOptionsScreen()
+{
+	return std::unique_ptr<Screen>(new OptionsSelectScreen);
+}
+
+std::unique_ptr<Screen> selectTcScreen(std::shared_ptr<std::unique_ptr<Common>> chosen)
+{
+	return std::unique_ptr<Screen>(new TcSelectScreen(chosen));
+}
+
+std::unique_ptr<Screen> weaponOptionsScreen()
+{
+	return std::unique_ptr<Screen>(new WeaponOptionsScreen);
 }
 
 static LieroStr str(std::string const& s)
@@ -2091,120 +2120,170 @@ int Gfx::menuStart()
 	return startItemId;
 }
 
-bool Gfx::menuStep(int startItemId, int& selected)
+int Gfx::menuStep(int startItemId, int& selected, MenuPass& pass, int entered)
 {
 	Common& common = *this->common;
+	bool closeNow = false;
 
-#ifdef __EMSCRIPTEN__
-	saveSettingsIfChanged();
-#endif
-	drawBasicMenu();
-	drawSpectatorInfo();
-
-	if(curMenu == &mainMenu)
-		settingsMenu.draw(common, playRenderer, true);
-	else
-		curMenu->draw(common, playRenderer, false);
-
-	if(testSDLKeyOnce(SDL_SCANCODE_ESCAPE))
+	// What an item's onEnter returned, put to `how`.
+	auto use = [&](MenuPass::Use how, int r)
 	{
-		if(curMenu == &mainMenu)
-			mainMenu.moveToId(MainMenu::MaQuit);
-		else
-			curMenu = &mainMenu;
-	}
-
-	if(testSDLKeyOnce(SDL_SCANCODE_UP))
-	{
-		sfx.play(common, 26);
-		curMenu->movement(-1);
-	}
-
-	if(testSDLKeyOnce(SDL_SCANCODE_DOWN))
-	{
-		sfx.play(common, 25);
-		curMenu->movement(1);
-	}
-
-	if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
-	|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-	{
-		if(curMenu == &mainMenu)
+		if (how == MenuPass::Select)
+			selected = r;
+		else if (how == MenuPass::Tc && r == MainMenu::MaTc)
 		{
-			sfx.play(common, 27);
+			// A new TC: no fade-out.
+			selected = MainMenu::MaTc;
+			closeNow = true;
+		}
+	};
 
-			int s = mainMenu.selectedId();
-			switch (s)
+	// True if the item opened a screen: the pass stops, and goes on when the
+	// screen closes.
+	auto enter = [&](Menu& menu, MenuPass::Use how)
+	{
+		int r = menu.onEnter(common);
+		if (opening)
+		{
+			pass.use = how;
+			return true;
+		}
+		use(how, r);
+		return false;
+	};
+
+	// Stops the pass at `part` while the screen an item opened is up.
+	auto stop = [&](MenuPass::Part part)
+	{
+		pass.part = part;
+		return int(MenuOpened);
+	};
+
+	if (pass.part != MenuPass::Top)
+	{
+		use(pass.use, entered);
+		if (closeNow)
+			return MenuClose;
+	}
+
+	if (pass.part == MenuPass::Top)
+	{
+#ifdef __EMSCRIPTEN__
+		saveSettingsIfChanged();
+#endif
+		drawBasicMenu();
+		drawSpectatorInfo();
+
+		if(curMenu == &mainMenu)
+			settingsMenu.draw(common, playRenderer, true);
+		else
+			curMenu->draw(common, playRenderer, false);
+
+		if(testSDLKeyOnce(SDL_SCANCODE_ESCAPE))
+		{
+			if(curMenu == &mainMenu)
+				mainMenu.moveToId(MainMenu::MaQuit);
+			else
+				curMenu = &mainMenu;
+		}
+
+		if(testSDLKeyOnce(SDL_SCANCODE_UP))
+		{
+			sfx.play(common, 26);
+			curMenu->movement(-1);
+		}
+
+		if(testSDLKeyOnce(SDL_SCANCODE_DOWN))
+		{
+			sfx.play(common, 25);
+			curMenu->movement(1);
+		}
+
+		if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
+		|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
+		{
+			if(curMenu == &mainMenu)
 			{
-				case MainMenu::MaSettings:
-				{
-					curMenu = &settingsMenu; // Go into settings menu
-					break;
-				}
+				sfx.play(common, 27);
 
-				case MainMenu::MaPlayer1Settings:
-				case MainMenu::MaPlayer2Settings:
+				int s = mainMenu.selectedId();
+				switch (s)
 				{
-					playerSettings(s - MainMenu::MaPlayer1Settings);
-					break;
-				}
-
-				case MainMenu::MaAdvanced:
-				{
-					openHiddenMenu();
-					break;
-				}
-
-				case MainMenu::MaReplays:
-				{
-					selected = curMenu->onEnter(common);
-					break;
-				}
-
-				case MainMenu::MaTc:
-				{
-					if (curMenu->onEnter(common) == MainMenu::MaTc)
+					case MainMenu::MaSettings:
 					{
-						// A new TC: no fade-out.
-						selected = MainMenu::MaTc;
-						return false;
+						curMenu = &settingsMenu; // Go into settings menu
+						break;
 					}
-					break;
-				}
 
-				default:
-				{
-					curMenu = &mainMenu;
-					selected = s;
+					case MainMenu::MaPlayer1Settings:
+					case MainMenu::MaPlayer2Settings:
+					{
+						playerSettings(s - MainMenu::MaPlayer1Settings);
+						break;
+					}
+
+					case MainMenu::MaAdvanced:
+					{
+						openHiddenMenu();
+						break;
+					}
+
+					case MainMenu::MaReplays:
+					{
+						if (enter(*curMenu, MenuPass::Select))
+							return stop(MenuPass::AfterEnter);
+						break;
+					}
+
+					case MainMenu::MaTc:
+					{
+						if (enter(*curMenu, MenuPass::Tc))
+							return stop(MenuPass::AfterEnter);
+						if (closeNow)
+							return MenuClose;
+						break;
+					}
+
+					default:
+					{
+						curMenu = &mainMenu;
+						selected = s;
+					}
 				}
 			}
-		}
-		else if(curMenu == &settingsMenu)
-		{
-			settingsMenu.onEnter(common);
-		}
-		else
-		{
-			selected = curMenu->onEnter(common);
+			else if(curMenu == &settingsMenu)
+			{
+				if (enter(settingsMenu, MenuPass::Ignore))
+					return stop(MenuPass::AfterEnter);
+			}
+			else
+			{
+				if (enter(*curMenu, MenuPass::Select))
+					return stop(MenuPass::AfterEnter);
+			}
 		}
 	}
 
-	if(testSDLKeyOnce(SDL_SCANCODE_F1))
+	if (pass.part != MenuPass::AfterF3)
 	{
-		curMenu = &mainMenu;
-		mainMenu.moveToId(startItemId);
-		selected = startItemId;
-	}
-	if(testSDLKeyOnce(SDL_SCANCODE_F2))
-	{
-		mainMenu.moveToId(MainMenu::MaAdvanced);
-		openHiddenMenu();
-	}
-	if(testSDLKeyOnce(SDL_SCANCODE_F3))
-	{
-		curMenu = &mainMenu;
-		mainMenu.moveToId(MainMenu::MaReplays);
-		selected = curMenu->onEnter(common);
+		if(testSDLKeyOnce(SDL_SCANCODE_F1))
+		{
+			curMenu = &mainMenu;
+			mainMenu.moveToId(startItemId);
+			selected = startItemId;
+		}
+		if(testSDLKeyOnce(SDL_SCANCODE_F2))
+		{
+			mainMenu.moveToId(MainMenu::MaAdvanced);
+			openHiddenMenu();
+		}
+		if(testSDLKeyOnce(SDL_SCANCODE_F3))
+		{
+			curMenu = &mainMenu;
+			mainMenu.moveToId(MainMenu::MaReplays);
+			if (enter(*curMenu, MenuPass::Select))
+				return stop(MenuPass::AfterF3);
+		}
 	}
 
 	if (testSDLKeyOnce(SDL_SCANCODE_F5))
@@ -2371,7 +2450,8 @@ bool Gfx::menuStep(int startItemId, int& selected)
 		curMenu->movementPage(1);
 	}
 
-	return true;
+	pass.part = MenuPass::Top;
+	return MenuDone;
 }
 
 namespace
@@ -2383,10 +2463,23 @@ struct MenuScreen : Screen
 	enum { Start, Setup, Menu, FadeOut } phase = Start;
 	int startItemId = 0;
 	int selected = -1;
+	MenuPass pass;
+	// What the item that opened a screen does when it closes.
+	std::function<int(int)> then;
+	int entered = -1;
+	bool resumed = false;
 
 	Tick tick() override
 	{
 		Gfx& g = gfx;
+
+		// The pass an item stopped goes on; the screen that closed read the
+		// events.
+		if (resumed)
+		{
+			resumed = false;
+			return step();
+		}
 
 		// Each tick reads the events that came with the frame before it.
 		if (phase != Start)
@@ -2425,12 +2518,28 @@ struct MenuScreen : Screen
 		}
 	}
 
+	void resume(int result) override
+	{
+		entered = then(result);
+		then = nullptr;
+		resumed = true;
+	}
+
 	Tick step()
 	{
-		if (!gfx.menuStep(startItemId, selected))
+		Gfx& g = gfx;
+		switch (g.menuStep(startItemId, selected, pass, entered))
+		{
+		case Gfx::MenuClose:
 			return Tick::close(selected);
-		gfx.menuFade();
-		return Tick::stay(true);
+		case Gfx::MenuOpened:
+			then = std::move(g.openingThen);
+			g.openingThen = nullptr;
+			return Tick::push(std::move(g.opening));
+		default:
+			g.menuFade();
+			return Tick::stay(true);
+		}
 	}
 };
 
