@@ -205,6 +205,10 @@ struct Gfx
 	void saveSettings(FsNode node);
 	bool loadSettings(FsNode node);
 	bool loadSettingsLegacy(FsNode node);
+	// Writes liero.cfg in the config folder if the settings changed since it
+	// was last read or written here. The browser build calls it from the menu
+	// loop, since a closed tab never reaches the save at the end of main.
+	void saveSettingsIfChanged();
 
 	void processEvent(SDL_Event& ev, Controller* controller = 0);
 
@@ -242,6 +246,17 @@ struct Gfx
 		return configNode;
 	}
 
+	// The folder of TCs, TC in the config folder unless set.
+	void setTcPath(std::string const& path)
+	{
+		tcNode = FsNode(path);
+	}
+
+	FsNode getTcNode()
+	{
+		return tcNode;
+	}
+
 	// PRNG for things that don't affect the game
 	Rand rand;
 
@@ -257,6 +272,9 @@ struct Gfx
 	Renderer* primaryRenderer;
 
 	FsNode configNode;
+	FsNode tcNode;
+	// liero.cfg as saveSettingsIfChanged last read or wrote it.
+	std::string savedSettingsText;
 
 	MainMenu mainMenu;
 	SettingsMenu settingsMenu;

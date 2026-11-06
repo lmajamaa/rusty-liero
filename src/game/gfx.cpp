@@ -1423,7 +1423,7 @@ std::unique_ptr<Common> Gfx::selectTc()
 	FileSelector tcSel(*common, 28);
 
 	{
-		tcSel.fill(getConfigNode() / "TC", 0);
+		tcSel.fill(getTcNode(), 0);
 
 		tcSel.setFolder(tcSel.rootNode);
 
@@ -1909,6 +1909,24 @@ void Gfx::saveSettings(FsNode node)
 	settings->save(node, rand);
 }
 
+void Gfx::saveSettingsIfChanged()
+{
+	std::string text = settings->text();
+	if (text == savedSettingsText)
+		return;
+	savedSettingsText = text;
+	try
+	{
+		auto writer = (configNode / "liero.cfg").toOctetWriter();
+		for (char c : text)
+			writer.put(uint8_t(c));
+	}
+	catch (std::runtime_error&)
+	{
+		// Not saving is no reason to stop the game.
+	}
+}
+
 bool Gfx::loadSettings(FsNode node)
 {
 	settingsNode = node;
@@ -2030,6 +2048,9 @@ int Gfx::menuLoop()
 	int selected = -1;
 	do
 	{
+#ifdef __EMSCRIPTEN__
+		saveSettingsIfChanged();
+#endif
 		drawBasicMenu();
 		drawSpectatorInfo();
 

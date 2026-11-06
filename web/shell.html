@@ -56,7 +56,8 @@
     started = true;
     start.remove();
     // main runs inside this click, so the game's AudioContext may play sound.
-    Module.callMain([]);
+    // The game saves to /liero and finds the preloaded TC in /TC.
+    Module.callMain(["--config-root", "/liero", "--tc-root", "/TC"]);
   }
   start.addEventListener("click", begin);
   window.addEventListener("keydown", (e) => {
@@ -74,8 +75,52 @@
     }, true);
   }
 
+  // Settings, profiles and replays go to /liero, which IDBFS keeps in
+  // IndexedDB. It is loaded before the page offers to start, and each file is
+  // saved when the game closes it (autoPersist). If IndexedDB fails, as in
+  // some private windows, /liero stays an ordinary in-memory folder: the game
+  // runs, but nothing is kept.
+  const SAVE_DIR = "/liero";
+  let saving = false;
+
+  function mountSaves() {
+    Module.addRunDependency("liero-saves");
+    const done = () => Module.removeRunDependency("liero-saves");
+    try {
+      FS.mkdir(SAVE_DIR);
+      FS.mount(FS.filesystems.IDBFS, { autoPersist: true }, SAVE_DIR);
+      FS.syncfs(true, (err) => {
+        if (err) {
+          console.warn("Saving is off, IndexedDB failed:", err);
+          FS.unmount(SAVE_DIR);
+        } else {
+          saving = true;
+        }
+        done();
+      });
+    } catch (err) {
+      console.warn("Saving is off, IndexedDB failed:", err);
+      try { FS.unmount(SAVE_DIR); } catch {}
+      done();
+    }
+  }
+
+  // A file the game still has open, such as a replay being recorded, is only
+  // saved here.
+  function saveNow() {
+    if (!saving) return;
+    FS.syncfs(false, (err) => {
+      if (err) console.warn("Saving failed:", err);
+    });
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveNow();
+  });
+  window.addEventListener("pagehide", saveNow);
+
   var Module = {
     canvas: document.getElementById("canvas"),
+    preRun: [mountSaves],
     onRuntimeInitialized() {
       status.textContent = "Click to play";
       start.classList.add("ready");
