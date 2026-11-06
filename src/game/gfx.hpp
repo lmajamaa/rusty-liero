@@ -37,7 +37,7 @@ void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::
 void drawInfoBox(Common& common, Bitmap& bmp, std::string const& text, int x, int y);
 
 // The text being typed, `str`, in a box at (x, y) over `frozen`, as
-// `Gfx::inputString` shows it.
+// `inputStringScreen` shows it.
 void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const& str, int x, int y, bool centered);
 
 struct Key
@@ -141,6 +141,15 @@ std::unique_ptr<Screen> selectOptionsScreen();
 std::unique_ptr<Screen> selectTcScreen(std::shared_ptr<std::unique_ptr<Common>> chosen);
 std::unique_ptr<Screen> weaponOptionsScreen();
 
+// A message (Gfx::infoBox) until a key is pressed.
+std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
+// Waits for a key, joystick button or stick move and closes with its key.
+// Unless `extended`, keys only the extended controls have are passed over.
+std::unique_ptr<Screen> keyChoiceScreen(bool extended);
+// Typing into a box at (x, y) over the frozen screen; `*text` is the start
+// and, when Enter closes it with 1, what was typed. Escape closes it with 0.
+std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, int (*filter)(int) = 0, std::string const& prefix = "", bool centered = true);
+
 struct Joystick {
 	SDL_GameController *sdlGameController;
 	bool btnState[MaxJoyButtons];
@@ -153,17 +162,15 @@ struct Joystick {
 
 // Runs the app without a window, for the hash run (hashapp.cpp). When set,
 // `flip` hands each frame to `frame` instead of showing it and waiting for
-// the next one, events come from `pollEvent` and `waitEvent` instead of SDL,
-// and `appTicks` and `appTime` read the driver's clock.
+// the next one, events come from `pollEvent` instead of SDL, and `appTicks`
+// and `appTime` read the driver's clock.
 struct AppDriver
 {
 	virtual ~AppDriver() {}
 	virtual void frame() = 0;
 	virtual bool pollEvent(SDL_Event& ev) = 0;
-	// Returns the next event, however far ahead it is.
-	virtual void waitEvent(SDL_Event& ev) = 0;
 	// A screen is waiting for an event and showed nothing: move the clock to
-	// the next event, as `waitEvent` would.
+	// the next event.
 	virtual void idle() = 0;
 	virtual uint32_t ticks() = 0;
 	virtual std::time_t time() = 0;
@@ -175,8 +182,6 @@ struct Gfx
 
 	AppDriver* driver = nullptr;
 	bool pollEvent(SDL_Event& ev);
-	// False if SDL fails to wait, as SDL_WaitEvent.
-	bool waitEvent(SDL_Event& ev);
 	// A screen showed nothing while waiting for an event (screen.hpp).
 	void idle();
 
@@ -242,8 +247,6 @@ struct Gfx
 		liero_keys_release_sdl(&dosKeys, key);
 	}
 
-	SDL_Keysym waitForKey();
-	uint32_t waitForKeyEx();
 	std::string getKeyName(uint32_t key);
 	void setSpectatorFullscreen(bool newFullscreen);
 	void setFullscreen(bool newFullscreen);
@@ -284,8 +287,14 @@ struct Gfx
 	void playerSettings(int player);
 	void openHiddenMenu();
 
-	bool inputString(std::string& dest, std::size_t maxLen, int x, int y, int (*filter)(int) = 0, std::string const& prefix = "", bool centered = true);
-	void inputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y);
+	// A text box from a menu item (`open`): `then` gets whether Enter closed
+	// it and the text, and returns what onEnter would have.
+	void openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, int (*filter)(int) = 0);
+	// A number box: Enter puts the number typed, kept within min and max, in
+	// `dest`. Then `then` runs.
+	void openInputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y, std::function<void()> then);
+	// Shows a message until a key is pressed, as a screen run on its own:
+	// the controllers call it in the middle of a game.
 	void infoBox(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
 
 	static void preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256]);

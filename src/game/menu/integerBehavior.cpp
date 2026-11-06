@@ -33,8 +33,11 @@ int IntegerBehavior::onEnter(Menu& menu, MenuItem& item)
 	{
 		x += menu.valueOffsetX;
 		int digits = 1 + int(std::floor(std::log10(double(max))));
-		gfx.inputInteger(v, min, max, digits, x + 2, y);
-		onUpdate(menu, item);
+		IntegerBehavior self = *this;
+		gfx.openInputInteger(v, min, max, digits, x + 2, y, [self, &menu, &item]() mutable
+		{
+			self.onUpdate(menu, item);
+		});
 	}
 	return -1;
 }

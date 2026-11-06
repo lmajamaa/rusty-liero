@@ -118,7 +118,7 @@ try
 #ifdef __EMSCRIPTEN__
 	// SDL starts with text input on, and then lets the browser handle keys
 	// that type characters, so Space scrolls and / opens Firefox's quick find.
-	// With it off, SDL calls preventDefault on all keys. inputString turns it
+	// With it off, SDL calls preventDefault on all keys. The text box turns it
 	// on while a name is typed.
 	SDL_StopTextInput();
 #endif
