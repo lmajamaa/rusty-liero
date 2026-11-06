@@ -24,6 +24,7 @@
 #include "filesystem.hpp"
 
 #include <gvl/io2/fstream.hpp>
+#include <gvl/system/system.hpp>
 
 #include "controller/replayController.hpp"
 #include "controller/localController.hpp"
@@ -709,6 +710,11 @@ void Gfx::processEvent(SDL_Event& ev, Controller* controller)
 uint32_t appTicks()
 {
 	return gfx.driver ? gfx.driver->ticks() : SDL_GetTicks();
+}
+
+uint64_t appHiresTicks()
+{
+	return gfx.driver ? uint64_t(gfx.driver->ticks()) * 1000000 : gvl::get_hires_ticks();
 }
 
 std::time_t appTime()
