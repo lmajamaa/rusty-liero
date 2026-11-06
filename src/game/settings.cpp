@@ -242,6 +242,14 @@ void Settings::save(FsNode node, Rand& rand)
 	r.writeTo(writer);
 }
 
+std::string Settings::text()
+{
+	LieroSettings view = settingsView(*this);
+	SettingsResult r(liero_settings_write_text(&view));
+	LieroStr b = liero_settings_result_bytes(r.r);
+	return std::string(reinterpret_cast<char const*>(b.ptr), b.len);
+}
+
 void Settings::generateName(WormSettings& ws, Rand& rand)
 {
 #if 0 // TODO

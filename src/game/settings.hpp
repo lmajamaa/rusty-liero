@@ -63,6 +63,8 @@ struct Settings : gvl::shared, Extensions
 	// The original game's LIERO.DAT. Returns false if it ends early.
 	bool loadLegacy(FsNode node, Rand& rand);
 	void save(FsNode node, Rand& rand);
+	// What save writes.
+	std::string text();
 	// The gash of the settings archive (see archive below). Writing the archive
 	// sets the TC name to the default, since the archive has none.
 	gvl::gash::value_type& updateHash();

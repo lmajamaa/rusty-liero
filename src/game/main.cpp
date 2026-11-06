@@ -84,6 +84,7 @@ try
 
 	std::string tcName;
 	std::string configPath; // Default to current dir
+	std::string tcPath; // Default to TC in the config folder
 
 	for(int i = 1; i < argc; ++i)
 	{
@@ -96,6 +97,11 @@ try
 				{
 					++i;
 					configPath = argv[i];
+				}
+				else if (std::strcmp(argv[i] + 2, "tc-root") == 0 && i + 1 < argc)
+				{
+					++i;
+					tcPath = argv[i];
 				}
 				break;
 			}
@@ -126,6 +132,10 @@ try
 	gfx.setConfigPath(configPath);
 
 	FsNode configNode(gfx.getConfigNode());
+	if (tcPath.empty())
+		gfx.tcNode = configNode / "TC";
+	else
+		gfx.setTcPath(tcPath);
 
 	if (!gfx.loadSettings(configNode / "liero.cfg"))
 	{
@@ -138,9 +148,13 @@ try
 
 	if (tcSet)
 		gfx.settings->tc = tcName;
+#ifdef __EMSCRIPTEN__
+	// What liero.cfg holds now, so the menu only writes it on a change.
+	gfx.savedSettingsText = gfx.settings->text();
+#endif
 
 	// TC loading
-	FsNode lieroRoot(configNode / "TC" / gfx.settings->tc);
+	FsNode lieroRoot(gfx.getTcNode() / gfx.settings->tc);
 	gvl::shared_ptr<Common> common(new Common());
 	common->load(std::move(lieroRoot));
 	gfx.common = common;

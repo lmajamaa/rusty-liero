@@ -156,11 +156,13 @@ if(EMSCRIPTEN)
     target_link_options(openliero PRIVATE
         "--preload-file=${PROJECT_SOURCE_DIR}/TC/openliero@/TC/openliero")
     # The page (web/shell.html) waits for a click before it calls main, so the
-    # browser lets the game start audio.
+    # browser lets the game start audio. Before that it mounts IndexedDB (IDBFS,
+    # part of Emscripten) on the folder the game saves to and loads it.
     target_link_options(openliero PRIVATE
         "--shell-file=${PROJECT_SOURCE_DIR}/web/shell.html"
         "-sINVOKE_RUN=0"
-        "-sEXPORTED_RUNTIME_METHODS=callMain")
+        "-lidbfs.js"
+        "-sEXPORTED_RUNTIME_METHODS=callMain,FS,addRunDependency,removeRunDependency")
     set_property(TARGET openliero APPEND PROPERTY
         LINK_DEPENDS ${PROJECT_SOURCE_DIR}/web/shell.html)
 else()
