@@ -366,6 +366,7 @@ int hashRun(int argc, char* argv[])
 	hashReplays(common);
 	hashAiGames(common);
 	hashSfxAndInput(common);
+	hashApp(common);
 
 	return 0;
 }

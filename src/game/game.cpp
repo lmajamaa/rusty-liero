@@ -3,6 +3,7 @@
 #include <ctime>
 
 #include "game.hpp"
+#include "appclock.hpp"
 #include "viewport.hpp"
 #include "spectatorviewport.hpp"
 #include "worm.hpp"
@@ -32,7 +33,7 @@ Game::Game(
 #if ENABLE_TRACING
 	rand.seed(1);
 #else
-	rand.seed(uint32_t(std::time(0)));
+	rand.seed(uint32_t(appTime()));
 #endif
 
 	cycles = 0;

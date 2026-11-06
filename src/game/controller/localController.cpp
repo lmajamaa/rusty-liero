@@ -251,7 +251,7 @@ void LocalController::changeState(GameState newState)
 			try
 			{
 #if !ENABLE_TRACING
-				std::time_t ticks = std::time(0);
+				std::time_t ticks = appTime();
 				std::tm* now = std::localtime(&ticks);
 
 				char buf[512];
