@@ -1,5 +1,8 @@
 #include <cstddef>
 #include "worm.hpp"
+
+#include <array>
+#include <vector>
 #include "game.hpp"
 #include "mixer/player.hpp"
 #include "gfx/renderer.hpp"
@@ -395,274 +398,38 @@ int sqrVectorLength(int x, int y)
 	return x*x + y*y;
 }
 
+// In Rust (rust/liero-game/src/ai/dumb.rs).
 void DumbLieroAI::process(Game& game, Worm& worm)
 {
 	Common& common = *game.common;
+	Weapon const& w = *worm.weapons[worm.currentWeapon].type;
 
-#if 0
-	// TEMP TEST
+	LieroDumbAiWorm me;
+	me.pos[0] = worm.pos.x;
+	me.pos[1] = worm.pos.y;
+	me.visible = worm.visible;
+	me.aiming_angle = worm.aimingAngle;
+	me.direction = worm.direction;
+	for (int i = 0; i < 4; ++i)
+		me.reacts[i] = worm.reacts[i];
+	me.rope_out = worm.ninjarope.out;
+	me.rope_attached = worm.ninjarope.attached;
+	me.control_states = worm.controlStates.pack();
+	me.time_to_explo = w.timeToExplo;
+	me.time_to_explo_v = w.timeToExploV;
+	me.speed = w.speed;
+	me.gravity = w.gravity;
 
-	for(int i = 0; i < Worm::MaxControl; ++i)
+	std::vector<std::array<int32_t, 2>> others;
+	for (Worm* o : game.worms)
 	{
-		worm.setControlState((Worm::Control)i, rand(3) == 0);
-	}
-	/*
-	if(!worm.ready)
-		worm.setControlState(Worm::Fire, true);
-	*/
-	return;
-#endif
-
-	Worm* target = 0;
-	int minLen = 0;
-	for(std::size_t i = 0; i < game.worms.size(); ++i)
-	{
-		Worm* w = game.worms[i];
-		if(w != &worm)
-		{
-			int len = sqrVectorLength(ftoi(worm.pos.x) - ftoi(w->pos.x), ftoi(worm.pos.y) - ftoi(w->pos.y));
-			if(!target || len < minLen) // First or closer worm
-			{
-				target = w;
-				minLen = len;
-			}
-		}
+		if (o != &worm)
+			others.push_back({{ o->pos.x, o->pos.y }});
 	}
 
-	int maxDist;
-
-	WormWeapon& ww = worm.weapons[worm.currentWeapon];
-	Weapon const& w = *ww.type;
-
-	if(w.timeToExplo > 0 && w.timeToExplo < 500)
-	{
-		maxDist = (w.timeToExplo - w.timeToExploV / 2) * w.speed / 130;
-	}
-	else
-	{
-		maxDist = w.speed - w.gravity / 10;
-	} // 4D43
-
-	if(maxDist < 90)
-		maxDist = 90;
-
-	fixedvec delta = target->pos - worm.pos;
-	auto idelta = ftoi(delta);
-
-	int realDist = vectorLength(idelta.x, idelta.y);
-
-	if(realDist < maxDist || !worm.visible)
-	{
-		// The other worm is close enough
-		bool fire = worm.pressed(Worm::Fire);
-		if(rand(common.aiParams.k[fire][WormSettings::Fire]) == 0)
-		{
-			worm.setControlState(Worm::Fire, !fire);
-		} // 4DE7
-	}
-	else if(worm.visible)
-	{
-		worm.release(Worm::Fire);
-	} // 4DFA
-
-	// In Liero this is a loop with two iterations, that's better maybe
-	bool jump = worm.pressed(Worm::Jump);
-	if(rand(common.aiParams.k[jump][WormSettings::Jump]) == 0)
-	{
-		worm.toggleControlState(Worm::Jump);
-	}
-
-	bool change = worm.pressed(Worm::Change);
-	if(rand(common.aiParams.k[change][WormSettings::Change]) == 0)
-	{
-		worm.toggleControlState(Worm::Change);
-	}
-
-//l_4E6B:
-	// Moves up
-
-// l_4EE5:
-	if(realDist > 0)
-	{
-		delta /= realDist;
-	}
-	else
-	{
-		delta.zero();
-	} // 4F2F
-
-	int dir = 1;
-
-	for(; dir < 128; ++dir)
-	{
-		if(std::abs(cossinTable[dir].x - delta.x) < 0xC00
-		&& std::abs(cossinTable[dir].y - delta.y) < 0xC00) // The original had 0xC000, which is wrong
-			break;
-	} // 4F93
-
-	fixed adeltaX = std::abs(delta.x);
-	fixed adeltaY = std::abs(delta.y);
-
-	if(dir >= 128)
-	{
-		if(delta.x > 0)
-		{
-			if(delta.y < 0)
-			{
-				if(adeltaY > adeltaX)
-					dir = 64 + rand(16);
-				else if(adeltaX > adeltaY)
-					dir = 80 + rand(16);
-				else
-					dir = 80;
-			}
-			else // deltaY >= 0
-			{
-				if(adeltaX > adeltaY)
-					dir = 96 + rand(16);
-				else
-					dir = 116;
-			}
-		}
-		else
-		{
-			if(delta.y < 0)
-			{
-
-				if(adeltaY > adeltaX)
-					dir = 48 + rand(16);
-				else if(adeltaX > adeltaY)
-					dir = 32 + rand(16);
-				else
-					dir = 48; // This was 56, but that seems wrong
-			}
-			else // deltaX <= 0 && deltaY >= 0
-			{
-				if(adeltaX > adeltaY)
-					dir = 12 + rand(16);
-				else
-					dir = 12;
-			}
-		}
-	} // 50FD
-
-
-/* TODO (maybe)
-   if(realdist < maxdist)
-   {
-	if(dir < 64)
-	{
- l_510E:
-	 //What the hell is wrong with this code?
-	 //It is messed up totaly! Translating the correct code
-	 //NOTE! Something has to be done here!
-	 dir += ax; //What the hell is AX?
-	 if(dir > 64)
-	 {
-	  dir = 64;
-	 }
-	} // 5167
-	if(dir > 64)
-	{
-	 //The same thing with this code! Is it encrypted or what?
-	 dir -= ax; //Again
-	 if(dir < 64)
-	 {
-	  dir = 64;
-	 }
-	}
-   } // 51C6
-*/
-
-	change = worm.pressed(Worm::Change);
-
-	if(change)
-	{
-		if(rand(common.aiParams.k[worm.pressed(Worm::Left)][WormSettings::Left]) == 0)
-		{
-			worm.toggleControlState(Worm::Left);
-		}
-
-		if(rand(common.aiParams.k[worm.pressed(Worm::Right)][WormSettings::Right]) == 0)
-		{
-			worm.toggleControlState(Worm::Right);
-		}
-
-		if(worm.ninjarope.out && worm.ninjarope.attached)
-		{
-// l_525F:
-			bool up = worm.pressed(Worm::Up);
-
-			if(rand(common.aiParams.k[up][WormSettings::Up]) == 0)
-			{
-				worm.toggleControlState(Worm::Up);
-			}
-
-			bool down = worm.pressed(Worm::Down);
-			if(rand(common.aiParams.k[down][WormSettings::Down]) == 0)
-			{
-				worm.toggleControlState(Worm::Down);
-			}
-		}
-		else
-		{
-// l_52D2:
-			worm.release(Worm::Up);
-			worm.release(Worm::Down);
-		} // 52F8
-	} // if(change)
-	else
-	{
-
-		if(realDist > maxDist)
-		{
-			worm.setControlState(Worm::Right, (delta.x > 0));
-			worm.setControlState(Worm::Left, (delta.x <= 0));
-		} // 5347
-		else
-		{
-			worm.release(Worm::Right);
-			worm.release(Worm::Left);
-		}
-
-		if(worm.direction != 0)
-		{
-			if(dir < 64)
-				worm.press(Worm::Left);
-			// 5369
-			worm.setControlState(Worm::Up,   (dir + 1 < ftoi(worm.aimingAngle)));
-			// 5379
-			worm.setControlState(Worm::Down, (dir - 1 > ftoi(worm.aimingAngle)));
-		}
-		else
-		{
-			if(dir > 64)
-				worm.press(Worm::Right);
-			// 53C6
-			worm.setControlState(Worm::Up,   (dir - 1 > ftoi(worm.aimingAngle)));
-			// 53E8
-			worm.setControlState(Worm::Down, (dir + 1 < ftoi(worm.aimingAngle)));
-			// 540A
-		}
-
-		if(worm.pressed(Worm::Left)
-		&& worm.reacts[Worm::RFRight])
-		{
-			if(worm.reacts[Worm::RFDown] > 0)
-				worm.press(Worm::Right);
-			else
-				worm.press(Worm::Jump);
-		} // 5454
-
-		if(worm.pressed(Worm::Right)
-		&& worm.reacts[Worm::RFLeft])
-		{
-			if(worm.reacts[Worm::RFDown] > 0)
-				worm.press(Worm::Left);
-			else
-				worm.press(Worm::Jump);
-		} // 549E
-	}
+	worm.controlStates.istate = liero_dumb_ai_process(
+		&rand, &me, reinterpret_cast<int32_t const (*)[2]>(others.data()), others.size(),
+		reinterpret_cast<int32_t const (*)[2][7]>(&common.aiParams.k));
 }
 
 void Worm::initWeapons(Game& game)

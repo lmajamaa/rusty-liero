@@ -5,7 +5,8 @@
 //
 // Besides the game state, they hash the AI's own state: its candidate
 // plans and their scores, the learnt transition model, the path-finding
-// cells and the positions it traced.
+// cells and the positions it traced (liero_follow_ai_hash, which hashes
+// them in the order the C++ did).
 
 #include "hashrun.hpp"
 
@@ -17,80 +18,11 @@
 #include "ai/predictive_ai.hpp"
 
 #include <cstdio>
-#include <cstring>
 
 uint64_t hashFrame(Game& game, Renderer& split, Renderer& spectator);
 
 namespace
 {
-
-void addDouble(Fnv& f, double d)
-{
-	uint64_t bits;
-	std::memcpy(&bits, &d, sizeof bits);
-	f.add(uint32_t(bits));
-	f.add(uint32_t(bits >> 32));
-}
-
-void hashResult(Fnv& f, EvaluateResult const& r)
-{
-	f.add(uint32_t(r.scoreOverTime.size()));
-	for (double d : r.scoreOverTime)
-		addDouble(f, d);
-	addDouble(f, r.futureScore);
-}
-
-uint64_t hashAi(FollowAI& ai)
-{
-	Fnv f;
-	f.add(ai.frame);
-	f.add(ai.rand.x); f.add(ai.rand.c);
-	InputContext& c = ai.currentContext;
-	f.add(c.currentState.idx); f.add(c.wantedWeapon); f.add(c.hiddenFrames);
-	f.add(c.facingEnemy); f.add(c.ninjaropeOut);
-	f.add(ai.evaluationBudget);
-	f.add(ai.testing);
-
-	f.add(uint32_t(ai.candPlan.size()));
-	for (CandPlan& p : ai.candPlan)
-	{
-		f.add(uint32_t(p.plan.size()));
-		for (InputState s : p.plan)
-			f.add(s.idx);
-		hashResult(f, p.prevResult);
-		f.add(p.prevResultAge);
-	}
-	f.add(ai.best ? int(ai.best - &ai.candPlan[0]) : -1);
-
-	for (auto& row : ai.model.trans)
-		for (double d : row)
-			addDouble(f, d);
-
-	// Not the presence and damage grid (AiContext::state): only code under
-	// #if 0 reads it, and it starts as whatever was in memory.
-
-	// The cells' g is only set once a search reaches them.
-	dijkstra_level& d = ai.dlevel;
-	for (level_cell& cell : d.cells)
-	{
-		f.add(cell.cost);
-		f.add(cell.state);
-		if (cell.state != path_node::none)
-		{
-			f.add(cell.g);
-			f.add(cell.parent ? int(static_cast<level_cell*>(cell.parent) - d.cells) : -1);
-		}
-	}
-
-	f.add(uint32_t(ai.evaluatePositions.size()));
-	for (auto& p : ai.evaluatePositions)
-	{
-		f.add(std::get<0>(p).x);
-		f.add(std::get<0>(p).y);
-		f.add(uint32_t(std::get<1>(p)));
-	}
-	return f.h;
-}
 
 struct AiConfig
 {
@@ -132,8 +64,8 @@ void runAiGame(gvl::shared_ptr<Common> common, AiConfig const& config, int inter
 	{
 		Worm& worm = *game.worms[i];
 		worm.settings->controller = 2;
-		ais[i] = new FollowAI(Weights(), settings.aiParallels, worm.index == 0);
-		ais[i]->rand.seed(config.seed * 31 + i);
+		ais[i] = new FollowAI(settings.aiParallels, worm.index == 0);
+		liero_rand_seed(liero_follow_ai_rand(ais[i]->ai), config.seed * 31 + i);
 		worm.ai.reset(ais[i]);
 	}
 
@@ -164,7 +96,7 @@ void runAiGame(gvl::shared_ptr<Common> common, AiConfig const& config, int inter
 			std::printf("%s %d %016llx%s\n", config.name, tick, (unsigned long long)hashGame(game), over ? " end" : "");
 			std::printf("%s-controls %d %016llx\n", config.name, tick, (unsigned long long)controls.h);
 			for (int i = 0; i < 2; ++i)
-				std::printf("%s-ai%d %d %016llx\n", config.name, i, tick, (unsigned long long)hashAi(*ais[i]));
+				std::printf("%s-ai%d %d %016llx\n", config.name, i, tick, (unsigned long long)liero_follow_ai_hash(ais[i]->ai));
 			std::printf("%s %d %016llx frame\n", config.name, tick, (unsigned long long)hashFrame(game, split, spectator));
 		}
 		if (over)

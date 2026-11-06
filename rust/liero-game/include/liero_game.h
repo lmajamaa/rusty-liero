@@ -9,6 +9,54 @@
 #include <stdlib.h>
 
 /**
+ * No cell: a null pointer in C++.
+ */
+#define NO_CELL UINT32_MAX
+
+#define FULL_WIDTH 504
+
+#define FULL_HEIGHT 350
+
+#define FACTOR 4
+
+#define WIDTH (FULL_WIDTH / FACTOR)
+
+#define HEIGHT (FULL_HEIGHT / FACTOR)
+
+/**
+ * A border of rock cells goes around the level.
+ */
+#define PITCH (WIDTH + 2)
+
+#define CELL_COUNT (uintptr_t)(PITCH * (HEIGHT + 2))
+
+/**
+ * `path_node`'s states.
+ */
+#define NONE 0
+
+#define OPEN 1
+
+#define CLOSED 2
+
+/**
+ * Control bits, as `Worm::Control` numbers them.
+ */
+#define UP 0
+
+#define DOWN 1
+
+#define LEFT 2
+
+#define RIGHT 3
+
+#define FIRE 4
+
+#define CHANGE 5
+
+#define JUMP 6
+
+/**
  * Width and height of the large sprites (stones, dirt textures...).
  */
 #define LIERO_LARGE_SPRITE_SIZE 16
@@ -198,6 +246,11 @@ typedef enum LieroSettingsStatus {
 } LieroSettingsStatus;
 
 /**
+ * A predictive AI for C++'s `FollowAI` to own.
+ */
+typedef struct LieroFollowAi LieroFollowAi;
+
+/**
  * What a replay call gives back. C++ copies out what it needs and frees it.
  */
 typedef struct LieroReplayResult LieroReplayResult;
@@ -225,6 +278,149 @@ typedef struct LieroTc LieroTc;
  * `liero_tc_file_set`.
  */
 typedef struct LieroTcFile LieroTcFile;
+
+/**
+ * What the AI reads of a game.
+ */
+typedef struct LieroAiGame {
+  uint32_t game_mode;
+  int32_t holder_idx;
+  int32_t contender_idx;
+  int32_t contender_frames;
+  /**
+   * The middle of the zone (`rect.center_x()` and `center_y()`).
+   */
+  int32_t zone_center[2];
+  int32_t last_killed_idx;
+  int32_t ai_frames;
+  int32_t ai_mutations;
+  bool ai_traces;
+} LieroAiGame;
+
+/**
+ * A worm weapon, as the AI reads it.
+ */
+typedef struct LieroAiWeapon {
+  int32_t ammo;
+  int32_t delay_left;
+  int32_t loading_left;
+  /**
+   * The weapon type's loading time and ammo.
+   */
+  int32_t loading_time;
+  int32_t max_ammo;
+} LieroAiWeapon;
+
+/**
+ * What the AI reads of a worm.
+ */
+typedef struct LieroAiWorm {
+  int32_t index;
+  int32_t pos[2];
+  int32_t aiming_angle;
+  int32_t direction;
+  bool visible;
+  bool ready;
+  int32_t health;
+  int32_t lives;
+  /**
+   * The health worms start with, from the worm's settings.
+   */
+  int32_t settings_health;
+  int32_t current_weapon;
+  struct LieroAiWeapon weapons[5];
+  bool rope_out;
+  int32_t steerable_count;
+  int32_t steerable_sum[2];
+  uint32_t control_states;
+} LieroAiWorm;
+
+/**
+ * Material flags of one palette index or level pixel. C++'s `Material`
+ * inherits from this struct and keeps its tests inline, because the
+ * renderer and AI call them for every pixel.
+ */
+typedef struct LieroMaterial {
+  uint8_t flags;
+} LieroMaterial;
+
+/**
+ * A game's level, for the AI to find paths and obstacles in.
+ */
+typedef struct LieroAiLevel {
+  const uint8_t *data;
+  uintptr_t len;
+  int32_t width;
+  int32_t height;
+  /**
+   * The TC's 256 materials.
+   */
+  const struct LieroMaterial *materials;
+} LieroAiLevel;
+
+/**
+ * What the predictive AI calls back into C++ for. A game is a `Game*`:
+ * the one the AI is in, or a copy from `clone_game`.
+ */
+typedef struct LieroAiHooks {
+  /**
+   * A copy of the game with no sounds, stats or viewports, and
+   * `quickSim` on.
+   */
+  void *(*clone_game)(void *game);
+  /**
+   * Frees a copy and its worms.
+   */
+  void (*free_game)(void *game);
+  void (*process_frame)(void *game);
+  void (*game)(void *game, struct LieroAiGame *out);
+  /**
+   * The worm at `place` in the game's list.
+   */
+  void (*worm)(void *game, int32_t place, struct LieroAiWorm *out);
+  void (*set_controls)(void *game, int32_t place, uint32_t controls);
+  void (*level)(void *game, struct LieroAiLevel *out);
+} LieroAiHooks;
+
+/**
+ * Generator state. C++'s `Rand` inherits from this struct, so the state stays
+ * a plain value inside `Game`, `Worm` and the other objects that own one:
+ * they are copied for the AI and written into replays.
+ */
+typedef struct LieroRand {
+  uint32_t x;
+  uint32_t c;
+} LieroRand;
+
+/**
+ * A traced position, the copy's worm in fixed point, and its colour.
+ */
+typedef struct LieroAiTrace {
+  int32_t x;
+  int32_t y;
+  uint8_t color;
+} LieroAiTrace;
+
+/**
+ * What the bot reads of its worm.
+ */
+typedef struct LieroDumbAiWorm {
+  int32_t pos[2];
+  bool visible;
+  int32_t aiming_angle;
+  int32_t direction;
+  int32_t reacts[4];
+  bool rope_out;
+  bool rope_attached;
+  uint32_t control_states;
+  /**
+   * The current weapon's fuse, its random part, speed and gravity.
+   */
+  int32_t time_to_explo;
+  int32_t time_to_explo_v;
+  int32_t speed;
+  int32_t gravity;
+} LieroDumbAiWorm;
 
 /**
  * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
@@ -286,25 +482,6 @@ typedef struct LieroHoldazone {
   int32_t zone_width;
   int32_t zone_height;
 } LieroHoldazone;
-
-/**
- * Generator state. C++'s `Rand` inherits from this struct, so the state stays
- * a plain value inside `Game`, `Worm` and the other objects that own one:
- * they are copied for the AI and written into replays.
- */
-typedef struct LieroRand {
-  uint32_t x;
-  uint32_t c;
-} LieroRand;
-
-/**
- * Material flags of one palette index or level pixel. C++'s `Material`
- * inherits from this struct and keeps its tests inline, because the
- * renderer and AI call them for every pixel.
- */
-typedef struct LieroMaterial {
-  uint8_t flags;
-} LieroMaterial;
 
 /**
  * View of a C++ `Level`'s pixels: `data` holds the palette index of each
@@ -2199,6 +2376,59 @@ extern "C" {
  * is linked in.
  */
 const char *liero_game_version(void);
+
+/**
+ * A new predictive AI with `candidates` plans (`aiParallels`). `testing`
+ * also tries changing to loading weapons; the game gives it to the first
+ * worm's AI.
+ */
+struct LieroFollowAi *liero_follow_ai_new(uintptr_t candidates, bool testing);
+
+/**
+ * # Safety
+ * `ai` must come from `liero_follow_ai_new`, or be null.
+ */
+void liero_follow_ai_free(struct LieroFollowAi *ai);
+
+/**
+ * One tick for the worm at `place` in `game`: the controls to press.
+ *
+ * # Safety
+ * The hooks must work on `game` and on the copies they make of it.
+ */
+uint32_t liero_follow_ai_process(struct LieroFollowAi *ai,
+                                 void *game,
+                                 int32_t place,
+                                 const struct LieroAiHooks *hooks);
+
+/**
+ * The AI's own generator, which C++ can seed.
+ */
+struct LieroRand *liero_follow_ai_rand(struct LieroFollowAi *ai);
+
+/**
+ * The positions the last tick's plans passed through, with `aiTraces` on,
+ * for C++ to draw. Valid until the next tick.
+ */
+const struct LieroAiTrace *liero_follow_ai_traces(const struct LieroFollowAi *ai, uintptr_t *count);
+
+/**
+ * A hash of the AI's whole state, for the hash run.
+ */
+uint64_t liero_follow_ai_hash(const struct LieroFollowAi *ai);
+
+/**
+ * One tick of the original bot: the worm's controls after it. `others`
+ * are the other worms' positions, `k` the TC's `aiParams`.
+ *
+ * # Safety
+ * `others` must point to `count` positions.
+ */
+uint32_t liero_dumb_ai_process(struct LieroRand *rand,
+                               const struct LieroDumbAiWorm *worm,
+                               const int32_t (*others)[2],
+                               uintptr_t count,
+                               const int32_t (*k)[2][7]);
 
 /**
  * Runs the game for one tick: C++'s `Game::processFrame`.

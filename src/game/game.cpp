@@ -10,7 +10,6 @@
 #include "gfx/renderer.hpp"
 #include "weapsel.hpp"
 #include "constants.hpp"
-#include "ai/predictive_ai.hpp"
 #include <cstddef>
 #include <cassert>
 
