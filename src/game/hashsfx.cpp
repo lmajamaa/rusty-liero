@@ -34,24 +34,19 @@ void print(char const* name, int step, uint64_t h)
 	std::printf("%s %d %016llx\n", name, step, (unsigned long long)h);
 }
 
-int16_t* samples(sfx_sound* snd)
-{
-	return static_cast<int16_t*>(sfx_sound_data(snd));
-}
-
 void hashSamples(Common& common)
 {
 	for (std::size_t i = 0; i < common.sounds.size(); ++i)
 	{
 		SfxSample& s = common.sounds[i];
 		Fnv f;
-		f.add(s.sound != 0);
-		if (s.sound)
+		f.add(s.loaded);
+		if (s.loaded)
 		{
 			std::size_t n = s.originalData.size() * 2;
 			f.add(uint32_t(n));
 			for (std::size_t j = 0; j < n; ++j)
-				f.add(int32_t(samples(s.sound)[j]));
+				f.add(int32_t(s.samples[j]));
 		}
 		print("sfx-sample", int(i), f.h);
 	}
@@ -66,23 +61,20 @@ void hashBuffer(Fnv& f, int16_t const* buf, int n)
 
 void mixerScript(Common& common, uint32_t seed, int steps)
 {
-	std::vector<sfx_sound*> sounds;
+	std::vector<std::vector<int16_t> const*> sounds;
 	for (SfxSample& s : common.sounds)
-		if (s.sound)
-			sounds.push_back(s.sound);
+		if (s.loaded)
+			sounds.push_back(&s.samples);
 
 	// A full-scale square wave, which clips as soon as two play at once.
-	sfx_sound* square = sfx_new_sound(300);
+	std::vector<int16_t> square(300);
 	for (int i = 0; i < 300; ++i)
-		samples(square)[i] = (i / 25) % 2 ? 32767 : -32768;
-	sounds.push_back(square);
-	sfx_sound* one = sfx_new_sound(1);
-	samples(one)[0] = -32768;
-	sounds.push_back(one);
-	sfx_sound* two = sfx_new_sound(2);
-	samples(two)[0] = 12345;
-	samples(two)[1] = -23456;
-	sounds.push_back(two);
+		square[i] = (i / 25) % 2 ? 32767 : -32768;
+	sounds.push_back(&square);
+	std::vector<int16_t> one { -32768 };
+	sounds.push_back(&one);
+	std::vector<int16_t> two { 12345, -23456 };
+	sounds.push_back(&two);
 
 	// Ids are only compared, never followed.
 	void* ids[] = { 0, (void*)16, (void*)32, (void*)48, (void*)64, (void*)80 };
@@ -91,7 +83,7 @@ void mixerScript(Common& common, uint32_t seed, int steps)
 	char name[32];
 	std::snprintf(name, sizeof(name), "sfx-mixer-%u", seed);
 
-	sfx_mixer* m = sfx_mixer_create();
+	LieroMixer* m = liero_mixer_new();
 	Rand r(seed);
 	static int16_t buf[5000];
 	Fnv f;
@@ -101,42 +93,39 @@ void mixerScript(Common& common, uint32_t seed, int steps)
 		uint32_t op = r(10);
 		if (op < 4)
 		{
-			sfx_sound* snd = sounds[r(uint32_t(sounds.size()))];
-			uint32_t time = uint32_t(sfx_mixer_now(m) + int32_t(r(6000)) - 3000);
-			uint32_t flags = r(4) == 0 ? SFX_SOUND_LOOP : SFX_SOUND_NORMAL;
-			void* ret = sfx_mixer_add(m, snd, time, id, flags);
+			std::vector<int16_t> const& snd = *sounds[r(uint32_t(sounds.size()))];
+			uint32_t time = uint32_t(liero_mixer_now(m) + int32_t(r(6000)) - 3000);
+			uint32_t flags = r(4) == 0 ? LIERO_SOUND_LOOP : LIERO_SOUND_NORMAL;
+			void* ret = liero_mixer_add(m, snd.data(), snd.size(), time, id, flags);
 			f.add(ret == id);
 			f.add(ret != 0);
 		}
 		else if (op == 4)
-			sfx_mixer_stop(m, id);
+			liero_mixer_stop(m, id);
 		else if (op == 5)
-			f.add(sfx_is_playing(m, id));
+			f.add(liero_mixer_is_playing(m, id));
 		else if (op == 6)
-			sfx_set_volume(m, id, r(2600) / 1000.0);
+			liero_mixer_set_volume(m, id, r(2600) / 1000.0);
 		else
 		{
 			int n = 1 + int(r(r(3) == 0 ? 5000 : 700));
-			sfx_mixer_mix(m, buf, n);
+			liero_mixer_mix(m, buf, n);
 			hashBuffer(f, buf, n);
-			f.add(sfx_mixer_now(m));
+			f.add(liero_mixer_now(m));
 		}
 
 		if (step % 100 == 0)
 			print(name, step, f.h);
 	}
 
-	// The mixer has no destroy function.
-	sfx_free_sound(square);
-	sfx_free_sound(one);
-	sfx_free_sound(two);
+	liero_mixer_free(m);
 }
 
 void soundGame(gvl::shared_ptr<Common> common, char const* name, uint32_t seed, int gameMode, char const* const* weapons, int ticks)
 {
 	std::unique_ptr<Game> gamePtr = setUpGame(common, seed, gameMode, weapons);
 	Game& game = *gamePtr;
-	sfx_mixer* m = sfx_mixer_create();
+	LieroMixer* m = liero_mixer_new();
 	game.soundPlayer.reset(new RecordSoundPlayer(*common, m));
 
 	game.startGame();
@@ -148,7 +137,7 @@ void soundGame(gvl::shared_ptr<Common> common, char const* name, uint32_t seed, 
 	{
 		botTick(game);
 		game.processFrame();
-		sfx_mixer_mix(m, buf, 630);
+		liero_mixer_mix(m, buf, 630);
 		hashBuffer(f, buf, 630);
 
 		bool over = game.isGameOver();
@@ -161,6 +150,9 @@ void soundGame(gvl::shared_ptr<Common> common, char const* name, uint32_t seed, 
 		if (over)
 			break;
 	}
+
+	game.soundPlayer.reset(new NullSoundPlayer);
+	liero_mixer_free(m);
 }
 
 char const* const throwers[] = { "FLAMER", "FAN", "DART", "DIRTBALL", "GREENBALL" };
@@ -224,7 +216,7 @@ struct KeyRecorder : Controller
 
 void hashKeyState(Fnv& f)
 {
-	for (bool k : gfx.dosKeys)
+	for (bool k : gfx.dosKeys.down)
 		f.add(k);
 	for (Joystick& js : gfx.joysticks)
 		for (bool b : js.btnState)
@@ -423,7 +415,7 @@ void hashControls(gvl::shared_ptr<Common> common, uint32_t seed, int steps)
 		f.add(lc->frameSkip);
 		f.add(lc->inverseFrameSkip);
 		f.add(lc->cycles);
-		for (bool k : gfx.dosKeys)
+		for (bool k : gfx.dosKeys.down)
 			f.add(k);
 
 		if (step % 100 == 0)
@@ -435,9 +427,6 @@ void hashControls(gvl::shared_ptr<Common> common, uint32_t seed, int steps)
 
 void hashInput(gvl::shared_ptr<Common> common)
 {
-	// main() fills the key table before the menus; the hash run starts
-	// before that.
-	initKeys();
 	gfx.common = common;
 	hashKeyMap();
 	for (uint32_t seed = 1; seed <= 3; ++seed)

@@ -78,33 +78,21 @@ LocalController::~LocalController()
 
 void LocalController::onKey(int key, bool keyState)
 {
-	Worm::Control control;
-	Worm* worm = game.findControlForKey(key, control);
-	if(worm)
+	// Which worm's control the key is, and what it does, is in Rust
+	// (liero_local_controller_key).
+	std::vector<LieroWormKeys> worms;
+	for (Worm* w : game.worms)
 	{
-		worm->cleanControlStates.set(control, keyState);
-
-		if(control < Worm::MaxControl)
-		{
-			// Only real controls
-			worm->setControlState(control, keyState);
-		}
-
-		if(worm->cleanControlStates[WormSettings::Dig])
-		{
-			worm->press(Worm::Left);
-			worm->press(Worm::Right);
-		}
-		else
-		{
-			if(!worm->cleanControlStates[Worm::Left])
-				worm->release(Worm::Left);
-			if(!worm->cleanControlStates[Worm::Right])
-				worm->release(Worm::Right);
-		}
+		LieroWormKeys k;
+		k.controls = game.settings->extensions ? w->settings->controlsEx : w->settings->controls;
+		k.states = &w->controlStates.istate;
+		k.clean = &w->cleanControlStates.istate;
+		worms.push_back(k);
 	}
+	std::size_t controlCount = game.settings->extensions ? WormSettings::MaxControlEx : WormSettings::MaxControl;
+	bool escape = liero_local_controller_key(worms.data(), worms.size(), controlCount, key, keyState);
 
-	if(key == DkEscape && !goingToMenu)
+	if(escape && !goingToMenu)
 	{
 		fadeValue = 31;
 		goingToMenu = true;

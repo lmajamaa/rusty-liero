@@ -18,7 +18,6 @@ extern "C"
 {
 #include "video_recorder.h"
 #include "tl/vector.h"
-#include "game/mixer/mixer.h"
 }
 
 void replayToVideo(
@@ -43,7 +42,7 @@ void replayToVideo(
 		renderer.loadPalette(*common);
 	}
 
-	sfx_mixer* mixer = sfx_mixer_create();
+	LieroMixer* mixer = liero_mixer_new();
 
 	std::unique_ptr<Game> game(
 		replayReader.beginPlayback(common,
@@ -114,7 +113,7 @@ void replayToVideo(
 
 		std::size_t mixerStart = soundBuffer.size;
 		tl_vector_reserve(soundBuffer, int16_t, soundBuffer.size + mixerFrames);
-		sfx_mixer_mix(mixer, tl_vector_idx(soundBuffer, int16_t, mixerStart), mixerFrames);
+		liero_mixer_mix(mixer, (int16_t*)tl_vector_idx(soundBuffer, int16_t, mixerStart), mixerFrames);
 		tl_vector_post_enlarge(soundBuffer, int16_t, mixerFrames);
 
 		{

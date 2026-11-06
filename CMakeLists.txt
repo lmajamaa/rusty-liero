@@ -59,8 +59,6 @@ set(SOURCES
     src/game/gfx/palette.cpp
     src/game/gfx/renderer.cpp
     src/game/gfx/sprite.cpp
-    src/game/mixer/mixer.c
-    src/game/mixer/player.cpp
     src/gvl/zlib/miniz.c
     src/gvl/system/system.c
     src/gvl/support/bits.c
@@ -82,7 +80,6 @@ set(GAME_SOURCES ${SOURCES}
     src/game/hashai.cpp
     src/game/hashsfx.cpp
     src/game/hashtc.cpp
-    src/game/keys.cpp
     src/game/main.cpp
     src/game/replay.cpp
     src/game/sfx.cpp

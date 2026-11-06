@@ -1,11 +1,6 @@
 #ifndef LIERO_SFX_HPP
 #define LIERO_SFX_HPP
 
-#if !DISABLE_SOUND
-extern "C" {
-#include "mixer/mixer.h"
-}
-#endif
 #include <vector>
 #include "mixer/player.hpp"
 
@@ -13,18 +8,9 @@ struct Common;
 
 struct Sfx
 {
-	struct ChannelInfo
-	{
-		ChannelInfo()
-		: id(0)
-		{
-		}
-
-		void* id; // ID of the sound playing on this channel
-	};
-
 	Sfx()
-	: initialized(false)
+	: mixer(0)
+	, initialized(false)
 	{
 	}
 	~Sfx();
@@ -36,11 +22,7 @@ struct Sfx
 	bool isPlaying(void* id);
 
 	void stop(void* id);
-#if !DISABLE_SOUND
-	ChannelInfo channelInfo[8];
-#endif
-
-	sfx_mixer* mixer;
+	LieroMixer* mixer;
 	bool initialized;
 };
 

@@ -309,7 +309,7 @@ void Common::load(FsNode node)
 		if (src.valid)
 		{
 			s.originalData.assign(src.data, src.data + src.len);
-			s.sound = sfx_new_sound(src.len * 2);
+			s.loaded = true;
 			s.createSound();
 		}
 	}
@@ -500,23 +500,8 @@ std::string Common::guessName() const
 
 void SfxSample::createSound()
 {
-	int16_t* ptr = reinterpret_cast<int16_t*>(sfx_sound_data(sound));
-
-	if (originalData.empty())
-		return;
-
-	int prev = ((int8_t)originalData[0]) * 30;
-	*ptr++ = prev;
-
-	for(std::size_t j = 1; j < originalData.size(); ++j)
-	{
-		int cur = (int8_t)originalData[j] * 30;
-		*ptr++ = (prev + cur) / 2;
-		*ptr++ = cur;
-		prev = cur;
-	}
-
-	*ptr++ = prev;
+	samples.resize(originalData.size() * 2);
+	liero_sound_from_tc(originalData.data(), originalData.size(), samples.data());
 }
 
 

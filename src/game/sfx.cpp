@@ -10,11 +10,11 @@
 
 Sfx sfx;
 
+// SDL's audio callback. Emscripten runs it on the main thread, between the
+// game's frames, so the mixer is never used from two threads at once.
 extern "C" void SDLCALL Sfx_callback(void *userdata, Uint8 *stream, int len)
 {
-	uint32 frame_count = len / 2;
-
-	sfx_mixer_mix((sfx_mixer*)userdata, stream, frame_count);
+	liero_mixer_mix(static_cast<LieroMixer*>(userdata), reinterpret_cast<int16_t*>(stream), len / 2);
 }
 
 void Sfx::init()
@@ -25,7 +25,7 @@ void Sfx::init()
 
 	SDL_InitSubSystem(SDL_INIT_AUDIO);
 
-	mixer = sfx_mixer_create();
+	mixer = liero_mixer_new();
 
 	SDL_AudioSpec spec;
 	memset(&spec, 0, sizeof(spec));
@@ -46,6 +46,8 @@ void Sfx::init()
 	else
 	{
 		Console::writeWarning(std::string("SDL_OpenAudio returned error: ") + SDL_GetError());
+		liero_mixer_free(mixer);
+		mixer = 0;
 	}
 #endif
 }
@@ -59,6 +61,8 @@ void Sfx::deinit()
 
 	SDL_CloseAudio();
 	SDL_QuitSubSystem(SDL_INIT_AUDIO);
+	liero_mixer_free(mixer);
+	mixer = 0;
 #endif
 }
 
@@ -68,7 +72,7 @@ void Sfx::play(Common& common, int sound, void* id, int loops)
 	if(!initialized)
 		return;
 
-	sfx_mixer_add(mixer, common.sounds[sound].sound, sfx_mixer_now(mixer), id, loops ? SFX_SOUND_LOOP : SFX_SOUND_NORMAL);
+	playOnMixer(mixer, common, sound, id, loops);
 #endif
 }
 
@@ -78,7 +82,7 @@ void Sfx::stop(void* id)
 	if(!initialized)
 		return;
 
-	sfx_mixer_stop(mixer, id);
+	liero_mixer_stop(mixer, id);
 #endif
 }
 
@@ -88,7 +92,7 @@ bool Sfx::isPlaying(void* id)
 	if(!initialized)
 		return false;
 
-	return sfx_is_playing(mixer, id) != 0;
+	return liero_mixer_is_playing(mixer, id);
 #else
 	return false;
 #endif

@@ -13,7 +13,6 @@
 #include <gvl/resman/shared_ptr.hpp>
 #include <gvl/support/platform.hpp>
 extern "C" {
-#include "mixer/mixer.h"
 }
 
 #if ENABLE_TRACING
@@ -53,48 +52,29 @@ struct AIParams
 	int k[2][7]; // 0x1AEEE, contiguous words
 };
 
-struct SfxSample : gvl::noncopyable
+struct SfxSample
 {
-	//SfxSample(SfxSample const&) = delete;
-	//SfxSample& operator=(SfxSample const&) = delete;
-
 	SfxSample()
-	: sound(0)
+	: loaded(false)
 	{
-	}
-
-	SfxSample(SfxSample&& other)
-	: name(std::move(other.name)), sound(other.sound), originalData(std::move(other.originalData))
-	{
-		other.sound = 0;
-	}
-
-	SfxSample& operator=(SfxSample&& other)
-	{
-		name = std::move(other.name);
-		sound = other.sound;
-		sound = 0;
-		originalData = std::move(other.originalData);
-		return *this;
 	}
 
 	SfxSample(std::string name, int length)
-	: name(std::move(name)), originalData(length)
+	: name(std::move(name)), loaded(true), originalData(length)
 	{
-		sound = sfx_new_sound(length * 2);
 	}
 
-	~SfxSample()
-	{
-		if (sound)
-			sfx_free_sound(sound);
-	}
-
+	// Makes the samples the mixer plays from originalData, in Rust
+	// (liero_sound_from_tc).
 	void createSound();
 
 	std::string name;
-	sfx_sound* sound;
+	// Whether the TC had this sound. One it didn't plays silently.
+	bool loaded;
 	std::vector<uint8_t> originalData;
+	// 16-bit samples, twice as many as originalData. The mixer plays them
+	// in place, so they must not change while a sound is playing.
+	std::vector<int16_t> samples;
 };
 
 struct Bitmap;

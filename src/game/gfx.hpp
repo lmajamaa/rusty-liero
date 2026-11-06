@@ -144,55 +144,50 @@ struct Gfx
 
 	void clearKeys();
 
+	// The key state is in Rust (rust/liero-game/src/keys.rs).
 	bool testKeyOnce(Uint32 key)
 	{
-		bool state = dosKeys[key];
-		dosKeys[key] = false;
-		return state;
+		return liero_keys_test_once(&dosKeys, key);
 	}
 
 	bool testKey(Uint32 key)
 	{
-		return dosKeys[key];
+		return liero_keys_test(&dosKeys, key);
 	}
 
 	void releaseKey(Uint32 key)
 	{
-		dosKeys[key] = false;
+		liero_keys_set(&dosKeys, key, false);
 	}
 
 	void pressKey(Uint32 key)
 	{
-		dosKeys[key] = true;
+		liero_keys_set(&dosKeys, key, true);
 	}
 
 	void setKey(Uint32 key, bool state)
 	{
-		dosKeys[key] = state;
+		liero_keys_set(&dosKeys, key, state);
 	}
 
 	void toggleKey(Uint32 key)
 	{
-		dosKeys[key] = !dosKeys[key];
+		liero_keys_toggle(&dosKeys, key);
 	}
 
 	bool testSDLKeyOnce(SDL_Scancode key)
 	{
-		Uint32 k = SDLToDOSKey(key);
-		return k ? testKeyOnce(k) : false;
+		return liero_keys_test_sdl_once(&dosKeys, key);
 	}
 
 	bool testSDLKey(SDL_Scancode key)
 	{
-		Uint32 k = SDLToDOSKey(key);
-		return k ? testKey(k) : false;
+		return liero_keys_test_sdl(&dosKeys, key);
 	}
 
 	void releaseSDLKey(SDL_Scancode key)
 	{
-		Uint32 k = SDLToDOSKey(key);
-		if(k)
-			dosKeys[k] = false;
+		liero_keys_release_sdl(&dosKeys, key);
 	}
 
 	SDL_Keysym waitForKey();
@@ -286,7 +281,7 @@ struct Gfx
 	FsNode settingsNode; // Currently loaded settings file. TODO: This is only used for display. We could just remember the name.
 	gvl::shared_ptr<Settings> settings;
 
-	bool dosKeys[177];
+	LieroKeys dosKeys;
 	// the window to render into
 	SDL_Window* sdlWindow = NULL;
 	// the window to render the spectator view into

@@ -103,7 +103,7 @@ void hashTc(Common& common)
 		h.bytes((uint8_t const*)s.name.data(), s.name.size());
 		h.add(uint32_t(s.originalData.size()));
 		h.bytes(s.originalData.data(), s.originalData.size());
-		h.add(s.sound != 0);
+		h.add(s.loaded);
 		print("tc-sound", (int)i, h);
 	}
 
