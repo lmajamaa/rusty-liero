@@ -554,8 +554,21 @@ void evaluate(
 	std::size_t planSize,
 	MutationStrategy const& ms)
 {
-	Game copy(game);
+	// On the heap: a Game holds its object lists by value, 74 KB in the web
+	// build, whose stack is 64 KB.
+	std::unique_ptr<Game> copyPtr(new Game(game));
+	Game& copy = *copyPtr;
 	copy.postClone(game);
+	// postClone gives the copy its own worms, which ~Game doesn't delete.
+	struct DeleteWorms
+	{
+		Game& game;
+		~DeleteWorms()
+		{
+			for (Worm* w : game.worms)
+				delete w;
+		}
+	} deleteWorms = { copy };
 	copy.quickSim = true;
 
 	Worm* meCopy = copy.wormByIdx(me->index);

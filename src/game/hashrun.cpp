@@ -364,6 +364,7 @@ int hashRun(int argc, char* argv[])
 	hashMenus(common);
 	hashSettings();
 	hashReplays(common);
+	hashAiGames(common);
 
 	return 0;
 }

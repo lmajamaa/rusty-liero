@@ -80,6 +80,7 @@ set(GAME_SOURCES ${SOURCES}
     src/game/hashsettings.cpp
     src/game/hashstats.cpp
     src/game/hashreplays.cpp
+    src/game/hashai.cpp
     src/game/hashtc.cpp
     src/game/keys.cpp
     src/game/main.cpp

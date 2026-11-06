@@ -38,6 +38,9 @@ void hashStatsScreen(char const* name, Game& game, Renderer& renderer);
 // broken in other ways. See hashreplays.cpp.
 void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks);
 void hashReplays(gvl::shared_ptr<Common> common);
+// Games between the predictive bots, hashing their state too. See
+// hashai.cpp.
+void hashAiGames(gvl::shared_ptr<Common> common);
 
 // 64-bit FNV-1a over 32-bit words, the same as the Rust tests use.
 struct Fnv
