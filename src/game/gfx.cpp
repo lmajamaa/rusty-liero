@@ -737,6 +737,13 @@ bool Gfx::waitEvent(SDL_Event& ev)
 	return SDL_WaitEvent(&ev) != 0;
 }
 
+void Gfx::idle()
+{
+	// The window waits by itself: the next frame comes when it's due.
+	if (driver)
+		driver->idle();
+}
+
 void Gfx::process(Controller* controller)
 {
 	SDL_Event ev;

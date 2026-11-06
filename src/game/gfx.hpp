@@ -140,6 +140,9 @@ struct AppDriver
 	virtual bool pollEvent(SDL_Event& ev) = 0;
 	// Returns the next event, however far ahead it is.
 	virtual void waitEvent(SDL_Event& ev) = 0;
+	// A screen is waiting for an event and showed nothing: move the clock to
+	// the next event, as `waitEvent` would.
+	virtual void idle() = 0;
 	virtual uint32_t ticks() = 0;
 	virtual std::time_t time() = 0;
 };
@@ -152,6 +155,8 @@ struct Gfx
 	bool pollEvent(SDL_Event& ev);
 	// False if SDL fails to wait, as SDL_WaitEvent.
 	bool waitEvent(SDL_Event& ev);
+	// A screen showed nothing while waiting for an event (screen.hpp).
+	void idle();
 
 	void init();
 	void setVideoMode();

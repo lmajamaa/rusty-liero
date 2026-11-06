@@ -2,7 +2,7 @@
 //
 // The menus, file selectors, text boxes, games and stats screen each run
 // their own loop that calls Gfx::flip() for every frame they show. This part
-// of the hash run starts Gfx::mainLoop() as the game does, with an AppDriver
+// of the hash run starts the app's screens as the game does, with an AppDriver
 // (gfx.hpp) in place of the window: each flip prints a hash of the screen
 // and its palette (lines "app N hash frame"), and the events come from a
 // timeline of key presses and typing fixed before the run. Nothing about it
@@ -19,6 +19,7 @@
 #include "hashrun.hpp"
 
 #include "gfx.hpp"
+#include "screen.hpp"
 #include "filesystem.hpp"
 
 #include <SDL.h>
@@ -82,6 +83,12 @@ struct ScriptDriver : AppDriver
 		now = std::max(now, steps.front().at);
 		ev = steps.front().ev;
 		steps.pop_front();
+	}
+
+	void idle() override
+	{
+		if (!steps.empty())
+			now = std::max(now, steps.front().at);
 	}
 
 	uint32_t ticks() override
@@ -322,7 +329,7 @@ void hashApp(gvl::shared_ptr<Common> common)
 	gfx.driver = &driver;
 	try
 	{
-		gfx.mainLoop();
+		runScreens(legacyMainScreen());
 		std::printf("app-end %d %016llx\n", driver.shown, (unsigned long long)driver.steps.size());
 	}
 	catch (std::exception& e)

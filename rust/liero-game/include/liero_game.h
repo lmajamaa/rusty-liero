@@ -133,6 +133,17 @@
 
 
 /**
+ * How long one step is, in milliseconds.
+ */
+#define STEP_MS 14
+
+/**
+ * The most steps one call of `liero_app_frame` runs. A tab coming back from
+ * the background skips the time it missed instead of racing to catch up.
+ */
+#define MAX_STEPS_PER_FRAME 4
+
+/**
  * Up, down, left, right, fire, change and jump.
  */
 #define LIERO_MAX_CONTROL 7
@@ -277,6 +288,34 @@ typedef enum LieroSettingsStatus {
    */
   LieroSettingsStatus_CheckError,
 } LieroSettingsStatus;
+
+/**
+ * What a screen does after its tick.
+ */
+typedef enum LieroTickKind {
+  /**
+   * Stays on top.
+   */
+  TickStay = 0,
+  /**
+   * Opens `screen` on top; this one gets `resume` when it closes.
+   */
+  TickPush = 1,
+  /**
+   * Closes, handing `result` to the screen below.
+   */
+  TickClose = 2,
+  /**
+   * Closes, and `screen` takes its place.
+   */
+  TickReplace = 3,
+  /**
+   * Closes every screen: the app is done.
+   */
+  TickQuit = 4,
+} LieroTickKind;
+
+typedef struct LieroApp LieroApp;
 
 /**
  * A predictive AI for C++'s `FollowAI` to own.
@@ -1224,6 +1263,56 @@ typedef struct LieroReplayGameOut {
   const uint8_t *level_pixels;
   const uint8_t *level_palette;
 } LieroReplayGameOut;
+
+/**
+ * A tick's outcome.
+ */
+typedef struct LieroTick {
+  enum LieroTickKind kind;
+  /**
+   * The tick drew a frame for the host to show.
+   */
+  bool shown;
+  /**
+   * For `TickClose`.
+   */
+  int32_t result;
+} LieroTick;
+
+/**
+ * A screen, owned by the stack once pushed.
+ */
+typedef struct LieroScreen {
+  void *data;
+  /**
+   * Runs one step and fills in what happens next, and `next` for
+   * `TickPush` and `TickReplace`.
+   */
+  void (*tick)(void *data, struct LieroTick *out, struct LieroScreen *next);
+  /**
+   * The screen opened on top of this one closed with `result`.
+   */
+  void (*resume)(void *data, int32_t result);
+  /**
+   * Frees the screen, when it closes or the stack is cleared.
+   */
+  void (*free)(void *data);
+} LieroScreen;
+
+/**
+ * What the stack calls back into.
+ */
+typedef struct LieroAppHost {
+  void *data;
+  /**
+   * Shows the frame a tick drew.
+   */
+  void (*show)(void *data);
+  /**
+   * The top screen is waiting for an event and showed nothing.
+   */
+  void (*idle)(void *data);
+} LieroAppHost;
 
 /**
  * A gash value (`gvl::gash::value_type`).
@@ -3630,6 +3719,52 @@ bool liero_replay_result_settings_changed(const struct LieroReplayResult *r);
  * `r` must come from a `liero_replay_*` call, or be null.
  */
 void liero_replay_result_free(struct LieroReplayResult *r);
+
+struct LieroApp *liero_app_new(void);
+
+/**
+ * Frees the app and every screen on it.
+ *
+ * # Safety
+ * `app` comes from `liero_app_new` and isn't used again.
+ */
+void liero_app_free(struct LieroApp *app);
+
+/**
+ * Puts `screen` on top; the stack owns it from now on.
+ */
+void liero_app_push(struct LieroApp *app, struct LieroScreen screen);
+
+/**
+ * How many screens are open.
+ */
+uintptr_t liero_app_depth(const struct LieroApp *app);
+
+/**
+ * Closes every screen.
+ *
+ * # Safety
+ * The screens' functions are safe to call.
+ */
+void liero_app_clear(struct LieroApp *app);
+
+/**
+ * Runs one step of the top screen. Returns false once no screen is left.
+ *
+ * # Safety
+ * The screens' and host's functions are safe to call with their data.
+ */
+bool liero_app_step(struct LieroApp *app, const struct LieroAppHost *host);
+
+/**
+ * Runs the steps due at `now_ms` on the caller's clock: one on the first
+ * call, then one per 14 ms passed, at most four. Returns false once no
+ * screen is left.
+ *
+ * # Safety
+ * The screens' and host's functions are safe to call with their data.
+ */
+bool liero_app_frame(struct LieroApp *app, uint32_t now_ms, const struct LieroAppHost *host);
 
 /**
  * The default settings, as `Settings::Settings` makes them.
