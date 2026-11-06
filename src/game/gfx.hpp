@@ -6,6 +6,7 @@
 #include <gvl/math/rect.hpp>
 
 #include <cstdio>
+#include <ctime>
 #include <cassert>
 
 #include "gfx/font.hpp"
@@ -21,6 +22,7 @@
 #include "settings.hpp"
 #include "common.hpp"
 #include "filesystem.hpp"
+#include "appclock.hpp"
 
 // The level name, "A vs B" and the worms' colours, as the spectator window
 // shows them in the menus and weapon selection. The name is taken from
@@ -127,9 +129,29 @@ struct Joystick {
 };
 
 
+// Runs the app without a window, for the hash run (hashapp.cpp). When set,
+// `flip` hands each frame to `frame` instead of showing it and waiting for
+// the next one, events come from `pollEvent` and `waitEvent` instead of SDL,
+// and `appTicks` and `appTime` read the driver's clock.
+struct AppDriver
+{
+	virtual ~AppDriver() {}
+	virtual void frame() = 0;
+	virtual bool pollEvent(SDL_Event& ev) = 0;
+	// Returns the next event, however far ahead it is.
+	virtual void waitEvent(SDL_Event& ev) = 0;
+	virtual uint32_t ticks() = 0;
+	virtual std::time_t time() = 0;
+};
+
 struct Gfx
 {
 	Gfx();
+
+	AppDriver* driver = nullptr;
+	bool pollEvent(SDL_Event& ev);
+	// False if SDL fails to wait, as SDL_WaitEvent.
+	bool waitEvent(SDL_Event& ev);
 
 	void init();
 	void setVideoMode();

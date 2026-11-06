@@ -43,6 +43,9 @@ void hashReplays(gvl::shared_ptr<Common> common);
 void hashAiGames(gvl::shared_ptr<Common> common);
 // The sound mixer and the key handling. See hashsfx.cpp.
 void hashSfxAndInput(gvl::shared_ptr<Common> common);
+// The whole app, from the main menu through a game and back, driven by
+// scripted keys. See hashapp.cpp.
+void hashApp(gvl::shared_ptr<Common> common);
 
 // 64-bit FNV-1a over 32-bit words, the same as the Rust tests use.
 struct Fnv

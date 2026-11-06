@@ -2,6 +2,7 @@
 #define UUID_3DC24B15AD67494EEAB541B4AE253D0F
 
 #include <SDL.h>
+#include "../appclock.hpp"
 #include <cstddef>
 #include <string>
 #include <cstdio>
@@ -93,7 +94,7 @@ struct Menu
 
 	void onKeys(SDL_Keysym* begin, SDL_Keysym* end, bool contains = false)
 	{
-		onKeys(begin, end, contains, SDL_GetTicks());
+		onKeys(begin, end, contains, appTicks());
 	}
 
 	// `time` is in milliseconds; typing resumes the search within 1.5 s.

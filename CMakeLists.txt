@@ -79,6 +79,7 @@ set(GAME_SOURCES ${SOURCES}
     src/game/hashreplays.cpp
     src/game/hashai.cpp
     src/game/hashsfx.cpp
+    src/game/hashapp.cpp
     src/game/hashtc.cpp
     src/game/main.cpp
     src/game/replay.cpp

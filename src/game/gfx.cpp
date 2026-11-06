@@ -24,6 +24,7 @@
 #include "filesystem.hpp"
 
 #include <gvl/io2/fstream.hpp>
+#include <gvl/system/system.hpp>
 
 #include "controller/replayController.hpp"
 #include "controller/localController.hpp"
@@ -706,11 +707,41 @@ void Gfx::processEvent(SDL_Event& ev, Controller* controller)
 	}
 }
 
+uint32_t appTicks()
+{
+	return gfx.driver ? gfx.driver->ticks() : SDL_GetTicks();
+}
+
+uint64_t appHiresTicks()
+{
+	return gfx.driver ? uint64_t(gfx.driver->ticks()) * 1000000 : gvl::get_hires_ticks();
+}
+
+std::time_t appTime()
+{
+	return gfx.driver ? gfx.driver->time() : std::time(0);
+}
+
+bool Gfx::pollEvent(SDL_Event& ev)
+{
+	return driver ? driver->pollEvent(ev) : SDL_PollEvent(&ev) != 0;
+}
+
+bool Gfx::waitEvent(SDL_Event& ev)
+{
+	if (driver)
+	{
+		driver->waitEvent(ev);
+		return true;
+	}
+	return SDL_WaitEvent(&ev) != 0;
+}
+
 void Gfx::process(Controller* controller)
 {
 	SDL_Event ev;
 	keyBufPtr = keyBuf;
-	while(SDL_PollEvent(&ev))
+	while(pollEvent(ev))
 	{
 		processEvent(ev, controller);
 	}
@@ -719,7 +750,7 @@ void Gfx::process(Controller* controller)
 SDL_Keysym Gfx::waitForKey()
 {
 	SDL_Event ev;
-	while(SDL_WaitEvent(&ev))
+	while(waitEvent(ev))
 	{
 		processEvent(ev);
 		if(ev.type == SDL_KEYDOWN)
@@ -734,7 +765,7 @@ SDL_Keysym Gfx::waitForKey()
 uint32_t Gfx::waitForKeyEx()
 {
 	SDL_Event ev;
-	while(SDL_WaitEvent(&ev))
+	while(waitEvent(ev))
 	{
 		processEvent(ev);
 		switch (ev.type)
@@ -845,6 +876,12 @@ void Gfx::draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRend
 
 void Gfx::flip()
 {
+	if (driver)
+	{
+		driver->frame();
+		return;
+	}
+
 	// draw into the play window. This uses either the normal split screen renderer
 	// or the single screen renderer if this is a replay and single screen replay
 	// is turned on
@@ -1595,7 +1632,7 @@ bool Gfx::inputString(std::string& dest, std::size_t maxLen, int x, int y, int (
 		flip();
 
 		SDL_StartTextInput();
-		SDL_WaitEvent(&ev);
+		waitEvent(ev);
 		processEvent(ev);
 
 		switch (ev.type)

@@ -3,6 +3,7 @@
 #include "common.hpp"
 #include <gvl/system/system.hpp>
 #include "game.hpp"
+#include "appclock.hpp"
 #include "text.hpp"
 
 #include <cassert>
@@ -135,14 +136,14 @@ void NormalStatsRecorder::afterDeath(Worm* worm)
 
 void NormalStatsRecorder::preTick(Game& game)
 {
-	uint64_t ticks = gvl::get_hires_ticks();
+	uint64_t ticks = appHiresTicks();
 	std::vector<LieroStatsWorm> worms = statsWorms(game);
 	liero_stats_pre_tick(s, ticks, worms.data(), worms.size());
 }
 
 void NormalStatsRecorder::tick(Game& game)
 {
-	uint64_t ticks = gvl::get_hires_ticks();
+	uint64_t ticks = appHiresTicks();
 	std::vector<LieroStatsWorm> worms = statsWorms(game);
 	liero_stats_tick(s, ticks, worms.data(), worms.size());
 }

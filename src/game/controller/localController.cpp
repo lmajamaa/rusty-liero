@@ -148,9 +148,9 @@ bool LocalController::process()
 				Worm& worm = *game.worms[(i + phase) % game.worms.size()];
 				if(worm.ai.get())
 				{
-					uint64_t time = gvl::get_hires_ticks();
+					uint64_t time = appHiresTicks();
 					worm.ai->process(game, worm);
-					time = gvl::get_hires_ticks() - time;
+					time = appHiresTicks() - time;
 					game.statsRecorder->aiProcessTime(&worm, time);
 				}
 			}
@@ -251,8 +251,9 @@ void LocalController::changeState(GameState newState)
 			try
 			{
 #if !ENABLE_TRACING
-				std::time_t ticks = std::time(0);
-				std::tm* now = std::localtime(&ticks);
+				std::time_t ticks = appTime();
+				// The hash run names replays the same in every time zone.
+				std::tm* now = gfx.driver ? std::gmtime(&ticks) : std::localtime(&ticks);
 
 				char buf[512];
 				std::strftime(buf, sizeof(buf), "%Y-%m-%d %H.%M.%S", now);
