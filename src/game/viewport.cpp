@@ -78,29 +78,7 @@ std::vector<LieroViewWorm> viewWorms(Game& game)
 	return worms;
 }
 
-LieroViewport state(Viewport& vp)
-{
-	LieroViewport r;
-	r.x = vp.x;
-	r.y = vp.y;
-	r.shake = vp.shake;
-	r.max_x = vp.maxX;
-	r.max_y = vp.maxY;
-	r.center_x = vp.centerX;
-	r.center_y = vp.centerY;
-	r.worm_idx = vp.wormIdx;
-	r.banner_y = vp.bannerY;
-	r.rect = { vp.rect.x1, vp.rect.y1, vp.rect.x2, vp.rect.y2 };
-	r.rand = &vp.rand;
-	return r;
-}
-
-void setState(Viewport& vp, LieroViewport const& s)
-{
-	vp.x = s.x;
-	vp.y = s.y;
-	vp.bannerY = s.banner_y;
-}
+static_assert(sizeof(gvl::rect) == sizeof(LieroRect), "gvl::rect layout");
 
 struct AiDebugContext
 {
@@ -254,18 +232,14 @@ void draw(Viewport& vp, int kind, Game& game, Renderer& renderer, GameState game
 	s.hooks.ctx = &aiCtx;
 	s.hooks.draw_ai_debug = hookDrawAiDebug;
 
-	LieroViewport st = state(vp);
 	LieroBitmap scr = renderer.bmp.view();
-	liero_viewport_draw(&st, kind, selfIndex, &s, &scr);
-	setState(vp, st);
+	liero_viewport_draw(vp.rust(), kind, selfIndex, &s, &scr);
 }
 
 void process(Viewport& vp, int kind, Game& game)
 {
 	std::vector<LieroViewWorm> worms = viewWorms(game);
-	LieroViewport st = state(vp);
-	liero_viewport_process(&st, kind, worms.data(), count(worms));
-	setState(vp, st);
+	liero_viewport_process(vp.rust(), kind, worms.data(), count(worms));
 }
 
 }

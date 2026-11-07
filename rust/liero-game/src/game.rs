@@ -4,16 +4,18 @@
 //! end of the game. Results have to stay bit-identical to the C++ versions,
 //! which `tools/hashrun` checks.
 //!
-//! C++ still owns the game, its worms and object lists. The tick runs in
-//! Rust in the original order and calls C++ hooks for each object list,
-//! each worm and the viewports and stats, which are not game logic.
+//! Rust owns the game's own state (`LieroGameData`) and each worm's
+//! (`LieroWormData`); C++ still owns the game's object lists, level and
+//! viewports. The tick runs in Rust in the original order and calls C++
+//! hooks for each object list, each worm and the viewports and stats, which
+//! are not game logic.
 
 use std::ffi::c_void;
 
 use crate::level::LieroLevel;
-use crate::math::{ftoi, itof, LieroIVec2};
+use crate::math::{ftoi, itof};
 use crate::rand::LieroRand;
-use crate::worm::{LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE};
+use crate::worm::{LieroWormData, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE};
 
 /// Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
 /// `gvl::rect`.
@@ -53,21 +55,83 @@ pub struct LieroBonusState {
     pub weapon: i32,
 }
 
-/// Pointers to the fields of a C++ `Worm` that the game rules use.
+/// A worm, as the game rules see it.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroGameWorm {
-    pub pos: *mut LieroIVec2,
-    pub visible: *mut bool,
-    pub health: *mut i32,
-    pub lives: *mut i32,
-    /// Game of Tag and Holdazone time.
-    pub timer: *mut i32,
-    pub last_killed_by_idx: *mut i32,
-    /// `Worm::index`.
-    pub index: i32,
+    pub data: *mut LieroWormData,
     /// The worm's full health (`settings->health`).
     pub max_health: i32,
+}
+
+impl LieroGameWorm {
+    fn index(&self) -> i32 {
+        // SAFETY: valid while the game is.
+        unsafe { (*self.data).index }
+    }
+}
+
+/// The game's state, besides its worms, object lists and level. Rust owns
+/// it, and the fields of C++'s `Game` refer to it (`liero_game_data_new`).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LieroGameData {
+    pub cycles: i32,
+    /// The worm that died last, which is 'it' in Game of Tag, or -1.
+    pub last_killed_idx: i32,
+    /// Whether 'it' changed this tick.
+    pub got_changed: bool,
+    pub screen_flash: i32,
+    pub paused: bool,
+    /// Worms don't respawn in quick simulations (the AI's look-ahead).
+    pub quick_sim: bool,
+    pub holdazone: LieroHoldazone,
+    pub rand: LieroRand,
+}
+
+impl Default for LieroGameData {
+    /// What C++'s `Game` constructor set, before it seeds `rand`.
+    fn default() -> Self {
+        LieroGameData {
+            cycles: 0,
+            last_killed_idx: -1,
+            got_changed: false,
+            screen_flash: 0,
+            paused: true,
+            quick_sim: false,
+            holdazone: LieroHoldazone {
+                rect: LieroRect::default(),
+                holder_idx: -1,
+                contender_idx: -1,
+                contender_frames: 0,
+                timeout_left: 0,
+                zone_width: 50,
+                zone_height: 34,
+            },
+            rand: LieroRand::default(),
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn liero_game_data_new() -> *mut LieroGameData {
+    Box::into_raw(Box::default())
+}
+
+/// # Safety
+/// `g` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_game_data_clone(g: &LieroGameData) -> *mut LieroGameData {
+    Box::into_raw(Box::new(*g))
+}
+
+/// # Safety
+/// `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
+#[no_mangle]
+pub unsafe extern "C" fn liero_game_data_free(g: *mut LieroGameData) {
+    if !g.is_null() {
+        drop(Box::from_raw(g));
+    }
 }
 
 /// The game state the rules read and change. `worms` has `worm_count`
@@ -77,11 +141,7 @@ pub struct LieroGameWorm {
 pub struct LieroGameFields {
     pub worms: *const LieroGameWorm,
     pub worm_count: i32,
-    pub cycles: *mut i32,
-    /// The worm that died last, which is 'it' in Game of Tag, or -1.
-    pub last_killed_idx: *mut i32,
-    pub holdazone: *mut LieroHoldazone,
-    pub rand: *mut LieroRand,
+    pub game: *mut LieroGameData,
     pub level: LieroLevel,
 }
 
@@ -162,27 +222,27 @@ impl Game<'_> {
     }
 
     fn cycles(&self) -> i32 {
-        unsafe { *self.f.cycles }
+        unsafe { (*self.f.game).cycles }
     }
 
     fn zone(&self) -> &mut LieroHoldazone {
         // SAFETY: valid for the call, and only used within a statement or
         // between hook calls.
-        unsafe { &mut *self.f.holdazone }
+        unsafe { &mut (*self.f.game).holdazone }
     }
 
     fn rand(&self, max: u32) -> u32 {
         // SAFETY: valid for the call, and no hook runs during this.
-        unsafe { (*self.f.rand).below(max) }
+        unsafe { (*self.f.game).rand.below(max) }
     }
 
     /// `Game::doDamageDirect`.
     fn damage_direct(&self, w: LieroGameWorm, amount: i32, by_idx: i32) {
         if amount > 0 {
             unsafe {
-                *w.health -= amount;
-                if *w.health <= 0 {
-                    *w.last_killed_by_idx = by_idx;
+                (*w.data).health -= amount;
+                if (*w.data).health <= 0 {
+                    (*w.data).last_killed_by_idx = by_idx;
                 }
             }
         }
@@ -191,14 +251,14 @@ impl Game<'_> {
     /// `Game::doHealingDirect`.
     fn heal_direct(&self, w: LieroGameWorm, amount: i32) {
         unsafe {
-            *w.health += amount;
+            (*w.data).health += amount;
             if self.s.game_mode == LIERO_GAME_SCALES_OF_JUSTICE {
-                while *w.health > w.max_health {
-                    *w.lives += 1;
-                    *w.health -= w.max_health;
+                while (*w.data).health > w.max_health {
+                    (*w.data).lives += 1;
+                    (*w.data).health -= w.max_health;
                 }
-            } else if *w.health > w.max_health {
-                *w.health = w.max_health;
+            } else if (*w.data).health > w.max_health {
+                (*w.data).health = w.max_health;
             }
         }
     }
@@ -226,7 +286,7 @@ impl Game<'_> {
         self.damage_direct(w, amount, by_idx);
 
         if amount > 0 && self.s.game_mode == LIERO_GAME_SCALES_OF_JUSTICE {
-            if by_idx < 0 || by_idx == w.index {
+            if by_idx < 0 || by_idx == w.index() {
                 self.share(target, amount, |other, k| self.heal_direct(other, k));
             } else {
                 self.heal_direct(self.worm(by_idx), amount);
@@ -241,11 +301,11 @@ impl Game<'_> {
         self.heal_direct(w, amount);
 
         if self.s.game_mode == LIERO_GAME_SCALES_OF_JUSTICE {
-            self.share(target, amount, |other, k| self.damage_direct(other, k, w.index));
+            self.share(target, amount, |other, k| self.damage_direct(other, k, w.index()));
         } else {
             unsafe {
-                if *w.health > w.max_health {
-                    *w.health = w.max_health;
+                if (*w.data).health > w.max_health {
+                    (*w.data).health = w.max_health;
                 }
             }
         }
@@ -337,7 +397,7 @@ impl Game<'_> {
 
         while z.zone_width >= 5 {
             // SAFETY: the view and rand are valid for the call.
-            let pos = unsafe { self.f.level.get().select_spawn(&mut *self.f.rand, z.zone_width, z.zone_height - 8) };
+            let pos = unsafe { self.f.level.get().select_spawn(&mut (*self.f.game).rand, z.zone_width, z.zone_height - 8) };
             if let Some(pos) = pos {
                 z.rect = LieroRect { x1: pos.x, y1: pos.y, x2: pos.x + z.zone_width, y2: pos.y + z.zone_height };
                 z.timeout_left = self.s.zone_timeout * 70;
@@ -354,14 +414,14 @@ impl Game<'_> {
 
     /// 'It' gains a second every 70 ticks while all worms are alive.
     fn game_of_tag(&self) {
-        let some_invisible = self.worms().any(|(_, w)| !unsafe { *w.visible });
-        let it = unsafe { *self.f.last_killed_idx };
+        let some_invisible = self.worms().any(|(_, w)| !unsafe { (*w.data).visible });
+        let it = unsafe { (*self.f.game).last_killed_idx };
 
         if !some_invisible && it >= 0 && self.cycles() % 70 == 0 {
             let w = self.worm(it);
             unsafe {
-                if *w.timer < self.s.time_to_lose {
-                    *w.timer += 1;
+                if (*w.data).timer < self.s.time_to_lose {
+                    (*w.data).timer += 1;
                 }
             }
         }
@@ -375,9 +435,9 @@ impl Game<'_> {
         let mut contenders = 0;
 
         for (_, w) in self.worms() {
-            let pos = unsafe { *w.pos };
-            if unsafe { *w.visible } && z.rect.contains(ftoi(pos.x), ftoi(pos.y)) {
-                contender_idx = w.index;
+            let pos = unsafe { (*w.data).pos };
+            if unsafe { (*w.data).visible } && z.rect.contains(ftoi(pos.x), ftoi(pos.y)) {
+                contender_idx = w.index();
                 contenders += 1;
             }
         }
@@ -420,7 +480,7 @@ impl Game<'_> {
         let dec = if z.holder_idx >= 0 {
             if self.cycles() % 70 == 0 {
                 let holder = self.worm(z.holder_idx);
-                unsafe { *holder.timer += 1 };
+                unsafe { (*holder.data).timer += 1 };
             }
             true
         } else {
@@ -454,7 +514,7 @@ impl Game<'_> {
 
             // This was originally the beginning of the tick, but has been
             // rotated down to separate out the drawing.
-            *self.f.cycles += 1;
+            (*self.f.game).cycles += 1;
         }
 
         if !s.bonus_disable && s.max_bonuses > 0 && self.rand(s.bonus_drop_chance as u32) == 0 {
@@ -479,9 +539,9 @@ impl Game<'_> {
 
     fn is_over(&self) -> bool {
         match self.s.game_mode {
-            LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => self.worms().any(|(_, w)| unsafe { *w.lives } <= 0),
+            LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => self.worms().any(|(_, w)| unsafe { (*w.data).lives } <= 0),
             LIERO_GAME_GAME_OF_TAG | LIERO_GAME_HOLDAZONE => {
-                self.worms().any(|(_, w)| unsafe { *w.timer } >= self.s.time_to_lose)
+                self.worms().any(|(_, w)| unsafe { (*w.data).timer } >= self.s.time_to_lose)
             }
             _ => false,
         }
@@ -552,17 +612,8 @@ pub unsafe extern "C" fn liero_game_is_over(game: &LieroGameFields, settings: &L
 mod tests {
     use super::*;
 
-    struct TestWorm {
-        pos: LieroIVec2,
-        visible: bool,
-        health: i32,
-        lives: i32,
-        timer: i32,
-        last_killed_by_idx: i32,
-    }
-
-    fn worm(health: i32) -> TestWorm {
-        TestWorm { pos: LieroIVec2::default(), visible: true, health, lives: 5, timer: 0, last_killed_by_idx: -1 }
+    fn worm(health: i32) -> LieroWormData {
+        LieroWormData { visible: true, health, lives: 5, ..LieroWormData::default() }
     }
 
     fn settings(game_mode: i32) -> LieroGameSettings {
@@ -588,33 +639,47 @@ mod tests {
     }
 
     /// Runs `f` on a game of `worms`, all with 100 full health.
-    fn with_game(worms: &mut [TestWorm], f: impl FnOnce(&LieroGameFields)) {
+    fn with_game(worms: &mut [LieroWormData], f: impl FnOnce(&LieroGameFields)) {
         let views: Vec<LieroGameWorm> = worms
             .iter_mut()
             .enumerate()
-            .map(|(i, w)| LieroGameWorm {
-                pos: &mut w.pos,
-                visible: &mut w.visible,
-                health: &mut w.health,
-                lives: &mut w.lives,
-                timer: &mut w.timer,
-                last_killed_by_idx: &mut w.last_killed_by_idx,
-                index: i as i32,
-                max_health: 100,
+            .map(|(i, w)| {
+                w.index = i as i32;
+                LieroGameWorm { data: w, max_health: 100 }
             })
             .collect();
-        let (mut cycles, mut last_killed, mut zone, mut rand) =
-            (0, -1, LieroHoldazone::default(), LieroRand::default());
+        let mut game = LieroGameData::default();
         let fields = LieroGameFields {
             worms: views.as_ptr(),
             worm_count: views.len() as i32,
-            cycles: &mut cycles,
-            last_killed_idx: &mut last_killed,
-            holdazone: &mut zone,
-            rand: &mut rand,
+            game: &mut game,
             level: LieroLevel { data: std::ptr::null_mut(), materials: std::ptr::null_mut(), width: 0, height: 0 },
         };
         f(&fields);
+    }
+
+    #[test]
+    fn new_game_matches_cpp_and_copies_are_separate() {
+        unsafe {
+            let g = liero_game_data_new();
+            // What C++'s Game() set.
+            assert_eq!(((*g).cycles, (*g).last_killed_idx, (*g).screen_flash), (0, -1, 0));
+            assert!((*g).paused && !(*g).got_changed && !(*g).quick_sim);
+            let z = (*g).holdazone;
+            assert_eq!((z.holder_idx, z.contender_idx, z.zone_width, z.zone_height), (-1, -1, 50, 34));
+
+            (*g).cycles = 7;
+            (*g).quick_sim = true;
+            (*g).holdazone.timeout_left = 3;
+            (*g).rand.next_u32();
+            let c = liero_game_data_clone(&*g);
+            // Every field is copied.
+            assert_eq!(format!("{:?}", *c), format!("{:?}", *g));
+            (*c).cycles = 1;
+            assert_eq!((*g).cycles, 7);
+            liero_game_data_free(c);
+            liero_game_data_free(g);
+        }
     }
 
     #[test]

@@ -50,9 +50,41 @@ struct Holdazone
 	int zoneWidth, zoneHeight;
 };
 
-struct Game
+// What C++ owns of a Game; copying a Game copies these.
+struct GameMembers
+{
+	GameMembers(gvl::shared_ptr<Common> common, gvl::shared_ptr<Settings> settings, gvl::shared_ptr<SoundPlayer> soundPlayer);
+
+	gvl::shared_ptr<Common> common;
+	gvl::shared_ptr<SoundPlayer> soundPlayer;
+	gvl::shared_ptr<Settings> settings;
+	gvl::shared_ptr<StatsRecorder> statsRecorder;
+
+	Level level;
+
+	std::vector<Viewport*> viewports;
+	std::vector<SpectatorViewport*> spectatorViewports;
+	std::vector<Worm*> worms;
+
+	typedef ExactObjectList<Bonus, 99> BonusList;
+	typedef ExactObjectList<WObject, 600> WObjectList;
+	typedef ExactObjectList<SObject, 700> SObjectList;
+	typedef ExactObjectList<NObject, 600> NObjectList;
+	typedef FastObjectList<BObject> BObjectList;
+	BonusList bonuses;
+	WObjectList wobjects;
+	SObjectList sobjects;
+	NObjectList nobjects;
+	BObjectList bobjects;
+};
+
+struct Game : GameMembers
 {
 	Game(gvl::shared_ptr<Common> common, gvl::shared_ptr<Settings> settings, gvl::shared_ptr<SoundPlayer> soundPlayer);
+	// A copy with state of its own. It shares the worms and viewports until
+	// postClone.
+	Game(Game const& other);
+	Game& operator=(Game const& other);
 	~Game();
 
 	void onKey(uint32_t key, bool state);
@@ -93,38 +125,29 @@ struct Game
 		return worms[idx];
 	}
 
-	gvl::shared_ptr<Common> common;
-	gvl::shared_ptr<SoundPlayer> soundPlayer;
-	gvl::shared_ptr<Settings> settings;
-	gvl::shared_ptr<StatsRecorder> statsRecorder;
+	// The game's state in Rust.
+	LieroGameData* rust() { return &data; }
 
-	Level level;
+private:
+	// Builds the members from `members`, in place: they are 74 KB, more
+	// than the web build's stack.
+	template<typename... Members>
+	Game(LieroGameData* d, Members&&... members);
 
-	int screenFlash;
-	bool gotChanged;
-	int lastKilledIdx;
-	bool paused;
-	int cycles;
-	Rand rand;
+	LieroGameData& data;
 
-	Holdazone holdazone;
+public:
+	// Rust owns these (LieroGameData in rust/liero-game/src/game.rs).
+	int& screenFlash;
+	bool& gotChanged;
+	int& lastKilledIdx;
+	bool& paused;
+	int& cycles;
+	Rand& rand;
 
-	std::vector<Viewport*> viewports;
-	std::vector<SpectatorViewport*> spectatorViewports;
-	std::vector<Worm*> worms;
+	Holdazone& holdazone;
 
-	typedef ExactObjectList<Bonus, 99> BonusList;
-	typedef ExactObjectList<WObject, 600> WObjectList;
-	typedef ExactObjectList<SObject, 700> SObjectList;
-	typedef ExactObjectList<NObject, 600> NObjectList;
-	typedef FastObjectList<BObject> BObjectList;
-	BonusList bonuses;
-	WObjectList wobjects;
-	SObjectList sobjects;
-	NObjectList nobjects;
-	BObjectList bobjects;
-
-	bool quickSim;
+	bool& quickSim;
 };
 
 

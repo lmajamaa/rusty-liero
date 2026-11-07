@@ -3,6 +3,8 @@
 #include <ctime>
 
 #include "game.hpp"
+
+#include <utility>
 #include "appclock.hpp"
 #include "viewport.hpp"
 #include "spectatorviewport.hpp"
@@ -14,35 +16,67 @@
 #include <cstddef>
 #include <cassert>
 
+GameMembers::GameMembers(
+	gvl::shared_ptr<Common> common,
+	gvl::shared_ptr<Settings> settings,
+	gvl::shared_ptr<SoundPlayer> soundPlayer)
+: common(common)
+, soundPlayer(soundPlayer)
+, settings(settings)
+, statsRecorder(new NormalStatsRecorder)
+, level(*common)
+{
+}
+
+// The Rust types the fields refer to are laid out like the C++ ones.
+static_assert(sizeof(Rand) == sizeof(LieroRand), "Rand layout");
+static_assert(sizeof(Holdazone) == sizeof(LieroHoldazone), "Holdazone layout");
+
+template<typename... Members>
+Game::Game(LieroGameData* d, Members&&... members)
+: GameMembers(std::forward<Members>(members)...)
+, data(*d)
+, screenFlash(d->screen_flash)
+, gotChanged(d->got_changed)
+, lastKilledIdx(d->last_killed_idx)
+, paused(d->paused)
+, cycles(d->cycles)
+, rand(static_cast<Rand&>(d->rand))
+, holdazone(reinterpret_cast<Holdazone&>(d->holdazone))
+, quickSim(d->quick_sim)
+{
+}
+
 Game::Game(
 	gvl::shared_ptr<Common> common,
 	gvl::shared_ptr<Settings> settingsInit,
 	gvl::shared_ptr<SoundPlayer> soundPlayer)
-: common(common)
-, soundPlayer(soundPlayer)
-, settings(settingsInit)
-, statsRecorder(new NormalStatsRecorder)
-, level(*common)
-, screenFlash(0)
-, gotChanged(false)
-, lastKilledIdx(-1)
-, paused(true)
-, quickSim(false)
+: Game(liero_game_data_new(), common, settingsInit, soundPlayer)
 {
-
 #if ENABLE_TRACING
 	rand.seed(1);
 #else
 	rand.seed(uint32_t(appTime()));
 #endif
+}
 
-	cycles = 0;
+Game::Game(Game const& other)
+: Game(liero_game_data_clone(&other.data), static_cast<GameMembers const&>(other))
+{
+}
+
+Game& Game::operator=(Game const& other)
+{
+	GameMembers::operator=(other);
+	data = other.data;
+	return *this;
 }
 
 Game::~Game()
 {
 	clearViewports();
 	clearWorms();
+	liero_game_data_free(&data);
 }
 
 void Game::onKey(uint32_t key, bool state)
@@ -216,19 +250,13 @@ struct GameView
 
 		for (Worm* w : game.worms)
 		{
-			LieroGameWorm v = {
-				toRust(&w->pos), &w->visible, &w->health, &w->lives, &w->timer, &w->lastKilledByIdx,
-				w->index, w->settings->health,
-			};
+			LieroGameWorm v = { w->rust(), w->settings->health };
 			worms.push_back(v);
 		}
 
 		fields.worms = worms.data();
 		fields.worm_count = int32_t(worms.size());
-		fields.cycles = &game.cycles;
-		fields.last_killed_idx = &game.lastKilledIdx;
-		fields.holdazone = reinterpret_cast<LieroHoldazone*>(&game.holdazone);
-		fields.rand = &game.rand;
+		fields.game = game.rust();
 		fields.level = game.level.view();
 
 		settings.game_mode = int32_t(s.gameMode);

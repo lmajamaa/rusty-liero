@@ -7,6 +7,7 @@
 
 pub mod ai;
 pub mod boxes;
+pub mod controller;
 pub mod cpp_sort;
 pub mod game;
 pub mod gfx;

@@ -268,45 +268,23 @@ struct Worm : gvl::shared
 	};
 
 	Worm()
-	: pos(), vel()
-	, hotspotX(0), hotspotY(0)
-	, aimingAngle(0), aimingSpeed(0)
-	, ableToJump(false), ableToDig(false)   //The previous state of some keys
-	, keyChangePressed(false)
-	, movable(false)
-	, animate(false)                 //Should the worm be animated?
-	, visible(false)                 //Is the worm visible?
-	, ready(false)                   //Is the worm ready to play?
-	, flag(false)                    //Has the worm a flag?
-	, makeSightGreen(false)          //Changes the sight color
-	, health(0)                  //Health left
-	, lives(0)                   //lives left
-	, kills(0)                   //Kills made
-	, timer(0)                   //Timer for GOT
-	, killedTimer(0)             //Time until worm respawns
-	, currentFrame(0)
-	, flags(0)                   //How many flags does this worm have?
-	, currentWeapon(0)
-	, lastKilledByIdx(-1)
-	, fireCone(0)
-	, leaveShellTimer(0)
-	, index(0)
-	, direction(0)
-	, steerableCount(0)
-	, statsX(0)
+	: Worm(liero_worm_data_new())
 	{
-		makeSightGreen = false;
+	}
 
-		ready = true;
-		movable = true;
+	// A copy with state of its own, sharing the settings and AI.
+	Worm(Worm const& other)
+	: Worm(liero_worm_data_clone(&other.data))
+	{
+		settings = other.settings;
+		ai = other.ai;
+	}
 
-		visible = false;
-		killedTimer = 150;
+	Worm& operator=(Worm const&) = delete;
 
-		// The worm's first tick sets these, but the CPU bot reads `reacts`
-		// before it, and a replay records them all when it starts.
-		for (int& r : reacts)
-			r = 0;
+	~Worm()
+	{
+		liero_worm_data_free(&data);
 	}
 
 	bool pressed(Control control) const
@@ -351,59 +329,75 @@ struct Worm : gvl::shared
 	void initWeapons(Game& game);
 	int angleFrame() const;
 
-	fixedvec pos, vel;
+	// The worm's state in Rust.
+	LieroWormData* rust() { return &data; }
 
-	gvl::ivec2 logicRespawn;
+private:
+	explicit Worm(LieroWormData* d);
 
-	int hotspotX, hotspotY;      //Hotspots for laser, laser sight, etc.
-	fixed aimingAngle, aimingSpeed;
+	LieroWormData& data;
 
-	//Controls controls;
-	bool ableToJump, ableToDig;   //The previous state of some keys
-	bool keyChangePressed;
-	bool movable;
+public:
+	// Rust owns these (LieroWormData in rust/liero-game/src/worm.rs).
+	fixedvec& pos;
+	fixedvec& vel;
 
-	bool animate;                 //Should the worm be animated?
-	bool visible;                 //Is the worm visible?
-	bool ready;                   //Is the worm ready to play?
-	bool flag;                    //Does the worm have a flag?
-	bool makeSightGreen;          //Changes the sight color
-	int health;                  //Health left
-	int lives;                   //lives left
-	int kills;                   //Kills made
+	gvl::ivec2& logicRespawn;
 
-	int timer;                   //Timer for GOT
-	int killedTimer;             //Time until worm respawns
-	int currentFrame;
+	int& hotspotX;               //Hotspots for laser, laser sight, etc.
+	int& hotspotY;
+	fixed& aimingAngle;
+	fixed& aimingSpeed;
 
-	int flags;                   //How many flags does this worm have?
+	bool& ableToJump;            //The previous state of some keys
+	bool& ableToDig;
+	bool& keyChangePressed;
+	bool& movable;
 
-	Ninjarope ninjarope;
+	bool& animate;               //Should the worm be animated?
+	bool& visible;               //Is the worm visible?
+	bool& ready;                 //Is the worm ready to play?
+	bool& flag;                  //Does the worm have a flag?
+	bool& makeSightGreen;        //Changes the sight color
+	int& health;                 //Health left
+	int& lives;                  //lives left
+	int& kills;                  //Kills made
 
-	int currentWeapon;           //The selected weapon
-	int lastKilledByIdx;          // What worm that last killed this worm
-	int fireCone;                //How much is left of the firecone
-	int leaveShellTimer;         //Time until next shell drop
+	int& timer;                  //Timer for GOT
+	int& killedTimer;            //Time until worm respawns
+	int& currentFrame;
 
-	gvl::shared_ptr<WormSettings> settings; // !CLONING
-	int index; // 0 or 1
+	int& flags;                  //How many flags does this worm have?
 
-	gvl::shared_ptr<WormAI> ai;
+	Ninjarope& ninjarope;
 
-	int reacts[4];
-	WormWeapon weapons[5];
-	int direction;
-	ControlState controlStates;
-	ControlState prevControlStates;
+	int& currentWeapon;          //The selected weapon
+	int& lastKilledByIdx;        // What worm that last killed this worm
+	int& fireCone;               //How much is left of the firecone
+	int& leaveShellTimer;        //Time until next shell drop
+
+	int& index; // 0 or 1
+
+	int (&reacts)[4];
+	WormWeapon (&weapons)[5];
+	int& direction;
+	ControlState& controlStates;
+	ControlState& prevControlStates;
 
 	// Temporary state for steerables
-	int steerableSumX, steerableSumY, steerableCount;
+	int& steerableSumX;
+	int& steerableSumY;
+	int& steerableCount;
 
 	// which X coordinate to display stats at for this worm
-	int statsX;
+	int& statsX;
 
 	// Data for LocalController
-	ControlState cleanControlStates; // This contains the real state of real and extended controls
+	ControlState& cleanControlStates; // This contains the real state of real and extended controls
+
+	gvl::shared_ptr<WormSettings> settings; // !CLONING
+
+	gvl::shared_ptr<WormAI> ai;
 };
 
 bool checkForWormHit(Game& game, int x, int y, int dist, Worm* ownWorm);
