@@ -191,13 +191,6 @@ struct Menu
 	void setTop(int newTopVisIdx) { liero_menu_box_set_top(box, newTopVisIdx); }
 	void scroll(int amount) { liero_menu_box_scroll(box, amount); }
 
-	// The state and items as Rust's weapon selection works on them, whose
-	// texts stay valid until the items change. Rust only changes the items'
-	// visibility; setState copies it back.
-	LieroMenu state() const { return s; }
-	std::vector<LieroMenuItem> itemViews() const;
-	void setState(LieroMenu const& s, std::vector<LieroMenuItem> const& views);
-
 	LieroMenuBox* box;
 	LieroMenu& s;
 

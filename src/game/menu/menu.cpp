@@ -7,25 +7,6 @@
 // Selection, scrolling, searching and drawing are implemented in Rust
 // (rust/liero-game/src/menu.rs), which owns the menu.
 
-std::vector<LieroMenuItem> Menu::itemViews() const
-{
-	std::vector<LieroMenuItem> views;
-	for (int i = 0; i < itemCount(); ++i)
-		views.push_back(item(i));
-	return views;
-}
-
-void Menu::setState(LieroMenu const& v, std::vector<LieroMenuItem> const& views)
-{
-	s.top_item = v.top_item;
-	s.bottom_item = v.bottom_item;
-	s.visible_item_count = v.visible_item_count;
-	s.selection = v.selection;
-	s.search_time = v.search_time;
-	for (int i = 0; i < itemCount() && i < int(views.size()); ++i)
-		setItemVisibleFlag(i, views[i].visible);
-}
-
 int Menu::add(MenuItem const& item, int pos, bool count)
 {
 	LieroMenuItemSpec spec;

@@ -448,6 +448,11 @@ typedef struct LieroTc LieroTc;
  */
 typedef struct LieroTcFile LieroTcFile;
 
+/**
+ * Weapon selection: each viewport's worm's menu (`WeaponSelection`).
+ */
+typedef struct LieroWeapsel LieroWeapsel;
+
 typedef struct LieroWormSettingsBox LieroWormSettingsBox;
 
 /**
@@ -2935,26 +2940,44 @@ typedef struct LieroWeapselEnv {
 } LieroWeapselEnv;
 
 /**
- * One worm's weapon menu.
+ * A worm choosing weapons.
  */
-typedef struct LieroWeapselMenu {
-  struct LieroMenu menu;
+typedef struct LieroWeapselWorm {
   /**
-   * "Randomize", the five weapons and "Done".
-   */
-  struct LieroMenuItem *items;
-  int32_t item_count;
-  /**
-   * The worm's chosen weapon numbers (`WormSettings::weapons`), 5 of them.
+   * `WormSettings::weapons`, which the menu changes in place.
    */
   uint32_t *weapons;
-  /**
-   * The worm has chosen.
-   */
-  bool ready;
   struct LieroStr name;
   int32_t color;
-} LieroWeapselMenu;
+  /**
+   * The centre of the worm's viewport.
+   */
+  int32_t center_x;
+  int32_t center_y;
+  /**
+   * Starts with random weapons (a bot that doesn't pick).
+   */
+  bool random;
+  /**
+   * Has already chosen (a bot that doesn't pick at all).
+   */
+  bool ready;
+} LieroWeapselWorm;
+
+/**
+ * What weapon selection starts with.
+ */
+typedef struct LieroWeapselSpec {
+  const struct LieroWeapselWorm *worms;
+  int32_t worm_count;
+  /**
+   * Each weapon's name, by weapon index.
+   */
+  const struct LieroStr *weapon_names;
+  int32_t weapon_count;
+  struct LieroStr randomize;
+  struct LieroStr done;
+} LieroWeapselSpec;
 
 /**
  * What C++ does for weapon selection. `menu` is a position in the menu list.
@@ -2975,13 +2998,14 @@ typedef struct LieroWeapselHooks {
   bool (*pressed_once)(void *ctx, int32_t menu, uint32_t control);
   void (*play_sound)(void *ctx, int32_t sound);
   /**
-   * Gives the worm weapon `weapon` in `slot` and names it in the menu.
+   * Gives the worm weapon `weapon` in `slot`.
    */
   void (*set_weapon)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
   /**
-   * Names weapon `weapon` in the menu for `slot`, without giving it yet.
+   * Starts the worm with weapon `weapon` in `slot`, empty, and its first
+   * weapon current.
    */
-  void (*set_item_name)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
+  void (*init_weapon)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
 } LieroWeapselHooks;
 
 /**
@@ -5299,17 +5323,43 @@ void liero_weapsel_choose(uint32_t *weapons,
                           int32_t *out);
 
 /**
+ * Starts weapon selection (`WeaponSelection::WeaponSelection`): each
+ * worm's menu below its viewport's centre, with its starting weapons,
+ * which the worm is given.
+ *
+ * # Safety
+ * `spec`'s pointers are valid for their counts, and see `LieroWeapselEnv`.
+ * The worms' `weapons` outlive the selection.
+ */
+struct LieroWeapsel *liero_weapsel_new(const struct LieroWeapselSpec *spec,
+                                       const struct LieroWeapselEnv *env,
+                                       const struct LieroWeapselHooks *hooks);
+
+/**
+ * # Safety
+ * `ws` came from `liero_weapsel_new` and isn't used after.
+ */
+void liero_weapsel_free(struct LieroWeapsel *ws);
+
+int32_t liero_weapsel_menu_count(const struct LieroWeapsel *ws);
+
+/**
+ * Menu `i`, for the hash run to read.
+ */
+struct LieroMenuBox *liero_weapsel_menu(struct LieroWeapsel *ws, int32_t i);
+
+bool liero_weapsel_ready(const struct LieroWeapsel *ws, int32_t i);
+
+/**
  * One frame of weapon selection: `WeaponSelection::processFrame`. Each
  * worm not ready changes the selected weapon with left and right, moves
  * with up and down, and picks random weapons or finishes with fire.
  * Returns whether every worm is ready.
  *
  * # Safety
- * See `LieroWeapselEnv`; `menus` holds `count` menus with valid items and
- * weapons.
+ * See `LieroWeapselEnv`.
  */
-bool liero_weapsel_process(struct LieroWeapselMenu *menus,
-                           int32_t count,
+bool liero_weapsel_process(struct LieroWeapsel *ws,
                            const struct LieroWeapselEnv *env,
                            const struct LieroWeapselHooks *hooks);
 
@@ -5319,10 +5369,9 @@ bool liero_weapsel_process(struct LieroWeapselMenu *menus,
  * menus go, as C++ drew them on the play screen.
  *
  * # Safety
- * See `LieroBitmap` and `liero_weapsel_process`; the strings must be valid.
+ * See `LieroBitmap`; `title` is valid.
  */
-void liero_weapsel_draw(struct LieroWeapselMenu *menus,
-                        int32_t count,
+void liero_weapsel_draw(struct LieroWeapsel *ws,
                         const struct LieroBitmap *scr,
                         const struct LieroBitmap *menu_scr,
                         const struct LieroFont *font,
@@ -5333,10 +5382,9 @@ void liero_weapsel_draw(struct LieroWeapselMenu *menus,
  * the sides, while not ready.
  *
  * # Safety
- * See `liero_weapsel_draw`.
+ * See `LieroBitmap`.
  */
-void liero_weapsel_draw_spectator(struct LieroWeapselMenu *menus,
-                                  int32_t count,
+void liero_weapsel_draw_spectator(struct LieroWeapsel *ws,
                                   const struct LieroBitmap *scr,
                                   const struct LieroFont *font);
 

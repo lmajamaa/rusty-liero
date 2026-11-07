@@ -32,18 +32,25 @@ void hashString(Fnv& f, std::string const& s)
 	f.bytes(reinterpret_cast<uint8_t const*>(s.data()), s.size());
 }
 
-void hashMenu(Fnv& f, Menu& m)
+void hashMenu(Fnv& f, LieroMenuBox* b)
 {
-	f.add(int32_t(m.selection())); f.add(int32_t(m.topItem)); f.add(int32_t(m.bottomItem));
-	f.add(int32_t(m.visibleItemCount)); f.add(int32_t(m.height));
-	hashString(f, m.searchPrefix());
-	for (int i = 0; i < m.itemCount(); ++i)
+	LieroMenu& m = *liero_menu_box_state(b);
+	f.add(int32_t(m.selection)); f.add(int32_t(m.top_item)); f.add(int32_t(m.bottom_item));
+	f.add(int32_t(m.visible_item_count)); f.add(int32_t(m.height));
+	auto text = [](LieroStr s) { return std::string(reinterpret_cast<char const*>(s.ptr), s.len); };
+	hashString(f, text(liero_menu_box_search_text(b)));
+	for (int i = 0; i < liero_menu_box_count(b); ++i)
 	{
-		LieroMenuItem it = m.item(i);
-		hashString(f, m.itemString(i));
-		hashString(f, m.itemValue(i));
+		LieroMenuItem it = liero_menu_box_item(b, i);
+		hashString(f, text(it.string));
+		hashString(f, text(it.value));
 		f.add(it.has_value); f.add(it.visible); f.add(it.selectable);
 	}
+}
+
+void hashMenu(Fnv& f, Menu& m)
+{
+	hashMenu(f, m.box);
 }
 
 void hashScreen(Fnv& f, Renderer& r)
@@ -267,10 +274,10 @@ void runWeaponSelection(gvl::shared_ptr<Common> common, char const* name, uint32
 		++gfx.menuCycles;
 
 		Fnv f;
-		for (std::size_t i = 0; i < ws.menus.size(); ++i)
+		for (int i = 0; i < ws.menuCount(); ++i)
 		{
-			f.add(bool(ws.isReady[i]));
-			hashMenu(f, ws.menus[i]);
+			f.add(ws.isReady(i));
+			hashMenu(f, ws.menu(i));
 		}
 		for (Worm* w : game.worms)
 		{
