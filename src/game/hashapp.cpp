@@ -329,7 +329,7 @@ void hashApp(gvl::shared_ptr<Common> common)
 	gfx.driver = &driver;
 	try
 	{
-		runScreens(legacyMainScreen());
+		runScreens(mainScreen());
 		std::printf("app-end %d %016llx\n", driver.shown, (unsigned long long)driver.steps.size());
 	}
 	catch (std::exception& e)

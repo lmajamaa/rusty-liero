@@ -162,7 +162,7 @@ try
 	gfx.setVideoMode();
 	sfx.init();
 
-	runScreens(legacyMainScreen());
+	runScreens(mainScreen());
 
 	gfx.settings->save(configNode / "liero.cfg", gfx.rand);
 
