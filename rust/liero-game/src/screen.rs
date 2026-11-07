@@ -317,7 +317,7 @@ pub struct LieroApp {
 }
 
 impl LieroScreen {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         LieroScreen { data: std::ptr::null_mut(), tick: None, resume: None, free: None }
     }
 

@@ -40,6 +40,8 @@ struct Screen
 
 // A screen made in Rust (such as liero_info_box_screen), for C++ to open.
 std::unique_ptr<Screen> fromFfi(LieroScreen s);
+// A C++ screen, for a Rust screen to open.
+LieroScreen screenToFfi(std::unique_ptr<Screen> s);
 
 // C++ called from Rust can't let an exception through. It catches it and
 // calls this in the catch block; the exception is thrown again once the Rust

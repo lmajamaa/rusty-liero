@@ -223,9 +223,10 @@ void buildScript(Script& s)
 	s.press(SDL_SCANCODE_LEFT);
 	s.press(SDL_SCANCODE_ESCAPE);
 
-	// The left player: a name, a key, a saved and reloaded profile, and the
-	// CPU bot.
-	s.press(SDL_SCANCODE_F5);
+	// The left player, chosen in the main menu: a name, a key, a saved and
+	// reloaded profile, and the CPU bot.
+	s.press(SDL_SCANCODE_DOWN, 4);           // OPTIONS to LEFT PLAYER
+	s.press(SDL_SCANCODE_RETURN);
 	s.wait(10);
 	s.press(SDL_SCANCODE_DOWN, 2);           // NAME
 	s.press(SDL_SCANCODE_RETURN);

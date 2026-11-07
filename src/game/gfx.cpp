@@ -1929,432 +1929,256 @@ int Gfx::menuStart()
 	return startItemId;
 }
 
-int Gfx::menuStep(int startItemId, int& selected, MenuPass& pass, int entered)
+// F8 on the menu: the developers' random TC.
+void Gfx::randomizeTc()
 {
+	uint32_t s = 14;
+
+	Rand r;
+	r.seed(s);
+
 	Common& common = *this->common;
-	bool closeNow = false;
 
-	// What an item's onEnter returned, put to `how`.
-	auto use = [&](MenuPass::Use how, int r)
-	{
-		if (how == MenuPass::Select)
-			selected = r;
-		else if (how == MenuPass::Tc && r == MainMenu::MaTc)
-		{
-			// A new TC: no fade-out.
-			selected = MainMenu::MaTc;
-			closeNow = true;
-		}
-	};
+	vector<std::size_t> nobjMap;
 
-	// True if the item opened a screen: the pass stops, and goes on when the
-	// screen closes.
-	auto enter = [&](Menu& menu, MenuPass::Use how)
+	for (std::size_t i = 0; i < common.nobjectTypes.size(); ++i)
 	{
-		int r = menu.onEnter(common);
-		if (opening)
-		{
-			pass.use = how;
-			return true;
-		}
-		use(how, r);
-		return false;
-	};
+		nobjMap.push_back(i);
+	}
+	std::random_device rd;
+	std::mt19937 g(rd());
+	std::shuffle(nobjMap.begin(), nobjMap.end(), g);
 
-	// Stops the pass at `part` while the screen an item opened is up.
-	auto stop = [&](MenuPass::Part part)
+	for (auto& w : common.weapons)
 	{
-		pass.part = part;
-		return int(MenuOpened);
-	};
-
-	if (pass.part != MenuPass::Top)
-	{
-		use(pass.use, entered);
-		if (closeNow)
-			return MenuClose;
+		w.addSpeed = r(30) - 5;
+		w.affectByExplosions = r(2) == 0;
+		w.affectByWorm = r(3) == 0;
+		w.ammo = r(20) + 1;
+		w.bloodOnHit = r(50);
+		w.blowAway = r(10);
+		w.bounce = r(90);
+		w.collideWithObjects = r(10) == 0;
+		w.colorBullets = 3 + r(250);
+		w.createOnExp = r(common.sobjectTypes.size());
+		w.delay = r(70);
+		w.detectDistance = r(20);
+		w.dirtEffect = r(9);
+		w.distribution = r(5000) - 2500;
+		w.explGround = r(2) == 0;
+		w.exploSound = r(common.sounds.size());
+		w.fireCone = r(10);
+		w.gravity = r(2000) - 1000;
+		w.hitDamage = r(20);
+		w.laserSight = r(5) == 0;
+		w.launchSound = r(common.sounds.size());
+		w.leaveShellDelay = r(30);
+		w.leaveShells = r(1) == 0;
+		w.loadingTime = r(70 * 3);
+		w.loopAnim = r(10) == 0;
+		w.loopSound = false;
+		w.multSpeed = r(2) ? 100 : 99 + r(5);
+		w.objTrailDelay = 10 + r(70);
+		w.objTrailType = r(4) == 0 ? r(common.sobjectTypes.size()) : -1;
+		w.parts = r(2) == 0 ? r(10) : 1;
+		w.partTrailDelay = 10 + r(70);
+		w.partTrailObj = r(4) == 0 ? r(common.nobjectTypes.size()) : -1;
+		w.partTrailType = r(2);
+		w.playReloadSound = r(2) == 0;
+		w.recoil = r(20);
+		w.shadow = r(2) == 0;
+		w.shotType = r(5);
+		w.speed = r(200);
+		w.splinterAmount = r(5) == 0 ? r(10) : 0;
+		w.splinterColour = r(256);
+		w.splinterScatter = r(2);
+		w.splinterType = r(common.nobjectTypes.size());
+		w.startFrame = r((uint32_t)common.smallSprites.count - 13);
+		w.numFrames = r(5);
+		w.timeToExplo = 50 + r(200);
+		w.timeToExploV = 10 + r(50);
+		w.wormCollide = r(3) > 0;
+		w.wormExplode = r(3) > 0;
 	}
 
-	if (pass.part == MenuPass::Top)
+	//for (auto& n : common.nobjectTypes)
+	for (std::size_t idx = 0; idx < common.nobjectTypes.size(); ++idx)
 	{
-#ifdef __EMSCRIPTEN__
-		saveSettingsIfChanged();
-#endif
-		drawBasicMenu();
-		drawSpectatorInfo();
-
-		if(curMenu == &mainMenu)
-			settingsMenu.draw(common, playRenderer, true);
-		else
-			curMenu->draw(common, playRenderer, false);
-
-		if(testSDLKeyOnce(SDL_SCANCODE_ESCAPE))
-		{
-			if(curMenu == &mainMenu)
-				mainMenu.moveToId(MainMenu::MaQuit);
-			else
-				curMenu = &mainMenu;
-		}
-
-		if(testSDLKeyOnce(SDL_SCANCODE_UP))
-		{
-			sfx.play(common, 26);
-			curMenu->movement(-1);
-		}
-
-		if(testSDLKeyOnce(SDL_SCANCODE_DOWN))
-		{
-			sfx.play(common, 25);
-			curMenu->movement(1);
-		}
-
-		if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
-		|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-		{
-			if(curMenu == &mainMenu)
-			{
-				sfx.play(common, 27);
-
-				int s = mainMenu.selectedId();
-				switch (s)
-				{
-					case MainMenu::MaSettings:
-					{
-						curMenu = &settingsMenu; // Go into settings menu
-						break;
-					}
-
-					case MainMenu::MaPlayer1Settings:
-					case MainMenu::MaPlayer2Settings:
-					{
-						playerSettings(s - MainMenu::MaPlayer1Settings);
-						break;
-					}
-
-					case MainMenu::MaAdvanced:
-					{
-						openHiddenMenu();
-						break;
-					}
-
-					case MainMenu::MaReplays:
-					{
-						if (enter(*curMenu, MenuPass::Select))
-							return stop(MenuPass::AfterEnter);
-						break;
-					}
-
-					case MainMenu::MaTc:
-					{
-						if (enter(*curMenu, MenuPass::Tc))
-							return stop(MenuPass::AfterEnter);
-						if (closeNow)
-							return MenuClose;
-						break;
-					}
-
-					default:
-					{
-						curMenu = &mainMenu;
-						selected = s;
-					}
-				}
-			}
-			else if(curMenu == &settingsMenu)
-			{
-				if (enter(settingsMenu, MenuPass::Ignore))
-					return stop(MenuPass::AfterEnter);
-			}
-			else
-			{
-				if (enter(*curMenu, MenuPass::Select))
-					return stop(MenuPass::AfterEnter);
-			}
-		}
+		auto& n = common.nobjectTypes[nobjMap[idx]];
+		n.affectByExplosions = r(5) == 0;
+		n.bloodOnHit = r(5);
+		n.bloodTrail = r(10) == 0;
+		n.bloodTrailDelay = r(20) + 3;
+		n.blowAway = r(10);
+		n.bounce = r(90);
+		n.colorBullets = 3 + r(250);
+		n.createOnExp = r(3) == 0 ? r(common.sobjectTypes.size()) : -1;
+		n.detectDistance = r(20);
+		n.dirtEffect = r(9);
+		n.distribution = r(5000) - 2500;
+		n.drawOnMap = r(20) == 0;
+		n.explGround = r(4) > 0;
+		n.gravity = r(2000) - 1000;
+		n.hitDamage = r(10);
+		n.leaveObj = r(5) == 0 ? r(common.sobjectTypes.size()) : -1;
+		n.leaveObjDelay = 10 + r(80);
+		n.startFrame = r((uint32_t)common.smallSprites.count - 13);
+		n.numFrames = r(5);
+		n.speed = r(150);
+		n.splinterAmount = idx > 0 && r(5) == 0 ? r(10) : 0;
+		n.splinterColour = r(256);
+		n.splinterType = idx > 0 ? nobjMap[r(idx)] : 0;
+		n.timeToExplo = 50 + r(70 * 3);
+		n.timeToExploV = r(30);
+		n.wormDestroy = r(3) == 0;
+		n.wormExplode = r(2) == 0;
 	}
 
-	if (pass.part != MenuPass::AfterF3)
+	for (auto& s : common.sobjectTypes)
 	{
-		if(testSDLKeyOnce(SDL_SCANCODE_F1))
-		{
-			curMenu = &mainMenu;
-			mainMenu.moveToId(startItemId);
-			selected = startItemId;
-		}
-		if(testSDLKeyOnce(SDL_SCANCODE_F2))
-		{
-			mainMenu.moveToId(MainMenu::MaAdvanced);
-			openHiddenMenu();
-		}
-		if(testSDLKeyOnce(SDL_SCANCODE_F3))
-		{
-			curMenu = &mainMenu;
-			mainMenu.moveToId(MainMenu::MaReplays);
-			if (enter(*curMenu, MenuPass::Select))
-				return stop(MenuPass::AfterF3);
-		}
+		s.animDelay = 1 + r(10);
+		s.blowAway = r(2) == 0 ? r(10000) : 0;
+		s.damage = r(30);
+		s.detectRange = r(20);
+		s.dirtEffect = r(9);
+		s.flash = r(5);
+		s.startFrame = r((uint32_t)common.largeSprites.count - 7);
+		s.numFrames = r(7);
+		s.startSound = r(common.sounds.size());
+		s.shake = r(10);
+		s.shadow = r(2);
+		s.numSounds = 1;
 	}
-
-	if (testSDLKeyOnce(SDL_SCANCODE_F5))
-	{
-		mainMenu.moveToId(MainMenu::MaPlayer1Settings);
-		playerSettings(0);
-	}
-	if (testSDLKeyOnce(SDL_SCANCODE_F6))
-	{
-		mainMenu.moveToId(MainMenu::MaPlayer2Settings);
-		playerSettings(1);
-	}
-	if (testSDLKeyOnce(SDL_SCANCODE_F7))
-	{
-		mainMenu.moveToId(MainMenu::MaSettings);
-		curMenu = &settingsMenu; // Go into settings menu
-	}
-
-#if 1
-	if (testSDLKeyOnce(SDL_SCANCODE_F8))
-	{
-		uint32_t s = 14;
-
-		Rand r;
-		r.seed(s);
-
-		Common& common = *this->common;
-
-		vector<std::size_t> nobjMap;
-
-		for (std::size_t i = 0; i < common.nobjectTypes.size(); ++i)
-		{
-			nobjMap.push_back(i);
-		}
-		std::random_device rd;
-		std::mt19937 g(rd());
-		std::shuffle(nobjMap.begin(), nobjMap.end(), g);
-
-		for (auto& w : common.weapons)
-		{
-			w.addSpeed = r(30) - 5;
-			w.affectByExplosions = r(2) == 0;
-			w.affectByWorm = r(3) == 0;
-			w.ammo = r(20) + 1;
-			w.bloodOnHit = r(50);
-			w.blowAway = r(10);
-			w.bounce = r(90);
-			w.collideWithObjects = r(10) == 0;
-			w.colorBullets = 3 + r(250);
-			w.createOnExp = r(common.sobjectTypes.size());
-			w.delay = r(70);
-			w.detectDistance = r(20);
-			w.dirtEffect = r(9);
-			w.distribution = r(5000) - 2500;
-			w.explGround = r(2) == 0;
-			w.exploSound = r(common.sounds.size());
-			w.fireCone = r(10);
-			w.gravity = r(2000) - 1000;
-			w.hitDamage = r(20);
-			w.laserSight = r(5) == 0;
-			w.launchSound = r(common.sounds.size());
-			w.leaveShellDelay = r(30);
-			w.leaveShells = r(1) == 0;
-			w.loadingTime = r(70 * 3);
-			w.loopAnim = r(10) == 0;
-			w.loopSound = false;
-			w.multSpeed = r(2) ? 100 : 99 + r(5);
-			w.objTrailDelay = 10 + r(70);
-			w.objTrailType = r(4) == 0 ? r(common.sobjectTypes.size()) : -1;
-			w.parts = r(2) == 0 ? r(10) : 1;
-			w.partTrailDelay = 10 + r(70);
-			w.partTrailObj = r(4) == 0 ? r(common.nobjectTypes.size()) : -1;
-			w.partTrailType = r(2);
-			w.playReloadSound = r(2) == 0;
-			w.recoil = r(20);
-			w.shadow = r(2) == 0;
-			w.shotType = r(5);
-			w.speed = r(200);
-			w.splinterAmount = r(5) == 0 ? r(10) : 0;
-			w.splinterColour = r(256);
-			w.splinterScatter = r(2);
-			w.splinterType = r(common.nobjectTypes.size());
-			w.startFrame = r((uint32_t)common.smallSprites.count - 13);
-			w.numFrames = r(5);
-			w.timeToExplo = 50 + r(200);
-			w.timeToExploV = 10 + r(50);
-			w.wormCollide = r(3) > 0;
-			w.wormExplode = r(3) > 0;
-		}
-
-		//for (auto& n : common.nobjectTypes)
-		for (std::size_t idx = 0; idx < common.nobjectTypes.size(); ++idx)
-		{
-			auto& n = common.nobjectTypes[nobjMap[idx]];
-			n.affectByExplosions = r(5) == 0;
-			n.bloodOnHit = r(5);
-			n.bloodTrail = r(10) == 0;
-			n.bloodTrailDelay = r(20) + 3;
-			n.blowAway = r(10);
-			n.bounce = r(90);
-			n.colorBullets = 3 + r(250);
-			n.createOnExp = r(3) == 0 ? r(common.sobjectTypes.size()) : -1;
-			n.detectDistance = r(20);
-			n.dirtEffect = r(9);
-			n.distribution = r(5000) - 2500;
-			n.drawOnMap = r(20) == 0;
-			n.explGround = r(4) > 0;
-			n.gravity = r(2000) - 1000;
-			n.hitDamage = r(10);
-			n.leaveObj = r(5) == 0 ? r(common.sobjectTypes.size()) : -1;
-			n.leaveObjDelay = 10 + r(80);
-			n.startFrame = r((uint32_t)common.smallSprites.count - 13);
-			n.numFrames = r(5);
-			n.speed = r(150);
-			n.splinterAmount = idx > 0 && r(5) == 0 ? r(10) : 0;
-			n.splinterColour = r(256);
-			n.splinterType = idx > 0 ? nobjMap[r(idx)] : 0;
-			n.timeToExplo = 50 + r(70 * 3);
-			n.timeToExploV = r(30);
-			n.wormDestroy = r(3) == 0;
-			n.wormExplode = r(2) == 0;
-		}
-
-		for (auto& s : common.sobjectTypes)
-		{
-			s.animDelay = 1 + r(10);
-			s.blowAway = r(2) == 0 ? r(10000) : 0;
-			s.damage = r(30);
-			s.detectRange = r(20);
-			s.dirtEffect = r(9);
-			s.flash = r(5);
-			s.startFrame = r((uint32_t)common.largeSprites.count - 7);
-			s.numFrames = r(7);
-			s.startSound = r(common.sounds.size());
-			s.shake = r(10);
-			s.shadow = r(2);
-			s.numSounds = 1;
-		}
-	}
-#endif
-
-	if(testSDLKey(SDL_SCANCODE_LEFT))
-	{
-		if(!curMenu->onLeftRight(common, -1))
-			resetLeftRight();
-	}
-	if(testSDLKey(SDL_SCANCODE_RIGHT))
-	{
-		if(!curMenu->onLeftRight(common, 1))
-			resetLeftRight();
-	}
-
-	if(testSDLKeyOnce(SDL_SCANCODE_PAGEUP))
-	{
-		sfx.play(common, 26);
-
-		curMenu->movementPage(-1);
-	}
-
-	if(testSDLKeyOnce(SDL_SCANCODE_PAGEDOWN))
-	{
-		sfx.play(common, 25);
-
-		curMenu->movementPage(1);
-	}
-
-	pass.part = MenuPass::Top;
-	return MenuDone;
 }
 
 namespace
 {
 
-// The main menu, then its fade-out. It closes with the item chosen.
-struct MenuScreen : Screen
+Menu& menuOf(int kind)
 {
-	enum { Start, Setup, Menu, FadeOut } phase = Start;
-	int startItemId = 0;
-	int selected = -1;
-	MenuPass pass;
-	// What the item that opened a screen does when it closes.
-	std::function<int(int)> then;
-	int entered = -1;
-	bool resumed = false;
+	switch (kind)
+	{
+	case LIERO_MENU_SETTINGS: return gfx.settingsMenu;
+	case LIERO_MENU_PLAYER: return gfx.playerMenu;
+	case LIERO_MENU_HIDDEN: return gfx.hiddenMenu;
+	default: return gfx.mainMenu;
+	}
+}
 
-	Tick tick() override
+int kindOf(Menu* m)
+{
+	if (m == &gfx.settingsMenu) return LIERO_MENU_SETTINGS;
+	if (m == &gfx.playerMenu) return LIERO_MENU_PLAYER;
+	if (m == &gfx.hiddenMenu) return LIERO_MENU_HIDDEN;
+	return LIERO_MENU_MAIN;
+}
+
+// What the item that opened a screen does when it closes.
+std::function<int(int)> menuThen;
+
+// C++ called from Rust: an exception waits until the tick returns.
+template<typename F>
+auto guarded(F f, decltype(f()) fallback) -> decltype(f())
+{
+	try
+	{
+		return f();
+	}
+	catch (...)
+	{
+		deferException();
+		return fallback;
+	}
+}
+
+LieroMenuBox* hookMenu(int32_t kind) { return menuOf(kind).box; }
+int32_t hookCur() { return kindOf(gfx.curMenu); }
+void hookSetCur(int32_t kind) { gfx.curMenu = &menuOf(kind); }
+
+void hookClearPalettes()
+{
+	std::memset(gfx.playRenderer.pal.entries, 0, sizeof(gfx.playRenderer.pal.entries));
+	std::memset(gfx.singleScreenRenderer.pal.entries, 0, sizeof(gfx.singleScreenRenderer.pal.entries));
+}
+
+int32_t hookStart() { return guarded([] { return gfx.menuStart(); }, 0); }
+void hookFadeOut() { gfx.menuFade(true); }
+int32_t hookFadeValue() { return gfx.playRenderer.fadeValue; }
+void hookSetFadeValue(int32_t v) { gfx.playRenderer.fadeValue = v; }
+
+void hookSaveSettingsIfChanged()
+{
+#ifdef __EMSCRIPTEN__
+	guarded([] { gfx.saveSettingsIfChanged(); return 0; }, 0);
+#endif
+}
+
+void hookDraw()
+{
+	guarded([]
 	{
 		Gfx& g = gfx;
+		g.drawBasicMenu();
+		g.drawSpectatorInfo();
+		if (g.curMenu == &g.mainMenu)
+			g.settingsMenu.draw(*g.common, g.playRenderer, true);
+		else
+			g.curMenu->draw(*g.common, g.playRenderer, false);
+		return 0;
+	}, 0);
+}
 
-		// The pass an item stopped goes on; the screen that closed read the
-		// events.
-		if (resumed)
-		{
-			resumed = false;
-			return step();
-		}
+int32_t hookEnter(int32_t kind) { return guarded([kind] { return menuOf(kind).onEnter(*gfx.common); }, -1); }
 
-		// Each tick reads the events that came with the frame before it.
-		if (phase != Start)
-			g.process();
+bool hookLeftRight(int32_t kind, int32_t dir)
+{
+	return guarded([kind, dir] { return menuOf(kind).onLeftRight(*gfx.common, dir); }, true);
+}
 
-		switch (phase)
-		{
-		case Start:
-			std::memset(g.playRenderer.pal.entries, 0, sizeof(g.playRenderer.pal.entries));
-			std::memset(g.singleScreenRenderer.pal.entries, 0, sizeof(g.singleScreenRenderer.pal.entries));
-			phase = Setup;
-			return Tick::stay(true);
+bool hookTakeOpened(LieroScreen* out)
+{
+	if (!gfx.opening)
+		return false;
+	menuThen = std::move(gfx.openingThen);
+	gfx.openingThen = nullptr;
+	*out = screenToFfi(std::move(gfx.opening));
+	return true;
+}
 
-		case Setup:
-			startItemId = g.menuStart();
-			selected = -1;
-			phase = Menu;
-			return step();
+int32_t hookThen(int32_t result)
+{
+	std::function<int(int)> then = std::move(menuThen);
+	menuThen = nullptr;
+	return guarded([&] { return then ? then(result) : -1; }, -1);
+}
 
-		case Menu:
-			if (selected < 0)
-				return step();
-			phase = FadeOut;
-			g.playRenderer.fadeValue = 32;
-			g.menuFade(true);
-			return Tick::stay(true);
-
-		case FadeOut:
-		default:
-			if (--g.playRenderer.fadeValue > 0)
-			{
-				g.menuFade(true);
-				return Tick::stay(true);
-			}
-			return Tick::close(selected);
-		}
-	}
-
-	void resume(int result) override
-	{
-		entered = then(result);
-		then = nullptr;
-		resumed = true;
-	}
-
-	Tick step()
-	{
-		Gfx& g = gfx;
-		switch (g.menuStep(startItemId, selected, pass, entered))
-		{
-		case Gfx::MenuClose:
-			return Tick::close(selected);
-		case Gfx::MenuOpened:
-			then = std::move(g.openingThen);
-			g.openingThen = nullptr;
-			return Tick::push(std::move(g.opening));
-		default:
-			g.menuFade();
-			return Tick::stay(true);
-		}
-	}
-};
+void hookPlayerSettings(int32_t player) { guarded([player] { gfx.playerSettings(player); return 0; }, 0); }
+void hookOpenHiddenMenu() { gfx.openHiddenMenu(); }
+void hookRandomizeTc() { guarded([] { gfx.randomizeTc(); return 0; }, 0); }
+void hookReleaseLeftRight() { resetLeftRight(); }
 
 std::unique_ptr<Screen> menuScreen()
 {
-	return std::unique_ptr<Screen>(new MenuScreen);
+	LieroMenuScreenHooks h;
+	h.menu = hookMenu;
+	h.cur = hookCur;
+	h.set_cur = hookSetCur;
+	h.clear_palettes = hookClearPalettes;
+	h.start = hookStart;
+	h.fade_out = hookFadeOut;
+	h.fade_value = hookFadeValue;
+	h.set_fade_value = hookSetFadeValue;
+	h.save_settings_if_changed = hookSaveSettingsIfChanged;
+	h.draw = hookDraw;
+	h.enter = hookEnter;
+	h.left_right = hookLeftRight;
+	h.take_opened = hookTakeOpened;
+	h.then = hookThen;
+	h.player_settings = hookPlayerSettings;
+	h.open_hidden_menu = hookOpenHiddenMenu;
+	h.randomize_tc = hookRandomizeTc;
+	h.release_left_right = hookReleaseLeftRight;
+	return fromFfi(liero_menu_screen(h));
 }
 
 }

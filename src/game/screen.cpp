@@ -294,6 +294,11 @@ void rethrowDeferred()
 	}
 }
 
+LieroScreen screenToFfi(std::unique_ptr<Screen> s)
+{
+	return toFfi(std::move(s));
+}
+
 std::unique_ptr<Screen> fromFfi(LieroScreen s)
 {
 	return std::unique_ptr<Screen>(new ForeignScreen(s));

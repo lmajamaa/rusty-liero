@@ -883,7 +883,7 @@ impl OwnedMenu {
 }
 
 /// A menu Rust owns for C++ (`Menu`).
-pub struct LieroMenuBox(OwnedMenu);
+pub struct LieroMenuBox(pub(crate) OwnedMenu);
 
 /// `Menu(x, y, centered)`.
 #[no_mangle]
