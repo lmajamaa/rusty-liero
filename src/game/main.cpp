@@ -162,12 +162,12 @@ try
 	gfx.setVideoMode();
 	sfx.init();
 
-	runScreens(mainScreen());
+	startScreens(mainScreen(), [configNode]() {
+		gfx.settings->save(configNode / "liero.cfg", gfx.rand);
 
-	gfx.settings->save(configNode / "liero.cfg", gfx.rand);
-
-	sfx.deinit();
-	SDL_Quit();
+		sfx.deinit();
+		SDL_Quit();
+	});
 
 	//gvl::present_profile(std::cout);
 

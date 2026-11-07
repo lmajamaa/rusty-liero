@@ -140,11 +140,6 @@ if(EMSCRIPTEN)
     target_link_libraries(openliero SDL2::SDL2 SDL2_image::SDL2_image liero_game)
     # Emscripten writes openliero.html/.js/.wasm/.data.
     set_target_properties(openliero PROPERTIES SUFFIX ".html")
-    # ASYNCIFY lets the blocking menu and game loops yield to the browser from
-    # emscripten_sleep in Gfx::flip() (and SDL_Delay/SDL_WaitEvent).
-    # The menus sleep deep inside their call stacks, which outgrows ASYNCIFY's
-    # default 4 KB save area.
-    target_link_options(openliero PRIVATE "-sASYNCIFY" "-sASYNCIFY_STACK_SIZE=65536")
     # The game looks for TC/ under the current folder, which is / in the browser.
     target_link_options(openliero PRIVATE
         "--preload-file=${PROJECT_SOURCE_DIR}/TC/openliero@/TC/openliero")
