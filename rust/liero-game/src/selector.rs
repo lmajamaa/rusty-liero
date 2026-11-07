@@ -9,17 +9,13 @@
 use std::ffi::c_void;
 
 use crate::gfx::{liero_gfx_draw_rounded_box, LieroBitmap};
-use crate::menu::{
-    liero_menu_draw, liero_menu_move_to, liero_menu_movement, liero_menu_movement_page, liero_menu_search,
-    liero_menu_set_top, LieroMenu, LieroMenuHooks, LieroMenuItem,
-};
+use crate::menu::{LieroMenu, OwnedMenu};
 use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
 use crate::text::{LieroFont, LieroStr};
 
 // SDL's scancodes.
 const SCANCODE_RETURN: u32 = 40;
 const SCANCODE_ESCAPE: u32 = 41;
-const SCANCODE_TAB: u32 = 43;
 const SCANCODE_RIGHT: u32 = 79;
 const SCANCODE_LEFT: u32 = 80;
 const SCANCODE_DOWN: u32 = 81;
@@ -135,113 +131,9 @@ fn lstr(b: &[u8]) -> LieroStr {
     LieroStr { ptr: b.as_ptr(), len: b.len() }
 }
 
-/// A menu whose items Rust owns: C++'s `Menu` with plain items.
-struct OwnedMenu {
-    m: LieroMenu,
-    names: Vec<Vec<u8>>,
-    colors: Vec<u8>,
-    visible: Vec<bool>,
-    search: Vec<u8>,
-}
-
-unsafe extern "C" fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
-
-impl OwnedMenu {
-    /// `Menu(178, 28)` with `setHeight(14)`, as a file list is.
-    fn file_list() -> Self {
-        let mut menu = OwnedMenu {
-            m: LieroMenu { x: LIST_X, y: 28, height: 14, item_height: 8, ..Default::default() },
-            names: Vec::new(),
-            colors: Vec::new(),
-            visible: Vec::new(),
-            search: Vec::new(),
-        };
-        let top = menu.m.top_item;
-        menu.with(|m, items, n| unsafe { liero_menu_set_top(m, items, n, top) });
-        menu
-    }
-
-    /// Runs `f` on the menu as the Rust menu code takes it, and keeps the
-    /// items' visibility it sets.
-    fn with<R>(&mut self, f: impl FnOnce(&mut LieroMenu, *mut LieroMenuItem, i32) -> R) -> R {
-        let mut items: Vec<LieroMenuItem> = self
-            .names
-            .iter()
-            .zip(&self.colors)
-            .zip(&self.visible)
-            .map(|((name, &color), &visible)| LieroMenuItem {
-                string: lstr(name),
-                value: lstr(&[]),
-                color,
-                dis_colour: 7,
-                has_value: false,
-                visible,
-                selectable: true,
-            })
-            .collect();
-        let r = f(&mut self.m, items.as_mut_ptr(), items.len() as i32);
-        for (v, it) in self.visible.iter_mut().zip(&items) {
-            *v = it.visible;
-        }
-        r
-    }
-
-    fn add(&mut self, name: Vec<u8>, color: u8) {
-        self.names.push(name);
-        self.colors.push(color);
-        self.visible.push(true);
-        self.m.visible_item_count += 1;
-    }
-
-    fn is_empty(&self) -> bool {
-        self.names.is_empty()
-    }
-
-    fn move_to(&mut self, i: i32) {
-        self.with(|m, items, n| unsafe { liero_menu_move_to(m, items, n, i) });
-    }
-
-    fn movement(&mut self, dir: i32) {
-        self.with(|m, items, n| unsafe { liero_menu_movement(m, items, n, dir) });
-    }
-
-    fn movement_page(&mut self, dir: i32) {
-        self.with(|m, items, n| unsafe { liero_menu_movement_page(m, items, n, dir) });
-    }
-
-    /// The selected item, if there is one.
-    fn selected(&self) -> Option<usize> {
-        usize::try_from(self.m.selection).ok().filter(|&i| i < self.names.len())
-    }
-
-    /// Typing searches the list (`Menu::onKeys` with `contains`).
-    fn on_keys(&mut self, host: &Host) {
-        for k in host.typed_keys() {
-            let tab = k.scancode == SCANCODE_TAB;
-            if !((32..=127).contains(&k.sym) || tab) {
-                continue;
-            }
-            let ch = k.sym as u8;
-            let key = if tab { -1 } else { i32::from(ch) };
-            let time = host.ticks();
-            let search = std::mem::take(&mut self.search);
-            let r = self.with(|m, items, n| unsafe {
-                liero_menu_search(m, items, n, search.as_ptr(), search.len(), key, true, time)
-            });
-            self.search = search;
-            self.search.truncate(r.keep);
-            if r.add {
-                self.search.push(ch);
-            }
-        }
-    }
-
-    fn draw(&mut self, scr: &LieroBitmap, font: &LieroFont, disabled: bool, x: i32, show_disabled_selection: bool) {
-        let hooks = LieroMenuHooks { ctx: std::ptr::null_mut(), draw_overlay: no_overlay };
-        self.with(|m, items, n| unsafe {
-            liero_menu_draw(m, items, n, scr, font, &hooks, disabled, x, show_disabled_selection)
-        });
-    }
+/// `Menu(178, 28)` with `setHeight(14)`, as a file list is.
+fn file_list() -> OwnedMenu {
+    OwnedMenu::new(LieroMenu { x: LIST_X, y: 28, height: 14, item_height: 8, ..Default::default() })
 }
 
 /// A file or folder in the tree (`FileNode`).
@@ -287,7 +179,7 @@ impl Selector {
             parent,
             children: Vec::new(),
             filled: false,
-            menu: OwnedMenu::file_list(),
+            menu: file_list(),
         });
         self.nodes.len() - 1
     }
@@ -437,7 +329,7 @@ impl Selector {
             self.enter();
         }
         let cur = self.current;
-        self.menu(cur).on_keys(host);
+        self.menu(cur).on_keys(host, true);
         true
     }
 

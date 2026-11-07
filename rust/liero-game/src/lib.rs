@@ -30,6 +30,7 @@ pub mod tc;
 pub mod text;
 pub mod viewport;
 pub mod weapon;
+pub mod weapon_options;
 pub mod weapsel;
 pub mod worm;
 

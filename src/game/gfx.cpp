@@ -1357,136 +1357,6 @@ std::unique_ptr<Screen> configSelector(SelectorContext::Kind kind, std::string c
 	return selectorScreen(ctx, s, hasSelect, false, false);
 }
 
-struct WeaponMenu : Menu
-{
-	WeaponMenu(int x, int y)
-	: Menu(x, y)
-	{
-	}
-
-	ItemBehavior* getItemBehavior(Common& common, MenuItem& item)
-	{
-		int index = common.weapOrder[item.id];
-		return new ArrayEnumBehavior(common, gfx.settings->weapTable[index], common.texts.weapStates);
-	}
-};
-
-// Which weapons a game has. Escape closes it while one weapon or more is on.
-struct WeaponOptionsScreen : Screen
-{
-	WeaponMenu weaponMenu;
-	bool shown = false;
-	bool resumed = false;
-
-	void resume(int) override
-	{
-		resumed = true;
-	}
-
-	WeaponOptionsScreen()
-	: weaponMenu(179, 28)
-	{
-		Common& common = *gfx.common;
-
-		weaponMenu.setHeight(14);
-		weaponMenu.valueOffsetX = 89;
-
-		for(int i = 0; i < (int)common.weapons.size(); ++i)
-		{
-			int index = common.weapOrder[i];
-			weaponMenu.addItem(MenuItem(48, 7, common.weapons[index].name, i));
-		}
-
-		weaponMenu.moveToFirstVisible();
-		weaponMenu.updateItems(common);
-	}
-
-	Tick tick() override
-	{
-		Gfx& g = gfx;
-		Common& common = *g.common;
-
-		// Back from the message: it read the events.
-		if (shown && !resumed)
-		{
-			g.process();
-
-			if(g.testSDLKeyOnce(SDL_SCANCODE_ESCAPE))
-			{
-				int count = 0;
-
-				for(int i = 0; i < 40; ++i)
-				{
-					if(g.settings->weapTable[i] == 0)
-						++count;
-				}
-
-				if(count > 0)
-					return Tick::close(); // Enough weapons available
-
-				return Tick::push(infoBoxScreen(LS(NoWeaps), 223, 68, false));
-			}
-		}
-		resumed = false;
-
-		g.playRenderer.bmp.copy(g.frozenScreen);
-
-		g.drawBasicMenu();
-
-		drawRoundedBox(g.playRenderer.bmp, 179, 20, 0, 7, common.font.getDims(LS(Weapon)));
-		drawRoundedBox(g.playRenderer.bmp, 249, 20, 0, 7, common.font.getDims(LS(Availability)));
-
-		common.font.drawText(g.playRenderer.bmp, LS(Weapon), 181, 21, 50);
-		common.font.drawText(g.playRenderer.bmp, LS(Availability), 251, 21, 50);
-
-		weaponMenu.draw(common, g.playRenderer, false);
-
-		if(g.testSDLKeyOnce(SDL_SCANCODE_UP))
-		{
-			sfx.play(common, 26);
-			weaponMenu.movement(-1);
-		}
-
-		if(g.testSDLKeyOnce(SDL_SCANCODE_DOWN))
-		{
-			sfx.play(common, 25);
-			weaponMenu.movement(1);
-		}
-
-		if(g.testSDLKeyOnce(SDL_SCANCODE_LEFT))
-		{
-			weaponMenu.onLeftRight(common, -1);
-		}
-		if(g.testSDLKeyOnce(SDL_SCANCODE_RIGHT))
-		{
-			weaponMenu.onLeftRight(common, 1);
-		}
-
-		if(g.settings->extensions)
-		{
-			if(g.testSDLKeyOnce(SDL_SCANCODE_PAGEUP))
-			{
-				sfx.play(common, 26);
-
-				weaponMenu.movementPage(-1);
-			}
-
-			if(g.testSDLKeyOnce(SDL_SCANCODE_PAGEDOWN))
-			{
-				sfx.play(common, 25);
-
-				weaponMenu.movementPage(1);
-			}
-		}
-
-		weaponMenu.onKeys(g.keyBuf, g.keyBufPtr);
-
-		g.menuFade();
-		shown = true;
-		return Tick::stay(true);
-	}
-};
-
 }
 
 std::unique_ptr<Screen> selectLevelScreen()
@@ -1531,15 +1401,38 @@ std::unique_ptr<Screen> selectTcScreen(std::shared_ptr<std::unique_ptr<Common>> 
 	return selectorScreen(ctx, s, false, true, false);
 }
 
-std::unique_ptr<Screen> weaponOptionsScreen()
-{
-	return std::unique_ptr<Screen>(new WeaponOptionsScreen);
-}
-
 static LieroStr str(std::string const& s)
 {
 	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
 	return r;
+}
+
+std::unique_ptr<Screen> weaponOptionsScreen()
+{
+	Common& common = *gfx.common;
+	std::vector<LieroStr> names;
+	std::vector<int32_t> order;
+	for (int i = 0; i < (int)common.weapons.size(); ++i)
+	{
+		names.push_back(str(common.weapons[common.weapOrder[i]].name));
+		order.push_back(common.weapOrder[i]);
+	}
+	std::vector<LieroStr> states;
+	for (auto const& s : common.texts.weapStates)
+		states.push_back(str(s));
+
+	LieroWeaponOptionsSpec spec;
+	spec.names = names.data();
+	spec.order = order.data();
+	spec.count = names.size();
+	static_assert(sizeof(gfx.settings->weapTable[0]) == sizeof(uint32_t), "the table is read as uint32_t");
+	spec.weap_table = reinterpret_cast<uint32_t*>(gfx.settings->weapTable);
+	spec.states = states.data();
+	spec.state_count = states.size();
+	spec.weapon_title = str(LS(Weapon));
+	spec.availability_title = str(LS(Availability));
+	spec.no_weapons = str(LS(NoWeaps));
+	return fromFfi(liero_weapon_options_screen(&spec));
 }
 
 // The boxes are drawn in Rust (rust/liero-game/src/menu.rs).

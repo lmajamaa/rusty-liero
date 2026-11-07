@@ -13,6 +13,7 @@ use std::ffi::c_void;
 use crate::gfx::{
     liero_gfx_blit_image_no_key_colour, liero_gfx_draw_rounded_box, liero_gfx_fill_rect, LieroBitmap,
 };
+use crate::screen::Host;
 use crate::text::{time_to_string, time_to_string_ex, LieroFont, LieroStr};
 
 /// A menu's state, the fields of C++'s `Menu`.
@@ -689,6 +690,135 @@ pub unsafe extern "C" fn liero_menu_draw_input_box(
 
     liero_gfx_draw_rounded_box(scr, x - 2 - adjust, y, 0, 7, width);
     font.text(scr, text, x - adjust, y + 1, 50, 1);
+}
+
+const SCANCODE_TAB: u32 = 43;
+
+fn lstr(b: &[u8]) -> LieroStr {
+    LieroStr { ptr: b.as_ptr(), len: b.len() }
+}
+
+unsafe extern "C" fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
+
+/// A menu whose items Rust owns: C++'s `Menu` and its `MenuItem`s.
+pub(crate) struct OwnedMenu {
+    pub m: LieroMenu,
+    pub names: Vec<Vec<u8>>,
+    /// The value shown after the name, if any.
+    pub values: Vec<Option<Vec<u8>>>,
+    pub colors: Vec<u8>,
+    pub dis_colours: Vec<u8>,
+    pub visible: Vec<bool>,
+    pub selectable: Vec<bool>,
+    /// What has been typed to search (`Menu::searchPrefix`).
+    pub search: Vec<u8>,
+}
+
+impl OwnedMenu {
+    /// A menu with no items, its view starting at the top (`Menu::setTop`).
+    pub fn new(m: LieroMenu) -> Self {
+        let mut menu = OwnedMenu {
+            m,
+            names: Vec::new(),
+            values: Vec::new(),
+            colors: Vec::new(),
+            dis_colours: Vec::new(),
+            visible: Vec::new(),
+            selectable: Vec::new(),
+            search: Vec::new(),
+        };
+        let top = menu.m.top_item;
+        menu.with(|m, items, n| unsafe { liero_menu_set_top(m, items, n, top) });
+        menu
+    }
+
+    /// Runs `f` on the menu as the Rust menu code takes it, and keeps the
+    /// items' visibility it sets.
+    pub fn with<R>(&mut self, f: impl FnOnce(&mut LieroMenu, *mut LieroMenuItem, i32) -> R) -> R {
+        let mut items: Vec<LieroMenuItem> = (0..self.names.len())
+            .map(|i| LieroMenuItem {
+                string: lstr(&self.names[i]),
+                value: lstr(self.values[i].as_deref().unwrap_or(&[])),
+                color: self.colors[i],
+                dis_colour: self.dis_colours[i],
+                has_value: self.values[i].is_some(),
+                visible: self.visible[i],
+                selectable: self.selectable[i],
+            })
+            .collect();
+        let r = f(&mut self.m, items.as_mut_ptr(), items.len() as i32);
+        for (v, it) in self.visible.iter_mut().zip(&items) {
+            *v = it.visible;
+        }
+        r
+    }
+
+    /// `Menu::addItem` with `MenuItem(color, 7, name)`.
+    pub fn add(&mut self, name: Vec<u8>, color: u8) {
+        self.add_item(name, color, 7);
+    }
+
+    /// `Menu::addItem` with `MenuItem(color, dis_colour, name)`.
+    pub fn add_item(&mut self, name: Vec<u8>, color: u8, dis_colour: u8) {
+        self.names.push(name);
+        self.values.push(None);
+        self.colors.push(color);
+        self.dis_colours.push(dis_colour);
+        self.visible.push(true);
+        self.selectable.push(true);
+        self.m.visible_item_count += 1;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    pub fn move_to(&mut self, i: i32) {
+        self.with(|m, items, n| unsafe { liero_menu_move_to(m, items, n, i) });
+    }
+
+    pub fn movement(&mut self, dir: i32) {
+        self.with(|m, items, n| unsafe { liero_menu_movement(m, items, n, dir) });
+    }
+
+    pub fn movement_page(&mut self, dir: i32) {
+        self.with(|m, items, n| unsafe { liero_menu_movement_page(m, items, n, dir) });
+    }
+
+    /// The selected item, if there is one.
+    pub fn selected(&self) -> Option<usize> {
+        usize::try_from(self.m.selection).ok().filter(|&i| i < self.names.len())
+    }
+
+    /// Typing searches the items (`Menu::onKeys`), by start or, with
+    /// `contains`, anywhere in a name.
+    pub fn on_keys(&mut self, host: &Host, contains: bool) {
+        for k in host.typed_keys() {
+            let tab = k.scancode == SCANCODE_TAB;
+            if !((32..=127).contains(&k.sym) || tab) {
+                continue;
+            }
+            let ch = k.sym as u8;
+            let key = if tab { -1 } else { i32::from(ch) };
+            let time = host.ticks();
+            let search = std::mem::take(&mut self.search);
+            let r = self.with(|m, items, n| unsafe {
+                liero_menu_search(m, items, n, search.as_ptr(), search.len(), key, contains, time)
+            });
+            self.search = search;
+            self.search.truncate(r.keep);
+            if r.add {
+                self.search.push(ch);
+            }
+        }
+    }
+
+    pub fn draw(&mut self, scr: &LieroBitmap, font: &LieroFont, disabled: bool, x: i32, show_disabled_selection: bool) {
+        let hooks = LieroMenuHooks { ctx: std::ptr::null_mut(), draw_overlay: no_overlay };
+        self.with(|m, items, n| unsafe {
+            liero_menu_draw(m, items, n, scr, font, &hooks, disabled, x, show_disabled_selection)
+        });
+    }
 }
 
 #[cfg(test)]

@@ -189,7 +189,13 @@ void buildScript(Script& s)
 	s.press(SDL_SCANCODE_RETURN);
 	s.wait(20);
 	s.press(SDL_SCANCODE_DOWN, 3);
-	s.press(SDL_SCANCODE_RIGHT);
+	s.press(SDL_SCANCODE_RIGHT);             // bots only, and back
+	s.press(SDL_SCANCODE_LEFT);
+	s.press(SDL_SCANCODE_UP);
+	s.press(SDL_SCANCODE_LEFT);              // off, wrapping round
+	s.press(SDL_SCANCODE_PAGEDOWN);
+	s.press(SDL_SCANCODE_PAGEUP);
+	s.press(SDL_SCANCODE_Z);                 // the first name starting with Z
 	s.press(SDL_SCANCODE_ESCAPE);
 	s.press(SDL_SCANCODE_DOWN);              // MAX BONUSES, held up, then
 	s.press(SDL_SCANCODE_RIGHT, 1, 30);      // more digits than the box takes

@@ -139,6 +139,9 @@ pub struct LieroScreenHost {
     pub menu_fade: Option<unsafe extern "C" fn()>,
     /// Whether an SDL key is held (`Gfx::testSDLKey`).
     pub test_key: Option<unsafe extern "C" fn(scancode: u32) -> bool>,
+    /// The frozen screen with the main menu over it, greyed out while
+    /// another menu is up (`Gfx::drawBasicMenu`).
+    pub draw_basic_menu: Option<unsafe extern "C" fn()>,
 }
 
 static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
@@ -209,6 +212,11 @@ impl Host {
     }
     pub fn test_key(&self, scancode: u32) -> bool {
         self.0.test_key.is_some_and(|f| unsafe { f(scancode) })
+    }
+    pub fn draw_basic_menu(&self) {
+        if let Some(f) = self.0.draw_basic_menu {
+            unsafe { f() }
+        }
     }
     pub fn test_key_once(&self, scancode: u32) -> bool {
         self.0.test_key_once.is_some_and(|f| unsafe { f(scancode) })

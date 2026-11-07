@@ -1773,6 +1773,11 @@ typedef struct LieroScreenHost {
    * Whether an SDL key is held (`Gfx::testSDLKey`).
    */
   bool (*test_key)(uint32_t scancode);
+  /**
+   * The frozen screen with the main menu over it, greyed out while
+   * another menu is up (`Gfx::drawBasicMenu`).
+   */
+  void (*draw_basic_menu)(void);
 } LieroScreenHost;
 
 /**
@@ -2762,6 +2767,34 @@ typedef struct LieroBlowUpHooks {
                           struct LieroIVec2 pos,
                           int32_t color);
 } LieroBlowUpHooks;
+
+/**
+ * What the weapon options screen shows and edits.
+ */
+typedef struct LieroWeaponOptionsSpec {
+  /**
+   * The weapons' names in menu order, and each one's index in
+   * `weap_table`.
+   */
+  const struct LieroStr *names;
+  const int32_t *order;
+  uintptr_t count;
+  /**
+   * The settings' weapon table (40 entries): 0 on, 1 bots only, 2 off.
+   */
+  uint32_t *weap_table;
+  /**
+   * The names of those states.
+   */
+  const struct LieroStr *states;
+  uintptr_t state_count;
+  /**
+   * The column titles, and the message when every weapon is off.
+   */
+  struct LieroStr weapon_title;
+  struct LieroStr availability_title;
+  struct LieroStr no_weapons;
+} LieroWeaponOptionsSpec;
 
 /**
  * The game's weapon tables.
@@ -5008,6 +5041,16 @@ void liero_wobject_blow_up(const struct LieroWeapon *w,
                            struct LieroIVec2 vel,
                            const struct LieroWObjectEnv *env,
                            const struct LieroBlowUpHooks *hooks);
+
+/**
+ * The weapon options screen. It edits `spec.weap_table` in place, which
+ * must outlive it; the rest of `spec` is copied.
+ *
+ * # Safety
+ * `spec`'s pointers are valid for their counts, and `order`'s entries are
+ * below 40.
+ */
+struct LieroScreen liero_weapon_options_screen(const struct LieroWeaponOptionsSpec *spec);
 
 /**
  * A worm's starting weapons, from the constructor of `WeaponSelection`:
