@@ -51,25 +51,22 @@ struct KeyBehavior : ItemBehavior
 	int onEnter(Menu& menu, MenuItem& item)
 	{
 		sfx.play(common, 27);
-		uint32_t k;
-		bool isEx;
-		do
+		KeyBehavior self = *this;
+		gfx.open(keyChoiceScreen(extended), [self, &menu, &item](int result) mutable
 		{
-			k = gfx.waitForKeyEx();
-			isEx = isExtendedKey(k);
-		}
-		while(!extended && isEx);
+			uint32_t k = uint32_t(result);
+			if(k != DkEscape)
+			{
+				if(!isExtendedKey(k))
+					self.key = k;
+				self.keyEx = k;
 
-		if(k != DkEscape)
-		{
-			if(!isEx)
-				key = k;
-			keyEx = k;
+				self.onUpdate(menu, item);
+			}
 
-			onUpdate(menu, item);
-		}
-
-		gfx.clearKeys();
+			gfx.clearKeys();
+			return -1;
+		});
 		return -1;
 	}
 
@@ -105,14 +102,20 @@ struct WormNameBehavior : ItemBehavior
 
 		x += menu.valueOffsetX + 2;
 
-		gfx.inputString(ws.name, 20, x, y);
-
-		if(ws.name.empty())
+		WormNameBehavior self = *this;
+		gfx.openInputString(ws.name, 20, x, y, [self, &menu, &item](bool ok, std::string const& name) mutable
 		{
-			Settings::generateName(ws, gfx.rand);
-		}
-		sfx.play(common, 27);
-		onUpdate(menu, item);
+			if (ok)
+				self.ws.name = name;
+
+			if(self.ws.name.empty())
+			{
+				Settings::generateName(self.ws, gfx.rand);
+			}
+			sfx.play(self.common, 27);
+			self.onUpdate(menu, item);
+			return -1;
+		});
 		return -1;
 	}
 
@@ -148,14 +151,21 @@ struct ProfileSaveBehavior : ItemBehavior
 
 		if(saveAs)
 		{
-			std::string name;
-			if(gfx.inputString(name, 30, x, y) && !name.empty())
+			Common& common = this->common;
+			WormSettings& ws = this->ws;
+			gfx.openInputString("", 30, x, y, [&common, &ws, &menu](bool ok, std::string const& name)
 			{
-				//ws.saveProfile(joinPath(joinPath(configRoot, "Profiles"), name));
-				ws.saveProfile(gfx.getConfigNode() / "Profiles" / (name + ".lpf"));
-			}
+				if(ok && !name.empty())
+				{
+					//ws.saveProfile(joinPath(joinPath(configRoot, "Profiles"), name));
+					ws.saveProfile(gfx.getConfigNode() / "Profiles" / (name + ".lpf"));
+				}
 
-			sfx.play(common, 27);
+				sfx.play(common, 27);
+				menu.updateItems(common);
+				return -1;
+			});
+			return -1;
 		}
 		else
 			ws.saveProfile(ws.profileNode);
@@ -228,8 +238,19 @@ struct WeaponEnumBehavior : EnumBehavior
 
 		x += menu.valueOffsetX + 2;
 
-		std::string search;
-		if (gfx.inputString(search, 10, x, y))
+		WeaponEnumBehavior self = *this;
+		gfx.openInputString("", 10, x, y, [self, &menu](bool ok, std::string const& search) mutable
+		{
+			if (ok)
+				self.chooseClosest(menu, search);
+			return -1;
+		});
+
+		return -1;
+	}
+
+	void chooseClosest(Menu& menu, std::string const& search)
+	{
 		{
 			std::vector<LieroStr> names;
 			for (uint32_t i = min; i <= max; ++i)
@@ -244,8 +265,6 @@ struct WeaponEnumBehavior : EnumBehavior
 				v = min + uint32_t(closest);
 			menu.updateItems(common);
 		}
-
-		return -1;
 	}
 };
 
@@ -728,21 +747,24 @@ bool Gfx::pollEvent(SDL_Event& ev)
 	return driver ? driver->pollEvent(ev) : SDL_PollEvent(&ev) != 0;
 }
 
-bool Gfx::waitEvent(SDL_Event& ev)
+void Gfx::idle()
 {
 	if (driver)
 	{
-		driver->waitEvent(ev);
-		return true;
-	}
-	return SDL_WaitEvent(&ev) != 0;
-}
-
-void Gfx::idle()
-{
-	// The window waits by itself: the next frame comes when it's due.
-	if (driver)
 		driver->idle();
+		return;
+	}
+
+	// Until the frame function runs from the browser's main loop (PLAN.md,
+	// "Replacing the main loop", step 4), runScreens is a loop of its own:
+	// a screen waiting for an event gives the browser a frame's time to
+	// deliver it, as the SDL_WaitEvent it replaces did.
+#ifdef __EMSCRIPTEN__
+	emscripten_sleep(14);
+#else
+	SDL_Delay(14);
+#endif
+	lastFrame = SDL_GetTicks();
 }
 
 void Gfx::process(Controller* controller)
@@ -753,50 +775,6 @@ void Gfx::process(Controller* controller)
 	{
 		processEvent(ev, controller);
 	}
-}
-
-SDL_Keysym Gfx::waitForKey()
-{
-	SDL_Event ev;
-	while(waitEvent(ev))
-	{
-		processEvent(ev);
-		if(ev.type == SDL_KEYDOWN)
-		{
-			return ev.key.keysym;
-		}
-	}
-
-	return SDL_Keysym(); // Dummy
-}
-
-uint32_t Gfx::waitForKeyEx()
-{
-	SDL_Event ev;
-	while(waitEvent(ev))
-	{
-		processEvent(ev);
-		switch (ev.type)
-		{
-		case SDL_KEYDOWN:
-			return SDLToDOSKey(ev.key.keysym);
-
-		case SDL_JOYAXISMOTION:
-			if (uint32_t k = liero_joy_axis_key(ev.jaxis.which, ev.jaxis.axis, ev.jaxis.value))
-				return k;
-			break;
-		case SDL_JOYHATMOTION:
-			if (uint32_t k = liero_joy_hat_key(ev.jhat.which, ev.jhat.value))
-				return k;
-			break;
-		case SDL_JOYBUTTONDOWN:
-			return liero_joy_button_key(ev.jbutton.which, ev.jbutton.button);
-		default:
-			break;
-		}
-	}
-
-	return 0; // Dummy
 }
 
 std::string Gfx::getKeyName(uint32_t key)
@@ -1057,15 +1035,20 @@ struct OptionsSaveBehavior : ItemBehavior
 		x += menu.valueOffsetX + 2;
 
 		std::string name = getBasename(getLeaf(gfx.settingsNode.fullPath()));
-		if(gfx.inputString(name, 30, x, y) && !name.empty())
+		OptionsSaveBehavior self = *this;
+		gfx.openInputString(name, 30, x, y, [self, &menu, &item](bool ok, std::string const& name) mutable
 		{
-			//gfx.saveSettings(joinPath(configRoot, name + ".cfg"));
-			gfx.saveSettings(gfx.getConfigNode() / (name + ".cfg"));
-		}
+			if(ok && !name.empty())
+			{
+				//gfx.saveSettings(joinPath(configRoot, name + ".cfg"));
+				gfx.saveSettings(gfx.getConfigNode() / (name + ".cfg"));
+			}
 
-		sfx.play(common, 27);
+			sfx.play(self.common, 27);
 
-		onUpdate(menu, item);
+			self.onUpdate(menu, item);
+			return -1;
+		});
 		return -1;
 	}
 
@@ -1474,6 +1457,12 @@ struct WeaponOptionsScreen : Screen
 {
 	WeaponMenu weaponMenu;
 	bool shown = false;
+	bool resumed = false;
+
+	void resume(int) override
+	{
+		resumed = true;
+	}
 
 	WeaponOptionsScreen()
 	: weaponMenu(179, 28)
@@ -1498,7 +1487,8 @@ struct WeaponOptionsScreen : Screen
 		Gfx& g = gfx;
 		Common& common = *g.common;
 
-		if (shown)
+		// Back from the message: it read the events.
+		if (shown && !resumed)
 		{
 			g.process();
 
@@ -1515,9 +1505,10 @@ struct WeaponOptionsScreen : Screen
 				if(count > 0)
 					return Tick::close(); // Enough weapons available
 
-				g.infoBox(LS(NoWeaps), 223, 68, false);
+				return Tick::push(infoBoxScreen(LS(NoWeaps), 223, 68, false));
 			}
 		}
+		resumed = false;
 
 		g.playRenderer.bmp.copy(g.frozenScreen);
 
@@ -1632,99 +1623,239 @@ void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const
 	liero_menu_draw_input_box(&scr, &from, &font, str(text), x, y, centered);
 }
 
-void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
+namespace
 {
-	static int const bgColor = 0;
 
-	if(clearScreen)
+// A message over the screen, until a key is pressed.
+struct InfoBoxScreen : Screen
+{
+	std::string text;
+	int x, y;
+	bool clearScreen;
+	bool shown = false;
+	// The events that came with the box are read.
+	bool waiting = false;
+
+	InfoBoxScreen(std::string const& text, int x, int y, bool clearScreen)
+	: text(text), x(x), y(y), clearScreen(clearScreen)
 	{
-		playRenderer.pal = common->exepal;
-		fill(playRenderer.bmp, bgColor);
 	}
 
-	drawInfoBox(*common, playRenderer.bmp, text, x, y);
-
-	flip();
-	process();
-
-	waitForKey();
-	clearKeys();
-
-	if(clearScreen)
-		fill(playRenderer.bmp, bgColor);
-}
-
-bool Gfx::inputString(std::string& dest, std::size_t maxLen, int x, int y, int (*filter)(int), std::string const& prefix, bool centered)
-{
-	std::string buffer = dest;
-
-#ifdef __EMSCRIPTEN__
-	// Text input stays off outside this loop, so that SDL calls
-	// preventDefault on every key the game gets (see main.cpp).
-	struct StopTextInput { ~StopTextInput() { SDL_StopTextInput(); } } stopTextInput;
-#endif
-
-	while(true)
+	Tick tick() override
 	{
-		std::string str = prefix + buffer + '_';
+		Gfx& g = gfx;
+		static int const bgColor = 0;
+
+		if (!shown)
+		{
+			if(clearScreen)
+			{
+				g.playRenderer.pal = g.common->exepal;
+				fill(g.playRenderer.bmp, bgColor);
+			}
+
+			drawInfoBox(*g.common, g.playRenderer.bmp, text, x, y);
+			shown = true;
+			return Tick::stay(true);
+		}
+
+		if (!waiting)
+		{
+			g.process();
+			waiting = true;
+		}
 
 		SDL_Event ev;
+		while (g.pollEvent(ev))
+		{
+			g.processEvent(ev);
+			if(ev.type == SDL_KEYDOWN)
+			{
+				g.clearKeys();
 
-		drawInputBox(*common, playRenderer.bmp, frozenScreen, str, x, y, centered);
-		flip();
+				if(clearScreen)
+					fill(g.playRenderer.bmp, bgColor);
+				return Tick::close();
+			}
+		}
+		return Tick::stay(false);
+	}
+};
 
-		SDL_StartTextInput();
-		waitEvent(ev);
-		processEvent(ev);
+// The key the next key press, joystick button or stick move gives. Unless
+// `extended`, keys only the extended controls have are passed over.
+struct KeyChoiceScreen : Screen
+{
+	bool extended;
 
+	explicit KeyChoiceScreen(bool extended)
+	: extended(extended)
+	{
+	}
+
+	Tick tick() override
+	{
+		Gfx& g = gfx;
+		SDL_Event ev;
+		while (g.pollEvent(ev))
+		{
+			g.processEvent(ev);
+			uint32_t k;
+			if (keyOf(ev, k) && (extended || !isExtendedKey(k)))
+				return Tick::close(int(k));
+		}
+		return Tick::stay(false);
+	}
+
+	// False if the event isn't a key.
+	static bool keyOf(SDL_Event& ev, uint32_t& k)
+	{
 		switch (ev.type)
 		{
-			case SDL_KEYDOWN:
-				switch (ev.key.keysym.scancode)
-				{
-					case SDL_SCANCODE_BACKSPACE:
-						if(!buffer.empty())
-						{
-							buffer.erase(buffer.size() - 1);
-						}
-						break;
+		case SDL_KEYDOWN:
+			k = SDLToDOSKey(ev.key.keysym);
+			return true;
 
-					case SDL_SCANCODE_RETURN:
-					case SDL_SCANCODE_KP_ENTER:
-						dest = buffer;
-						sfx.play(*common, 27);
-						clearKeys();
-						return true;
-
-					case SDL_SCANCODE_ESCAPE:
-						clearKeys();
-						return false;
-
-					default:
-						break;
-				}
-				break;
-
-			case SDL_TEXTINPUT:
-			{
-				int k = utf8ToDOS(ev.text.text);
-				if (k && buffer.size() < maxLen &&
-					(!filter || (k = filter(k))))
-				{
-					buffer += char(k);
-				}
-				break;
-			}
-			case SDL_TEXTEDITING:
-				// since there's no support for any characters that can use a
-				// complex IME input (like East Asian languages), we naively
-				// discard this event
-				break;
-
-			default:
-				break;
-        }
+		case SDL_JOYAXISMOTION:
+			k = liero_joy_axis_key(ev.jaxis.which, ev.jaxis.axis, ev.jaxis.value);
+			return k != 0;
+		case SDL_JOYHATMOTION:
+			k = liero_joy_hat_key(ev.jhat.which, ev.jhat.value);
+			return k != 0;
+		case SDL_JOYBUTTONDOWN:
+			k = liero_joy_button_key(ev.jbutton.which, ev.jbutton.button);
+			return true;
+		default:
+			return false;
+		}
 	}
+};
+
+// Typing a line into a box over the frozen screen. It shows a frame for each
+// event. Enter closes it with 1 and the text in `*text`, Escape with 0.
+struct InputStringScreen : Screen
+{
+	std::shared_ptr<std::string> text;
+	std::string buffer;
+	std::size_t maxLen;
+	int x, y;
+	int (*filter)(int);
+	std::string prefix;
+	bool centered;
+	bool shown = false;
+
+	InputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, int (*filter)(int), std::string const& prefix, bool centered)
+	: text(text), buffer(*text), maxLen(maxLen), x(x), y(y), filter(filter), prefix(prefix), centered(centered)
+	{
+	}
+
+	~InputStringScreen()
+	{
+#ifdef __EMSCRIPTEN__
+		// Text input stays off outside the box, so that SDL calls
+		// preventDefault on every key the game gets (see main.cpp).
+		SDL_StopTextInput();
+#endif
+	}
+
+	Tick tick() override
+	{
+		Gfx& g = gfx;
+
+		if (shown)
+		{
+			SDL_Event ev;
+			if (!g.pollEvent(ev))
+				return Tick::stay(false);
+			g.processEvent(ev);
+
+			switch (ev.type)
+			{
+				case SDL_KEYDOWN:
+					switch (ev.key.keysym.scancode)
+					{
+						case SDL_SCANCODE_BACKSPACE:
+							if(!buffer.empty())
+							{
+								buffer.erase(buffer.size() - 1);
+							}
+							break;
+
+						case SDL_SCANCODE_RETURN:
+						case SDL_SCANCODE_KP_ENTER:
+							*text = buffer;
+							sfx.play(*g.common, 27);
+							g.clearKeys();
+							return Tick::close(1);
+
+						case SDL_SCANCODE_ESCAPE:
+							g.clearKeys();
+							return Tick::close(0);
+
+						default:
+							break;
+					}
+					break;
+
+				case SDL_TEXTINPUT:
+				{
+					int k = utf8ToDOS(ev.text.text);
+					if (k && buffer.size() < maxLen &&
+						(!filter || (k = filter(k))))
+					{
+						buffer += char(k);
+					}
+					break;
+				}
+				case SDL_TEXTEDITING:
+					// since there's no support for any characters that can use a
+					// complex IME input (like East Asian languages), we naively
+					// discard this event
+					break;
+
+				default:
+					break;
+			}
+		}
+
+		std::string str = prefix + buffer + '_';
+		drawInputBox(*g.common, g.playRenderer.bmp, g.frozenScreen, str, x, y, centered);
+		SDL_StartTextInput();
+		shown = true;
+		return Tick::stay(true);
+	}
+};
+
+}
+
+std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x, int y, bool clearScreen)
+{
+	return std::unique_ptr<Screen>(new InfoBoxScreen(text, x, y, clearScreen));
+}
+
+std::unique_ptr<Screen> keyChoiceScreen(bool extended)
+{
+	return std::unique_ptr<Screen>(new KeyChoiceScreen(extended));
+}
+
+std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, int (*filter)(int), std::string const& prefix, bool centered)
+{
+	return std::unique_ptr<Screen>(new InputStringScreen(text, maxLen, x, y, filter, prefix, centered));
+}
+
+void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
+{
+	// For the controllers, which don't run as screens yet.
+	runScreens(infoBoxScreen(text, x, y, clearScreen));
+}
+
+void Gfx::openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, int (*filter)(int))
+{
+	std::shared_ptr<std::string> typed(new std::string(text));
+	open(inputStringScreen(typed, maxLen, x, y, filter, "", true), [typed, then](int ok)
+	{
+		return then(ok != 0, *typed);
+	});
 }
 
 int filterDigits(int k)
@@ -1732,19 +1863,21 @@ int filterDigits(int k)
 	return std::isdigit(k) ? k : 0;
 }
 
-void Gfx::inputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y)
+void Gfx::openInputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y, std::function<void()> then)
 {
-	std::string str(toString(dest));
-
-	if(inputString(str, maxLen, x, y, filterDigits)
-	&& !str.empty())
+	openInputString(toString(dest), maxLen, x, y, [&dest, min, max, then](bool ok, std::string const& str)
 	{
-		dest = std::atoi(str.c_str());
-		if(dest < min)
-			dest = min;
-		else if(dest > max)
-			dest = max;
-	}
+		if(ok && !str.empty())
+		{
+			dest = std::atoi(str.c_str());
+			if(dest < min)
+				dest = min;
+			else if(dest > max)
+				dest = max;
+		}
+		then();
+		return -1;
+	}, filterDigits);
 }
 
 void PlayerMenu::drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled)

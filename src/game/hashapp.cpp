@@ -9,7 +9,7 @@
 // depends on how the loops are written, so a version that runs the same
 // screens one frame at a time from a single loop must show the same frames.
 //
-// Time only moves when a frame is shown, or when a loop waits for an event
+// Time only moves when a frame is shown, or when a screen waits for an event
 // (a text box, a message, choosing a key), which skips to that event.
 //
 // The script counts key presses to reach each menu item, so a change that
@@ -76,19 +76,11 @@ struct ScriptDriver : AppDriver
 		return true;
 	}
 
-	void waitEvent(SDL_Event& ev) override
+	void idle() override
 	{
 		if (steps.empty())
 			throw std::runtime_error("the app waited for an event after its script ended");
 		now = std::max(now, steps.front().at);
-		ev = steps.front().ev;
-		steps.pop_front();
-	}
-
-	void idle() override
-	{
-		if (!steps.empty())
-			now = std::max(now, steps.front().at);
 	}
 
 	uint32_t ticks() override
