@@ -38,6 +38,9 @@ struct Screen
 	virtual void resume(int result) {}
 };
 
+// A screen made in Rust (such as liero_info_box_screen), for C++ to open.
+std::unique_ptr<Screen> fromFfi(LieroScreen s);
+
 // Runs `first` and whatever it opens until no screen is left. An exception
 // thrown by a screen closes them all and is rethrown here. Each step runs
 // as soon as the one before it is done, so this is for the hash run and for

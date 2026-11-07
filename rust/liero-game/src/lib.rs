@@ -6,6 +6,7 @@
 //! (see README).
 
 pub mod ai;
+pub mod boxes;
 pub mod cpp_sort;
 pub mod game;
 pub mod gfx;

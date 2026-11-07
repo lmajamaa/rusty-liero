@@ -1,6 +1,10 @@
 #include "screen.hpp"
 
 #include "gfx.hpp"
+#include "keys.hpp"
+#include "sfx.hpp"
+#include "text.hpp"
+#include "gfx/blit.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -77,6 +81,120 @@ void hostIdle(void*)
 	gfx.idle();
 }
 
+// A Rust screen inside C++'s Screen, so C++ can open it.
+struct ForeignScreen : Screen
+{
+	LieroScreen s;
+
+	explicit ForeignScreen(LieroScreen s) : s(s) {}
+
+	~ForeignScreen()
+	{
+		if (s.free)
+			s.free(s.data);
+	}
+
+	Tick tick() override
+	{
+		LieroTick out = { TickStay, false, 0 };
+		LieroScreen next = { nullptr, nullptr, nullptr, nullptr };
+		s.tick(s.data, &out, &next);
+		Tick t;
+		t.kind = out.kind;
+		t.shown = out.shown;
+		t.result = out.result;
+		if (next.tick)
+			t.screen = fromFfi(next);
+		return t;
+	}
+
+	void resume(int result) override
+	{
+		if (s.resume)
+			s.resume(s.data, result);
+	}
+};
+
+// What Rust screens call in C++ (LieroScreenHost).
+
+// The DOS key an event gives, if it's one a control can be set to.
+bool choiceKeyOf(SDL_Event& ev, uint32_t& k)
+{
+	switch (ev.type)
+	{
+	case SDL_KEYDOWN:
+		k = SDLToDOSKey(ev.key.keysym);
+		return true;
+	case SDL_JOYAXISMOTION:
+		k = liero_joy_axis_key(ev.jaxis.which, ev.jaxis.axis, ev.jaxis.value);
+		return k != 0;
+	case SDL_JOYHATMOTION:
+		k = liero_joy_hat_key(ev.jhat.which, ev.jhat.value);
+		return k != 0;
+	case SDL_JOYBUTTONDOWN:
+		k = liero_joy_button_key(ev.jbutton.which, ev.jbutton.button);
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool hostPollEvent(LieroEvent* out)
+{
+	SDL_Event ev;
+	if (!gfx.pollEvent(ev))
+		return false;
+	gfx.processEvent(ev);
+
+	*out = LieroEvent();
+	out->key_down = ev.type == SDL_KEYDOWN;
+	if (out->key_down)
+		out->scancode = ev.key.keysym.scancode;
+	uint32_t k = 0;
+	out->choice = choiceKeyOf(ev, k);
+	out->key = k;
+	if (ev.type == SDL_TEXTINPUT)
+		out->text = uint8_t(utf8ToDOS(ev.text.text));
+	return true;
+}
+
+void hostProcess() { gfx.process(); }
+void hostClearKeys() { gfx.clearKeys(); }
+void hostPlaySound(int32_t id) { sfx.play(*gfx.common, id); }
+void hostScreen(LieroBitmap* out) { *out = gfx.playRenderer.bmp.view(); }
+void hostFrozen(LieroBitmap* out) { *out = gfx.frozenScreen.view(); }
+void hostFont(LieroFont* out) { *out = gfx.common->font.view(); }
+void hostFillScreen(uint8_t color) { fill(gfx.playRenderer.bmp, color); }
+void hostMenuPalette() { gfx.playRenderer.pal = gfx.common->exepal; }
+
+void hostTextInput(bool on)
+{
+	if (on)
+		SDL_StartTextInput();
+#ifdef __EMSCRIPTEN__
+	// Text input stays off outside the text box, so that SDL calls
+	// preventDefault on every key the game gets (see main.cpp).
+	else
+		SDL_StopTextInput();
+#endif
+}
+
+void setScreenHost()
+{
+	LieroScreenHost h;
+	h.poll_event = hostPollEvent;
+	h.process = hostProcess;
+	h.clear_keys = hostClearKeys;
+	h.play_sound = hostPlaySound;
+	h.screen = hostScreen;
+	h.frozen = hostFrozen;
+	h.font = hostFont;
+	h.fill_screen = hostFillScreen;
+	h.menu_palette = hostMenuPalette;
+	h.text_input = hostTextInput;
+	liero_screen_set_host(&h);
+}
+
 LieroAppHost appHost()
 {
 	LieroAppHost host;
@@ -127,8 +245,14 @@ void browserFrame(void* arg)
 
 }
 
+std::unique_ptr<Screen> fromFfi(LieroScreen s)
+{
+	return std::unique_ptr<Screen>(new ForeignScreen(s));
+}
+
 void runScreens(std::unique_ptr<Screen> first)
 {
+	setScreenHost();
 	LieroApp* app = liero_app_new();
 	liero_app_push(app, toFfi(std::move(first)));
 
@@ -154,6 +278,7 @@ void runScreens(std::unique_ptr<Screen> first)
 void startScreens(std::unique_ptr<Screen> first, std::function<void()> done)
 {
 #ifdef __EMSCRIPTEN__
+	setScreenHost();
 	pending = nullptr;
 	Running* r = new Running{ liero_app_new(), std::move(done) };
 	liero_app_push(r->app, toFfi(std::move(first)));
