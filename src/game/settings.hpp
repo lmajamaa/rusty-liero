@@ -11,36 +11,16 @@
 #include <stdexcept>
 #include "settingsffi.hpp"
 
-// The settings the original LIERO.DAT didn't have. The fields and their
-// defaults match LieroSettings and liero_data::settings::Settings.
-struct Extensions
+struct Rand;
+
+// The game's settings. Rust owns them (LieroSettingsBox in
+// rust/liero-game/src/settings.rs); the fields here refer to its. The fields
+// and their defaults match liero_data::settings::Settings. The worms'
+// settings are apart, since each worm holds on to its own.
+struct Settings : gvl::shared
 {
 	static bool const extensions = true;
 
-	// Extensions
-	bool recordReplays;
-	bool loadPowerlevelPalette;
-	int32_t bloodParticleMax;
-
-	int aiFrames, aiMutations;
-	bool aiTraces;
-	int32_t aiParallels;
-
-	bool fullscreen;
-
-	int32_t zoneTimeout;
-	uint32_t selectBotWeapons;
-
-	bool allowViewingSpawnPoint;
-	bool singleScreenReplay;
-	bool spectatorWindow;
-	std::string tc;
-};
-
-struct Rand;
-
-struct Settings : gvl::shared, Extensions
-{
 	enum
 	{
 		GMKillEmAll,
@@ -55,6 +35,13 @@ struct Settings : gvl::shared, Extensions
 	static int const wormAnimTab[];
 
 	Settings();
+	// A copy with settings of its own, sharing the worms' settings.
+	Settings(Settings const& other);
+	Settings& operator=(Settings const&) = delete;
+	~Settings();
+
+	// The settings in Rust, for Rust code to work on.
+	LieroSettingsBox* rust() const { return box; }
 
 	// liero.cfg. Returns false if it can't be read or parsed, keeping the
 	// settings read before the error. Like the C++ reader before it, throws
@@ -71,22 +58,54 @@ struct Settings : gvl::shared, Extensions
 
 	static void generateName(WormSettings& ws, Rand& rand);
 
-	uint32_t weapTable[40];
-	int32_t maxBonuses;
-	int32_t blood;
-	int32_t timeToLose;
-	int32_t flagsToWin;
-	uint32_t gameMode;
-	bool shadow;
-	bool loadChange;
-	bool namesOnBonuses;
-	bool regenerateLevel;
-	int32_t lives;
-	int32_t loadingTime;
-	bool randomLevel;
-	std::string levelFile;
-	bool map;
-	bool screenSync;
+private:
+	explicit Settings(LieroSettingsBox* box);
+
+	static LieroStr getTc(void const* b) { return liero_settings_box_tc(static_cast<LieroSettingsBox const*>(b)); }
+	static void setTc(void* b, LieroStr s) { liero_settings_box_set_tc(static_cast<LieroSettingsBox*>(b), s); }
+	static LieroStr getLevelFile(void const* b) { return liero_settings_box_level_file(static_cast<LieroSettingsBox const*>(b)); }
+	static void setLevelFile(void* b, LieroStr s) { liero_settings_box_set_level_file(static_cast<LieroSettingsBox*>(b), s); }
+
+	LieroSettingsBox* box;
+	LieroSettingsData& data;
+
+public:
+	// Extensions: what the original LIERO.DAT didn't have.
+	bool& recordReplays;
+	bool& loadPowerlevelPalette;
+	int32_t& bloodParticleMax;
+
+	int32_t& aiFrames;
+	int32_t& aiMutations;
+	bool& aiTraces;
+	int32_t& aiParallels;
+
+	bool& fullscreen;
+
+	int32_t& zoneTimeout;
+	uint32_t& selectBotWeapons;
+
+	bool& allowViewingSpawnPoint;
+	bool& singleScreenReplay;
+	bool& spectatorWindow;
+	SettingsText tc;
+
+	uint32_t (&weapTable)[40];
+	int32_t& maxBonuses;
+	int32_t& blood;
+	int32_t& timeToLose;
+	int32_t& flagsToWin;
+	uint32_t& gameMode;
+	bool& shadow;
+	bool& loadChange;
+	bool& namesOnBonuses;
+	bool& regenerateLevel;
+	int32_t& lives;
+	int32_t& loadingTime;
+	bool& randomLevel;
+	SettingsText levelFile;
+	bool& map;
+	bool& screenSync;
 
 	gvl::shared_ptr<WormSettings> wormSettings[2];
 

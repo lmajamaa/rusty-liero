@@ -99,7 +99,7 @@ struct WormNameBehavior : ItemBehavior
 		x += menu.valueOffsetX + 2;
 
 		WormNameBehavior self = *this;
-		gfx.openInputString(ws.name, 20, x, y, [self, &menu, &item](bool ok, std::string const& name) mutable
+		gfx.openInputString(ws.name.str(), 20, x, y, [self, &menu, &item](bool ok, std::string const& name) mutable
 		{
 			if (ok)
 				self.ws.name = name;
@@ -117,7 +117,7 @@ struct WormNameBehavior : ItemBehavior
 
 	void onUpdate(Menu& menu, MenuItem& item)
 	{
-		item.value = ws.name;
+		item.value = ws.name.str();
 		item.hasValue = true;
 	}
 
@@ -967,7 +967,7 @@ struct LevelSelectBehavior : ItemBehavior
 		item.hasValue = true;
 		if(!gfx.settings->randomLevel)
 		{
-			item.value = '"' + getBasename(getLeaf(gfx.settings->levelFile)) + '"';
+			item.value = '"' + getBasename(getLeaf(gfx.settings->levelFile.str())) + '"';
 			menu.itemFromId(SettingsMenu::SiRegenerateLevel)->string = LS(ReloadLevel); // Not string?
 		}
 		else
@@ -1498,7 +1498,7 @@ std::unique_ptr<Screen> selectLevelScreen()
 	s.filter = "LEV";
 	s.title = LS(SelLevel);
 	s.randomName = LS(Random);
-	s.select = gfx.settings->levelFile;
+	s.select = gfx.settings->levelFile.str();
 	return selectorScreen(new SelectorContext(SelectorContext::Level, root), s, true, false, true);
 }
 
@@ -1957,7 +1957,7 @@ void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::
 	LieroFont font = common.font.view();
 	WormSettings const& a = *settings.wormSettings[0];
 	WormSettings const& b = *settings.wormSettings[1];
-	liero_menu_draw_versus(&scr, &font, str(level), str(a.name), str(b.name), a.color, b.color, centerX, centerY);
+	liero_menu_draw_versus(&scr, &font, str(level), a.name.view(), b.name.view(), a.color, b.color, centerX, centerY);
 }
 
 void Gfx::drawSpectatorInfo()
@@ -1967,7 +1967,7 @@ void Gfx::drawSpectatorInfo()
 	int centerY = singleScreenRenderer.renderResY / 4;
 
 	singleScreenRenderer.bmp.copy(frozenSpectatorScreen);
-	drawVersusInfo(common, singleScreenRenderer.bmp, *settings, gfx.settings->levelFile, centerX, centerY);
+	drawVersusInfo(common, singleScreenRenderer.bmp, *settings, gfx.settings->levelFile.str(), centerX, centerY);
 
 	if (controller->running())
 	{

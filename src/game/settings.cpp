@@ -18,13 +18,63 @@ int const Settings::wormAnimTab[] =
 	14
 };
 
+Settings::Settings(LieroSettingsBox* box)
+: box(box)
+, data(*liero_settings_box_data(box))
+, recordReplays(data.record_replays)
+, loadPowerlevelPalette(data.load_powerlevel_palette)
+, bloodParticleMax(data.blood_particle_max)
+, aiFrames(data.ai_frames)
+, aiMutations(data.ai_mutations)
+, aiTraces(data.ai_traces)
+, aiParallels(data.ai_parallels)
+, fullscreen(data.fullscreen)
+, zoneTimeout(data.zone_timeout)
+, selectBotWeapons(data.select_bot_weapons)
+, allowViewingSpawnPoint(data.allow_viewing_spawn_point)
+, singleScreenReplay(data.single_screen_replay)
+, spectatorWindow(data.spectator_window)
+, tc(box, &getTc, &setTc)
+, weapTable(data.weap_table)
+, maxBonuses(data.max_bonuses)
+, blood(data.blood)
+, timeToLose(data.time_to_lose)
+, flagsToWin(data.flags_to_win)
+, gameMode(data.game_mode)
+, shadow(data.shadow)
+, loadChange(data.load_change)
+, namesOnBonuses(data.names_on_bonuses)
+, regenerateLevel(data.regenerate_level)
+, lives(data.lives)
+, loadingTime(data.loading_time)
+, randomLevel(data.random_level)
+, levelFile(box, &getLevelFile, &setLevelFile)
+, map(data.map)
+, screenSync(data.screen_sync)
+{
+}
+
 Settings::Settings()
+: Settings(liero_settings_box_new())
 {
 	wormSettings[0].reset(new WormSettings);
 	wormSettings[1].reset(new WormSettings);
 
 	SettingsResult r(liero_settings_default());
 	setSettings(*this, r.settings());
+}
+
+Settings::Settings(Settings const& other)
+: Settings(liero_settings_box_clone(other.box))
+{
+	wormSettings[0] = other.wormSettings[0];
+	wormSettings[1] = other.wormSettings[1];
+	hash = other.hash;
+}
+
+Settings::~Settings()
+{
+	liero_settings_box_free(box);
 }
 
 namespace
@@ -36,9 +86,14 @@ LieroStr str(std::string const& s)
 	return r;
 }
 
-void setStr(std::string& s, LieroStr v)
+void setStr(SettingsText& s, LieroStr v)
 {
-	s.assign(reinterpret_cast<char const*>(v.ptr), v.len);
+	s = std::string(reinterpret_cast<char const*>(v.ptr), v.len);
+}
+
+LieroStr str(SettingsText const& s)
+{
+	return s.view();
 }
 
 template<typename T, typename U, std::size_t N>

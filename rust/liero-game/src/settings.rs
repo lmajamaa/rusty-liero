@@ -1,6 +1,7 @@
-//! C interface to the settings formats in `liero_data::settings`.
+//! C interface to the settings formats in `liero_data::settings`, and the
+//! settings the game runs with (`LieroSettingsBox`, at the end).
 //!
-//! The C++ `Settings` and `WormSettings` stay where the game uses them. To
+//! The C++ `Settings` and `WormSettings` refer to fields Rust owns. To
 //! read or write them, C++ passes a `LieroSettings` or `LieroWormSettings`
 //! view of its fields, and gets back a `LieroSettingsResult` holding the
 //! settings afterwards (reads change them, and so do some writes), the bytes
@@ -563,5 +564,247 @@ mod tests {
         let written = Owned(unsafe { liero_settings_write_archive(&view) });
         let hash = Owned(unsafe { liero_settings_hash(&view) });
         assert_eq!(unsafe { liero_settings_result_hash(hash.r()) }.value, liero_data::gash::gash(&written.bytes()));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The settings the game runs with, owned by Rust.
+//
+// C++'s `Settings` and `WormSettings` hold a box each and refer to the
+// fields in it, so Rust code can work on the same settings directly. The
+// text fields live beside the plain ones, behind functions.
+
+/// The plain fields of the game's settings.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct LieroSettingsData {
+    pub record_replays: bool,
+    pub load_powerlevel_palette: bool,
+    pub blood_particle_max: i32,
+    pub ai_frames: i32,
+    pub ai_mutations: i32,
+    pub ai_traces: bool,
+    pub ai_parallels: i32,
+    pub fullscreen: bool,
+    pub zone_timeout: i32,
+    pub select_bot_weapons: u32,
+    pub allow_viewing_spawn_point: bool,
+    pub single_screen_replay: bool,
+    pub spectator_window: bool,
+
+    pub weap_table: [u32; 40],
+    pub max_bonuses: i32,
+    pub blood: i32,
+    pub time_to_lose: i32,
+    pub flags_to_win: i32,
+    pub game_mode: u32,
+    pub shadow: bool,
+    pub load_change: bool,
+    pub names_on_bonuses: bool,
+    pub regenerate_level: bool,
+    pub lives: i32,
+    pub loading_time: i32,
+    pub random_level: bool,
+    pub map: bool,
+    pub screen_sync: bool,
+}
+
+/// The plain fields of a worm's settings.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct LieroWormSettingsData {
+    pub health: i32,
+    pub controller: u32,
+    pub controls: [u32; LIERO_MAX_CONTROL],
+    pub weapons: [u32; 5],
+    pub rgb: [i32; 3],
+    pub random_name: bool,
+    pub color: i32,
+    pub controls_ex: [u32; LIERO_MAX_CONTROL_EX],
+}
+
+/// The game's settings, without the worms', which C++ keeps apart since a
+/// worm holds on to its own.
+#[derive(Clone)]
+pub struct LieroSettingsBox {
+    pub data: LieroSettingsData,
+    pub tc: Vec<u8>,
+    pub level_file: Vec<u8>,
+}
+
+#[derive(Clone, Default)]
+pub struct LieroWormSettingsBox {
+    pub data: LieroWormSettingsData,
+    pub name: Vec<u8>,
+}
+
+impl Default for LieroSettingsData {
+    fn default() -> Self {
+        LieroSettingsData {
+            record_replays: false,
+            load_powerlevel_palette: false,
+            blood_particle_max: 0,
+            ai_frames: 0,
+            ai_mutations: 0,
+            ai_traces: false,
+            ai_parallels: 0,
+            fullscreen: false,
+            zone_timeout: 0,
+            select_bot_weapons: 0,
+            allow_viewing_spawn_point: false,
+            single_screen_replay: false,
+            spectator_window: false,
+            weap_table: [0; 40],
+            max_bonuses: 0,
+            blood: 0,
+            time_to_lose: 0,
+            flags_to_win: 0,
+            game_mode: 0,
+            shadow: false,
+            load_change: false,
+            names_on_bonuses: false,
+            regenerate_level: false,
+            lives: 0,
+            loading_time: 0,
+            random_level: false,
+            map: false,
+            screen_sync: false,
+        }
+    }
+}
+
+fn set_bytes(dest: &mut Vec<u8>, text: LieroStr) {
+    // SAFETY: the caller passes a valid string.
+    *dest = unsafe { text.bytes() }.to_vec();
+}
+
+/// Settings with every field zero or empty; C++ then sets the defaults.
+#[no_mangle]
+pub extern "C" fn liero_settings_box_new() -> *mut LieroSettingsBox {
+    Box::into_raw(Box::new(LieroSettingsBox { data: LieroSettingsData::default(), tc: Vec::new(), level_file: Vec::new() }))
+}
+
+#[no_mangle]
+pub extern "C" fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSettingsBox {
+    Box::into_raw(Box::new(s.clone()))
+}
+
+/// # Safety
+/// `s` comes from `liero_settings_box_new` or `_clone` and isn't used again.
+#[no_mangle]
+pub unsafe extern "C" fn liero_settings_box_free(s: *mut LieroSettingsBox) {
+    if !s.is_null() {
+        drop(Box::from_raw(s));
+    }
+}
+
+/// The plain fields, which stay where they are for the box's life.
+#[no_mangle]
+pub extern "C" fn liero_settings_box_data(s: &mut LieroSettingsBox) -> *mut LieroSettingsData {
+    &mut s.data
+}
+
+/// The TC's name, valid until it's set.
+#[no_mangle]
+pub extern "C" fn liero_settings_box_tc(s: &LieroSettingsBox) -> LieroStr {
+    str(&s.tc)
+}
+
+/// # Safety
+/// `text` must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_settings_box_set_tc(s: &mut LieroSettingsBox, text: LieroStr) {
+    set_bytes(&mut s.tc, text);
+}
+
+/// The level file, valid until it's set.
+#[no_mangle]
+pub extern "C" fn liero_settings_box_level_file(s: &LieroSettingsBox) -> LieroStr {
+    str(&s.level_file)
+}
+
+/// # Safety
+/// `text` must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_settings_box_set_level_file(s: &mut LieroSettingsBox, text: LieroStr) {
+    set_bytes(&mut s.level_file, text);
+}
+
+/// A worm's settings with every field zero or empty.
+#[no_mangle]
+pub extern "C" fn liero_worm_settings_box_new() -> *mut LieroWormSettingsBox {
+    Box::into_raw(Box::default())
+}
+
+#[no_mangle]
+pub extern "C" fn liero_worm_settings_box_clone(s: &LieroWormSettingsBox) -> *mut LieroWormSettingsBox {
+    Box::into_raw(Box::new(s.clone()))
+}
+
+/// # Safety
+/// `s` comes from `liero_worm_settings_box_new` or `_clone` and isn't used
+/// again.
+#[no_mangle]
+pub unsafe extern "C" fn liero_worm_settings_box_free(s: *mut LieroWormSettingsBox) {
+    if !s.is_null() {
+        drop(Box::from_raw(s));
+    }
+}
+
+/// The plain fields, which stay where they are for the box's life.
+#[no_mangle]
+pub extern "C" fn liero_worm_settings_box_data(s: &mut LieroWormSettingsBox) -> *mut LieroWormSettingsData {
+    &mut s.data
+}
+
+/// The worm's name, valid until it's set.
+#[no_mangle]
+pub extern "C" fn liero_worm_settings_box_name(s: &LieroWormSettingsBox) -> LieroStr {
+    str(&s.name)
+}
+
+/// # Safety
+/// `text` must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_worm_settings_box_set_name(s: &mut LieroWormSettingsBox, text: LieroStr) {
+    set_bytes(&mut s.name, text);
+}
+
+#[cfg(test)]
+mod box_tests {
+    use super::*;
+
+    fn s(b: &[u8]) -> LieroStr {
+        str(b)
+    }
+
+    #[test]
+    fn a_clone_is_separate() {
+        let a = liero_settings_box_new();
+        unsafe {
+            (*liero_settings_box_data(&mut *a)).lives = 3;
+            liero_settings_box_set_tc(&mut *a, s(b"openliero"));
+            let b = liero_settings_box_clone(&*a);
+            (*liero_settings_box_data(&mut *a)).lives = 5;
+            liero_settings_box_set_tc(&mut *a, s(b"other"));
+            assert_eq!((*b).data.lives, 3);
+            assert_eq!(liero_settings_box_tc(&*b).bytes(), b"openliero");
+            liero_settings_box_free(a);
+            liero_settings_box_free(b);
+        }
+    }
+
+    #[test]
+    fn worm_name_and_fields() {
+        let w = liero_worm_settings_box_new();
+        unsafe {
+            (*liero_worm_settings_box_data(&mut *w)).health = 7;
+            liero_worm_settings_box_set_name(&mut *w, s(b"BOT A"));
+            let c = liero_worm_settings_box_clone(&*w);
+            assert_eq!(liero_worm_settings_box_name(&*c).bytes(), b"BOT A");
+            assert_eq!((*c).data.health, 7);
+            liero_worm_settings_box_free(w);
+            liero_worm_settings_box_free(c);
+        }
     }
 }

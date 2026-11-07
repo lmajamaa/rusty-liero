@@ -262,7 +262,7 @@ void LocalController::changeState(GameState newState)
 				for(std::size_t i = 0; i < 2; ++i)
 				{
 					Worm& worm = *game.worms[i];
-					std::string const& name = worm.settings->name;
+					std::string const name = worm.settings->name.str();
 					int chars = 0;
 
 					if(i > 0)

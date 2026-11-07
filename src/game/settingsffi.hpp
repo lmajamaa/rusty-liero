@@ -10,9 +10,60 @@
 #include <gvl/crypt/gash.hpp>
 #include <cstddef>
 #include <exception>
+#include <string>
 
 struct Settings;
 struct WormSettings;
+
+// A text field of settings Rust owns (the TC's name, the level file, a
+// worm's name), used much like a std::string. Assigning one to another
+// copies the text, not which field it is.
+struct SettingsText
+{
+	typedef LieroStr (*Get)(void const* owner);
+	typedef void (*Set)(void* owner, LieroStr text);
+
+	SettingsText(void* owner, Get get, Set set)
+	: owner(owner), get_(get), set_(set)
+	{
+	}
+
+	SettingsText(SettingsText const&) = delete;
+
+	LieroStr view() const { return get_(owner); }
+
+	std::string str() const
+	{
+		LieroStr s = view();
+		return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
+	}
+
+	explicit operator std::string() const { return str(); }
+
+	bool empty() const { return view().len == 0; }
+	std::size_t size() const { return view().len; }
+	void clear() { *this = std::string(); }
+
+	SettingsText& operator=(std::string const& s)
+	{
+		LieroStr v = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
+		set_(owner, v);
+		return *this;
+	}
+
+	SettingsText& operator=(char const* s) { return *this = std::string(s); }
+	SettingsText& operator=(SettingsText const& other) { return *this = other.str(); }
+
+	friend bool operator==(SettingsText const& a, std::string const& b) { return a.str() == b; }
+	friend bool operator==(std::string const& a, SettingsText const& b) { return a == b.str(); }
+	friend bool operator!=(SettingsText const& a, std::string const& b) { return !(a == b); }
+	friend bool operator!=(std::string const& a, SettingsText const& b) { return !(a == b); }
+
+private:
+	void* owner;
+	Get get_;
+	Set set_;
+};
 
 // Views that point into the settings' strings, valid while they are unchanged.
 LieroSettings settingsView(Settings const& s);

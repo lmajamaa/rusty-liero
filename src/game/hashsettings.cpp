@@ -131,7 +131,7 @@ void addWorm(Fnv& f, WormSettings const& ws)
 	f.add(ws.controller);
 	for (uint32_t c : ws.controls) f.add(c);
 	for (uint32_t w : ws.weapons) f.add(w);
-	addStr(f, ws.name);
+	addStr(f, ws.name.str());
 	for (int c : ws.rgb) f.add(int32_t(c));
 	f.add(ws.randomName);
 	f.add(int32_t(ws.color));
@@ -153,7 +153,7 @@ void addSettings(Fnv& f, Settings const& s)
 	f.add(s.allowViewingSpawnPoint);
 	f.add(s.singleScreenReplay);
 	f.add(s.spectatorWindow);
-	addStr(f, s.tc);
+	addStr(f, s.tc.str());
 
 	for (uint32_t w : s.weapTable) f.add(w);
 	f.add(s.maxBonuses);
@@ -168,7 +168,7 @@ void addSettings(Fnv& f, Settings const& s)
 	f.add(s.lives);
 	f.add(s.loadingTime);
 	f.add(s.randomLevel);
-	addStr(f, s.levelFile);
+	addStr(f, s.levelFile.str());
 	f.add(s.map);
 	f.add(s.screenSync);
 

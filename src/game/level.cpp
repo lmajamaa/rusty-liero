@@ -88,7 +88,7 @@ void Level::generateFromSettings(Common& common, Settings const& settings, Rand&
 	}
 	else
 	{
-		std::string path = settings.levelFile;
+		std::string path = settings.levelFile.str();
 		if (path.find('.', 0) == std::string::npos)
 			path += ".LEV";
 
@@ -107,7 +107,7 @@ void Level::generateFromSettings(Common& common, Settings const& settings, Rand&
 	}
 
 	oldRandomLevel = settings.randomLevel;
-	oldLevelFile = settings.levelFile;
+	oldLevelFile = settings.levelFile.str();
 
 	if(settings.shadow)
 	{
