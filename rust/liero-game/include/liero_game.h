@@ -145,6 +145,17 @@
  */
 #define LIERO_COS_SIN_ENTRIES 128
 
+/**
+ * List sizes, as in `Game`'s typedefs.
+ */
+#define LIERO_MAX_BONUSES 99
+
+#define LIERO_MAX_WOBJECTS 600
+
+#define LIERO_MAX_SOBJECTS 700
+
+#define LIERO_MAX_NOBJECTS 600
+
 #define LIERO_RAND_DEFAULT_SEED 4919
 
 
@@ -632,8 +643,167 @@ typedef struct LieroHoldazone {
 } LieroHoldazone;
 
 /**
- * The game's state, besides its worms, object lists and level. Rust owns
- * it, and the fields of C++'s `Game` refer to it (`liero_game_data_new`).
+ * A bonus, laid out like C++'s `Bonus`.
+ */
+typedef struct LieroBonus {
+  bool used;
+  int32_t x;
+  int32_t y;
+  int32_t vel_y;
+  /**
+   * 0 is a weapon, 1 health; -1 before the slot's first bonus.
+   */
+  int32_t frame;
+  int32_t timer;
+  int32_t weapon;
+} LieroBonus;
+
+/**
+ * `ExactObjectList<Bonus, 99>`.
+ */
+typedef struct LieroBonusList {
+  struct LieroBonus arr[LIERO_MAX_BONUSES];
+  struct LieroBonus sentinel;
+  /**
+   * A set bit is a free slot.
+   */
+  uint32_t free_list[4];
+  uintptr_t count;
+} LieroBonusList;
+
+/**
+ * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
+ */
+typedef struct LieroIVec2 {
+  int32_t x;
+  int32_t y;
+} LieroIVec2;
+
+/**
+ * A worm's weapon slot, laid out like C++'s `WormWeapon`.
+ */
+typedef struct LieroWormWeapon {
+  /**
+   * The C++ `Weapon`.
+   */
+  const void *kind;
+  int32_t ammo;
+  int32_t delay_left;
+  int32_t loading_left;
+} LieroWormWeapon;
+
+/**
+ * A weapon object, laid out like C++'s `WObject`.
+ */
+typedef struct LieroWObject {
+  bool used;
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  /**
+   * The C++ `Weapon`.
+   */
+  const void *kind;
+  int32_t owner_idx;
+  int32_t cur_frame;
+  int32_t time_left;
+  /**
+   * The weapon slot that fired it, for stats.
+   */
+  struct LieroWormWeapon *fired_by;
+  bool has_hit;
+} LieroWObject;
+
+/**
+ * `ExactObjectList<WObject, 600>`.
+ */
+typedef struct LieroWObjectList {
+  struct LieroWObject arr[LIERO_MAX_WOBJECTS];
+  struct LieroWObject sentinel;
+  uint32_t free_list[19];
+  uintptr_t count;
+} LieroWObjectList;
+
+/**
+ * A special object, laid out like C++'s `SObject`.
+ */
+typedef struct LieroSObject {
+  bool used;
+  int32_t x;
+  int32_t y;
+  /**
+   * The type.
+   */
+  int32_t id;
+  int32_t cur_frame;
+  int32_t anim_delay;
+} LieroSObject;
+
+/**
+ * `ExactObjectList<SObject, 700>`.
+ */
+typedef struct LieroSObjectList {
+  struct LieroSObject arr[LIERO_MAX_SOBJECTS];
+  struct LieroSObject sentinel;
+  uint32_t free_list[22];
+  uintptr_t count;
+} LieroSObjectList;
+
+/**
+ * A non-weapon object, laid out like C++'s `NObject`.
+ */
+typedef struct LieroNObject {
+  bool used;
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  int32_t time_left;
+  /**
+   * The C++ `NObjectType`.
+   */
+  const void *kind;
+  int32_t owner_idx;
+  int32_t cur_frame;
+  /**
+   * The weapon slot that fired it, for stats.
+   */
+  struct LieroWormWeapon *fired_by;
+  bool has_hit;
+} LieroNObject;
+
+/**
+ * `ExactObjectList<NObject, 600>`.
+ */
+typedef struct LieroNObjectList {
+  struct LieroNObject arr[LIERO_MAX_NOBJECTS];
+  struct LieroNObject sentinel;
+  uint32_t free_list[19];
+  uintptr_t count;
+} LieroNObjectList;
+
+/**
+ * A blood particle, laid out like C++'s `BObject`.
+ */
+typedef struct LieroBObject {
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  int32_t color;
+} LieroBObject;
+
+/**
+ * The blood particles, C++'s `BObjectList`: `arr` holds `limit`
+ * particles, and the first `count` are in use.
+ */
+typedef struct LieroBObjectList {
+  struct LieroBObject *arr;
+  uintptr_t limit;
+  uintptr_t count;
+} LieroBObjectList;
+
+/**
+ * The game's state, besides its worms and level. Rust owns it, and the
+ * fields of C++'s `Game` refer to it (`liero_game_data_new`).
+ *
+ * It is 74 KB, more than the web build's stack, so it is only made and
+ * copied on the heap: `new_boxed`, `clone_boxed` and `assign`.
  */
 typedef struct LieroGameData {
   int32_t cycles;
@@ -653,15 +823,12 @@ typedef struct LieroGameData {
   bool quick_sim;
   struct LieroHoldazone holdazone;
   struct LieroRand rand;
+  struct LieroBonusList bonuses;
+  struct LieroWObjectList wobjects;
+  struct LieroSObjectList sobjects;
+  struct LieroNObjectList nobjects;
+  struct LieroBObjectList bobjects;
 } LieroGameData;
-
-/**
- * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
- */
-typedef struct LieroIVec2 {
-  int32_t x;
-  int32_t y;
-} LieroIVec2;
 
 /**
  * The ninja rope, laid out like C++'s `Ninjarope`.
@@ -678,19 +845,6 @@ typedef struct LieroNinjarope {
   int32_t length;
   int32_t cur_len;
 } LieroNinjarope;
-
-/**
- * A worm's weapon slot, laid out like C++'s `WormWeapon`.
- */
-typedef struct LieroWormWeapon {
-  /**
-   * The C++ `Weapon`.
-   */
-  const void *kind;
-  int32_t ammo;
-  int32_t delay_left;
-  int32_t loading_left;
-} LieroWormWeapon;
 
 /**
  * A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
@@ -1077,15 +1231,6 @@ typedef struct LieroMenuHooks {
   void *ctx;
   void (*draw_overlay)(void *ctx, int32_t item, int32_t x, int32_t y, bool selected, bool disabled);
 } LieroMenuHooks;
-
-/**
- * A blood particle, laid out like C++'s `BObject`.
- */
-typedef struct LieroBObject {
-  struct LieroIVec2 pos;
-  struct LieroIVec2 vel;
-  int32_t color;
-} LieroBObject;
 
 /**
  * Constants for bonuses, from the TC (`LC(Bonus...)` in C++).
@@ -2931,6 +3076,14 @@ struct LieroGameData *liero_game_data_new(void);
 struct LieroGameData *liero_game_data_clone(const struct LieroGameData *g);
 
 /**
+ * `Game::operator=`.
+ *
+ * # Safety
+ * Both are valid, and nothing points into `to`'s blood particles after.
+ */
+void liero_game_data_assign(struct LieroGameData *to, const struct LieroGameData *from);
+
+/**
  * # Safety
  * `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
  */
@@ -3920,6 +4073,14 @@ void liero_ninjarope_process(struct LieroNinjarope *rope,
                              struct LieroRand *rand,
                              const struct LieroNinjaropeConstants *constants,
                              const struct LieroNinjaropeHooks *hooks);
+
+/**
+ * `BObjectList::resize`.
+ *
+ * # Safety
+ * `list` is valid, and no pointer into it is used after.
+ */
+void liero_bobject_list_resize(struct LieroBObjectList *list, uintptr_t limit);
 
 void liero_rand_seed(struct LieroRand *rand, uint32_t seed);
 

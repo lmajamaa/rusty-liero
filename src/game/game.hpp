@@ -8,6 +8,7 @@
 #include "sobject.hpp"
 #include "nobject.hpp"
 #include "bobject.hpp"
+#include "fastObjectList.hpp"
 #include "rand.hpp"
 #include "mixer/player.hpp"
 #include "bonus.hpp"
@@ -65,17 +66,6 @@ struct GameMembers
 	std::vector<Viewport*> viewports;
 	std::vector<SpectatorViewport*> spectatorViewports;
 	std::vector<Worm*> worms;
-
-	typedef ExactObjectList<Bonus, 99> BonusList;
-	typedef ExactObjectList<WObject, 600> WObjectList;
-	typedef ExactObjectList<SObject, 700> SObjectList;
-	typedef ExactObjectList<NObject, 600> NObjectList;
-	typedef FastObjectList<BObject> BObjectList;
-	BonusList bonuses;
-	WObjectList wobjects;
-	SObjectList sobjects;
-	NObjectList nobjects;
-	BObjectList bobjects;
 };
 
 struct Game : GameMembers
@@ -129,8 +119,8 @@ struct Game : GameMembers
 	LieroGameData* rust() { return &data; }
 
 private:
-	// Builds the members from `members`, in place: they are 74 KB, more
-	// than the web build's stack.
+	// Builds the members from `members`, in place, without a temporary
+	// copy of the level.
 	template<typename... Members>
 	Game(LieroGameData* d, Members&&... members);
 
@@ -148,6 +138,17 @@ public:
 	Holdazone& holdazone;
 
 	bool& quickSim;
+
+	typedef ExactObjectList<Bonus, LIERO_MAX_BONUSES> BonusList;
+	typedef ExactObjectList<WObject, LIERO_MAX_WOBJECTS> WObjectList;
+	typedef ExactObjectList<SObject, LIERO_MAX_SOBJECTS> SObjectList;
+	typedef ExactObjectList<NObject, LIERO_MAX_NOBJECTS> NObjectList;
+	typedef BloodList BObjectList;
+	BonusList& bonuses;
+	WObjectList& wobjects;
+	SObjectList& sobjects;
+	NObjectList& nobjects;
+	BObjectList& bobjects;
 };
 
 

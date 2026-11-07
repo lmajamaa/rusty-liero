@@ -16,8 +16,7 @@ Game& gameOf(void* game)
 void* cloneGame(void* game)
 {
 	Game& org = gameOf(game);
-	// On the heap: a Game holds its object lists by value, 74 KB in the web
-	// build, whose stack is 64 KB.
+	// On the heap, as the search keeps it after this returns.
 	Game* copy = new Game(org);
 	copy->postClone(org);
 	copy->quickSim = true;

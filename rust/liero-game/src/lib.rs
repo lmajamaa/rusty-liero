@@ -17,6 +17,7 @@ pub mod material;
 pub mod menu;
 pub mod math;
 pub mod object;
+pub mod objects;
 pub mod rand;
 pub mod replay;
 pub mod screen;

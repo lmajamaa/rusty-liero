@@ -31,6 +31,16 @@ GameMembers::GameMembers(
 // The Rust types the fields refer to are laid out like the C++ ones.
 static_assert(sizeof(Rand) == sizeof(LieroRand), "Rand layout");
 static_assert(sizeof(Holdazone) == sizeof(LieroHoldazone), "Holdazone layout");
+static_assert(sizeof(Bonus) == sizeof(LieroBonus), "Bonus layout");
+static_assert(sizeof(WObject) == sizeof(LieroWObject), "WObject layout");
+static_assert(sizeof(SObject) == sizeof(LieroSObject), "SObject layout");
+static_assert(sizeof(NObject) == sizeof(LieroNObject), "NObject layout");
+static_assert(sizeof(BObject) == sizeof(LieroBObject), "BObject layout");
+static_assert(sizeof(Game::BonusList) == sizeof(LieroBonusList), "bonus list layout");
+static_assert(sizeof(Game::WObjectList) == sizeof(LieroWObjectList), "wobject list layout");
+static_assert(sizeof(Game::SObjectList) == sizeof(LieroSObjectList), "sobject list layout");
+static_assert(sizeof(Game::NObjectList) == sizeof(LieroNObjectList), "nobject list layout");
+static_assert(sizeof(Game::BObjectList) == sizeof(LieroBObjectList), "blood list layout");
 
 template<typename... Members>
 Game::Game(LieroGameData* d, Members&&... members)
@@ -44,6 +54,11 @@ Game::Game(LieroGameData* d, Members&&... members)
 , rand(static_cast<Rand&>(d->rand))
 , holdazone(reinterpret_cast<Holdazone&>(d->holdazone))
 , quickSim(d->quick_sim)
+, bonuses(reinterpret_cast<BonusList&>(d->bonuses))
+, wobjects(reinterpret_cast<WObjectList&>(d->wobjects))
+, sobjects(reinterpret_cast<SObjectList&>(d->sobjects))
+, nobjects(reinterpret_cast<NObjectList&>(d->nobjects))
+, bobjects(reinterpret_cast<BObjectList&>(d->bobjects))
 {
 }
 
@@ -68,7 +83,7 @@ Game::Game(Game const& other)
 Game& Game::operator=(Game const& other)
 {
 	GameMembers::operator=(other);
-	data = other.data;
+	liero_game_data_assign(&data, &other.data);
 	return *this;
 }
 
@@ -232,6 +247,16 @@ static_assert(sizeof(gvl::rect) == sizeof(LieroRect), "rect layout");
 static_assert(offsetof(gvl::rect, x1) == offsetof(LieroRect, x1) && offsetof(gvl::rect, y1) == offsetof(LieroRect, y1)
 	&& offsetof(gvl::rect, x2) == offsetof(LieroRect, x2) && offsetof(gvl::rect, y2) == offsetof(LieroRect, y2), "rect layout");
 static_assert(sizeof(Holdazone) == sizeof(LieroHoldazone), "Holdazone layout");
+static_assert(sizeof(Bonus) == sizeof(LieroBonus), "Bonus layout");
+static_assert(sizeof(WObject) == sizeof(LieroWObject), "WObject layout");
+static_assert(sizeof(SObject) == sizeof(LieroSObject), "SObject layout");
+static_assert(sizeof(NObject) == sizeof(LieroNObject), "NObject layout");
+static_assert(sizeof(BObject) == sizeof(LieroBObject), "BObject layout");
+static_assert(sizeof(Game::BonusList) == sizeof(LieroBonusList), "bonus list layout");
+static_assert(sizeof(Game::WObjectList) == sizeof(LieroWObjectList), "wobject list layout");
+static_assert(sizeof(Game::SObjectList) == sizeof(LieroSObjectList), "sobject list layout");
+static_assert(sizeof(Game::NObjectList) == sizeof(LieroNObjectList), "nobject list layout");
+static_assert(sizeof(Game::BObjectList) == sizeof(LieroBObjectList), "blood list layout");
 static_assert(offsetof(Holdazone, rect) == offsetof(LieroHoldazone, rect), "Holdazone layout");
 static_assert(offsetof(Holdazone, holderIdx) == offsetof(LieroHoldazone, holder_idx), "Holdazone layout");
 static_assert(offsetof(Holdazone, contenderIdx) == offsetof(LieroHoldazone, contender_idx), "Holdazone layout");

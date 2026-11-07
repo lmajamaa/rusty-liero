@@ -13,6 +13,7 @@
 use std::ffi::c_void;
 
 use crate::level::LieroLevel;
+use crate::objects::{zeroed_box, LieroBObjectList, LieroBonusList, LieroNObjectList, LieroSObjectList, LieroWObjectList};
 use crate::math::{ftoi, itof};
 use crate::rand::LieroRand;
 use crate::worm::{LieroWormData, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE};
@@ -71,10 +72,13 @@ impl LieroGameWorm {
     }
 }
 
-/// The game's state, besides its worms, object lists and level. Rust owns
-/// it, and the fields of C++'s `Game` refer to it (`liero_game_data_new`).
+/// The game's state, besides its worms and level. Rust owns it, and the
+/// fields of C++'s `Game` refer to it (`liero_game_data_new`).
+///
+/// It is 74 KB, more than the web build's stack, so it is only made and
+/// copied on the heap: `new_boxed`, `clone_boxed` and `assign`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct LieroGameData {
     pub cycles: i32,
     /// The worm that died last, which is 'it' in Game of Tag, or -1.
@@ -87,42 +91,88 @@ pub struct LieroGameData {
     pub quick_sim: bool,
     pub holdazone: LieroHoldazone,
     pub rand: LieroRand,
+    pub bonuses: LieroBonusList,
+    pub wobjects: LieroWObjectList,
+    pub sobjects: LieroSObjectList,
+    pub nobjects: LieroNObjectList,
+    pub bobjects: LieroBObjectList,
 }
 
-impl Default for LieroGameData {
+impl LieroGameData {
     /// What C++'s `Game` constructor set, before it seeds `rand`.
-    fn default() -> Self {
-        LieroGameData {
-            cycles: 0,
-            last_killed_idx: -1,
-            got_changed: false,
-            screen_flash: 0,
-            paused: true,
-            quick_sim: false,
-            holdazone: LieroHoldazone {
-                rect: LieroRect::default(),
-                holder_idx: -1,
-                contender_idx: -1,
-                contender_frames: 0,
-                timeout_left: 0,
-                zone_width: 50,
-                zone_height: 34,
-            },
-            rand: LieroRand::default(),
+    pub fn new_boxed() -> Box<Self> {
+        // SAFETY: all zeros is a valid value of every field but `bobjects`,
+        // which is written before the box is used.
+        let mut g: Box<Self> = unsafe {
+            let mut g = zeroed_box::<Self>();
+            std::ptr::addr_of_mut!((*g.as_mut_ptr()).bobjects).write(LieroBObjectList::new(1));
+            g.assume_init()
+        };
+        g.last_killed_idx = -1;
+        g.paused = true;
+        g.holdazone = LieroHoldazone {
+            rect: LieroRect::default(),
+            holder_idx: -1,
+            contender_idx: -1,
+            contender_frames: 0,
+            timeout_left: 0,
+            zone_width: 50,
+            zone_height: 34,
+        };
+        g.rand = LieroRand::default();
+        g.bonuses.init();
+        g.wobjects.clear();
+        g.sobjects.clear();
+        g.nobjects.clear();
+        g
+    }
+
+    /// A copy, made on the heap.
+    pub fn clone_boxed(&self) -> Box<Self> {
+        // SAFETY: a bitwise copy of every field but `bobjects`, which gets
+        // particles of its own without dropping the shared pointer.
+        unsafe {
+            let mut g = Box::<Self>::new_uninit();
+            std::ptr::copy_nonoverlapping(self, g.as_mut_ptr(), 1);
+            std::ptr::addr_of_mut!((*g.as_mut_ptr()).bobjects).write(self.bobjects.clone());
+            g.assume_init()
+        }
+    }
+
+    /// Makes this a copy of `other`, in place.
+    pub fn assign(&mut self, other: &Self) {
+        if std::ptr::eq(self, other) {
+            return;
+        }
+        // SAFETY: as in `clone_boxed`; the old particles are freed once.
+        unsafe {
+            let old = std::ptr::read(&self.bobjects);
+            std::ptr::copy_nonoverlapping(other, self, 1);
+            std::ptr::addr_of_mut!(self.bobjects).write(other.bobjects.clone());
+            drop(old);
         }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn liero_game_data_new() -> *mut LieroGameData {
-    Box::into_raw(Box::default())
+    Box::into_raw(LieroGameData::new_boxed())
 }
 
 /// # Safety
 /// `g` is valid.
 #[no_mangle]
 pub unsafe extern "C" fn liero_game_data_clone(g: &LieroGameData) -> *mut LieroGameData {
-    Box::into_raw(Box::new(*g))
+    Box::into_raw(g.clone_boxed())
+}
+
+/// `Game::operator=`.
+///
+/// # Safety
+/// Both are valid, and nothing points into `to`'s blood particles after.
+#[no_mangle]
+pub unsafe extern "C" fn liero_game_data_assign(to: &mut LieroGameData, from: &LieroGameData) {
+    to.assign(from);
 }
 
 /// # Safety
@@ -648,11 +698,11 @@ mod tests {
                 LieroGameWorm { data: w, max_health: 100 }
             })
             .collect();
-        let mut game = LieroGameData::default();
+        let mut game = LieroGameData::new_boxed();
         let fields = LieroGameFields {
             worms: views.as_ptr(),
             worm_count: views.len() as i32,
-            game: &mut game,
+            game: &mut *game,
             level: LieroLevel { data: std::ptr::null_mut(), materials: std::ptr::null_mut(), width: 0, height: 0 },
         };
         f(&fields);
@@ -667,16 +717,28 @@ mod tests {
             assert!((*g).paused && !(*g).got_changed && !(*g).quick_sim);
             let z = (*g).holdazone;
             assert_eq!((z.holder_idx, z.contender_idx, z.zone_width, z.zone_height), (-1, -1, 50, 34));
+            assert_eq!(((*g).wobjects.count, (*g).bobjects.limit, (*g).bobjects.count), (0, 1, 0));
+            assert!((*g).nobjects.sentinel.used && (*g).bonuses.arr[5].frame == -1);
 
             (*g).cycles = 7;
             (*g).quick_sim = true;
             (*g).holdazone.timeout_left = 3;
             (*g).rand.next_u32();
+            (*g).sobjects.arr[3].used = true;
+            (*g).wobjects.count = 2;
+            crate::objects::liero_bobject_list_resize(&mut (*g).bobjects, 3);
+            (*g).bobjects.count = 2;
+            (*(*g).bobjects.arr.add(1)).color = 9;
             let c = liero_game_data_clone(&*g);
-            // Every field is copied.
+            // Every field is copied, and the blood is separate.
             assert_eq!(format!("{:?}", *c), format!("{:?}", *g));
             (*c).cycles = 1;
-            assert_eq!((*g).cycles, 7);
+            (*(*c).bobjects.arr.add(1)).color = 1;
+            assert_eq!(((*g).cycles, (*(*g).bobjects.arr.add(1)).color), (7, 9));
+
+            // Assigning copies everything back.
+            liero_game_data_assign(&mut *c, &*g);
+            assert_eq!(format!("{:?}", *c), format!("{:?}", *g));
             liero_game_data_free(c);
             liero_game_data_free(g);
         }
