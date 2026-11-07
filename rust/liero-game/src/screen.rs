@@ -137,6 +137,8 @@ pub struct LieroScreenHost {
     /// Fades the menus in and cycles their colours, once a frame
     /// (`Gfx::menuFade`).
     pub menu_fade: Option<unsafe extern "C" fn()>,
+    /// Whether an SDL key is held (`Gfx::testSDLKey`).
+    pub test_key: Option<unsafe extern "C" fn(scancode: u32) -> bool>,
 }
 
 static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
@@ -205,6 +207,9 @@ impl Host {
             unsafe { f(on) }
         }
     }
+    pub fn test_key(&self, scancode: u32) -> bool {
+        self.0.test_key.is_some_and(|f| unsafe { f(scancode) })
+    }
     pub fn test_key_once(&self, scancode: u32) -> bool {
         self.0.test_key_once.is_some_and(|f| unsafe { f(scancode) })
     }
@@ -258,6 +263,11 @@ pub trait Screen {
 
 fn host() -> Host {
     Host(HOST.get().copied().unwrap_or_default())
+}
+
+/// The host, for a screen being made from C++.
+pub(crate) fn current_host() -> Host {
+    host()
 }
 
 type BoxedScreen = Box<dyn Screen>;

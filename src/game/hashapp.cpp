@@ -243,7 +243,15 @@ void buildScript(Script& s)
 	// A game until one bot is out of lives, then the stats screen.
 	s.press(SDL_SCANCODE_F1);
 	s.wait(3000);
-	s.press(SDL_SCANCODE_RIGHT);
+	// Scrolled down, then held up past the top; to the right pane and past
+	// it, then left with the key held, which moves one pane.
+	s.press(SDL_SCANCODE_DOWN, 1, 8);
+	s.wait(20);
+	s.press(SDL_SCANCODE_UP, 1, 20);
+	s.wait(20);
+	s.press(SDL_SCANCODE_RIGHT, 2);
+	s.wait(30);
+	s.press(SDL_SCANCODE_LEFT, 1, 6);
 	s.wait(30);
 	s.press(SDL_SCANCODE_ESCAPE);
 	s.wait(60);

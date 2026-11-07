@@ -1693,6 +1693,10 @@ typedef struct LieroScreenHost {
    * (`Gfx::menuFade`).
    */
   void (*menu_fade)(void);
+  /**
+   * Whether an SDL key is held (`Gfx::testSDLKey`).
+   */
+  bool (*test_key)(uint32_t scancode);
 } LieroScreenHost;
 
 /**
@@ -4720,6 +4724,16 @@ void liero_stats_screen_draw(const struct LieroStatsScreen *screen,
                              const struct LieroBitmap *scr,
                              double pane,
                              double offset);
+
+/**
+ * The stats screen for `stats` over what the screen shows now. `scene`'s
+ * texts are copied; the rest of it, and `stats`, must outlive the screen.
+ *
+ * # Safety
+ * `stats` and `scene` are valid, as in `liero_stats_screen_draw`.
+ */
+struct LieroScreen liero_stats_presenter_screen(const struct LieroStats *stats,
+                                                const struct LieroStatsScene *scene);
 
 /**
  * Copies `len` bytes from `data` into `out`.
