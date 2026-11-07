@@ -5,7 +5,8 @@
 // of the hash run starts the app's screens as the game does, with an AppDriver
 // (gfx.hpp) in place of the window: each flip prints a hash of the screen
 // and its palette (lines "app N hash frame"), and the events come from a
-// timeline of key presses and typing fixed before the run. Nothing about it
+// timeline of key presses and typing fixed before the run. Each sound started
+// prints a line too ("app-sound N id"). Nothing about it
 // depends on how the loops are written, so a version that runs the same
 // screens one frame at a time from a single loop must show the same frames.
 //
@@ -65,6 +66,11 @@ struct ScriptDriver : AppDriver
 		++now;
 		if (shown > limit)
 			throw std::runtime_error("the app ran past the end of its script");
+	}
+
+	void sound(int id) override
+	{
+		std::printf("app-sound %d %016x\n", shown, unsigned(id));
 	}
 
 	bool pollEvent(SDL_Event& ev) override
@@ -185,7 +191,15 @@ void buildScript(Script& s)
 	s.press(SDL_SCANCODE_DOWN, 3);
 	s.press(SDL_SCANCODE_RIGHT);
 	s.press(SDL_SCANCODE_ESCAPE);
-	s.press(SDL_SCANCODE_DOWN, 7);           // SAVE SETUP AS...
+	s.press(SDL_SCANCODE_DOWN);              // MAX BONUSES, held up, then
+	s.press(SDL_SCANCODE_RIGHT, 1, 30);      // more digits than the box takes
+	s.press(SDL_SCANCODE_RETURN);
+	s.press(SDL_SCANCODE_BACKSPACE, 3);
+	s.type("123");
+	s.press(SDL_SCANCODE_RETURN);
+	s.press(SDL_SCANCODE_DOWN, 3);           // AMOUNT OF BLOOD, not typed in
+	s.press(SDL_SCANCODE_RETURN);
+	s.press(SDL_SCANCODE_DOWN, 3);           // SAVE SETUP AS...
 	s.press(SDL_SCANCODE_RETURN);
 	s.type("HASHAPP");
 	s.press(SDL_SCANCODE_RETURN);

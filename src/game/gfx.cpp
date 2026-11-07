@@ -214,7 +214,7 @@ struct ProfileLoadedBehavior : ItemBehavior
 struct WeaponEnumBehavior : EnumBehavior
 {
 	WeaponEnumBehavior(Common& common, uint32_t& v)
-	: EnumBehavior(common, v, 1, (uint32_t)common.weapons.size(), false)
+	: EnumBehavior(common, v, 1, (uint32_t)common.weapons.size())
 	{
 	}
 
@@ -1086,7 +1086,7 @@ ItemBehavior* SettingsMenu::getItemBehavior(Common& common, MenuItem& item)
 		case SiAmountOfBlood:
 		{
 			IntegerBehavior* ret = new IntegerBehavior(common, gfx.settings->blood, 0, LC(BloodLimit), LC(BloodStepUp), true);
-			ret->allowEntry = false;
+			ret->data.allow_entry = false;
 			return ret;
 		}
 
@@ -1640,7 +1640,7 @@ ItemBehavior* PlayerMenu::getItemBehavior(Common& common, MenuItem& item)
 		case PlHealth:
 		{
 			auto* b = new IntegerBehavior(common, ws->health, 1, 10000, 1, true);
-			b->scrollInterval = 4;
+			b->data.scroll_interval = 4;
 			return b;
 		}
 
@@ -1649,7 +1649,7 @@ ItemBehavior* PlayerMenu::getItemBehavior(Common& common, MenuItem& item)
 		case PlBlue:
 		{
 			auto* b = new IntegerBehavior(common, ws->rgb[item.id - PlRed], 0, 63, 1, false);
-			b->scrollInterval = 4;
+			b->data.scroll_interval = 4;
 			return b;
 		}
 

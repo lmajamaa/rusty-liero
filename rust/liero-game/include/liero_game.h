@@ -270,6 +270,26 @@
 #define LIERO_GAME_SCALES_OF_JUSTICE 3
 
 /**
+ * What an item edits.
+ *
+ */
+typedef enum LieroItemKind {
+  /**
+   * On or off: `flag`, shown with `names` (off, on).
+   */
+  LieroItemKind_Switch,
+  /**
+   * A number from `min` to `max`, shown as `value_kind`.
+   */
+  LieroItemKind_Integer,
+  /**
+   * One of `min` to `max`, wrapping round: shown with `names` when there
+   * are any, else as a number.
+   */
+  LieroItemKind_Enum,
+} LieroItemKind;
+
+/**
  * Why a replay call failed.
  *
  */
@@ -1092,6 +1112,62 @@ typedef struct LieroFontChar {
   uint8_t data[56];
   int32_t width;
 } LieroFontChar;
+
+/**
+ * What C++ does after a key on an item.
+ */
+typedef struct LieroItemAction {
+  /**
+   * For left and right: whether the menu goes on to its own handling of
+   * the key (`ItemBehavior::onLeftRight`'s result).
+   */
+  bool keep_going;
+  /**
+   * Redraw this item's value.
+   */
+  bool update_item;
+  /**
+   * Redraw all the menu's values.
+   */
+  bool update_menu;
+  /**
+   * More than 0: open the number box with this many digits.
+   */
+  int32_t enter_digits;
+} LieroItemAction;
+
+typedef struct LieroItemBehavior {
+  enum LieroItemKind kind;
+  /**
+   * The switch's setting.
+   */
+  bool *flag;
+  /**
+   * Called with a switch's new value in place of writing `flag`.
+   */
+  void (*set_flag)(bool);
+  /**
+   * The number's or enum's setting (enums are `uint32_t`, read as is).
+   */
+  int32_t *value;
+  int32_t min;
+  int32_t max;
+  int32_t step;
+  /**
+   * Frames between steps while left or right is held.
+   */
+  int32_t scroll_interval;
+  /**
+   * One of the `LIERO_MENU_VALUE_*` kinds.
+   */
+  int32_t value_kind;
+  /**
+   * Whether Enter opens a box to type a number.
+   */
+  bool allow_entry;
+  const struct LieroStr *names;
+  uintptr_t name_count;
+} LieroItemBehavior;
 
 /**
  * Key presses and releases that a joystick event made.
@@ -3572,6 +3648,34 @@ int32_t liero_font_get_dims(const struct LieroFontChar *chars,
                             const uint8_t *text,
                             uintptr_t len,
                             int32_t *height);
+
+/**
+ * Left (`dir` < 0) or right on an item, with the menu's frame count for
+ * numbers that repeat while the key is held.
+ *
+ * # Safety
+ * The item's setting pointer for its kind is valid, and its names too.
+ */
+struct LieroItemAction liero_item_left_right(const struct LieroItemBehavior *b,
+                                             int32_t dir,
+                                             uint32_t menu_cycles);
+
+/**
+ * Enter on an item.
+ *
+ * # Safety
+ * As for `liero_item_left_right`.
+ */
+struct LieroItemAction liero_item_enter(const struct LieroItemBehavior *b);
+
+/**
+ * Writes the item's value text into `out` (cut to `cap` bytes) and returns
+ * its full length.
+ *
+ * # Safety
+ * As for `liero_item_left_right`, and `out` holds `cap` bytes.
+ */
+uintptr_t liero_item_value_text(const struct LieroItemBehavior *b, uint8_t *out, uintptr_t cap);
 
 /**
  * The DOS key for an SDL scancode, or 89 for one without.

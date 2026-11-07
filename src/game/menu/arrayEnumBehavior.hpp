@@ -5,25 +5,15 @@
 
 #include <string>
 
-struct Common;
-struct Menu;
-
+// An enum shown with the names in `arr`.
 struct ArrayEnumBehavior : EnumBehavior
 {
 	template<int N>
-	ArrayEnumBehavior(Common& common, uint32_t& v, std::string const (&arr)[N], bool brokenEnter = false)
-	: EnumBehavior(common, v, 0, N-1, brokenEnter)
-	, arr(arr)
+	ArrayEnumBehavior(Common& common, uint32_t& v, std::string const (&arr)[N])
+	: EnumBehavior(common, v, 0, N-1)
 	{
+		setNames(arr);
 	}
-
-	void onUpdate(Menu& menu, MenuItem& item)
-	{
-		item.value = arr[v];
-		item.hasValue = true;
-	}
-
-	std::string const* arr;
 };
 
 #endif // UUID_CCCDF474CB704A62DC6F0AB0CBBD2EFD

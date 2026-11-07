@@ -2,6 +2,7 @@
 #include "reader.hpp"
 #include "console.hpp"
 #include "common.hpp"
+#include "gfx.hpp"
 #include <vector>
 #include <cassert>
 #if !DISABLE_SOUND
@@ -68,6 +69,8 @@ void Sfx::deinit()
 
 void Sfx::play(Common& common, int sound, void* id, int loops)
 {
+	if (gfx.driver)
+		gfx.driver->sound(sound);
 #if !DISABLE_SOUND
 	if(!initialized)
 		return;

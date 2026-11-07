@@ -174,6 +174,8 @@ struct AppDriver
 	virtual void idle() = 0;
 	virtual uint32_t ticks() = 0;
 	virtual std::time_t time() = 0;
+	// A sound was started (Sfx::play).
+	virtual void sound(int id) {}
 };
 
 struct Gfx

@@ -2,38 +2,21 @@
 #define UUID_C5F17B0F3E6B43526CD95D90435B7596
 
 #include "itemBehavior.hpp"
-#include <liero_game.h>
 
-struct Common;
-struct Menu;
-
-struct IntegerBehavior : ItemBehavior
+// A number from `min` to `max`. Left and right step it, repeating while held
+// (`data.scroll_interval`); Enter types one in, unless `data.allow_entry` is
+// off.
+struct IntegerBehavior : RustItemBehavior
 {
 	IntegerBehavior(Common& common, int& v, int min, int max, int step = 1, bool percentage = false)
-	: common(common), v(v)
-	, min(min), max(max), step(step)
-	, scrollInterval(5)
-	, percentage(percentage)
-	, allowEntry(true)
+	: RustItemBehavior(common, LieroItemKind_Integer)
 	{
+		data.value = &v;
+		data.min = min;
+		data.max = max;
+		data.step = step;
+		data.value_kind = percentage ? LIERO_MENU_VALUE_PERCENTAGE : LIERO_MENU_VALUE_INTEGER;
 	}
-
-	bool onLeftRight(Menu& menu, MenuItem& item, int dir);
-	int onEnter(Menu& menu, MenuItem& item);
-	void onUpdate(Menu& menu, MenuItem& item);
-
-	Common& common;
-	int& v;
-	int min, max, step;
-	int scrollInterval;
-	bool percentage;
-	bool allowEntry;
 };
-
-#include <string>
-
-// How a number item shows `v`, one of the LIERO_MENU_VALUE_* kinds. Implemented
-// in Rust (rust/liero-game/src/menu.rs).
-std::string valueText(int v, int kind);
 
 #endif // UUID_C5F17B0F3E6B43526CD95D90435B7596

@@ -11,6 +11,7 @@ pub mod controller;
 pub mod cpp_sort;
 pub mod game;
 pub mod gfx;
+pub mod item;
 pub mod keys;
 pub mod level;
 pub mod material;
