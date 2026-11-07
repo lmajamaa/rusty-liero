@@ -20,17 +20,17 @@ struct ItemBehavior
 	{
 	}
 
-	virtual bool onLeftRight(Menu& menu, MenuItem& item, int dir)
+	virtual bool onLeftRight(Menu& menu, int item, int dir)
 	{
 		return true;
 	}
 
-	virtual int onEnter(Menu& menu, MenuItem& item)
+	virtual int onEnter(Menu& menu, int item)
 	{
 		return -1;
 	}
 
-	virtual void onUpdate(Menu& menu, MenuItem& item)
+	virtual void onUpdate(Menu& menu, int item)
 	{
 	}
 };
@@ -42,9 +42,9 @@ struct RustItemBehavior : ItemBehavior
 {
 	RustItemBehavior(Common& common, LieroItemKind kind);
 
-	bool onLeftRight(Menu& menu, MenuItem& item, int dir) override;
-	int onEnter(Menu& menu, MenuItem& item) override;
-	void onUpdate(Menu& menu, MenuItem& item) override;
+	bool onLeftRight(Menu& menu, int item, int dir) override;
+	int onEnter(Menu& menu, int item) override;
+	void onUpdate(Menu& menu, int item) override;
 
 	// The names for the switch (off, on) or the enum's values.
 	template<int N>
@@ -57,7 +57,7 @@ struct RustItemBehavior : ItemBehavior
 
 	// `data` with the names pointing into this copy.
 	LieroItemBehavior view() const;
-	void apply(Menu& menu, MenuItem& item, LieroItemAction a);
+	void apply(Menu& menu, int item, LieroItemAction a);
 
 	Common& common;
 	LieroItemBehavior data;

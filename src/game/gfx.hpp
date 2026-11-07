@@ -83,9 +83,9 @@ struct PlayerMenu : Menu
 		PlLoadedProfile,
 	};
 
-	virtual void drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled);
+	virtual void drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled);
 
-	virtual ItemBehavior* getItemBehavior(Common& common, MenuItem& item);
+	virtual ItemBehavior* getItemBehavior(Common& common, int item);
 
 	gvl::shared_ptr<WormSettings> ws;
 };
@@ -118,7 +118,7 @@ struct SettingsMenu : Menu
 	{
 	}
 
-	virtual ItemBehavior* getItemBehavior(Common& common, MenuItem& item);
+	virtual ItemBehavior* getItemBehavior(Common& common, int item);
 
 	virtual void onUpdate();
 };

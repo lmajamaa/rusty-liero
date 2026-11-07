@@ -29,7 +29,7 @@ LieroItemBehavior RustItemBehavior::view() const
 	return v;
 }
 
-bool RustItemBehavior::onLeftRight(Menu& menu, MenuItem& item, int dir)
+bool RustItemBehavior::onLeftRight(Menu& menu, int item, int dir)
 {
 	LieroItemBehavior v = view();
 	LieroItemAction a = liero_item_left_right(&v, dir, gfx.menuCycles);
@@ -37,14 +37,14 @@ bool RustItemBehavior::onLeftRight(Menu& menu, MenuItem& item, int dir)
 	return a.keep_going;
 }
 
-int RustItemBehavior::onEnter(Menu& menu, MenuItem& item)
+int RustItemBehavior::onEnter(Menu& menu, int item)
 {
 	LieroItemBehavior v = view();
 	apply(menu, item, liero_item_enter(&v));
 	return -1;
 }
 
-void RustItemBehavior::apply(Menu& menu, MenuItem& item, LieroItemAction a)
+void RustItemBehavior::apply(Menu& menu, int item, LieroItemAction a)
 {
 	if (a.update_item)
 		onUpdate(menu, item);
@@ -56,18 +56,17 @@ void RustItemBehavior::apply(Menu& menu, MenuItem& item, LieroItemAction a)
 	{
 		x += menu.valueOffsetX;
 		RustItemBehavior self = *this;
-		gfx.openInputInteger(*data.value, data.min, data.max, a.enter_digits, x + 2, y, [self, &menu, &item]() mutable
+		gfx.openInputInteger(*data.value, data.min, data.max, a.enter_digits, x + 2, y, [self, &menu, item]() mutable
 		{
 			self.onUpdate(menu, item);
 		});
 	}
 }
 
-void RustItemBehavior::onUpdate(Menu& menu, MenuItem& item)
+void RustItemBehavior::onUpdate(Menu& menu, int item)
 {
 	LieroItemBehavior v = view();
 	char buf[64];
 	std::size_t len = liero_item_value_text(&v, reinterpret_cast<uint8_t*>(buf), sizeof(buf));
-	item.value.assign(buf, std::min(len, sizeof(buf)));
-	item.hasValue = true;
+	menu.setItemValue(item, std::string(buf, std::min(len, sizeof(buf))));
 }

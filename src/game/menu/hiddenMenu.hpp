@@ -34,9 +34,9 @@ struct HiddenMenu : Menu
 	{
 	}
 
-	virtual ItemBehavior* getItemBehavior(Common& common, MenuItem& item);
+	virtual ItemBehavior* getItemBehavior(Common& common, int item);
 
-	virtual void drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled);
+	virtual void drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled);
 
 	virtual void onUpdate();
 

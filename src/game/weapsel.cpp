@@ -102,7 +102,7 @@ void hookPlaySound(void* ctx, int32_t sound)
 void hookSetItemName(void* ctx, int32_t menu, int32_t slot, int32_t weapon)
 {
 	WeaponSelection& ws = weapselOf(ctx);
-	ws.menus[menu].items[slot + 1].string = ws.game.common->weapons[weapon].name;
+	ws.menus[menu].setItemString(slot + 1, ws.game.common->weapons[weapon].name);
 }
 
 void hookSetWeapon(void* ctx, int32_t menu, int32_t slot, int32_t weapon)
@@ -140,7 +140,7 @@ WeaponSelection::WeaponSelection(Game& game)
 		Worm& worm = *game.wormByIdx(vp.wormIdx);
 		WormSettings& ws = *worm.settings;
 
-		menus[i].items.push_back(MenuItem(57, 57, LS(Randomize)));
+		menus[i].pushItem(MenuItem(57, 57, LS(Randomize)));
 
 		{
 			int x = vp.rect.center_x() - 31;
@@ -163,10 +163,10 @@ WeaponSelection::WeaponSelection(Game& game)
 			ww.ammo = 0;
 			ww.type = &common.weapons[w];
 
-			menus[i].items.push_back(MenuItem(48, 48, common.weapons[w].name));
+			menus[i].pushItem(MenuItem(48, 48, common.weapons[w].name));
 		}
 
-		menus[i].items.push_back(MenuItem(10, 10, LS(Done)));
+		menus[i].pushItem(MenuItem(10, 10, LS(Done)));
 
 		worm.currentWeapon = 0;
 

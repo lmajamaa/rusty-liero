@@ -44,11 +44,11 @@ struct KeyBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		KeyBehavior self = *this;
-		gfx.open(keyChoiceScreen(extended), [self, &menu, &item](int result) mutable
+		gfx.open(keyChoiceScreen(extended), [self, &menu, item](int result) mutable
 		{
 			uint32_t k = uint32_t(result);
 			if(k != DkEscape)
@@ -66,10 +66,9 @@ struct KeyBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.value = gfx.getKeyName(extended ? keyEx : key);
-		item.hasValue = true;
+		menu.setItemValue(item, gfx.getKeyName(extended ? keyEx : key));
 	}
 
 	Common& common;
@@ -86,7 +85,7 @@ struct WormNameBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 
@@ -99,7 +98,7 @@ struct WormNameBehavior : ItemBehavior
 		x += menu.valueOffsetX + 2;
 
 		WormNameBehavior self = *this;
-		gfx.openInputString(ws.name.str(), 20, x, y, [self, &menu, &item](bool ok, std::string const& name) mutable
+		gfx.openInputString(ws.name.str(), 20, x, y, [self, &menu, item](bool ok, std::string const& name) mutable
 		{
 			if (ok)
 				self.ws.name = name;
@@ -115,10 +114,9 @@ struct WormNameBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.value = ws.name.str();
-		item.hasValue = true;
+		menu.setItemValue(item, ws.name.str());
 	}
 
 	Common& common;
@@ -135,7 +133,7 @@ struct ProfileSaveBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 
@@ -170,11 +168,11 @@ struct ProfileSaveBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
 		if(!saveAs)
 		{
-			item.visible = (bool)ws.profileNode;
+			menu.setItemVisibleFlag(item, (bool)ws.profileNode);
 		}
 	}
 
@@ -191,20 +189,18 @@ struct ProfileLoadedBehavior : ItemBehavior
 	{
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
 		if (ws.profileNode)
 		{
-			item.value = getBasename(getLeaf(ws.profileNode.fullPath()));
-			item.visible = true;
+			menu.setItemValue(item, getBasename(getLeaf(ws.profileNode.fullPath())));
+			menu.setItemVisibleFlag(item, true);
 		}
 		else
 		{
-			item.value.clear();
-			item.visible = false;
+			menu.setItemValue(item, "");
+			menu.setItemVisibleFlag(item, false);
 		}
-
-		item.hasValue = true;
 	}
 
 	Common& common;
@@ -218,13 +214,12 @@ struct WeaponEnumBehavior : EnumBehavior
 	{
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.value = common.weapons[common.weapOrder[v - 1]].name;
-		item.hasValue = true;
+		menu.setItemValue(item, common.weapons[common.weapOrder[v - 1]].name);
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 
@@ -904,7 +899,7 @@ struct ProfileLoadBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
@@ -931,7 +926,7 @@ struct PlayerSettingsBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		gfx.playerSettings(player);
@@ -949,11 +944,11 @@ struct LevelSelectBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
-		gfx.open(selectLevelScreen(), [&common, &menu, &item](int)
+		gfx.open(selectLevelScreen(), [&common, &menu, item](int)
 		{
 			sfx.play(common, 27);
 			LevelSelectBehavior(common).onUpdate(menu, item);
@@ -962,18 +957,17 @@ struct LevelSelectBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.hasValue = true;
 		if(!gfx.settings->randomLevel)
 		{
-			item.value = '"' + getBasename(getLeaf(gfx.settings->levelFile.str())) + '"';
-			menu.itemFromId(SettingsMenu::SiRegenerateLevel)->string = LS(ReloadLevel); // Not string?
+			menu.setItemValue(item, '"' + getBasename(getLeaf(gfx.settings->levelFile.str())) + '"');
+			menu.setItemString(menu.indexFromId(SettingsMenu::SiRegenerateLevel), LS(ReloadLevel)); // Not string?
 		}
 		else
 		{
-			item.value = LS(Random2);
-			menu.itemFromId(SettingsMenu::SiRegenerateLevel)->string = LS(RegenLevel);
+			menu.setItemValue(item, LS(Random2));
+			menu.setItemString(menu.indexFromId(SettingsMenu::SiRegenerateLevel), LS(RegenLevel));
 		}
 	}
 
@@ -987,7 +981,7 @@ struct WeaponOptionsBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
@@ -1009,7 +1003,7 @@ struct OptionsSaveBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 
@@ -1021,7 +1015,7 @@ struct OptionsSaveBehavior : ItemBehavior
 
 		std::string name = getBasename(getLeaf(gfx.settingsNode.fullPath()));
 		OptionsSaveBehavior self = *this;
-		gfx.openInputString(name, 30, x, y, [self, &menu, &item](bool ok, std::string const& name) mutable
+		gfx.openInputString(name, 30, x, y, [self, &menu, item](bool ok, std::string const& name) mutable
 		{
 			if(ok && !name.empty())
 			{
@@ -1037,10 +1031,9 @@ struct OptionsSaveBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.value = getBasename(getLeaf(gfx.settingsNode.fullPath()));
-		item.hasValue = true;
+		menu.setItemValue(item, getBasename(getLeaf(gfx.settingsNode.fullPath())));
 	}
 
 	Common& common;
@@ -1053,7 +1046,7 @@ struct OptionsSelectBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
@@ -1069,9 +1062,9 @@ struct OptionsSelectBehavior : ItemBehavior
 	Common& common;
 };
 
-ItemBehavior* SettingsMenu::getItemBehavior(Common& common, MenuItem& item)
+ItemBehavior* SettingsMenu::getItemBehavior(Common& common, int item)
 {
-	switch(item.id)
+	switch(itemId(item))
 	{
 		case SiNamesOnBonuses:
 			return new BooleanSwitchBehavior(common, gfx.settings->namesOnBonuses);
@@ -1511,22 +1504,22 @@ void Gfx::openInputInteger(int& dest, int min, int max, std::size_t maxLen, int 
 	}, true);
 }
 
-void PlayerMenu::drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled)
+void PlayerMenu::drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled)
 {
-	if(item.id >= PlayerMenu::PlRed && item.id <= PlayerMenu::PlBlue) //Color settings
+	if(itemId(item) >= PlayerMenu::PlRed && itemId(item) <= PlayerMenu::PlBlue) //Color settings
 	{
-		int rgbcol = item.id - PlayerMenu::PlRed;
+		int rgbcol = itemId(item) - PlayerMenu::PlRed;
 		LieroBitmap scr = gfx.playRenderer.bmp.view();
 		liero_menu_draw_rgb_overlay(&scr, x, y, selected, ws->rgb[rgbcol], ws->color);
 	} // CED9
 }
 
-ItemBehavior* PlayerMenu::getItemBehavior(Common& common, MenuItem& item)
+ItemBehavior* PlayerMenu::getItemBehavior(Common& common, int item)
 {
-	if (item.id >= PlWeap0 && item.id < PlWeap0 + 5)
-		return new WeaponEnumBehavior(common, ws->weapons[item.id - PlWeap0]);
+	if (itemId(item) >= PlWeap0 && itemId(item) < PlWeap0 + 5)
+		return new WeaponEnumBehavior(common, ws->weapons[itemId(item) - PlWeap0]);
 
-	switch(item.id)
+	switch(itemId(item))
 	{
 		case PlName:
 			return new WormNameBehavior(common, *ws);
@@ -1541,7 +1534,7 @@ ItemBehavior* PlayerMenu::getItemBehavior(Common& common, MenuItem& item)
 		case PlGreen:
 		case PlBlue:
 		{
-			auto* b = new IntegerBehavior(common, ws->rgb[item.id - PlRed], 0, 63, 1, false);
+			auto* b = new IntegerBehavior(common, ws->rgb[itemId(item) - PlRed], 0, 63, 1, false);
 			b->data.scroll_interval = 4;
 			return b;
 		}
@@ -1553,10 +1546,10 @@ ItemBehavior* PlayerMenu::getItemBehavior(Common& common, MenuItem& item)
 		case PlFire:
 		case PlChange:
 		case PlJump:
-			return new KeyBehavior(common, ws->controls[item.id - PlUp], ws->controlsEx[item.id - PlUp], gfx.settings->extensions);
+			return new KeyBehavior(common, ws->controls[itemId(item) - PlUp], ws->controlsEx[itemId(item) - PlUp], gfx.settings->extensions);
 
 		case PlDig: // Controls Extension
-			return new KeyBehavior(common, ws->controlsEx[item.id - PlUp], ws->controlsEx[item.id - PlUp], gfx.settings->extensions);
+			return new KeyBehavior(common, ws->controlsEx[itemId(item) - PlUp], ws->controlsEx[itemId(item) - PlUp], gfx.settings->extensions);
 
 
 		case PlController: // Controller
@@ -1905,14 +1898,14 @@ int Gfx::menuStart()
 	if (controller->running())
 	{
 		mainMenu.setVisibility(MainMenu::MaResumeGame, true);
-		mainMenu.itemFromId(MainMenu::MaResumeGame)->string = "RESUME GAME (F1)";
-		mainMenu.itemFromId(MainMenu::MaNewGame)->string = "NEW GAME";
+		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaResumeGame), "RESUME GAME (F1)");
+		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaNewGame), "NEW GAME");
 		startItemId = MainMenu::MaResumeGame;
 	}
 	else
 	{
 		mainMenu.setVisibility(MainMenu::MaResumeGame, false);
-		mainMenu.itemFromId(MainMenu::MaNewGame)->string = "NEW GAME (F1)";
+		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaNewGame), "NEW GAME (F1)");
 		startItemId = MainMenu::MaNewGame;
 	}
 

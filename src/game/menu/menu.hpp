@@ -25,47 +25,46 @@
 struct Common;
 struct Gfx;
 
+// A menu: its state and items are in Rust (LieroMenuBox,
+// rust/liero-game/src/menu.rs), along with selection, scrolling, searching
+// and drawing. Items are referred to by index. What each item does is the
+// ItemBehavior the menu gives for it.
 struct Menu
 {
 	Menu(bool centered = false)
+	: Menu(0, 0, centered)
 	{
-		init(centered);
 	}
 
 	Menu(int x, int y, bool centered = false)
+	: Menu(liero_menu_box_new(x, y, centered))
 	{
-		init(centered);
-		place(x, y);
+	}
+
+	Menu(Menu const& other)
+	: Menu(liero_menu_box_clone(other.box))
+	{
+	}
+
+	Menu& operator=(Menu const& other)
+	{
+		liero_menu_box_assign(box, other.box);
+		return *this;
 	}
 
 	virtual ~Menu()
 	{
-	}
-
-	void init(bool centeredInit = false)
-	{
-		itemHeight = 8;
-		centered = centeredInit;
-		selection_ = 0;
-		valueOffsetX = 0;
-		x = 0;
-		y = 0;
-		height = 15;
-		topItem = 0;
-		bottomItem = 0;
-		//showScroll = false;
-		visibleItemCount = 0;
-		searchTime = 0;
+		liero_menu_box_free(box);
 	}
 
 	void draw(Common& common, Renderer& renderer, bool disabled, int x = -1, bool showDisabledSelection = false);
 
-	virtual void drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled)
+	virtual void drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled)
 	{
 		// Nothing by default
 	}
 
-	virtual ItemBehavior* getItemBehavior(Common& common, MenuItem& item)
+	virtual ItemBehavior* getItemBehavior(Common& common, int item)
 	{
 		// Dummy item behavior by default
 		return new ItemBehavior;
@@ -78,18 +77,18 @@ struct Menu
 
 	bool onLeftRight(Common& common, int dir)
 	{
-		auto* s = selected();
-		if (!s) return false;
-		std::unique_ptr<ItemBehavior> b(getItemBehavior(common, *s));
-		return b->onLeftRight(*this, *s, dir);
+		int s = selection();
+		if (!isSelectionValid()) return false;
+		std::unique_ptr<ItemBehavior> b(getItemBehavior(common, s));
+		return b->onLeftRight(*this, s, dir);
 	}
 
 	int onEnter(Common& common)
 	{
-		auto* s = selected();
-		if (!s) return false;
-		std::unique_ptr<ItemBehavior> b(getItemBehavior(common, *s));
-		return b->onEnter(*this, *s);
+		int s = selection();
+		if (!isSelectionValid()) return false;
+		std::unique_ptr<ItemBehavior> b(getItemBehavior(common, s));
+		return b->onEnter(*this, s);
 	}
 
 	void onKeys(SDL_Keysym* begin, SDL_Keysym* end, bool contains = false)
@@ -98,15 +97,19 @@ struct Menu
 	}
 
 	// `time` is in milliseconds; typing resumes the search within 1.5 s.
-	void onKeys(SDL_Keysym* begin, SDL_Keysym* end, bool contains, Uint32 time);
+	void onKeys(SDL_Keysym* begin, SDL_Keysym* end, bool contains, Uint32 time)
+	{
+		for (; begin != end; ++begin)
+			liero_menu_box_on_key(box, begin->sym, begin->scancode, contains, time);
+	}
 
 	void updateItems(Common& common)
 	{
-		for(std::size_t i = 0; i < items.size(); ++i)
+		for(int i = 0; i < itemCount(); ++i)
 		{
-			std::unique_ptr<ItemBehavior> b(getItemBehavior(common, items[i]));
+			std::unique_ptr<ItemBehavior> b(getItemBehavior(common, i));
 
-			b->onUpdate(*this, items[i]);
+			b->onUpdate(*this, i);
 		}
 
 		onUpdate();
@@ -120,7 +123,7 @@ struct Menu
 
 	bool isSelectionValid()
 	{
-		return selection_ >= 0 && selection_ < (int)items.size();
+		return selection() >= 0 && selection() < itemCount();
 	}
 
 	void moveToFirstVisible()
@@ -128,14 +131,17 @@ struct Menu
 		moveTo(0);
 	}
 
-	void movement(int direction);
-	void movementPage(int direction);
+	void movement(int direction) { liero_menu_box_movement(box, direction); }
+	void movementPage(int direction) { liero_menu_box_movement_page(box, direction); }
 
-	int addItem(MenuItem item);
-	int addItem(MenuItem item, int pos);
-	void clear();
+	// Adds `item` at the end, or at `pos`, and returns how many items there
+	// were before.
+	int addItem(MenuItem const& item) { return add(item, -1, true); }
+	int addItem(MenuItem const& item, int pos) { return add(item, pos, true); }
+	// Adds `item` at the end without counting it as visible.
+	void pushItem(MenuItem const& item) { add(item, -1, false); }
 
-	bool itemPosition(MenuItem& item, int& x, int& y);
+	bool itemPosition(int item, int& x, int& y) { return liero_menu_box_item_position(box, item, &x, &y); }
 
 	void setHeight(int newHeight)
 	{
@@ -145,75 +151,97 @@ struct Menu
 
 	int selection()
 	{
-		return selection_;
-	}
-
-	MenuItem* selected()
-	{
-		if (!isSelectionValid())
-			return 0;
-		return &items[selection_];
+		return s.selection;
 	}
 
 	int selectedId()
 	{
-		MenuItem* s = selected();
-		return s ? s->id : -1;
+		return isSelectionValid() ? itemId(selection()) : -1;
 	}
 
 	int indexFromId(int id)
 	{
-		for (int i = 0; i < (int)items.size(); ++i)
+		for (int i = 0; i < itemCount(); ++i)
 		{
-			if (items[i].id == id)
+			if (itemId(i) == id)
 				return i;
 		}
 
 		return -1;
 	}
 
-	MenuItem* itemFromId(int id)
-	{
-		for (int i = 0; i < (int)items.size(); ++i)
-		{
-			if (items[i].id == id)
-				return &items[i];
-		}
-
-		return 0;
-	}
+	// The items.
+	int itemCount() const { return liero_menu_box_count(box); }
+	int itemId(int i) const { return liero_menu_box_id(box, i); }
+	LieroMenuItem item(int i) const { return liero_menu_box_item(box, i); }
+	std::string itemString(int i) const { return text(item(i).string); }
+	std::string itemValue(int i) const { return text(item(i).value); }
+	bool itemVisible(int i) const { return item(i).visible; }
+	void setItemString(int i, std::string const& v) { liero_menu_box_set_string(box, i, view(v)); }
+	// Sets the value and shows it.
+	void setItemValue(int i, std::string const& v) { liero_menu_box_set_value(box, i, view(v)); }
+	// Sets the flag alone, as `item.visible =` did; setVisibility also
+	// counts it.
+	void setItemVisibleFlag(int i, bool v) { liero_menu_box_set_visible_flag(box, i, v); }
+	std::string searchPrefix() const { return text(liero_menu_box_search_text(box)); }
 
 	void setVisibility(int id, bool state);
-	void moveTo(int newSelection);
-	void moveToId(int id);
-	void setTop(int newTopVisIdx);
-	void scroll(int amount);
+	void moveTo(int newSelection) { liero_menu_box_move_to(box, newSelection); }
+	void moveToId(int id) { moveTo(indexFromId(id)); }
+	void setTop(int newTopVisIdx) { liero_menu_box_set_top(box, newTopVisIdx); }
+	void scroll(int amount) { liero_menu_box_scroll(box, amount); }
 
-	// The state and items as Rust works on them. Rust only changes the
-	// items' visibility; setState copies it back.
-	LieroMenu state() const;
-	std::vector<LieroMenuItem> itemViews();
+	// The state and items as Rust's weapon selection works on them, whose
+	// texts stay valid until the items change. Rust only changes the items'
+	// visibility; setState copies it back.
+	LieroMenu state() const { return s; }
+	std::vector<LieroMenuItem> itemViews() const;
 	void setState(LieroMenu const& s, std::vector<LieroMenuItem> const& views);
 
-	std::string searchPrefix;
-	Uint32 searchTime;
+	LieroMenuBox* box;
+	LieroMenu& s;
 
-	std::vector<MenuItem> items;
-	int itemHeight;
-	int valueOffsetX;
+	int& itemHeight;
+	int& valueOffsetX;
 
-	int x, y;
-	int height;
+	int& x;
+	int& y;
+	int& height;
 
-	int topItem; // Visible index
-	int bottomItem; // Visible index
-	//bool showScroll;
+	int& topItem; // Visible index
+	int& bottomItem; // Visible index
 
-	int visibleItemCount;
+	int& visibleItemCount;
 
-	bool centered;
+	bool& centered;
+
 private:
-	int selection_; // Global index
+	explicit Menu(LieroMenuBox* box)
+	: box(box)
+	, s(*liero_menu_box_state(box))
+	, itemHeight(s.item_height)
+	, valueOffsetX(s.value_offset_x)
+	, x(s.x)
+	, y(s.y)
+	, height(s.height)
+	, topItem(s.top_item)
+	, bottomItem(s.bottom_item)
+	, visibleItemCount(s.visible_item_count)
+	, centered(s.centered)
+	{
+	}
+
+	int add(MenuItem const& item, int pos, bool count);
+
+	static std::string text(LieroStr v)
+	{
+		return std::string(reinterpret_cast<char const*>(v.ptr), v.len);
+	}
+
+	static LieroStr view(std::string const& v)
+	{
+		return { reinterpret_cast<uint8_t const*>(v.data()), v.size() };
+	}
 };
 
 #endif // UUID_3DC24B15AD67494EEAB541B4AE253D0F

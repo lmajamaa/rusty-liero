@@ -75,7 +75,7 @@ impl WeaponOptions {
         let names = self.state_names();
         for i in 0..self.order.len() {
             let text = unsafe { self.behavior(i, &names).value_text() };
-            self.menu.values[i] = Some(text);
+            self.menu.set_value(i, text);
         }
     }
 
@@ -89,7 +89,7 @@ impl WeaponOptions {
         if a.update_menu {
             self.update_items();
         } else if a.update_item {
-            self.menu.values[i] = Some(unsafe { self.behavior(i, &names).value_text() });
+            self.menu.set_value(i, unsafe { self.behavior(i, &names).value_text() });
         }
     }
 
@@ -259,10 +259,10 @@ mod tests {
         let mut table = [0; WEAPON_COUNT];
         table[1] = 2;
         let mut w = screen(&mut table);
-        assert_eq!(w.menu.values, [Some(b"BANNED".to_vec()), Some(b"MENU".to_vec())]);
+        assert_eq!(w.menu.values, [b"BANNED".to_vec(), b"MENU".to_vec()]);
         w.left_right(1);
         assert_eq!(table[1], 0, "wraps round");
-        assert_eq!(w.menu.values[0], Some(b"MENU".to_vec()));
+        assert_eq!(w.menu.values[0], b"MENU".to_vec());
     }
 
     #[test]

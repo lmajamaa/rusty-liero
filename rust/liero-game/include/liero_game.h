@@ -376,6 +376,11 @@ typedef struct LieroFollowAi LieroFollowAi;
 typedef struct LieroLevelBox LieroLevelBox;
 
 /**
+ * A menu Rust owns for C++ (`Menu`).
+ */
+typedef struct LieroMenuBox LieroMenuBox;
+
+/**
  * The mixer's channels and time. Opaque to C++.
  */
 typedef struct LieroMixer LieroMixer;
@@ -1331,6 +1336,20 @@ typedef struct LieroMenuHooks {
   void *ctx;
   void (*draw_overlay)(void *ctx, int32_t item, int32_t x, int32_t y, bool selected, bool disabled);
 } LieroMenuHooks;
+
+/**
+ * A new item (`MenuItem`).
+ */
+typedef struct LieroMenuItemSpec {
+  struct LieroStr string;
+  struct LieroStr value;
+  uint8_t color;
+  uint8_t dis_colour;
+  bool has_value;
+  bool visible;
+  bool selectable;
+  int32_t id;
+} LieroMenuItemSpec;
 
 /**
  * Constants for bonuses, from the TC (`LC(Bonus...)` in C++).
@@ -4196,6 +4215,114 @@ void liero_menu_draw_input_box(const struct LieroBitmap *scr,
                                int32_t x,
                                int32_t y,
                                bool centered);
+
+/**
+ * `Menu(x, y, centered)`.
+ */
+struct LieroMenuBox *liero_menu_box_new(int32_t x, int32_t y, bool centered);
+
+/**
+ * # Safety
+ * `b` is a live box.
+ */
+struct LieroMenuBox *liero_menu_box_clone(const struct LieroMenuBox *b);
+
+/**
+ * Copies `src` into `dst`, which keeps its address.
+ */
+void liero_menu_box_assign(struct LieroMenuBox *dst, const struct LieroMenuBox *src);
+
+/**
+ * # Safety
+ * `b` came from `liero_menu_box_new` or `_clone` and isn't used after.
+ */
+void liero_menu_box_free(struct LieroMenuBox *b);
+
+/**
+ * The menu's state, which stays at this address while the box lives.
+ */
+struct LieroMenu *liero_menu_box_state(struct LieroMenuBox *b);
+
+/**
+ * Puts `it` at `pos`, or at the end when `pos` is negative, and counts it
+ * as visible when it is and `count`. Returns how many items there were
+ * before (`Menu::addItem`'s result).
+ *
+ * # Safety
+ * `it`'s texts are valid.
+ */
+int32_t liero_menu_box_add(struct LieroMenuBox *b,
+                           const struct LieroMenuItemSpec *it,
+                           int32_t pos,
+                           bool count);
+
+int32_t liero_menu_box_count(const struct LieroMenuBox *b);
+
+/**
+ * Item `i`; its texts stay valid until the item changes.
+ */
+struct LieroMenuItem liero_menu_box_item(const struct LieroMenuBox *b, int32_t i);
+
+int32_t liero_menu_box_id(const struct LieroMenuBox *b, int32_t i);
+
+/**
+ * # Safety
+ * `s` is valid.
+ */
+void liero_menu_box_set_string(struct LieroMenuBox *b, int32_t i, struct LieroStr s);
+
+/**
+ * Sets the value and shows it.
+ *
+ * # Safety
+ * `s` is valid.
+ */
+void liero_menu_box_set_value(struct LieroMenuBox *b, int32_t i, struct LieroStr s);
+
+/**
+ * Sets the flag alone, without counting visible items (`item.visible =`).
+ */
+void liero_menu_box_set_visible_flag(struct LieroMenuBox *b, int32_t i, bool visible);
+
+/**
+ * The search text typed so far.
+ */
+struct LieroStr liero_menu_box_search_text(const struct LieroMenuBox *b);
+
+/**
+ * One key typed: see `OwnedMenu::on_key`.
+ */
+void liero_menu_box_on_key(struct LieroMenuBox *b,
+                           int32_t sym,
+                           uint32_t scancode,
+                           bool contains,
+                           uint32_t time);
+
+void liero_menu_box_move_to(struct LieroMenuBox *b, int32_t item);
+
+void liero_menu_box_movement(struct LieroMenuBox *b, int32_t direction);
+
+void liero_menu_box_movement_page(struct LieroMenuBox *b, int32_t direction);
+
+void liero_menu_box_set_top(struct LieroMenuBox *b, int32_t top);
+
+void liero_menu_box_scroll(struct LieroMenuBox *b, int32_t amount);
+
+void liero_menu_box_set_visibility(struct LieroMenuBox *b, int32_t item, bool state);
+
+bool liero_menu_box_item_position(struct LieroMenuBox *b, int32_t item, int32_t *x, int32_t *y);
+
+/**
+ * # Safety
+ * As for `liero_menu_draw`.
+ */
+void liero_menu_box_draw(struct LieroMenuBox *b,
+                         const struct LieroBitmap *scr,
+                         const struct LieroFont *font,
+                         const struct LieroMenuHooks *hooks,
+                         bool disabled,
+                         int32_t x,
+                         bool show_disabled_selection);
 
 int32_t liero_vector_length(int32_t x, int32_t y);
 

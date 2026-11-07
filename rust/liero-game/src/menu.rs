@@ -701,51 +701,72 @@ fn lstr(b: &[u8]) -> LieroStr {
 unsafe extern "C" fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
 
 /// A menu whose items Rust owns: C++'s `Menu` and its `MenuItem`s.
-pub(crate) struct OwnedMenu {
+#[derive(Clone, Debug, Default)]
+pub struct OwnedMenu {
     pub m: LieroMenu,
     pub names: Vec<Vec<u8>>,
-    /// The value shown after the name, if any.
-    pub values: Vec<Option<Vec<u8>>>,
+    /// The value shown after the name when `has_value`.
+    pub values: Vec<Vec<u8>>,
+    pub has_value: Vec<bool>,
     pub colors: Vec<u8>,
     pub dis_colours: Vec<u8>,
     pub visible: Vec<bool>,
     pub selectable: Vec<bool>,
+    /// The item's id, or -1.
+    pub ids: Vec<i32>,
     /// What has been typed to search (`Menu::searchPrefix`).
     pub search: Vec<u8>,
 }
 
+/// A new item (`MenuItem`).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LieroMenuItemSpec {
+    pub string: LieroStr,
+    pub value: LieroStr,
+    pub color: u8,
+    pub dis_colour: u8,
+    pub has_value: bool,
+    pub visible: bool,
+    pub selectable: bool,
+    pub id: i32,
+}
+
 impl OwnedMenu {
+    /// `Menu(x, y, centered)`: no items, nothing set up.
+    pub fn raw(x: i32, y: i32, centered: bool) -> Self {
+        OwnedMenu { m: LieroMenu { x, y, height: 15, item_height: 8, centered, ..Default::default() }, ..Default::default() }
+    }
+
     /// A menu with no items, its view starting at the top (`Menu::setTop`).
     pub fn new(m: LieroMenu) -> Self {
-        let mut menu = OwnedMenu {
-            m,
-            names: Vec::new(),
-            values: Vec::new(),
-            colors: Vec::new(),
-            dis_colours: Vec::new(),
-            visible: Vec::new(),
-            selectable: Vec::new(),
-            search: Vec::new(),
-        };
+        let mut menu = OwnedMenu { m, ..Default::default() };
         let top = menu.m.top_item;
         menu.with(|m, items, n| unsafe { liero_menu_set_top(m, items, n, top) });
         menu
     }
 
+    pub fn len(&self) -> usize {
+        self.names.len()
+    }
+
+    /// Item `i` as the Rust menu code takes it; its texts point into `self`.
+    pub fn view(&self, i: usize) -> LieroMenuItem {
+        LieroMenuItem {
+            string: lstr(&self.names[i]),
+            value: lstr(&self.values[i]),
+            color: self.colors[i],
+            dis_colour: self.dis_colours[i],
+            has_value: self.has_value[i],
+            visible: self.visible[i],
+            selectable: self.selectable[i],
+        }
+    }
+
     /// Runs `f` on the menu as the Rust menu code takes it, and keeps the
     /// items' visibility it sets.
     pub fn with<R>(&mut self, f: impl FnOnce(&mut LieroMenu, *mut LieroMenuItem, i32) -> R) -> R {
-        let mut items: Vec<LieroMenuItem> = (0..self.names.len())
-            .map(|i| LieroMenuItem {
-                string: lstr(&self.names[i]),
-                value: lstr(self.values[i].as_deref().unwrap_or(&[])),
-                color: self.colors[i],
-                dis_colour: self.dis_colours[i],
-                has_value: self.values[i].is_some(),
-                visible: self.visible[i],
-                selectable: self.selectable[i],
-            })
-            .collect();
+        let mut items: Vec<LieroMenuItem> = (0..self.len()).map(|i| self.view(i)).collect();
         let r = f(&mut self.m, items.as_mut_ptr(), items.len() as i32);
         for (v, it) in self.visible.iter_mut().zip(&items) {
             *v = it.visible;
@@ -753,20 +774,44 @@ impl OwnedMenu {
         r
     }
 
+    /// Puts an item at `pos` without counting it as visible
+    /// (`items.insert`).
+    pub fn insert(&mut self, pos: usize, it: &LieroMenuItemSpec) {
+        let text = |s: LieroStr| unsafe { s.bytes() }.to_vec();
+        self.names.insert(pos, text(it.string));
+        self.values.insert(pos, text(it.value));
+        self.has_value.insert(pos, it.has_value);
+        self.colors.insert(pos, it.color);
+        self.dis_colours.insert(pos, it.dis_colour);
+        self.visible.insert(pos, it.visible);
+        self.selectable.insert(pos, it.selectable);
+        self.ids.insert(pos, it.id);
+    }
+
+    /// `Menu::addItem` with `MenuItem(color, dis_colour, name)`.
+    pub fn add_item(&mut self, name: Vec<u8>, color: u8, dis_colour: u8) {
+        let spec = LieroMenuItemSpec {
+            string: lstr(&name),
+            value: lstr(&[]),
+            color,
+            dis_colour,
+            has_value: false,
+            visible: true,
+            selectable: true,
+            id: -1,
+        };
+        self.insert(self.len(), &spec);
+        self.m.visible_item_count += 1;
+    }
+
     /// `Menu::addItem` with `MenuItem(color, 7, name)`.
     pub fn add(&mut self, name: Vec<u8>, color: u8) {
         self.add_item(name, color, 7);
     }
 
-    /// `Menu::addItem` with `MenuItem(color, dis_colour, name)`.
-    pub fn add_item(&mut self, name: Vec<u8>, color: u8, dis_colour: u8) {
-        self.names.push(name);
-        self.values.push(None);
-        self.colors.push(color);
-        self.dis_colours.push(dis_colour);
-        self.visible.push(true);
-        self.selectable.push(true);
-        self.m.visible_item_count += 1;
+    pub fn set_value(&mut self, i: usize, value: Vec<u8>) {
+        self.values[i] = value;
+        self.has_value[i] = true;
     }
 
     pub fn is_empty(&self) -> bool {
@@ -790,40 +835,253 @@ impl OwnedMenu {
         usize::try_from(self.m.selection).ok().filter(|&i| i < self.names.len())
     }
 
+    /// One key typed to search (`Menu::onKeys`): `sym` is SDL's key code.
+    pub fn on_key(&mut self, sym: i32, scancode: u32, contains: bool, time: u32) {
+        let tab = scancode == SCANCODE_TAB;
+        if !((32..=127).contains(&sym) || tab) {
+            return;
+        }
+        let ch = sym as u8;
+        let key = if tab { -1 } else { i32::from(ch) };
+        let search = std::mem::take(&mut self.search);
+        let r = self.with(|m, items, n| unsafe {
+            liero_menu_search(m, items, n, search.as_ptr(), search.len(), key, contains, time)
+        });
+        self.search = search;
+        self.search.truncate(r.keep);
+        if r.add {
+            self.search.push(ch);
+        }
+    }
+
     /// Typing searches the items (`Menu::onKeys`), by start or, with
     /// `contains`, anywhere in a name.
     pub fn on_keys(&mut self, host: &Host, contains: bool) {
         for k in host.typed_keys() {
-            let tab = k.scancode == SCANCODE_TAB;
-            if !((32..=127).contains(&k.sym) || tab) {
-                continue;
-            }
-            let ch = k.sym as u8;
-            let key = if tab { -1 } else { i32::from(ch) };
-            let time = host.ticks();
-            let search = std::mem::take(&mut self.search);
-            let r = self.with(|m, items, n| unsafe {
-                liero_menu_search(m, items, n, search.as_ptr(), search.len(), key, contains, time)
-            });
-            self.search = search;
-            self.search.truncate(r.keep);
-            if r.add {
-                self.search.push(ch);
-            }
+            self.on_key(k.sym, k.scancode, contains, host.ticks());
         }
     }
 
     pub fn draw(&mut self, scr: &LieroBitmap, font: &LieroFont, disabled: bool, x: i32, show_disabled_selection: bool) {
         let hooks = LieroMenuHooks { ctx: std::ptr::null_mut(), draw_overlay: no_overlay };
+        self.draw_with(scr, font, &hooks, disabled, x, show_disabled_selection);
+    }
+
+    pub fn draw_with(
+        &mut self,
+        scr: &LieroBitmap,
+        font: &LieroFont,
+        hooks: &LieroMenuHooks,
+        disabled: bool,
+        x: i32,
+        show_disabled_selection: bool,
+    ) {
         self.with(|m, items, n| unsafe {
-            liero_menu_draw(m, items, n, scr, font, &hooks, disabled, x, show_disabled_selection)
+            liero_menu_draw(m, items, n, scr, font, hooks, disabled, x, show_disabled_selection)
         });
     }
+}
+
+/// A menu Rust owns for C++ (`Menu`).
+pub struct LieroMenuBox(OwnedMenu);
+
+/// `Menu(x, y, centered)`.
+#[no_mangle]
+pub extern "C" fn liero_menu_box_new(x: i32, y: i32, centered: bool) -> *mut LieroMenuBox {
+    Box::into_raw(Box::new(LieroMenuBox(OwnedMenu::raw(x, y, centered))))
+}
+
+/// # Safety
+/// `b` is a live box.
+#[no_mangle]
+pub unsafe extern "C" fn liero_menu_box_clone(b: &LieroMenuBox) -> *mut LieroMenuBox {
+    Box::into_raw(Box::new(LieroMenuBox(b.0.clone())))
+}
+
+/// Copies `src` into `dst`, which keeps its address.
+#[no_mangle]
+pub extern "C" fn liero_menu_box_assign(dst: &mut LieroMenuBox, src: &LieroMenuBox) {
+    dst.0 = src.0.clone();
+}
+
+/// # Safety
+/// `b` came from `liero_menu_box_new` or `_clone` and isn't used after.
+#[no_mangle]
+pub unsafe extern "C" fn liero_menu_box_free(b: *mut LieroMenuBox) {
+    if !b.is_null() {
+        drop(Box::from_raw(b));
+    }
+}
+
+/// The menu's state, which stays at this address while the box lives.
+#[no_mangle]
+pub extern "C" fn liero_menu_box_state(b: &mut LieroMenuBox) -> *mut LieroMenu {
+    &mut b.0.m
+}
+
+/// Puts `it` at `pos`, or at the end when `pos` is negative, and counts it
+/// as visible when it is and `count`. Returns how many items there were
+/// before (`Menu::addItem`'s result).
+///
+/// # Safety
+/// `it`'s texts are valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_menu_box_add(b: &mut LieroMenuBox, it: &LieroMenuItemSpec, pos: i32, count: bool) -> i32 {
+    let n = b.0.len();
+    let pos = usize::try_from(pos).map_or(n, |p| p.min(n));
+    b.0.insert(pos, it);
+    if count && it.visible {
+        b.0.m.visible_item_count += 1;
+    }
+    n as i32
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_count(b: &LieroMenuBox) -> i32 {
+    b.0.len() as i32
+}
+
+fn index(b: &LieroMenuBox, i: i32) -> usize {
+    let i = usize::try_from(i).expect("negative menu item");
+    assert!(i < b.0.len(), "menu item {i} of {}", b.0.len());
+    i
+}
+
+/// Item `i`; its texts stay valid until the item changes.
+#[no_mangle]
+pub extern "C" fn liero_menu_box_item(b: &LieroMenuBox, i: i32) -> LieroMenuItem {
+    b.0.view(index(b, i))
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_id(b: &LieroMenuBox, i: i32) -> i32 {
+    b.0.ids[index(b, i)]
+}
+
+/// # Safety
+/// `s` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_menu_box_set_string(b: &mut LieroMenuBox, i: i32, s: LieroStr) {
+    let i = index(b, i);
+    b.0.names[i] = s.bytes().to_vec();
+}
+
+/// Sets the value and shows it.
+///
+/// # Safety
+/// `s` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_menu_box_set_value(b: &mut LieroMenuBox, i: i32, s: LieroStr) {
+    let i = index(b, i);
+    b.0.set_value(i, s.bytes().to_vec());
+}
+
+/// Sets the flag alone, without counting visible items (`item.visible =`).
+#[no_mangle]
+pub extern "C" fn liero_menu_box_set_visible_flag(b: &mut LieroMenuBox, i: i32, visible: bool) {
+    let i = index(b, i);
+    b.0.visible[i] = visible;
+}
+
+/// The search text typed so far.
+#[no_mangle]
+pub extern "C" fn liero_menu_box_search_text(b: &LieroMenuBox) -> LieroStr {
+    lstr(&b.0.search)
+}
+
+/// One key typed: see `OwnedMenu::on_key`.
+#[no_mangle]
+pub extern "C" fn liero_menu_box_on_key(b: &mut LieroMenuBox, sym: i32, scancode: u32, contains: bool, time: u32) {
+    b.0.on_key(sym, scancode, contains, time);
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_move_to(b: &mut LieroMenuBox, item: i32) {
+    b.0.move_to(item);
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_movement(b: &mut LieroMenuBox, direction: i32) {
+    b.0.movement(direction);
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_movement_page(b: &mut LieroMenuBox, direction: i32) {
+    b.0.movement_page(direction);
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_set_top(b: &mut LieroMenuBox, top: i32) {
+    b.0.with(|m, items, n| unsafe { liero_menu_set_top(m, items, n, top) });
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_scroll(b: &mut LieroMenuBox, amount: i32) {
+    b.0.with(|m, items, n| unsafe { liero_menu_scroll(m, items, n, amount) });
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_set_visibility(b: &mut LieroMenuBox, item: i32, state: bool) {
+    b.0.with(|m, items, n| unsafe { liero_menu_set_visibility(m, items, n, item, state) });
+}
+
+#[no_mangle]
+pub extern "C" fn liero_menu_box_item_position(b: &mut LieroMenuBox, item: i32, x: &mut i32, y: &mut i32) -> bool {
+    b.0.with(|m, items, n| unsafe { liero_menu_item_position(m, items, n, item, x, y) })
+}
+
+/// # Safety
+/// As for `liero_menu_draw`.
+#[no_mangle]
+pub unsafe extern "C" fn liero_menu_box_draw(
+    b: &mut LieroMenuBox,
+    scr: &LieroBitmap,
+    font: &LieroFont,
+    hooks: &LieroMenuHooks,
+    disabled: bool,
+    x: i32,
+    show_disabled_selection: bool,
+) {
+    b.0.draw_with(scr, font, hooks, disabled, x, show_disabled_selection);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn menu_box_copies_whole() {
+        let name = b"LIVES";
+        let spec = LieroMenuItemSpec {
+            string: LieroStr { ptr: name.as_ptr(), len: name.len() },
+            value: LieroStr { ptr: name.as_ptr(), len: 0 },
+            color: 48,
+            dis_colour: 7,
+            has_value: false,
+            visible: true,
+            selectable: true,
+            id: 4,
+        };
+        let a = liero_menu_box_new(10, 20, false);
+        let b = liero_menu_box_new(0, 0, true);
+        unsafe {
+            assert_eq!(liero_menu_box_add(&mut *a, &spec, -1, true), 0);
+            assert_eq!(liero_menu_box_add(&mut *a, &spec, 0, false), 1);
+            assert_eq!((*a).0.m.visible_item_count, 1, "only counted when asked");
+            liero_menu_box_on_key(&mut *a, i32::from(b'L'), 0, false, 0);
+            let v = b"3";
+            liero_menu_box_set_value(&mut *a, 1, LieroStr { ptr: v.as_ptr(), len: 1 });
+            liero_menu_box_assign(&mut *b, &*a);
+            let it = liero_menu_box_item(&*b, 1);
+            assert!(it.has_value);
+            assert_eq!(it.value.bytes(), b"3");
+            assert_eq!(liero_menu_box_id(&*b, 1), 4);
+            assert_eq!(liero_menu_box_search_text(&*b).bytes(), b"L");
+            assert_eq!(*liero_menu_box_state(&mut *b), (*a).0.m);
+            liero_menu_box_free(a);
+            liero_menu_box_free(b);
+        }
+    }
 
     fn s(text: &'static [u8]) -> LieroStr {
         LieroStr { ptr: text.as_ptr(), len: text.len() }

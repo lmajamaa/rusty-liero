@@ -14,9 +14,9 @@ static std::string const botWeaponSel[3] =
 	"KEEP"
 };
 
-ItemBehavior* HiddenMenu::getItemBehavior(Common& common, MenuItem& item)
+ItemBehavior* HiddenMenu::getItemBehavior(Common& common, int item)
 {
-	switch(item.id)
+	switch(itemId(item))
 	{
 		case RecordReplays:
 			return new BooleanSwitchBehavior(common, gfx.settings->recordReplays);
@@ -59,9 +59,9 @@ void HiddenMenu::onUpdate()
 
 }
 
-void HiddenMenu::drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled)
+void HiddenMenu::drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled)
 {
-	if(item.id == PaletteSelect) //Color settings
+	if(itemId(item) == PaletteSelect) //Color settings
 	{
 		LieroBitmap scr = gfx.playRenderer.bmp.view();
 		liero_menu_draw_palette_overlay(&scr, x, y, selected, paletteColor);
