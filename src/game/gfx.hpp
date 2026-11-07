@@ -148,7 +148,7 @@ std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x = 320/2, in
 std::unique_ptr<Screen> keyChoiceScreen(bool extended);
 // Typing into a box at (x, y) over the frozen screen; `*text` is the start
 // and, when Enter closes it with 1, what was typed. Escape closes it with 0.
-std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, int (*filter)(int) = 0, std::string const& prefix = "", bool centered = true);
+std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, bool digitsOnly = false);
 
 struct Joystick {
 	SDL_GameController *sdlGameController;
@@ -289,7 +289,7 @@ struct Gfx
 
 	// A text box from a menu item (`open`): `then` gets whether Enter closed
 	// it and the text, and returns what onEnter would have.
-	void openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, int (*filter)(int) = 0);
+	void openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, bool digitsOnly = false);
 	// A number box: Enter puts the number typed, kept within min and max, in
 	// `dest`. Then `then` runs.
 	void openInputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y, std::function<void()> then);

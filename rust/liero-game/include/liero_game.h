@@ -500,6 +500,49 @@ typedef struct LieroDumbAiWorm {
 } LieroDumbAiWorm;
 
 /**
+ * A tick's outcome.
+ */
+typedef struct LieroTick {
+  enum LieroTickKind kind;
+  /**
+   * The tick drew a frame for the host to show.
+   */
+  bool shown;
+  /**
+   * For `TickClose`.
+   */
+  int32_t result;
+} LieroTick;
+
+/**
+ * A screen, owned by the stack once pushed.
+ */
+typedef struct LieroScreen {
+  void *data;
+  /**
+   * Runs one step and fills in what happens next, and `next` for
+   * `TickPush` and `TickReplace`.
+   */
+  void (*tick)(void *data, struct LieroTick *out, struct LieroScreen *next);
+  /**
+   * The screen opened on top of this one closed with `result`.
+   */
+  void (*resume)(void *data, int32_t result);
+  /**
+   * Frees the screen, when it closes or the stack is cleared.
+   */
+  void (*free)(void *data);
+} LieroScreen;
+
+/**
+ * Text from C++: `len` bytes from `ptr`.
+ */
+typedef struct LieroStr {
+  const uint8_t *ptr;
+  uintptr_t len;
+} LieroStr;
+
+/**
  * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
  */
 typedef struct LieroIVec2 {
@@ -832,14 +875,6 @@ typedef struct LieroMenu {
   uint32_t search_time;
   bool centered;
 } LieroMenu;
-
-/**
- * Text from C++: `len` bytes from `ptr`.
- */
-typedef struct LieroStr {
-  const uint8_t *ptr;
-  uintptr_t len;
-} LieroStr;
 
 /**
  * A menu item, laid out for Rust.
@@ -1265,39 +1300,60 @@ typedef struct LieroReplayGameOut {
 } LieroReplayGameOut;
 
 /**
- * A tick's outcome.
+ * An event as a Rust screen sees it. C++ has already passed it to
+ * `Gfx::processEvent`, so the key states are up to date.
  */
-typedef struct LieroTick {
-  enum LieroTickKind kind;
+typedef struct LieroEvent {
   /**
-   * The tick drew a frame for the host to show.
+   * A key went down; `scancode` is SDL's.
    */
-  bool shown;
+  bool key_down;
+  uint32_t scancode;
   /**
-   * For `TickClose`.
+   * The event is a key, joystick button or stick move one could choose
+   * for a control, and `key` is its DOS key.
    */
-  int32_t result;
-} LieroTick;
+  bool choice;
+  uint32_t key;
+  /**
+   * A character typed, in the DOS code page, or 0.
+   */
+  uint8_t text;
+} LieroEvent;
 
 /**
- * A screen, owned by the stack once pushed.
+ * What a Rust screen calls in C++.
  */
-typedef struct LieroScreen {
-  void *data;
+typedef struct LieroScreenHost {
   /**
-   * Runs one step and fills in what happens next, and `next` for
-   * `TickPush` and `TickReplace`.
+   * The next event, if one is due (`Gfx::pollEvent`, then `processEvent`).
    */
-  void (*tick)(void *data, struct LieroTick *out, struct LieroScreen *next);
+  bool (*poll_event)(struct LieroEvent *out);
   /**
-   * The screen opened on top of this one closed with `result`.
+   * Reads every event due into the key states (`Gfx::process`).
    */
-  void (*resume)(void *data, int32_t result);
+  void (*process)(void);
+  void (*clear_keys)(void);
+  void (*play_sound)(int32_t id);
   /**
-   * Frees the screen, when it closes or the stack is cleared.
+   * The screen shown, the copy of it the menus draw over, and the font.
    */
-  void (*free)(void *data);
-} LieroScreen;
+  void (*screen)(struct LieroBitmap *out);
+  void (*frozen)(struct LieroBitmap *out);
+  void (*font)(struct LieroFont *out);
+  /**
+   * Fills the screen with one colour.
+   */
+  void (*fill_screen)(uint8_t color);
+  /**
+   * Shows the screen with the TC's own palette.
+   */
+  void (*menu_palette)(void);
+  /**
+   * Turns the browser's text input on or off.
+   */
+  void (*text_input)(bool on);
+} LieroScreenHost;
 
 /**
  * What the stack calls back into.
@@ -2593,6 +2649,41 @@ uint32_t liero_dumb_ai_process(struct LieroRand *rand,
                                const int32_t (*k)[2][7]);
 
 /**
+ * A message centred on (x, y) until a key is pressed. With `clear_screen`
+ * it's shown alone on the screen, in the TC's palette.
+ *
+ * # Safety
+ * `text` must be valid.
+ */
+struct LieroScreen liero_info_box_screen(struct LieroStr text,
+                                         int32_t x,
+                                         int32_t y,
+                                         bool clear_screen);
+
+/**
+ * Waits for a key, joystick button or stick move and closes with its DOS
+ * key. Unless `extended`, keys only the extended controls have are passed
+ * over.
+ */
+struct LieroScreen liero_key_choice_screen(bool extended);
+
+/**
+ * Typing at most `max_len` characters, starting from `text`, in a box
+ * centred on x at height y. Enter calls `done(ctx, typed)` and closes with
+ * 1; Escape closes with 0.
+ *
+ * # Safety
+ * `text` must be valid; `done` is called with `ctx`.
+ */
+struct LieroScreen liero_input_box_screen(struct LieroStr text,
+                                          uintptr_t max_len,
+                                          int32_t x,
+                                          int32_t y,
+                                          bool digits_only,
+                                          void (*done)(void *ctx, struct LieroStr text),
+                                          void *ctx);
+
+/**
  * Runs the game for one tick: C++'s `Game::processFrame`.
  *
  * # Safety
@@ -3719,6 +3810,11 @@ bool liero_replay_result_settings_changed(const struct LieroReplayResult *r);
  * `r` must come from a `liero_replay_*` call, or be null.
  */
 void liero_replay_result_free(struct LieroReplayResult *r);
+
+/**
+ * Sets the functions Rust screens call. Only the first call counts.
+ */
+void liero_screen_set_host(const struct LieroScreenHost *host);
 
 struct LieroApp *liero_app_new(void);
 

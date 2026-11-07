@@ -1609,224 +1609,32 @@ void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const
 	liero_menu_draw_input_box(&scr, &from, &font, str(text), x, y, centered);
 }
 
-namespace
-{
-
-// A message over the screen, until a key is pressed.
-struct InfoBoxScreen : Screen
-{
-	std::string text;
-	int x, y;
-	bool clearScreen;
-	bool shown = false;
-	// The events that came with the box are read.
-	bool waiting = false;
-
-	InfoBoxScreen(std::string const& text, int x, int y, bool clearScreen)
-	: text(text), x(x), y(y), clearScreen(clearScreen)
-	{
-	}
-
-	Tick tick() override
-	{
-		Gfx& g = gfx;
-		static int const bgColor = 0;
-
-		if (!shown)
-		{
-			if(clearScreen)
-			{
-				g.playRenderer.pal = g.common->exepal;
-				fill(g.playRenderer.bmp, bgColor);
-			}
-
-			drawInfoBox(*g.common, g.playRenderer.bmp, text, x, y);
-			shown = true;
-			return Tick::stay(true);
-		}
-
-		if (!waiting)
-		{
-			g.process();
-			waiting = true;
-		}
-
-		SDL_Event ev;
-		while (g.pollEvent(ev))
-		{
-			g.processEvent(ev);
-			if(ev.type == SDL_KEYDOWN)
-			{
-				g.clearKeys();
-
-				if(clearScreen)
-					fill(g.playRenderer.bmp, bgColor);
-				return Tick::close();
-			}
-		}
-		return Tick::stay(false);
-	}
-};
-
-// The key the next key press, joystick button or stick move gives. Unless
-// `extended`, keys only the extended controls have are passed over.
-struct KeyChoiceScreen : Screen
-{
-	bool extended;
-
-	explicit KeyChoiceScreen(bool extended)
-	: extended(extended)
-	{
-	}
-
-	Tick tick() override
-	{
-		Gfx& g = gfx;
-		SDL_Event ev;
-		while (g.pollEvent(ev))
-		{
-			g.processEvent(ev);
-			uint32_t k;
-			if (keyOf(ev, k) && (extended || !isExtendedKey(k)))
-				return Tick::close(int(k));
-		}
-		return Tick::stay(false);
-	}
-
-	// False if the event isn't a key.
-	static bool keyOf(SDL_Event& ev, uint32_t& k)
-	{
-		switch (ev.type)
-		{
-		case SDL_KEYDOWN:
-			k = SDLToDOSKey(ev.key.keysym);
-			return true;
-
-		case SDL_JOYAXISMOTION:
-			k = liero_joy_axis_key(ev.jaxis.which, ev.jaxis.axis, ev.jaxis.value);
-			return k != 0;
-		case SDL_JOYHATMOTION:
-			k = liero_joy_hat_key(ev.jhat.which, ev.jhat.value);
-			return k != 0;
-		case SDL_JOYBUTTONDOWN:
-			k = liero_joy_button_key(ev.jbutton.which, ev.jbutton.button);
-			return true;
-		default:
-			return false;
-		}
-	}
-};
-
-// Typing a line into a box over the frozen screen. It shows a frame for each
-// event. Enter closes it with 1 and the text in `*text`, Escape with 0.
-struct InputStringScreen : Screen
-{
-	std::shared_ptr<std::string> text;
-	std::string buffer;
-	std::size_t maxLen;
-	int x, y;
-	int (*filter)(int);
-	std::string prefix;
-	bool centered;
-	bool shown = false;
-
-	InputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, int (*filter)(int), std::string const& prefix, bool centered)
-	: text(text), buffer(*text), maxLen(maxLen), x(x), y(y), filter(filter), prefix(prefix), centered(centered)
-	{
-	}
-
-	~InputStringScreen()
-	{
-#ifdef __EMSCRIPTEN__
-		// Text input stays off outside the box, so that SDL calls
-		// preventDefault on every key the game gets (see main.cpp).
-		SDL_StopTextInput();
-#endif
-	}
-
-	Tick tick() override
-	{
-		Gfx& g = gfx;
-
-		if (shown)
-		{
-			SDL_Event ev;
-			if (!g.pollEvent(ev))
-				return Tick::stay(false);
-			g.processEvent(ev);
-
-			switch (ev.type)
-			{
-				case SDL_KEYDOWN:
-					switch (ev.key.keysym.scancode)
-					{
-						case SDL_SCANCODE_BACKSPACE:
-							if(!buffer.empty())
-							{
-								buffer.erase(buffer.size() - 1);
-							}
-							break;
-
-						case SDL_SCANCODE_RETURN:
-						case SDL_SCANCODE_KP_ENTER:
-							*text = buffer;
-							sfx.play(*g.common, 27);
-							g.clearKeys();
-							return Tick::close(1);
-
-						case SDL_SCANCODE_ESCAPE:
-							g.clearKeys();
-							return Tick::close(0);
-
-						default:
-							break;
-					}
-					break;
-
-				case SDL_TEXTINPUT:
-				{
-					int k = utf8ToDOS(ev.text.text);
-					if (k && buffer.size() < maxLen &&
-						(!filter || (k = filter(k))))
-					{
-						buffer += char(k);
-					}
-					break;
-				}
-				case SDL_TEXTEDITING:
-					// since there's no support for any characters that can use a
-					// complex IME input (like East Asian languages), we naively
-					// discard this event
-					break;
-
-				default:
-					break;
-			}
-		}
-
-		std::string str = prefix + buffer + '_';
-		drawInputBox(*g.common, g.playRenderer.bmp, g.frozenScreen, str, x, y, centered);
-		SDL_StartTextInput();
-		shown = true;
-		return Tick::stay(true);
-	}
-};
-
-}
+// The boxes and key choice are screens in Rust (rust/liero-game/src/boxes.rs).
 
 std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x, int y, bool clearScreen)
 {
-	return std::unique_ptr<Screen>(new InfoBoxScreen(text, x, y, clearScreen));
+	return fromFfi(liero_info_box_screen(str(text), x, y, clearScreen));
 }
 
 std::unique_ptr<Screen> keyChoiceScreen(bool extended)
 {
-	return std::unique_ptr<Screen>(new KeyChoiceScreen(extended));
+	return fromFfi(liero_key_choice_screen(extended));
 }
 
-std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, int (*filter)(int), std::string const& prefix, bool centered)
+namespace
 {
-	return std::unique_ptr<Screen>(new InputStringScreen(text, maxLen, x, y, filter, prefix, centered));
+
+void keepTyped(void* ctx, LieroStr text)
+{
+	static_cast<std::string*>(ctx)->assign(reinterpret_cast<char const*>(text.ptr), text.len);
+}
+
+}
+
+std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, bool digitsOnly)
+{
+	// `text` outlives the screen: the caller keeps it to read the result.
+	return fromFfi(liero_input_box_screen(str(*text), maxLen, x, y, digitsOnly, keepTyped, text.get()));
 }
 
 void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
@@ -1834,18 +1642,13 @@ void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
 	open(infoBoxScreen(text, x, y, clearScreen), [](int) { return -1; });
 }
 
-void Gfx::openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, int (*filter)(int))
+void Gfx::openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, bool digitsOnly)
 {
 	std::shared_ptr<std::string> typed(new std::string(text));
-	open(inputStringScreen(typed, maxLen, x, y, filter, "", true), [typed, then](int ok)
+	open(inputStringScreen(typed, maxLen, x, y, digitsOnly), [typed, then](int ok)
 	{
 		return then(ok != 0, *typed);
 	});
-}
-
-int filterDigits(int k)
-{
-	return std::isdigit(k) ? k : 0;
 }
 
 void Gfx::openInputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y, std::function<void()> then)
@@ -1862,7 +1665,7 @@ void Gfx::openInputInteger(int& dest, int min, int max, std::size_t maxLen, int 
 		}
 		then();
 		return -1;
-	}, filterDigits);
+	}, true);
 }
 
 void PlayerMenu::drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled)

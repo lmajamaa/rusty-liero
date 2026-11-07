@@ -13,10 +13,17 @@
 //! `liero_app_frame` runs the steps due by a clock, 14 ms each, for a caller
 //! woken by the browser or the window.
 //!
-//! The screens are C++ objects for now, seen here through a table of
-//! functions (`LieroScreen`).
+//! Every screen is seen here through a table of functions (`LieroScreen`):
+//! C++ screens through `src/game/screen.cpp`, Rust screens through
+//! `into_ffi`. A Rust screen reaches what is still C++ (events, sound, the
+//! screen's bitmaps) through `LieroScreenHost`, which C++ sets once.
 
 use std::ffi::c_void;
+use std::sync::OnceLock;
+
+use crate::game::LieroRect;
+use crate::gfx::LieroBitmap;
+use crate::text::LieroFont;
 
 /// How long one step is, in milliseconds.
 pub const STEP_MS: u32 = 14;
@@ -74,6 +81,187 @@ pub struct LieroAppHost {
     pub show: Option<unsafe extern "C" fn(data: *mut c_void)>,
     /// The top screen is waiting for an event and showed nothing.
     pub idle: Option<unsafe extern "C" fn(data: *mut c_void)>,
+}
+
+/// An event as a Rust screen sees it. C++ has already passed it to
+/// `Gfx::processEvent`, so the key states are up to date.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LieroEvent {
+    /// A key went down; `scancode` is SDL's.
+    pub key_down: bool,
+    pub scancode: u32,
+    /// The event is a key, joystick button or stick move one could choose
+    /// for a control, and `key` is its DOS key.
+    pub choice: bool,
+    pub key: u32,
+    /// A character typed, in the DOS code page, or 0.
+    pub text: u8,
+}
+
+/// What a Rust screen calls in C++.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct LieroScreenHost {
+    /// The next event, if one is due (`Gfx::pollEvent`, then `processEvent`).
+    pub poll_event: Option<unsafe extern "C" fn(out: *mut LieroEvent) -> bool>,
+    /// Reads every event due into the key states (`Gfx::process`).
+    pub process: Option<unsafe extern "C" fn()>,
+    pub clear_keys: Option<unsafe extern "C" fn()>,
+    pub play_sound: Option<unsafe extern "C" fn(id: i32)>,
+    /// The screen shown, the copy of it the menus draw over, and the font.
+    pub screen: Option<unsafe extern "C" fn(out: *mut LieroBitmap)>,
+    pub frozen: Option<unsafe extern "C" fn(out: *mut LieroBitmap)>,
+    pub font: Option<unsafe extern "C" fn(out: *mut LieroFont)>,
+    /// Fills the screen with one colour.
+    pub fill_screen: Option<unsafe extern "C" fn(color: u8)>,
+    /// Shows the screen with the TC's own palette.
+    pub menu_palette: Option<unsafe extern "C" fn()>,
+    /// Turns the browser's text input on or off.
+    pub text_input: Option<unsafe extern "C" fn(on: bool)>,
+}
+
+static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
+
+/// Sets the functions Rust screens call. Only the first call counts.
+#[no_mangle]
+pub extern "C" fn liero_screen_set_host(host: &LieroScreenHost) {
+    let _ = HOST.set(*host);
+}
+
+/// `LieroScreenHost` for Rust code: a missing function does nothing.
+#[derive(Clone, Copy)]
+pub struct Host(pub LieroScreenHost);
+
+impl Host {
+    pub fn poll_event(&self) -> Option<LieroEvent> {
+        let mut ev = LieroEvent::default();
+        let f = self.0.poll_event?;
+        unsafe { f(&mut ev) }.then_some(ev)
+    }
+    pub fn process(&self) {
+        if let Some(f) = self.0.process {
+            unsafe { f() }
+        }
+    }
+    pub fn clear_keys(&self) {
+        if let Some(f) = self.0.clear_keys {
+            unsafe { f() }
+        }
+    }
+    pub fn play_sound(&self, id: i32) {
+        if let Some(f) = self.0.play_sound {
+            unsafe { f(id) }
+        }
+    }
+    fn bitmap(f: Option<unsafe extern "C" fn(*mut LieroBitmap)>) -> Option<LieroBitmap> {
+        let f = f?;
+        let mut b = LieroBitmap { pixels: std::ptr::null_mut(), w: 0, h: 0, pitch: 0, clip: LieroRect::default() };
+        unsafe { f(&mut b) };
+        Some(b)
+    }
+    pub fn screen(&self) -> Option<LieroBitmap> {
+        Self::bitmap(self.0.screen)
+    }
+    pub fn frozen(&self) -> Option<LieroBitmap> {
+        Self::bitmap(self.0.frozen)
+    }
+    pub fn font(&self) -> Option<LieroFont> {
+        let f = self.0.font?;
+        let mut font = LieroFont { chars: std::ptr::null(), count: 0 };
+        unsafe { f(&mut font) };
+        Some(font)
+    }
+    pub fn fill_screen(&self, color: u8) {
+        if let Some(f) = self.0.fill_screen {
+            unsafe { f(color) }
+        }
+    }
+    pub fn menu_palette(&self) {
+        if let Some(f) = self.0.menu_palette {
+            unsafe { f() }
+        }
+    }
+    pub fn text_input(&self, on: bool) {
+        if let Some(f) = self.0.text_input {
+            unsafe { f(on) }
+        }
+    }
+}
+
+/// What a Rust screen's tick does next.
+pub struct Tick {
+    pub kind: LieroTickKind,
+    pub shown: bool,
+    pub result: i32,
+    pub next: Option<LieroScreen>,
+}
+
+impl Tick {
+    pub fn stay(shown: bool) -> Self {
+        Tick { kind: LieroTickKind::TickStay, shown, result: 0, next: None }
+    }
+    pub fn close(result: i32) -> Self {
+        Tick { kind: LieroTickKind::TickClose, shown: false, result, next: None }
+    }
+    pub fn push(next: LieroScreen) -> Self {
+        Tick { kind: LieroTickKind::TickPush, shown: false, result: 0, next: Some(next) }
+    }
+}
+
+/// A screen written in Rust.
+pub trait Screen {
+    fn tick(&mut self, host: &Host) -> Tick;
+    /// The screen this one opened closed with `result`.
+    fn resume(&mut self, _host: &Host, _result: i32) {}
+    /// Called before the screen is dropped.
+    fn close(&mut self, _host: &Host) {}
+}
+
+fn host() -> Host {
+    Host(HOST.get().copied().unwrap_or(LieroScreenHost {
+        poll_event: None,
+        process: None,
+        clear_keys: None,
+        play_sound: None,
+        screen: None,
+        frozen: None,
+        font: None,
+        fill_screen: None,
+        menu_palette: None,
+        text_input: None,
+    }))
+}
+
+type BoxedScreen = Box<dyn Screen>;
+
+unsafe extern "C" fn rust_tick(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen) {
+    let s = &mut *(data as *mut BoxedScreen);
+    let t = s.tick(&host());
+    *out = LieroTick { kind: t.kind, shown: t.shown, result: t.result };
+    if let Some(n) = t.next {
+        *next = n;
+    }
+}
+
+unsafe extern "C" fn rust_resume(data: *mut c_void, result: i32) {
+    let s = &mut *(data as *mut BoxedScreen);
+    s.resume(&host(), result);
+}
+
+unsafe extern "C" fn rust_free(data: *mut c_void) {
+    let mut s = Box::from_raw(data as *mut BoxedScreen);
+    s.close(&host());
+}
+
+/// A Rust screen as the stack holds it.
+pub fn into_ffi(s: BoxedScreen) -> LieroScreen {
+    LieroScreen {
+        data: Box::into_raw(Box::new(s)).cast(),
+        tick: Some(rust_tick),
+        resume: Some(rust_resume),
+        free: Some(rust_free),
+    }
 }
 
 pub struct LieroApp {
