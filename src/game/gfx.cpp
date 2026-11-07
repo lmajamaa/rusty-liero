@@ -749,9 +749,22 @@ bool Gfx::pollEvent(SDL_Event& ev)
 
 void Gfx::idle()
 {
-	// The window waits by itself: the next frame comes when it's due.
 	if (driver)
+	{
 		driver->idle();
+		return;
+	}
+
+	// Until the frame function runs from the browser's main loop (PLAN.md,
+	// "Replacing the main loop", step 4), runScreens is a loop of its own:
+	// a screen waiting for an event gives the browser a frame's time to
+	// deliver it, as the SDL_WaitEvent it replaces did.
+#ifdef __EMSCRIPTEN__
+	emscripten_sleep(14);
+#else
+	SDL_Delay(14);
+#endif
+	lastFrame = SDL_GetTicks();
 }
 
 void Gfx::process(Controller* controller)
