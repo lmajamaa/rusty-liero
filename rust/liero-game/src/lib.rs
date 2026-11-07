@@ -19,6 +19,7 @@ pub mod object;
 pub mod rand;
 pub mod replay;
 pub mod screen;
+pub mod selector;
 pub mod settings;
 pub mod sfx;
 pub mod stats;

@@ -99,9 +99,17 @@ pub struct LieroEvent {
     pub text: u8,
 }
 
+/// A key typed this frame, for a menu's search: SDL's key code and scancode.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LieroTypedKey {
+    pub sym: i32,
+    pub scancode: u32,
+}
+
 /// What a Rust screen calls in C++.
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct LieroScreenHost {
     /// The next event, if one is due (`Gfx::pollEvent`, then `processEvent`).
     pub poll_event: Option<unsafe extern "C" fn(out: *mut LieroEvent) -> bool>,
@@ -119,6 +127,16 @@ pub struct LieroScreenHost {
     pub menu_palette: Option<unsafe extern "C" fn()>,
     /// Turns the browser's text input on or off.
     pub text_input: Option<unsafe extern "C" fn(on: bool)>,
+    /// Whether an SDL key was pressed since it was last asked about, which
+    /// it then forgets (`Gfx::testSDLKeyOnce`).
+    pub test_key_once: Option<unsafe extern "C" fn(scancode: u32) -> bool>,
+    /// The keys typed this frame, at most `cap`; returns how many.
+    pub typed_keys: Option<unsafe extern "C" fn(out: *mut LieroTypedKey, cap: usize) -> usize>,
+    /// The menus' clock, in milliseconds (`appTicks`).
+    pub ticks: Option<unsafe extern "C" fn() -> u32>,
+    /// Fades the menus in and cycles their colours, once a frame
+    /// (`Gfx::menuFade`).
+    pub menu_fade: Option<unsafe extern "C" fn()>,
 }
 
 static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
@@ -187,6 +205,26 @@ impl Host {
             unsafe { f(on) }
         }
     }
+    pub fn test_key_once(&self, scancode: u32) -> bool {
+        self.0.test_key_once.is_some_and(|f| unsafe { f(scancode) })
+    }
+    pub fn typed_keys(&self) -> Vec<LieroTypedKey> {
+        let Some(f) = self.0.typed_keys else {
+            return Vec::new();
+        };
+        let mut keys = vec![LieroTypedKey::default(); 32];
+        let n = unsafe { f(keys.as_mut_ptr(), keys.len()) };
+        keys.truncate(n.min(32));
+        keys
+    }
+    pub fn ticks(&self) -> u32 {
+        self.0.ticks.map_or(0, |f| unsafe { f() })
+    }
+    pub fn menu_fade(&self) {
+        if let Some(f) = self.0.menu_fade {
+            unsafe { f() }
+        }
+    }
 }
 
 /// What a Rust screen's tick does next.
@@ -219,18 +257,7 @@ pub trait Screen {
 }
 
 fn host() -> Host {
-    Host(HOST.get().copied().unwrap_or(LieroScreenHost {
-        poll_event: None,
-        process: None,
-        clear_keys: None,
-        play_sound: None,
-        screen: None,
-        frozen: None,
-        font: None,
-        fill_screen: None,
-        menu_palette: None,
-        text_input: None,
-    }))
+    Host(HOST.get().copied().unwrap_or_default())
 }
 
 type BoxedScreen = Box<dyn Screen>;
