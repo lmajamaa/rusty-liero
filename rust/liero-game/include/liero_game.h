@@ -2459,67 +2459,78 @@ typedef struct LieroWeapselHooks {
 } LieroWeapselHooks;
 
 /**
- * Pointers to the fields of a C++ `Worm`.
+ * A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
+ * it (`liero_worm_data_new`), except its settings and AI.
  */
-typedef struct LieroWormFields {
-  struct LieroIVec2 *pos;
-  struct LieroIVec2 *vel;
+typedef struct LieroWormData {
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
   /**
    * Where the respawn camera is, in pixels.
    */
-  struct LieroIVec2 *logic_respawn;
-  int32_t *hotspot_x;
-  int32_t *hotspot_y;
+  struct LieroIVec2 logic_respawn;
+  int32_t hotspot_x;
+  int32_t hotspot_y;
   /**
    * Fixed-point, 0 to 128.
    */
-  int32_t *aiming_angle;
-  int32_t *aiming_speed;
-  bool *able_to_jump;
-  bool *able_to_dig;
-  bool *key_change_pressed;
-  bool *movable;
-  bool *animate;
-  bool *visible;
-  bool *ready;
-  bool *make_sight_green;
-  int32_t *health;
-  int32_t *lives;
-  int32_t *killed_timer;
-  int32_t *current_frame;
-  struct LieroNinjarope *ninjarope;
-  int32_t *current_weapon;
-  int32_t *last_killed_by_idx;
-  int32_t *fire_cone;
-  int32_t *leave_shell_timer;
+  int32_t aiming_angle;
+  int32_t aiming_speed;
+  bool able_to_jump;
+  bool able_to_dig;
+  bool key_change_pressed;
+  bool movable;
+  bool animate;
+  bool visible;
+  bool ready;
   /**
-   * Four entries, indexed by `RF_*`.
+   * Whether the worm has a flag.
    */
-  int32_t *reacts;
+  bool flag;
+  bool make_sight_green;
+  int32_t health;
+  int32_t lives;
+  int32_t kills;
   /**
-   * All five weapon slots.
+   * Time as 'it' in Game of Tag.
    */
-  struct LieroWormWeapon *weapons;
-  /**
-   * 0 is left, 1 is right.
-   */
-  int32_t *direction;
-  /**
-   * `Worm::controlStates`, one bit per `LIERO_CONTROL_*`.
-   */
-  uint32_t *control_states;
-  int32_t *steerable_sum_x;
-  int32_t *steerable_sum_y;
-  int32_t *steerable_count;
+  int32_t timer;
+  int32_t killed_timer;
+  int32_t current_frame;
+  int32_t flags;
+  struct LieroNinjarope ninjarope;
+  int32_t current_weapon;
+  int32_t last_killed_by_idx;
+  int32_t fire_cone;
+  int32_t leave_shell_timer;
   /**
    * 0 or 1.
    */
   int32_t index;
   /**
-   * The worm's full health (`settings->health`).
+   * Indexed by `RF_*`.
    */
-  int32_t max_health;
-} LieroWormFields;
+  int32_t reacts[4];
+  struct LieroWormWeapon weapons[LIERO_SELECTABLE_WEAPONS];
+  /**
+   * 0 is left, 1 is right.
+   */
+  int32_t direction;
+  /**
+   * One bit per `LIERO_CONTROL_*`: the controls the game sees, those of
+   * the last tick, and the ones the player holds (`LocalController`).
+   */
+  uint32_t control_states;
+  uint32_t prev_control_states;
+  uint32_t clean_control_states;
+  int32_t steerable_sum_x;
+  int32_t steerable_sum_y;
+  int32_t steerable_count;
+  /**
+   * Where the worm's stats are drawn.
+   */
+  int32_t stats_x;
+} LieroWormData;
 
 /**
  * Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
@@ -4583,6 +4594,20 @@ void liero_weapsel_draw_spectator(struct LieroWeapselMenu *menus,
                                   const struct LieroBitmap *scr,
                                   const struct LieroFont *font);
 
+struct LieroWormData *liero_worm_data_new(void);
+
+/**
+ * # Safety
+ * `w` is valid.
+ */
+struct LieroWormData *liero_worm_data_clone(const struct LieroWormData *w);
+
+/**
+ * # Safety
+ * `w` comes from `liero_worm_data_new` or `_clone`, and isn't used after.
+ */
+void liero_worm_data_free(struct LieroWormData *w);
+
 /**
  * The sprite frame for a worm aiming at `aiming_angle` (fixed-point) in
  * `direction`, without the walking animation: `Worm::angleFrame`.
@@ -4593,10 +4618,11 @@ int32_t liero_worm_angle_frame(int32_t aiming_angle, int32_t direction);
  * Runs a worm for one tick: C++'s `Worm::process`.
  *
  * # Safety
- * The field pointers, views and the pointers in `env` must be valid for
- * the call. The hooks may change them (but not free their memory).
+ * `worm`, the views and the pointers in `env` must be valid for the call.
+ * The hooks may change them (but not free their memory).
  */
-void liero_worm_process(const struct LieroWormFields *worm,
+void liero_worm_process(struct LieroWormData *worm,
+                        int32_t max_health,
                         const struct LieroWormConstants *constants,
                         const struct LieroWormEnv *env,
                         const struct LieroWormHooks *hooks);

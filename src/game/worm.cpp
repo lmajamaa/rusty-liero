@@ -345,24 +345,55 @@ LieroWormConstants wormConstants(Common& common)
 
 } // namespace
 
+// The Rust types the fields refer to are laid out like the C++ ones.
+static_assert(sizeof(Ninjarope) == sizeof(LieroNinjarope), "Ninjarope layout");
+static_assert(sizeof(WormWeapon) == sizeof(LieroWormWeapon), "WormWeapon layout");
+static_assert(sizeof(Worm::ControlState) == sizeof(uint32_t), "ControlState layout");
+
+Worm::Worm(LieroWormData* d)
+: data(*d)
+, pos(reinterpret_cast<fixedvec&>(d->pos))
+, vel(reinterpret_cast<fixedvec&>(d->vel))
+, logicRespawn(reinterpret_cast<gvl::ivec2&>(d->logic_respawn))
+, hotspotX(d->hotspot_x), hotspotY(d->hotspot_y)
+, aimingAngle(d->aiming_angle), aimingSpeed(d->aiming_speed)
+, ableToJump(d->able_to_jump), ableToDig(d->able_to_dig)
+, keyChangePressed(d->key_change_pressed)
+, movable(d->movable)
+, animate(d->animate)
+, visible(d->visible)
+, ready(d->ready)
+, flag(d->flag)
+, makeSightGreen(d->make_sight_green)
+, health(d->health)
+, lives(d->lives)
+, kills(d->kills)
+, timer(d->timer)
+, killedTimer(d->killed_timer)
+, currentFrame(d->current_frame)
+, flags(d->flags)
+, ninjarope(reinterpret_cast<Ninjarope&>(d->ninjarope))
+, currentWeapon(d->current_weapon)
+, lastKilledByIdx(d->last_killed_by_idx)
+, fireCone(d->fire_cone)
+, leaveShellTimer(d->leave_shell_timer)
+, index(d->index)
+, reacts(d->reacts)
+, weapons(reinterpret_cast<WormWeapon(&)[5]>(d->weapons))
+, direction(d->direction)
+, controlStates(reinterpret_cast<ControlState&>(d->control_states))
+, prevControlStates(reinterpret_cast<ControlState&>(d->prev_control_states))
+, steerableSumX(d->steerable_sum_x), steerableSumY(d->steerable_sum_y)
+, steerableCount(d->steerable_count)
+, statsX(d->stats_x)
+, cleanControlStates(reinterpret_cast<ControlState&>(d->clean_control_states))
+{
+}
+
 void Worm::process(Game& game)
 {
 	Common& common = *game.common;
 	WormContext context(game, *this);
-
-	LieroWormFields fields = {
-		toRust(&pos), toRust(&vel), toRust(&logicRespawn),
-		&hotspotX, &hotspotY, &aimingAngle, &aimingSpeed,
-		&ableToJump, &ableToDig, &keyChangePressed, &movable, &animate,
-		&visible, &ready, &makeSightGreen,
-		&health, &lives, &killedTimer, &currentFrame,
-		reinterpret_cast<LieroNinjarope*>(&ninjarope),
-		&currentWeapon, &lastKilledByIdx, &fireCone, &leaveShellTimer,
-		reacts, reinterpret_cast<LieroWormWeapon*>(weapons), &direction,
-		&controlStates.istate,
-		&steerableSumX, &steerableSumY, &steerableCount,
-		index, settings->health,
-	};
 
 	LieroWormConstants k = wormConstants(common);
 
@@ -385,7 +416,7 @@ void Worm::process(Game& game)
 		hookAfterDeath, hookAfterSpawn,
 	};
 
-	liero_worm_process(&fields, &k, &env, &hooks);
+	liero_worm_process(&data, settings->health, &k, &env, &hooks);
 }
 
 int Worm::angleFrame() const

@@ -44,50 +44,138 @@ pub const LIERO_GAME_GAME_OF_TAG: i32 = 1;
 pub const LIERO_GAME_HOLDAZONE: i32 = 2;
 pub const LIERO_GAME_SCALES_OF_JUSTICE: i32 = 3;
 
-/// Pointers to the fields of a C++ `Worm`.
+/// A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
+/// it (`liero_worm_data_new`), except its settings and AI.
 #[repr(C)]
-pub struct LieroWormFields {
-    pub pos: *mut LieroIVec2,
-    pub vel: *mut LieroIVec2,
+#[derive(Clone, Copy, Debug)]
+pub struct LieroWormData {
+    pub pos: LieroIVec2,
+    pub vel: LieroIVec2,
     /// Where the respawn camera is, in pixels.
-    pub logic_respawn: *mut LieroIVec2,
-    pub hotspot_x: *mut i32,
-    pub hotspot_y: *mut i32,
+    pub logic_respawn: LieroIVec2,
+    pub hotspot_x: i32,
+    pub hotspot_y: i32,
     /// Fixed-point, 0 to 128.
-    pub aiming_angle: *mut i32,
-    pub aiming_speed: *mut i32,
-    pub able_to_jump: *mut bool,
-    pub able_to_dig: *mut bool,
-    pub key_change_pressed: *mut bool,
-    pub movable: *mut bool,
-    pub animate: *mut bool,
-    pub visible: *mut bool,
-    pub ready: *mut bool,
-    pub make_sight_green: *mut bool,
-    pub health: *mut i32,
-    pub lives: *mut i32,
-    pub killed_timer: *mut i32,
-    pub current_frame: *mut i32,
-    pub ninjarope: *mut LieroNinjarope,
-    pub current_weapon: *mut i32,
-    pub last_killed_by_idx: *mut i32,
-    pub fire_cone: *mut i32,
-    pub leave_shell_timer: *mut i32,
-    /// Four entries, indexed by `RF_*`.
-    pub reacts: *mut i32,
-    /// All five weapon slots.
-    pub weapons: *mut LieroWormWeapon,
-    /// 0 is left, 1 is right.
-    pub direction: *mut i32,
-    /// `Worm::controlStates`, one bit per `LIERO_CONTROL_*`.
-    pub control_states: *mut u32,
-    pub steerable_sum_x: *mut i32,
-    pub steerable_sum_y: *mut i32,
-    pub steerable_count: *mut i32,
+    pub aiming_angle: i32,
+    pub aiming_speed: i32,
+    pub able_to_jump: bool,
+    pub able_to_dig: bool,
+    pub key_change_pressed: bool,
+    pub movable: bool,
+    pub animate: bool,
+    pub visible: bool,
+    pub ready: bool,
+    /// Whether the worm has a flag.
+    pub flag: bool,
+    pub make_sight_green: bool,
+    pub health: i32,
+    pub lives: i32,
+    pub kills: i32,
+    /// Time as 'it' in Game of Tag.
+    pub timer: i32,
+    pub killed_timer: i32,
+    pub current_frame: i32,
+    pub flags: i32,
+    pub ninjarope: LieroNinjarope,
+    pub current_weapon: i32,
+    pub last_killed_by_idx: i32,
+    pub fire_cone: i32,
+    pub leave_shell_timer: i32,
     /// 0 or 1.
     pub index: i32,
-    /// The worm's full health (`settings->health`).
-    pub max_health: i32,
+    /// Indexed by `RF_*`.
+    pub reacts: [i32; 4],
+    pub weapons: [LieroWormWeapon; LIERO_SELECTABLE_WEAPONS],
+    /// 0 is left, 1 is right.
+    pub direction: i32,
+    /// One bit per `LIERO_CONTROL_*`: the controls the game sees, those of
+    /// the last tick, and the ones the player holds (`LocalController`).
+    pub control_states: u32,
+    pub prev_control_states: u32,
+    pub clean_control_states: u32,
+    pub steerable_sum_x: i32,
+    pub steerable_sum_y: i32,
+    pub steerable_count: i32,
+    /// Where the worm's stats are drawn.
+    pub stats_x: i32,
+}
+
+impl Default for LieroWormData {
+    /// What C++'s `Worm()` set.
+    fn default() -> Self {
+        let zero = LieroIVec2 { x: 0, y: 0 };
+        LieroWormData {
+            pos: zero,
+            vel: zero,
+            logic_respawn: zero,
+            hotspot_x: 0,
+            hotspot_y: 0,
+            aiming_angle: 0,
+            aiming_speed: 0,
+            able_to_jump: false,
+            able_to_dig: false,
+            key_change_pressed: false,
+            movable: true,
+            animate: false,
+            visible: false,
+            ready: true,
+            flag: false,
+            make_sight_green: false,
+            health: 0,
+            lives: 0,
+            kills: 0,
+            timer: 0,
+            killed_timer: 150,
+            current_frame: 0,
+            flags: 0,
+            ninjarope: LieroNinjarope {
+                out: false,
+                attached: false,
+                anchor: std::ptr::null_mut(),
+                pos: zero,
+                vel: zero,
+                length: 0,
+                cur_len: 0,
+            },
+            current_weapon: 0,
+            last_killed_by_idx: -1,
+            fire_cone: 0,
+            leave_shell_timer: 0,
+            index: 0,
+            reacts: [0; 4],
+            weapons: [LieroWormWeapon { kind: std::ptr::null(), ammo: 0, delay_left: 0, loading_left: 0 };
+                LIERO_SELECTABLE_WEAPONS],
+            direction: 0,
+            control_states: 0,
+            prev_control_states: 0,
+            clean_control_states: 0,
+            steerable_sum_x: 0,
+            steerable_sum_y: 0,
+            steerable_count: 0,
+            stats_x: 0,
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn liero_worm_data_new() -> *mut LieroWormData {
+    Box::into_raw(Box::default())
+}
+
+/// # Safety
+/// `w` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_worm_data_clone(w: &LieroWormData) -> *mut LieroWormData {
+    Box::into_raw(Box::new(*w))
+}
+
+/// # Safety
+/// `w` comes from `liero_worm_data_new` or `_clone`, and isn't used after.
+#[no_mangle]
+pub unsafe extern "C" fn liero_worm_data_free(w: *mut LieroWormData) {
+    if !w.is_null() {
+        drop(Box::from_raw(w));
+    }
 }
 
 /// Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
@@ -295,18 +383,21 @@ macro_rules! fields {
         $(
             #[allow(dead_code)]
             fn $get(&self) -> $t {
-                unsafe { *self.f.$get }
+                unsafe { (*self.w).$get }
             }
             #[allow(dead_code)]
             fn $set(&self, v: $t) {
-                unsafe { *self.f.$get = v }
+                unsafe { (*self.w).$get = v }
             }
         )*
     };
 }
 
 struct Worm<'a> {
-    f: &'a LieroWormFields,
+    /// Read and written in place, field by field: a hook can change it.
+    w: *mut LieroWormData,
+    /// The worm's full health (`settings->health`).
+    max_health: i32,
     k: &'a LieroWormConstants,
     env: &'a LieroWormEnv,
     hooks: &'a LieroWormHooks,
@@ -344,25 +435,33 @@ impl Worm<'_> {
     }
 
     fn react(&self, dir: usize) -> i32 {
-        unsafe { *self.f.reacts.add(dir) }
+        unsafe { (*self.w).reacts[dir] }
     }
 
     fn set_react(&self, dir: usize, v: i32) {
-        unsafe { *self.f.reacts.add(dir) = v }
+        unsafe { (*self.w).reacts[dir] = v }
     }
 
     fn add_react(&self, dir: usize, v: i32) {
         self.set_react(dir, self.react(dir) + v);
     }
 
+    fn index(&self) -> i32 {
+        unsafe { (*self.w).index }
+    }
+
+    fn weapons(&self) -> *mut LieroWormWeapon {
+        unsafe { std::ptr::addr_of_mut!((*self.w).weapons) as *mut LieroWormWeapon }
+    }
+
     fn rope(&self) -> *mut LieroNinjarope {
-        self.f.ninjarope
+        unsafe { std::ptr::addr_of_mut!((*self.w).ninjarope) }
     }
 
     /// The current weapon slot.
     fn slot(&self) -> *mut LieroWormWeapon {
         // SAFETY: there are five slots and current_weapon is one of them.
-        unsafe { self.f.weapons.add(self.current_weapon() as usize) }
+        unsafe { self.weapons().add(self.current_weapon() as usize) }
     }
 
     fn available(&self) -> bool {
@@ -458,12 +557,12 @@ impl Worm<'_> {
 
     fn firing(&self) -> LieroWormFiring {
         LieroWormFiring {
-            pos: self.f.pos,
-            vel: self.f.vel,
+            pos: unsafe { std::ptr::addr_of_mut!((*self.w).pos) },
+            vel: unsafe { std::ptr::addr_of_mut!((*self.w).vel) },
             aiming_angle: self.aiming_angle(),
-            fire_cone: self.f.fire_cone,
-            leave_shell_timer: self.f.leave_shell_timer,
-            weapons: self.f.weapons,
+            fire_cone: unsafe { std::ptr::addr_of_mut!((*self.w).fire_cone) },
+            leave_shell_timer: unsafe { std::ptr::addr_of_mut!((*self.w).leave_shell_timer) },
+            weapons: self.weapons(),
             current_weapon: self.current_weapon(),
         }
     }
@@ -608,14 +707,14 @@ impl Worm<'_> {
             }
 
             if b.frame == 1 {
-                if self.health() < self.f.max_health {
+                if self.health() < self.max_health {
                     unsafe { (self.hooks.bonus_free)(ctx) };
 
                     // C++ did this in unsigned arithmetic.
                     let amount = self
                         .rand(k.bonus_health_var as u32)
                         .wrapping_add(k.bonus_min_health as u32)
-                        .wrapping_mul(self.f.max_health as u32)
+                        .wrapping_mul(self.max_health as u32)
                         / 100;
                     unsafe { (self.hooks.heal)(ctx, amount as i32) };
                 }
@@ -632,7 +731,7 @@ impl Worm<'_> {
 
                     unsafe { (self.hooks.bonus_free)(ctx) };
 
-                    unsafe { (*self.f.weapons.add(slot as usize)).loading_left = 0 };
+                    unsafe { (*self.weapons().add(slot as usize)).loading_left = 0 };
                 } else {
                     unsafe {
                         (self.hooks.bonus_free)(ctx);
@@ -948,7 +1047,7 @@ impl Worm<'_> {
     }
 
     fn bleed(&self) {
-        if self.health() >= self.f.max_health / 4 || self.rand(self.health().wrapping_add(6) as u32) != 0 {
+        if self.health() >= self.max_health / 4 || self.rand(self.health().wrapping_add(6) as u32) != 0 {
             return;
         }
 
@@ -969,7 +1068,7 @@ impl Worm<'_> {
         let ctx = self.hooks.ctx;
         let env = self.env;
 
-        unsafe { *self.f.leave_shell_timer = 0 };
+        unsafe { (*self.w).leave_shell_timer = 0 };
         self.set_make_sight_green(false);
 
         self.stop_loop_sound_if_any();
@@ -982,7 +1081,7 @@ impl Worm<'_> {
 
         if env.game_mode == LIERO_GAME_SCALES_OF_JUSTICE {
             while self.health() <= 0 {
-                self.set_health(self.health() + self.f.max_health);
+                self.set_health(self.health() + self.max_health);
                 self.set_lives(self.lives() - 1);
             }
         } else {
@@ -999,16 +1098,16 @@ impl Worm<'_> {
             if env.game_mode != LIERO_GAME_GAME_OF_TAG
                 || *last_killed < 0
                 || by < 0
-                || by == self.f.index
+                || by == self.index()
                 || by == *last_killed
             {
-                *last_killed = self.f.index;
+                *last_killed = self.index();
             }
             *env.got_changed = old_last_killed != *last_killed;
         }
 
         let by = self.last_killed_by_idx();
-        if by >= 0 && by != self.f.index {
+        if by >= 0 && by != self.index() {
             unsafe { (self.hooks.add_kill)(ctx, by) };
         }
 
@@ -1026,7 +1125,7 @@ impl Worm<'_> {
 
         for i in (7..=105).step_by(14) {
             let angle = i + self.rand(14) as i32;
-            self.create_nobject2(self.f.index, angle, div(self.vel(), 3), self.pos());
+            self.create_nobject2(self.index(), angle, div(self.vel(), 3), self.pos());
         }
 
         unsafe { (self.hooks.after_death)(ctx) };
@@ -1184,7 +1283,7 @@ impl Worm<'_> {
         self.set_fire_cone(0);
         self.set_vel(LieroIVec2::default());
         if self.env.game_mode != LIERO_GAME_SCALES_OF_JUSTICE {
-            self.set_health(self.f.max_health);
+            self.set_health(self.max_health);
         }
 
         // This was done at death before, but here seems to make more sense.
@@ -1221,8 +1320,8 @@ impl Worm<'_> {
     }
 
     fn process(&self) {
-        if self.health() > self.f.max_health {
-            self.set_health(self.f.max_health);
+        if self.health() > self.max_health {
+            self.set_health(self.max_health);
         }
 
         let mode = self.env.game_mode;
@@ -1239,16 +1338,17 @@ impl Worm<'_> {
 /// Runs a worm for one tick: C++'s `Worm::process`.
 ///
 /// # Safety
-/// The field pointers, views and the pointers in `env` must be valid for
-/// the call. The hooks may change them (but not free their memory).
+/// `worm`, the views and the pointers in `env` must be valid for the call.
+/// The hooks may change them (but not free their memory).
 #[no_mangle]
 pub unsafe extern "C" fn liero_worm_process(
-    worm: &LieroWormFields,
+    worm: *mut LieroWormData,
+    max_health: i32,
     constants: &LieroWormConstants,
     env: &LieroWormEnv,
     hooks: &LieroWormHooks,
 ) {
-    Worm { f: worm, k: constants, env, hooks }.process();
+    Worm { w: worm, max_health, k: constants, env, hooks }.process();
 }
 
 #[cfg(test)]
@@ -1281,6 +1381,34 @@ mod tests {
         }
         assert_eq!(liero_worm_angle_frame(itof(32), 0), 2);
         assert_eq!(liero_worm_angle_frame(itof(96), 1), 2);
+    }
+
+    #[test]
+    fn new_worm_matches_cpp_and_copies_are_separate() {
+        unsafe {
+            let w = liero_worm_data_new();
+            // What C++'s Worm() set.
+            assert!((*w).ready && (*w).movable && !(*w).visible);
+            assert_eq!((*w).killed_timer, 150);
+            assert_eq!((*w).last_killed_by_idx, -1);
+            assert_eq!((*w).reacts, [0; 4]);
+            assert!((*w).ninjarope.anchor.is_null() && !(*w).ninjarope.out);
+
+            (*w).health = 75;
+            (*w).kills = 3;
+            (*w).flags = 2;
+            (*w).weapons[2].ammo = 9;
+            let c = liero_worm_data_clone(&*w);
+            // Every field is copied.
+            assert_eq!(format!("{:?}", *c), format!("{:?}", *w));
+            (*c).health = 1;
+            (*c).weapons[2].ammo = 0;
+            assert_eq!((*w).health, 75);
+            assert_eq!((*w).weapons[2].ammo, 9);
+            assert_eq!((*c).health, 1);
+            liero_worm_data_free(c);
+            liero_worm_data_free(w);
+        }
     }
 
     #[test]

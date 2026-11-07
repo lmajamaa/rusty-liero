@@ -146,7 +146,8 @@ Once no C++ is left, the web build moves to `wasm32-unknown-unknown` with `wasm-
 1. [x] The first screens in Rust: the message box, text box and key choice (`rust/liero-game/src/boxes.rs`) and the five file selectors (`selector.rs`). A Rust screen reaches what is still C++ (events, sound, the screen's bitmaps) through a table of C++ functions, which shrinks as the rest moves. The selectors' folder listing and what choosing a file does stay C++ hooks until the file layer moves in step 5. The other screens wait for step 3, since they work on the settings and the game state.
 2. [ ] The game's data in Rust, so Rust owns it instead of reaching into C++'s:
    - [x] `Settings` and `WormSettings`. Rust owns their fields (`LieroSettingsBox` and `LieroWormSettingsBox` in `settings.rs`), and the C++ structs hold references to them, so C++ code reads and writes them as before. The names and paths are `SettingsText`, whose conversion to `std::string` is explicit, so that no text points into a temporary copy.
-   - [ ] `Game`, `Worm`, the viewports and the controllers.
+   - [x] `Worm`. Rust owns its state (`LieroWormData` in `worm.rs`), and `Worm::process` hands Rust that one pointer instead of a pointer for each field. The settings and the AI stay C++ members.
+   - [ ] `Game`, the viewports and the controllers.
 3. [ ] The remaining screens in Rust: the weapon options, the menus, and the game and stats screens.
 4. [ ] Files in Rust: loading the TC, replays, settings and the file system layer, with `std::fs`; then `src/gvl` goes.
 5. [ ] Off Emscripten: `wasm32-unknown-unknown`, with a window, framebuffer and audio crate for each build, as in the table above. Each new dependency is agreed before it's added.

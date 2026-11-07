@@ -529,6 +529,7 @@ pub unsafe extern "C" fn liero_nobject_process(
 
 /// The ninja rope, laid out like C++'s `Ninjarope`.
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct LieroNinjarope {
     pub out: bool,
     pub attached: bool,
