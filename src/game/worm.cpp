@@ -398,11 +398,10 @@ void Worm::process(Game& game)
 	LieroWormConstants k = wormConstants(common);
 
 	LieroWormEnv env = {
-		game.level.view(), common.levelCommon(), &game.rand, int32_t(game.cycles),
+		game.level.view(), common.levelCommon(), game.rust(), int32_t(game.cycles),
 		int32_t(game.settings->gameMode), game.settings->blood, game.settings->loadingTime,
 		game.settings->loadChange, game.settings->shadow, game.quickSim,
 		{ Settings::wormAnimTab[0], Settings::wormAnimTab[1], Settings::wormAnimTab[2], Settings::wormAnimTab[3] },
-		&game.lastKilledIdx, &game.gotChanged,
 	};
 
 	LieroWormFiringHooks firing = { &context, hookLaunchSound, hookFirePart, hookPlaySound, hookCreateNObject1 };

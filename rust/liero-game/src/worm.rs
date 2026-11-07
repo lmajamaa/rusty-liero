@@ -12,6 +12,7 @@
 
 use std::ffi::c_void;
 
+use crate::game::LieroGameData;
 use crate::level::{LieroLevel, LieroLevelCommon};
 use crate::material::LieroMaterial;
 use crate::math::{cos_sin, ftoi, itof, LieroIVec2};
@@ -240,7 +241,8 @@ pub struct LieroWormConstants {
 pub struct LieroWormEnv {
     pub level: LieroLevel,
     pub common: LieroLevelCommon,
-    pub rand: *mut LieroRand,
+    /// The game's state: its random numbers, and the 'it' of Game of Tag.
+    pub game: *mut LieroGameData,
     pub cycles: i32,
     /// `LIERO_GAME_*`.
     pub game_mode: i32,
@@ -255,9 +257,6 @@ pub struct LieroWormEnv {
     pub quick_sim: bool,
     /// `Settings::wormAnimTab`: frame offsets for the walking animation.
     pub anim_tab: [i32; 4],
-    /// `Game::lastKilledIdx` and `Game::gotChanged`.
-    pub last_killed_idx: *mut i32,
-    pub got_changed: *mut bool,
 }
 
 /// A bonus from `bonus_next`.
@@ -492,13 +491,17 @@ impl Worm<'_> {
         state
     }
 
+    fn rand_ptr(&self) -> *mut LieroRand {
+        unsafe { std::ptr::addr_of_mut!((*self.env.game).rand) }
+    }
+
     fn rand(&self, max: u32) -> u32 {
         // SAFETY: valid for the call, and no hook runs during this.
-        unsafe { (*self.env.rand).below(max) }
+        unsafe { (*self.rand_ptr()).below(max) }
     }
 
     fn rand_u32(&self) -> u32 {
-        unsafe { (*self.env.rand).next_u32() }
+        unsafe { (*self.rand_ptr()).next_u32() }
     }
 
     fn play_sound(&self, sound: i32) {
@@ -542,7 +545,7 @@ impl Worm<'_> {
         // runs during this.
         unsafe {
             let (mut lv, cv) = (self.env.level.get(), self.env.common.get());
-            lv.draw_dirt_effect(&cv, &mut *self.env.rand, effect, x, y);
+            lv.draw_dirt_effect(&cv, &mut *self.rand_ptr(), effect, x, y);
         }
     }
 
@@ -894,7 +897,7 @@ impl Worm<'_> {
             && ww.loading_left == 0
             && ww.delay_left <= 0
         {
-            unsafe { liero_worm_fire(&self.firing(), &w, self.env.rand, self.k.signed_recoil, ctx_hooks) };
+            unsafe { liero_worm_fire(&self.firing(), &w, self.rand_ptr(), self.k.signed_recoil, ctx_hooks) };
         } else if w.loop_sound != 0 {
             unsafe { (self.hooks.stop_loop_sound)(self.hooks.ctx) };
         }
@@ -903,7 +906,7 @@ impl Worm<'_> {
     fn process_weapons(&self) {
         let w = self.weapon();
         unsafe {
-            liero_worm_process_weapons(&self.firing(), &w, self.env.loading_time, self.env.rand, &*self.hooks.firing)
+            liero_worm_process_weapons(&self.firing(), &w, self.env.loading_time, self.rand_ptr(), &*self.hooks.firing)
         };
     }
 
@@ -1090,7 +1093,7 @@ impl Worm<'_> {
 
         // SAFETY: the game's fields are valid for the call.
         unsafe {
-            let last_killed = &mut *env.last_killed_idx;
+            let last_killed = &mut (*env.game).last_killed_idx;
             let old_last_killed = *last_killed;
             let by = self.last_killed_by_idx();
             // In Game of Tag, 'it' doesn't change if the killer was not 'it',
@@ -1103,7 +1106,7 @@ impl Worm<'_> {
             {
                 *last_killed = self.index();
             }
-            *env.got_changed = old_last_killed != *last_killed;
+            (*env.game).got_changed = old_last_killed != *last_killed;
         }
 
         let by = self.last_killed_by_idx();

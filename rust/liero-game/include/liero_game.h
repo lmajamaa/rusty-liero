@@ -551,37 +551,6 @@ typedef struct LieroStr {
 } LieroStr;
 
 /**
- * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
- */
-typedef struct LieroIVec2 {
-  int32_t x;
-  int32_t y;
-} LieroIVec2;
-
-/**
- * Pointers to the fields of a C++ `Worm` that the game rules use.
- */
-typedef struct LieroGameWorm {
-  struct LieroIVec2 *pos;
-  bool *visible;
-  int32_t *health;
-  int32_t *lives;
-  /**
-   * Game of Tag and Holdazone time.
-   */
-  int32_t *timer;
-  int32_t *last_killed_by_idx;
-  /**
-   * `Worm::index`.
-   */
-  int32_t index;
-  /**
-   * The worm's full health (`settings->health`).
-   */
-  int32_t max_health;
-} LieroGameWorm;
-
-/**
  * Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
  * `gvl::rect`.
  */
@@ -612,6 +581,152 @@ typedef struct LieroHoldazone {
 } LieroHoldazone;
 
 /**
+ * The game's state, besides its worms, object lists and level. Rust owns
+ * it, and the fields of C++'s `Game` refer to it (`liero_game_data_new`).
+ */
+typedef struct LieroGameData {
+  int32_t cycles;
+  /**
+   * The worm that died last, which is 'it' in Game of Tag, or -1.
+   */
+  int32_t last_killed_idx;
+  /**
+   * Whether 'it' changed this tick.
+   */
+  bool got_changed;
+  int32_t screen_flash;
+  bool paused;
+  /**
+   * Worms don't respawn in quick simulations (the AI's look-ahead).
+   */
+  bool quick_sim;
+  struct LieroHoldazone holdazone;
+  struct LieroRand rand;
+} LieroGameData;
+
+/**
+ * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
+ */
+typedef struct LieroIVec2 {
+  int32_t x;
+  int32_t y;
+} LieroIVec2;
+
+/**
+ * The ninja rope, laid out like C++'s `Ninjarope`.
+ */
+typedef struct LieroNinjarope {
+  bool out;
+  bool attached;
+  /**
+   * The worm the rope is attached to, or null.
+   */
+  void *anchor;
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  int32_t length;
+  int32_t cur_len;
+} LieroNinjarope;
+
+/**
+ * A worm's weapon slot, laid out like C++'s `WormWeapon`.
+ */
+typedef struct LieroWormWeapon {
+  /**
+   * The C++ `Weapon`.
+   */
+  const void *kind;
+  int32_t ammo;
+  int32_t delay_left;
+  int32_t loading_left;
+} LieroWormWeapon;
+
+/**
+ * A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
+ * it (`liero_worm_data_new`), except its settings and AI.
+ */
+typedef struct LieroWormData {
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  /**
+   * Where the respawn camera is, in pixels.
+   */
+  struct LieroIVec2 logic_respawn;
+  int32_t hotspot_x;
+  int32_t hotspot_y;
+  /**
+   * Fixed-point, 0 to 128.
+   */
+  int32_t aiming_angle;
+  int32_t aiming_speed;
+  bool able_to_jump;
+  bool able_to_dig;
+  bool key_change_pressed;
+  bool movable;
+  bool animate;
+  bool visible;
+  bool ready;
+  /**
+   * Whether the worm has a flag.
+   */
+  bool flag;
+  bool make_sight_green;
+  int32_t health;
+  int32_t lives;
+  int32_t kills;
+  /**
+   * Time as 'it' in Game of Tag.
+   */
+  int32_t timer;
+  int32_t killed_timer;
+  int32_t current_frame;
+  int32_t flags;
+  struct LieroNinjarope ninjarope;
+  int32_t current_weapon;
+  int32_t last_killed_by_idx;
+  int32_t fire_cone;
+  int32_t leave_shell_timer;
+  /**
+   * 0 or 1.
+   */
+  int32_t index;
+  /**
+   * Indexed by `RF_*`.
+   */
+  int32_t reacts[4];
+  struct LieroWormWeapon weapons[LIERO_SELECTABLE_WEAPONS];
+  /**
+   * 0 is left, 1 is right.
+   */
+  int32_t direction;
+  /**
+   * One bit per `LIERO_CONTROL_*`: the controls the game sees, those of
+   * the last tick, and the ones the player holds (`LocalController`).
+   */
+  uint32_t control_states;
+  uint32_t prev_control_states;
+  uint32_t clean_control_states;
+  int32_t steerable_sum_x;
+  int32_t steerable_sum_y;
+  int32_t steerable_count;
+  /**
+   * Where the worm's stats are drawn.
+   */
+  int32_t stats_x;
+} LieroWormData;
+
+/**
+ * A worm, as the game rules see it.
+ */
+typedef struct LieroGameWorm {
+  struct LieroWormData *data;
+  /**
+   * The worm's full health (`settings->health`).
+   */
+  int32_t max_health;
+} LieroGameWorm;
+
+/**
  * View of a C++ `Level`'s pixels: `data` holds the palette index of each
  * pixel and `materials` its material, both `width * height` long, row by
  * row.
@@ -631,13 +746,7 @@ typedef struct LieroLevel {
 typedef struct LieroGameFields {
   const struct LieroGameWorm *worms;
   int32_t worm_count;
-  int32_t *cycles;
-  /**
-   * The worm that died last, which is 'it' in Game of Tag, or -1.
-   */
-  int32_t *last_killed_idx;
-  struct LieroHoldazone *holdazone;
-  struct LieroRand *rand;
+  struct LieroGameData *game;
   struct LieroLevel level;
 } LieroGameFields;
 
@@ -1024,22 +1133,6 @@ typedef struct LieroNObjectHooks {
    */
   void (*free)(void *ctx);
 } LieroNObjectHooks;
-
-/**
- * The ninja rope, laid out like C++'s `Ninjarope`.
- */
-typedef struct LieroNinjarope {
-  bool out;
-  bool attached;
-  /**
-   * The worm the rope is attached to, or null.
-   */
-  void *anchor;
-  struct LieroIVec2 pos;
-  struct LieroIVec2 vel;
-  int32_t length;
-  int32_t cur_len;
-} LieroNinjarope;
 
 /**
  * Pointers to a worm's position and velocity.
@@ -2215,19 +2308,6 @@ typedef struct LieroWeapon {
 } LieroWeapon;
 
 /**
- * A worm's weapon slot, laid out like C++'s `WormWeapon`.
- */
-typedef struct LieroWormWeapon {
-  /**
-   * The C++ `Weapon`.
-   */
-  const void *kind;
-  int32_t ammo;
-  int32_t delay_left;
-  int32_t loading_left;
-} LieroWormWeapon;
-
-/**
  * Pointers to the fields of a C++ `Worm` that firing and reloading use.
  */
 typedef struct LieroWormFiring {
@@ -2459,80 +2539,6 @@ typedef struct LieroWeapselHooks {
 } LieroWeapselHooks;
 
 /**
- * A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
- * it (`liero_worm_data_new`), except its settings and AI.
- */
-typedef struct LieroWormData {
-  struct LieroIVec2 pos;
-  struct LieroIVec2 vel;
-  /**
-   * Where the respawn camera is, in pixels.
-   */
-  struct LieroIVec2 logic_respawn;
-  int32_t hotspot_x;
-  int32_t hotspot_y;
-  /**
-   * Fixed-point, 0 to 128.
-   */
-  int32_t aiming_angle;
-  int32_t aiming_speed;
-  bool able_to_jump;
-  bool able_to_dig;
-  bool key_change_pressed;
-  bool movable;
-  bool animate;
-  bool visible;
-  bool ready;
-  /**
-   * Whether the worm has a flag.
-   */
-  bool flag;
-  bool make_sight_green;
-  int32_t health;
-  int32_t lives;
-  int32_t kills;
-  /**
-   * Time as 'it' in Game of Tag.
-   */
-  int32_t timer;
-  int32_t killed_timer;
-  int32_t current_frame;
-  int32_t flags;
-  struct LieroNinjarope ninjarope;
-  int32_t current_weapon;
-  int32_t last_killed_by_idx;
-  int32_t fire_cone;
-  int32_t leave_shell_timer;
-  /**
-   * 0 or 1.
-   */
-  int32_t index;
-  /**
-   * Indexed by `RF_*`.
-   */
-  int32_t reacts[4];
-  struct LieroWormWeapon weapons[LIERO_SELECTABLE_WEAPONS];
-  /**
-   * 0 is left, 1 is right.
-   */
-  int32_t direction;
-  /**
-   * One bit per `LIERO_CONTROL_*`: the controls the game sees, those of
-   * the last tick, and the ones the player holds (`LocalController`).
-   */
-  uint32_t control_states;
-  uint32_t prev_control_states;
-  uint32_t clean_control_states;
-  int32_t steerable_sum_x;
-  int32_t steerable_sum_y;
-  int32_t steerable_count;
-  /**
-   * Where the worm's stats are drawn.
-   */
-  int32_t stats_x;
-} LieroWormData;
-
-/**
  * Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
  */
 typedef struct LieroWormConstants {
@@ -2599,7 +2605,10 @@ typedef struct LieroWormConstants {
 typedef struct LieroWormEnv {
   struct LieroLevel level;
   struct LieroLevelCommon common;
-  struct LieroRand *rand;
+  /**
+   * The game's state: its random numbers, and the 'it' of Game of Tag.
+   */
+  struct LieroGameData *game;
   int32_t cycles;
   /**
    * `LIERO_GAME_*`.
@@ -2626,11 +2635,6 @@ typedef struct LieroWormEnv {
    * `Settings::wormAnimTab`: frame offsets for the walking animation.
    */
   int32_t anim_tab[4];
-  /**
-   * `Game::lastKilledIdx` and `Game::gotChanged`.
-   */
-  int32_t *last_killed_idx;
-  bool *got_changed;
 } LieroWormEnv;
 
 /**
@@ -2848,6 +2852,20 @@ struct LieroScreen liero_input_box_screen(struct LieroStr text,
                                           bool digits_only,
                                           void (*done)(void *ctx, struct LieroStr text),
                                           void *ctx);
+
+struct LieroGameData *liero_game_data_new(void);
+
+/**
+ * # Safety
+ * `g` is valid.
+ */
+struct LieroGameData *liero_game_data_clone(const struct LieroGameData *g);
+
+/**
+ * # Safety
+ * `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
+ */
+void liero_game_data_free(struct LieroGameData *g);
 
 /**
  * Runs the game for one tick: C++'s `Game::processFrame`.
