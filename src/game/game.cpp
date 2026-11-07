@@ -24,7 +24,6 @@ GameMembers::GameMembers(
 , soundPlayer(soundPlayer)
 , settings(settings)
 , statsRecorder(new NormalStatsRecorder)
-, level(*common)
 {
 }
 

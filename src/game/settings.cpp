@@ -80,12 +80,6 @@ Settings::~Settings()
 namespace
 {
 
-LieroStr str(std::string const& s)
-{
-	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
-	return r;
-}
-
 void setStr(SettingsText& s, LieroStr v)
 {
 	s = std::string(reinterpret_cast<char const*>(v.ptr), v.len);

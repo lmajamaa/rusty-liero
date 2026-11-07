@@ -54,6 +54,7 @@ struct SettingsText
 	SettingsText& operator=(char const* s) { return *this = std::string(s); }
 	SettingsText& operator=(SettingsText const& other) { return *this = other.str(); }
 
+	friend bool operator==(SettingsText const& a, SettingsText const& b) { return a.str() == b.str(); }
 	friend bool operator==(SettingsText const& a, std::string const& b) { return a.str() == b; }
 	friend bool operator==(std::string const& a, SettingsText const& b) { return a == b.str(); }
 	friend bool operator!=(SettingsText const& a, std::string const& b) { return !(a == b); }

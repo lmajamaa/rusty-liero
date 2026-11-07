@@ -1229,7 +1229,7 @@ bool selectorExists(void* ctx, LieroStr rel)
 void selectorPreview(void* ctx, LieroStr rel)
 {
 	Common& common = *gfx.common;
-	Level level(common);
+	Level level;
 
 	try
 	{
@@ -1825,7 +1825,7 @@ struct MainScreen : Screen
 		g.controller.reset(new LocalController(g.common, g.settings));
 
 		{
-			Level newLevel(*g.common);
+			Level newLevel;
 			newLevel.generateFromSettings(*g.common, *g.settings, g.rand);
 			g.controller->swapLevel(newLevel);
 		}
@@ -1861,7 +1861,7 @@ struct MainScreen : Screen
 			}
 			else
 			{
-				Level newLevel(*g.common);
+				Level newLevel;
 				newLevel.generateFromSettings(*g.common, *settings, g.rand);
 				newController->swapLevel(newLevel);
 			}

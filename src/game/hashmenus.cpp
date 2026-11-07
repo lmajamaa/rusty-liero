@@ -237,7 +237,7 @@ void runWeaponSelection(gvl::shared_ptr<Common> common, char const* name, uint32
 	game.addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), 1, 504, 350));
 	game.addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
 	{
-		Level newLevel(*common);
+		Level newLevel;
 		newLevel.generateFromSettings(*common, *settings, gfx.rand);
 		game.level.swap(newLevel);
 	}

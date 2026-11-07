@@ -5,12 +5,14 @@
 //! bit-identical to the C++ versions: the same seed must give the same
 //! level, and replays depend on every pixel.
 //!
-//! C++'s `Level` still owns the pixels and materials (as `std::vector`s, so
-//! games copy and swap levels as before). It hands Rust a [`LieroLevel`] view
-//! of them for each call, together with a [`LieroLevelCommon`] view of the
-//! TC's tables in `Common`.
+//! Rust owns the level (`LieroLevelBox`): its pixels and materials, palette
+//! and where it came from. C++'s `Level` refers to its fields, and hands
+//! Rust the [`LieroLevel`] view of the pixels for each call, together with a
+//! [`LieroLevelCommon`] view of the TC's tables in `Common`.
 
+use crate::gfx::LieroColor;
 use crate::material::LieroMaterial;
+use crate::text::LieroStr;
 use crate::math::LieroIVec2;
 use crate::rand::LieroRand;
 
@@ -47,7 +49,7 @@ pub struct LieroTexture {
 /// pixel and `materials` its material, both `width * height` long, row by
 /// row.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct LieroLevel {
     pub data: *mut u8,
     pub materials: *mut LieroMaterial,
@@ -765,9 +767,194 @@ pub unsafe extern "C" fn liero_level_correct_shadow(
     level.get().correct_shadow(&common.get(), x1, y1, x2, y2);
 }
 
+/// A level's fields that C++'s `Level` refers to.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LieroLevelData {
+    /// The pixels and materials, which the box owns.
+    pub level: LieroLevel,
+    /// What the level was made from: `Settings::randomLevel`, and the level
+    /// file in the box.
+    pub old_random_level: bool,
+    /// The level's palette, 0 to 63 per component.
+    pub origpal: [LieroColor; 256],
+}
+
+/// A level. C++ holds a pointer to it, and its fields refer to `data`.
+pub struct LieroLevelBox {
+    data: LieroLevelData,
+    pixels: Vec<u8>,
+    materials: Vec<LieroMaterial>,
+    old_level_file: Vec<u8>,
+}
+
+impl LieroLevelBox {
+    /// An empty level: C++'s `Level` constructor.
+    pub fn new() -> Box<Self> {
+        let mut b = Box::new(LieroLevelBox {
+            data: LieroLevelData {
+                level: LieroLevel { data: std::ptr::null_mut(), materials: std::ptr::null_mut(), width: 0, height: 0 },
+                old_random_level: false,
+                origpal: [LieroColor::default(); 256],
+            },
+            pixels: Vec::new(),
+            materials: Vec::new(),
+            old_level_file: Vec::new(),
+        });
+        b.update_view();
+        b
+    }
+
+    /// Points the view at the pixels and materials, after they move.
+    fn update_view(&mut self) {
+        self.data.level.data = self.pixels.as_mut_ptr();
+        self.data.level.materials = self.materials.as_mut_ptr();
+    }
+
+    /// `Level::resize`: keeps the first pixels, and new ones are zero.
+    pub fn resize(&mut self, width: i32, height: i32) {
+        let n = (width.max(0) as usize) * (height.max(0) as usize);
+        self.pixels.resize(n, 0);
+        self.materials.resize(n, LieroMaterial::default());
+        self.data.level.width = width;
+        self.data.level.height = height;
+        self.update_view();
+    }
+
+    /// Makes this a copy of `other`, in place, so that C++'s references
+    /// into `data` stay valid.
+    pub fn assign(&mut self, other: &Self) {
+        self.data = other.data;
+        self.pixels.clone_from(&other.pixels);
+        self.materials.clone_from(&other.materials);
+        self.old_level_file.clone_from(&other.old_level_file);
+        self.update_view();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn liero_level_box_new() -> *mut LieroLevelBox {
+    Box::into_raw(LieroLevelBox::new())
+}
+
+/// # Safety
+/// `l` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_level_box_clone(l: &LieroLevelBox) -> *mut LieroLevelBox {
+    let mut b = LieroLevelBox::new();
+    b.assign(l);
+    Box::into_raw(b)
+}
+
+/// `Level::operator=`.
+///
+/// # Safety
+/// Both are valid, and no view of `to`'s pixels is used after.
+#[no_mangle]
+pub unsafe extern "C" fn liero_level_box_assign(to: &mut LieroLevelBox, from: &LieroLevelBox) {
+    if !std::ptr::eq(to, from) {
+        to.assign(from);
+    }
+}
+
+/// `Level::swap`: the two boxes trade contents, so C++'s references into
+/// each stay valid.
+///
+/// # Safety
+/// Both are valid and different.
+#[no_mangle]
+pub unsafe extern "C" fn liero_level_box_swap(a: &mut LieroLevelBox, b: &mut LieroLevelBox) {
+    std::mem::swap(a, b);
+}
+
+/// # Safety
+/// `l` comes from `liero_level_box_new` or `_clone`, and isn't used after.
+#[no_mangle]
+pub unsafe extern "C" fn liero_level_box_free(l: *mut LieroLevelBox) {
+    if !l.is_null() {
+        drop(Box::from_raw(l));
+    }
+}
+
+/// The fields C++ refers to, valid as long as the box.
+///
+/// # Safety
+/// `l` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_level_box_data(l: &mut LieroLevelBox) -> *mut LieroLevelData {
+    &mut l.data
+}
+
+/// See `LieroLevelBox::resize`. Views of the pixels are invalid after.
+///
+/// # Safety
+/// `l` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_level_box_resize(l: &mut LieroLevelBox, width: i32, height: i32) {
+    l.resize(width, height);
+}
+
+/// The level file the level was made from.
+///
+/// # Safety
+/// `l` is valid; the text is valid until the level changes.
+#[no_mangle]
+pub unsafe extern "C" fn liero_level_box_old_level_file(l: &LieroLevelBox) -> LieroStr {
+    LieroStr { ptr: l.old_level_file.as_ptr(), len: l.old_level_file.len() }
+}
+
+/// # Safety
+/// `l` and `text` are valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_level_box_set_old_level_file(l: &mut LieroLevelBox, text: LieroStr) {
+    l.old_level_file = text.bytes().to_vec();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn level_box_resizes_copies_and_swaps() {
+        unsafe {
+            let a = liero_level_box_new();
+            let d = liero_level_box_data(&mut *a);
+            assert_eq!(((*d).level.width, (*d).level.height, (*d).old_random_level), (0, 0, false));
+
+            liero_level_box_resize(&mut *a, 3, 2);
+            *(*d).level.data.add(5) = 7;
+            (*(*d).level.materials.add(5)).flags = 2;
+            (*d).origpal[9].g = 33;
+            (*d).old_random_level = true;
+            let name = b"levels/A.LEV";
+            liero_level_box_set_old_level_file(&mut *a, LieroStr { ptr: name.as_ptr(), len: name.len() });
+
+            // A copy has pixels of its own.
+            let c = liero_level_box_clone(&*a);
+            let cd = liero_level_box_data(&mut *c);
+            assert_ne!((*cd).level.data, (*d).level.data);
+            assert_eq!(((*cd).level.width, *(*cd).level.data.add(5), (*(*cd).level.materials.add(5)).flags), (3, 7, 2));
+            assert_eq!(((*cd).origpal[9].g, (*cd).old_random_level), (33, true));
+            assert_eq!(liero_level_box_old_level_file(&*c).bytes(), name);
+            *(*cd).level.data.add(5) = 1;
+            assert_eq!(*(*d).level.data.add(5), 7);
+
+            // Growing keeps the first pixels.
+            liero_level_box_resize(&mut *a, 4, 2);
+            assert_eq!((*(*d).level.data.add(5), *(*d).level.data.add(7)), (7, 0));
+
+            // Swapping trades contents; the data pointers stay put.
+            liero_level_box_swap(&mut *a, &mut *c);
+            assert_eq!(((*d).level.width, *(*d).level.data.add(5)), (3, 1));
+            assert_eq!(((*cd).level.width, *(*cd).level.data.add(5)), (4, 7));
+
+            liero_level_box_assign(&mut *a, &*c);
+            assert_eq!(((*d).level.width, *(*d).level.data.add(5)), (4, 7));
+            assert_ne!((*d).level.data, (*cd).level.data);
+            liero_level_box_free(c);
+            liero_level_box_free(a);
+        }
+    }
     use crate::material::LIERO_MATERIAL_ROCK;
     use crate::test_util::Fnv;
 

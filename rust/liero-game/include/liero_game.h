@@ -351,6 +351,11 @@ typedef struct LieroApp LieroApp;
 typedef struct LieroFollowAi LieroFollowAi;
 
 /**
+ * A level. C++ holds a pointer to it, and its fields refer to `data`.
+ */
+typedef struct LieroLevelBox LieroLevelBox;
+
+/**
  * The mixer's channels and time. Opaque to C++.
  */
 typedef struct LieroMixer LieroMixer;
@@ -1157,6 +1162,25 @@ typedef struct LieroLevelCommon {
   const uint8_t *large_sprites;
   int32_t large_sprite_count;
 } LieroLevelCommon;
+
+/**
+ * A level's fields that C++'s `Level` refers to.
+ */
+typedef struct LieroLevelData {
+  /**
+   * The pixels and materials, which the box owns.
+   */
+  struct LieroLevel level;
+  /**
+   * What the level was made from: `Settings::randomLevel`, and the level
+   * file in the box.
+   */
+  bool old_random_level;
+  /**
+   * The level's palette, 0 to 63 per component.
+   */
+  struct LieroColor origpal[256];
+} LieroLevelData;
 
 /**
  * A menu's state, the fields of C++'s `Menu`.
@@ -3750,6 +3774,67 @@ void liero_level_correct_shadow(const struct LieroLevel *level,
                                 int32_t y1,
                                 int32_t x2,
                                 int32_t y2);
+
+struct LieroLevelBox *liero_level_box_new(void);
+
+/**
+ * # Safety
+ * `l` is valid.
+ */
+struct LieroLevelBox *liero_level_box_clone(const struct LieroLevelBox *l);
+
+/**
+ * `Level::operator=`.
+ *
+ * # Safety
+ * Both are valid, and no view of `to`'s pixels is used after.
+ */
+void liero_level_box_assign(struct LieroLevelBox *to, const struct LieroLevelBox *from);
+
+/**
+ * `Level::swap`: the two boxes trade contents, so C++'s references into
+ * each stay valid.
+ *
+ * # Safety
+ * Both are valid and different.
+ */
+void liero_level_box_swap(struct LieroLevelBox *a, struct LieroLevelBox *b);
+
+/**
+ * # Safety
+ * `l` comes from `liero_level_box_new` or `_clone`, and isn't used after.
+ */
+void liero_level_box_free(struct LieroLevelBox *l);
+
+/**
+ * The fields C++ refers to, valid as long as the box.
+ *
+ * # Safety
+ * `l` is valid.
+ */
+struct LieroLevelData *liero_level_box_data(struct LieroLevelBox *l);
+
+/**
+ * See `LieroLevelBox::resize`. Views of the pixels are invalid after.
+ *
+ * # Safety
+ * `l` is valid.
+ */
+void liero_level_box_resize(struct LieroLevelBox *l, int32_t width, int32_t height);
+
+/**
+ * The level file the level was made from.
+ *
+ * # Safety
+ * `l` is valid; the text is valid until the level changes.
+ */
+struct LieroStr liero_level_box_old_level_file(const struct LieroLevelBox *l);
+
+/**
+ * # Safety
+ * `l` and `text` are valid.
+ */
+void liero_level_box_set_old_level_file(struct LieroLevelBox *l, struct LieroStr text);
 
 /**
  * The C functions below take a menu's state and its `count` items, which
