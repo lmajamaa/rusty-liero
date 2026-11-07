@@ -194,9 +194,8 @@ struct Gfx
 	// draws a given surface onto an SDL texture/renderer, using a given Renderer
 	void draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer);
 	void flip();
-	void menuFlip(bool quitting = false);
 	// The menus' palette for the next frame: fading in, cycling, the worms'
-	// colours. `menuFlip` sets it and shows the frame.
+	// colours.
 	void menuFade(bool quitting = false);
 
 	void clearKeys();
@@ -272,9 +271,10 @@ struct Gfx
 	// (`opening`). MenuClose: the menu closes at once with `selected`.
 	int menuStep(int startItemId, int& selected, MenuPass& pass, int entered);
 
-	// A menu item opens `screen` from its onEnter; the menu pushes it, and
-	// when it closes calls `then` with its result, which returns what
-	// onEnter would have.
+	// A menu item opens `screen` from its onEnter, or a controller from its
+	// focus or process; the menu or game screen pushes it, and when it closes
+	// calls `then` with its result, which for a menu item returns what onEnter
+	// would have.
 	void open(std::unique_ptr<Screen> screen, std::function<int(int)> then)
 	{
 		opening = std::move(screen);
@@ -293,8 +293,8 @@ struct Gfx
 	// A number box: Enter puts the number typed, kept within min and max, in
 	// `dest`. Then `then` runs.
 	void openInputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y, std::function<void()> then);
-	// Shows a message until a key is pressed, as a screen run on its own:
-	// the controllers call it in the middle of a game.
+	// Opens a message from a controller; the game screen shows it once the
+	// controller's focus or process returns.
 	void infoBox(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
 
 	static void preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256]);
