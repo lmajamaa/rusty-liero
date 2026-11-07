@@ -4,6 +4,7 @@
 #include <SDL.h>
 
 #include "gfx.hpp"
+#include "screen.hpp"
 #include "sfx.hpp"
 #include "sys.hpp"
 #include "game.hpp"
@@ -161,7 +162,7 @@ try
 	gfx.setVideoMode();
 	sfx.init();
 
-	gfx.mainLoop();
+	runScreens(legacyMainScreen());
 
 	gfx.settings->save(configNode / "liero.cfg", gfx.rand);
 

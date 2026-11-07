@@ -83,6 +83,7 @@ set(GAME_SOURCES ${SOURCES}
     src/game/hashtc.cpp
     src/game/main.cpp
     src/game/replay.cpp
+    src/game/screen.cpp
     src/game/sfx.cpp
     src/game/weapsel.cpp
     src/game/controller/commonController.cpp
