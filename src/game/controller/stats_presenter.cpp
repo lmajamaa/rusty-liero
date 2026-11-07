@@ -63,71 +63,76 @@ void StatsScreen::draw(double pane, double offset)
 	renderer.pal = common.exepal; // We don't use gfx.origpal because the colors are unpredictable
 }
 
-void presentStats(NormalStatsRecorder& recorder, Game& game)
+namespace
 {
-	gfx.clearKeys();
 
+// The stats screen over the last frame of the game, until Enter or Escape.
+struct StatsPresenter : Screen
+{
 	Bitmap bg;
-
-	bg.copy(gfx.playRenderer.bmp);
-
-	StatsScreen screen(recorder, game, gfx.playRenderer);
-
+	std::unique_ptr<StatsScreen> screen;
 	double offset = 0, destOffset = 0;
 	double pane = 0;
-	double destPane = pane;
+	double destPane = 0;
+	bool shown = false;
 
-	while (true)
+	StatsPresenter(NormalStatsRecorder& recorder, Game& game)
 	{
-		gfx.playRenderer.bmp.copy(bg);
-		screen.draw(pane, offset);
-
-		gfx.flip();
-		gfx.process();
-
-		if (gfx.testSDLKey(SDL_SCANCODE_DOWN))
-		{
-			destOffset = destOffset - 10;
-		}
-		else if (gfx.testSDLKey(SDL_SCANCODE_UP))
-		{
-			destOffset = std::min(destOffset + 10.0, 0.0);
-		}
-		else if (gfx.testSDLKeyOnce(SDL_SCANCODE_RIGHT))
-		{
-			destPane = std::min(destPane + 1.0, 1.0);
-		}
-		else if (gfx.testSDLKeyOnce(SDL_SCANCODE_LEFT))
-		{
-			destPane = std::max(destPane - 1.0, -1.0);
-		}
-		else if (gfx.testSDLKey(SDL_SCANCODE_RETURN) ||
-		         gfx.testSDLKey(SDL_SCANCODE_ESCAPE))
-		{
-			break;
-		}
-
-		pane = (pane * 0.89 + destPane * 0.11);
-		offset = (offset * 0.89 + destOffset * 0.11);
-
-		/*
-		vel = vel * 89 / 100;
-
-		if (vel < -itof(3))
-			vel = -itof(3);
-		else if (vel > itof(3))
-			vel = itof(3);
-
-		offset += vel;*/
-
-		if (offset > 0)
-		{
-			offset = 0;
-			//vel = 0;
-		}
+		gfx.clearKeys();
+		bg.copy(gfx.playRenderer.bmp);
+		screen.reset(new StatsScreen(recorder, game, gfx.playRenderer));
 	}
 
-	fill(gfx.playRenderer.bmp, 0);
+	Tick tick() override
+	{
+		if (shown)
+		{
+			gfx.process();
 
-	gfx.clearKeys();
+			if (gfx.testSDLKey(SDL_SCANCODE_DOWN))
+			{
+				destOffset = destOffset - 10;
+			}
+			else if (gfx.testSDLKey(SDL_SCANCODE_UP))
+			{
+				destOffset = std::min(destOffset + 10.0, 0.0);
+			}
+			else if (gfx.testSDLKeyOnce(SDL_SCANCODE_RIGHT))
+			{
+				destPane = std::min(destPane + 1.0, 1.0);
+			}
+			else if (gfx.testSDLKeyOnce(SDL_SCANCODE_LEFT))
+			{
+				destPane = std::max(destPane - 1.0, -1.0);
+			}
+			else if (gfx.testSDLKey(SDL_SCANCODE_RETURN) ||
+			         gfx.testSDLKey(SDL_SCANCODE_ESCAPE))
+			{
+				fill(gfx.playRenderer.bmp, 0);
+
+				gfx.clearKeys();
+				return Tick::close();
+			}
+
+			pane = (pane * 0.89 + destPane * 0.11);
+			offset = (offset * 0.89 + destOffset * 0.11);
+
+			if (offset > 0)
+			{
+				offset = 0;
+			}
+		}
+
+		gfx.playRenderer.bmp.copy(bg);
+		screen->draw(pane, offset);
+		shown = true;
+		return Tick::stay(true);
+	}
+};
+
+}
+
+void presentStats(NormalStatsRecorder& recorder, Game& game)
+{
+	gfx.open(std::unique_ptr<Screen>(new StatsPresenter(recorder, game)), [](int) { return -1; });
 }

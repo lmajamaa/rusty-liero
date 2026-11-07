@@ -801,12 +801,6 @@ void Gfx::preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (
 	}
 }
 
-void Gfx::menuFlip(bool quitting)
-{
-	menuFade(quitting);
-	flip();
-}
-
 void Gfx::menuFade(bool quitting)
 {
 	if (playRenderer.fadeValue < 32 && !quitting)
@@ -1845,8 +1839,7 @@ std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std
 
 void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
 {
-	// For the controllers, which don't run as screens yet.
-	runScreens(infoBoxScreen(text, x, y, clearScreen));
+	open(infoBoxScreen(text, x, y, clearScreen), [](int) { return -1; });
 }
 
 void Gfx::openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, int (*filter)(int))
@@ -1964,55 +1957,105 @@ namespace
 
 std::unique_ptr<Screen> menuScreen();
 
-// A game, until the controller stops it. It still blocks; it becomes a
-// screen with the stats screen.
-void gameLoop()
+// A game, until the controller stops it. What the controller opens while it
+// runs (the stats screen, a message) goes on top once its call returns.
+struct GameScreen : Screen
 {
-	gfx.controller->focus();
+	enum { Focus, Process, Draw, Finish } next = Focus;
+	bool shown = false;
+	bool resumed = false;
+	std::function<int(int)> then;
 
-	while(true)
+	Tick tick() override
 	{
-		if(!gfx.controller->process())
-			break;
-		gfx.playRenderer.clear();
-		gfx.controller->draw(gfx.playRenderer, false);
+		Gfx& g = gfx;
 
-		gfx.singleScreenRenderer.clear();
-		gfx.controller->draw(gfx.singleScreenRenderer, true);
+		// Each tick reads the events that came with the frame before it,
+		// unless a screen the controller opened just closed: it read them.
+		if (resumed)
+			resumed = false;
+		else if (shown)
+			g.process(g.controller.get());
 
-		++gfx.menuCycles;
+		if (next == Focus)
+		{
+			g.controller->focus();
+			next = Process;
+			if (g.opening)
+				return openPending();
+		}
 
-		gfx.flip();
-		gfx.process(gfx.controller.get());
+		if (next == Process)
+		{
+			next = g.controller->process() ? Draw : Finish;
+			if (g.opening)
+				return openPending();
+		}
+
+		if (next == Finish)
+		{
+			g.primaryRenderer = &g.playRenderer;
+
+			g.controller->unfocus();
+
+			g.clearKeys();
+			return Tick::close();
+		}
+
+		g.playRenderer.clear();
+		g.controller->draw(g.playRenderer, false);
+
+		g.singleScreenRenderer.clear();
+		g.controller->draw(g.singleScreenRenderer, true);
+
+		++g.menuCycles;
+
+		next = Process;
+		shown = true;
+		return Tick::stay(true);
 	}
 
-	gfx.primaryRenderer = &gfx.playRenderer;
+	Tick openPending()
+	{
+		Gfx& g = gfx;
+		then = std::move(g.openingThen);
+		g.openingThen = nullptr;
+		return Tick::push(std::move(g.opening));
+	}
 
-	gfx.controller->unfocus();
-
-	gfx.clearKeys();
-}
+	void resume(int result) override
+	{
+		if (then)
+			then(result);
+		then = nullptr;
+		resumed = true;
+	}
+};
 
 // The app: a level behind the main menu, then whatever the menu chose.
 struct MainScreen : Screen
 {
-	bool started = false;
+	// What's open on top of it.
+	enum { Nothing, InMenu, InGame } open = Nothing;
 	int selection = -1;
 
 	Tick tick() override
 	{
-		if (started)
+		if (open == Nothing)
+			restart();
+		else if (open == InMenu)
 		{
-			if (!afterMenu())
+			switch (afterMenu())
 			{
+			case Quit:
 				gfx.controller.reset();
 				return Tick::close();
+			case Play:
+				open = InGame;
+				return Tick::push(std::unique_ptr<Screen>(new GameScreen));
+			default:
+				break;
 			}
-		}
-		else
-		{
-			started = true;
-			restart();
 		}
 
 		// The level, or the game left off, behind the menu.
@@ -2022,6 +2065,7 @@ struct MainScreen : Screen
 		gfx.singleScreenRenderer.clear();
 		gfx.controller->draw(gfx.singleScreenRenderer, true);
 
+		open = InMenu;
 		return Tick::push(menuScreen());
 	}
 
@@ -2047,8 +2091,10 @@ struct MainScreen : Screen
 		// TODO: Unfocus game when necessary
 	}
 
-	// Does what the menu chose. False to quit.
-	bool afterMenu()
+	enum { Quit, Restart, Play };
+
+	// Does what the menu chose: quits, starts over with a new TC, or plays.
+	int afterMenu()
 	{
 		Gfx& g = gfx;
 		auto& settings = g.settings;
@@ -2086,7 +2132,7 @@ struct MainScreen : Screen
 		}
 		else if(selection == MainMenu::MaQuit) // QUIT TO OS
 		{
-			return false;
+			return Quit;
 		}
 		else if(selection == MainMenu::MaReplay)
 		{
@@ -2098,11 +2144,10 @@ struct MainScreen : Screen
 		else if (selection == MainMenu::MaTc)
 		{
 			restart();
-			return true;
+			return Restart;
 		}
 
-		gameLoop();
-		return true;
+		return Play;
 	}
 };
 

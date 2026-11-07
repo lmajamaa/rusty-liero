@@ -29,6 +29,8 @@ struct StatsScreen
 	std::vector<LieroStr> weaponNames;
 };
 
+// Opens the stats screen (gfx.open); the game screen shows it once the
+// controller's process returns.
 void presentStats(NormalStatsRecorder& recorder, Game& game);
 
 #endif // LIERO_CONTROLLER_STATS_PRESENTER_HPP
