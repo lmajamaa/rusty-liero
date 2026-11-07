@@ -332,6 +332,12 @@ typedef struct LieroMixer LieroMixer;
  */
 typedef struct LieroReplayResult LieroReplayResult;
 
+/**
+ * The game's settings, without the worms', which C++ keeps apart since a
+ * worm holds on to its own.
+ */
+typedef struct LieroSettingsBox LieroSettingsBox;
+
 typedef struct LieroSettingsResult LieroSettingsResult;
 
 /**
@@ -355,6 +361,8 @@ typedef struct LieroTc LieroTc;
  * `liero_tc_file_set`.
  */
 typedef struct LieroTcFile LieroTcFile;
+
+typedef struct LieroWormSettingsBox LieroWormSettingsBox;
 
 /**
  * What the AI reads of a game.
@@ -1475,6 +1483,54 @@ typedef struct LieroSelectorHooks {
 typedef struct LieroHash {
   uint64_t value[4];
 } LieroHash;
+
+/**
+ * The plain fields of the game's settings.
+ */
+typedef struct LieroSettingsData {
+  bool record_replays;
+  bool load_powerlevel_palette;
+  int32_t blood_particle_max;
+  int32_t ai_frames;
+  int32_t ai_mutations;
+  bool ai_traces;
+  int32_t ai_parallels;
+  bool fullscreen;
+  int32_t zone_timeout;
+  uint32_t select_bot_weapons;
+  bool allow_viewing_spawn_point;
+  bool single_screen_replay;
+  bool spectator_window;
+  uint32_t weap_table[40];
+  int32_t max_bonuses;
+  int32_t blood;
+  int32_t time_to_lose;
+  int32_t flags_to_win;
+  uint32_t game_mode;
+  bool shadow;
+  bool load_change;
+  bool names_on_bonuses;
+  bool regenerate_level;
+  int32_t lives;
+  int32_t loading_time;
+  bool random_level;
+  bool map;
+  bool screen_sync;
+} LieroSettingsData;
+
+/**
+ * The plain fields of a worm's settings.
+ */
+typedef struct LieroWormSettingsData {
+  int32_t health;
+  uint32_t controller;
+  uint32_t controls[LIERO_MAX_CONTROL];
+  uint32_t weapons[5];
+  int32_t rgb[3];
+  bool random_name;
+  int32_t color;
+  uint32_t controls_ex[LIERO_MAX_CONTROL_EX];
+} LieroWormSettingsData;
 
 /**
  * A heatmap's size and counts, for C++ to read.
@@ -4108,6 +4164,76 @@ struct LieroHash liero_settings_result_hash(const struct LieroSettingsResult *r)
  * used afterwards.
  */
 void liero_settings_result_free(struct LieroSettingsResult *r);
+
+/**
+ * Settings with every field zero or empty; C++ then sets the defaults.
+ */
+struct LieroSettingsBox *liero_settings_box_new(void);
+
+struct LieroSettingsBox *liero_settings_box_clone(const struct LieroSettingsBox *s);
+
+/**
+ * # Safety
+ * `s` comes from `liero_settings_box_new` or `_clone` and isn't used again.
+ */
+void liero_settings_box_free(struct LieroSettingsBox *s);
+
+/**
+ * The plain fields, which stay where they are for the box's life.
+ */
+struct LieroSettingsData *liero_settings_box_data(struct LieroSettingsBox *s);
+
+/**
+ * The TC's name, valid until it's set.
+ */
+struct LieroStr liero_settings_box_tc(const struct LieroSettingsBox *s);
+
+/**
+ * # Safety
+ * `text` must be valid.
+ */
+void liero_settings_box_set_tc(struct LieroSettingsBox *s, struct LieroStr text);
+
+/**
+ * The level file, valid until it's set.
+ */
+struct LieroStr liero_settings_box_level_file(const struct LieroSettingsBox *s);
+
+/**
+ * # Safety
+ * `text` must be valid.
+ */
+void liero_settings_box_set_level_file(struct LieroSettingsBox *s, struct LieroStr text);
+
+/**
+ * A worm's settings with every field zero or empty.
+ */
+struct LieroWormSettingsBox *liero_worm_settings_box_new(void);
+
+struct LieroWormSettingsBox *liero_worm_settings_box_clone(const struct LieroWormSettingsBox *s);
+
+/**
+ * # Safety
+ * `s` comes from `liero_worm_settings_box_new` or `_clone` and isn't used
+ * again.
+ */
+void liero_worm_settings_box_free(struct LieroWormSettingsBox *s);
+
+/**
+ * The plain fields, which stay where they are for the box's life.
+ */
+struct LieroWormSettingsData *liero_worm_settings_box_data(struct LieroWormSettingsBox *s);
+
+/**
+ * The worm's name, valid until it's set.
+ */
+struct LieroStr liero_worm_settings_box_name(const struct LieroWormSettingsBox *s);
+
+/**
+ * # Safety
+ * `text` must be valid.
+ */
+void liero_worm_settings_box_set_name(struct LieroWormSettingsBox *s, struct LieroStr text);
 
 /**
  * Fills `out` with the `2 * len` samples of an 8-bit TC sound of `len`

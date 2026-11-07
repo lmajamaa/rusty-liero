@@ -46,7 +46,7 @@ struct WeapselMenus
 			v.item_count = int32_t(items.back().size());
 			v.weapons = s.weapons;
 			v.ready = ws.isReady[i];
-			v.name = { reinterpret_cast<uint8_t const*>(s.name.data()), s.name.size() };
+			v.name = s.name.view();
 			v.color = s.color;
 			views.push_back(v);
 		}
@@ -183,7 +183,7 @@ void WeaponSelection::drawSpectatorViewports(Renderer& renderer, GameState state
 
 	if (!cachedSpectatorBackground)
 	{
-		drawVersusInfo(common, renderer.bmp, *game.settings, gfx.settings->levelFile, centerX, centerY);
+		drawVersusInfo(common, renderer.bmp, *game.settings, gfx.settings->levelFile.str(), centerX, centerY);
 		common.font.drawCenteredText(renderer.bmp, "WEAPON SELECTION", centerX, centerY + 48, 7, 2);
 		game.level.drawMiniature(renderer.bmp, centerX - 126, renderer.renderResY - 208, 2);
 
@@ -223,7 +223,7 @@ void WeaponSelection::drawNormalViewports(Renderer& renderer, GameState state)
 		}
 		else
 		{
-			auto levelName = getBasename(getLeaf(gfx.settings->levelFile));
+			auto levelName = getBasename(getLeaf(gfx.settings->levelFile.str()));
 			common.font.drawText(renderer.bmp, (LS(LevelIs1) + levelName + LS(LevelIs2)), 0, 162, 50);
 		}
 

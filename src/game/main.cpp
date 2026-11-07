@@ -153,7 +153,7 @@ try
 #endif
 
 	// TC loading
-	FsNode lieroRoot(gfx.getTcNode() / gfx.settings->tc);
+	FsNode lieroRoot(gfx.getTcNode() / gfx.settings->tc.str());
 	gvl::shared_ptr<Common> common(new Common());
 	common->load(std::move(lieroRoot));
 	gfx.common = common;

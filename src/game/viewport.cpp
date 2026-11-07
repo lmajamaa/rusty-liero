@@ -43,7 +43,7 @@ LieroViewWorm viewWorm(Common& common, Worm const& w)
 	r.lives = w.lives;
 	r.timer = w.timer;
 	r.index = w.index;
-	r.name = str(w.settings->name);
+	r.name = w.settings->name.view();
 	r.color = w.settings->color;
 	r.pressed_change = w.pressed(Worm::Change);
 	r.pressed_fire = w.pressed(Worm::Fire);

@@ -78,18 +78,33 @@ struct WormSettingsExtensions
 		MaxControl = Dig,
 		MaxControlEx
 	};
-
-	uint32_t controlsEx[MaxControlEx];
 };
 
-// The fields and their defaults match LieroWormSettings and
-// liero_data::settings::WormSettings.
+// A worm's settings. Rust owns them (LieroWormSettingsBox in
+// rust/liero-game/src/settings.rs); the fields here refer to its. The fields
+// and their defaults match liero_data::settings::WormSettings.
 struct WormSettings : gvl::shared, WormSettingsExtensions
 {
 	WormSettings()
+	: WormSettings(liero_worm_settings_box_new())
 	{
 		SettingsResult r(liero_worm_settings_default());
 		setWormSettings(*this, r.worm());
+	}
+
+	// A copy with settings of its own.
+	WormSettings(WormSettings const& other)
+	: WormSettings(liero_worm_settings_box_clone(other.box))
+	{
+		profileNode = other.profileNode;
+		hash = other.hash;
+	}
+
+	WormSettings& operator=(WormSettings const&) = delete;
+
+	~WormSettings()
+	{
+		liero_worm_settings_box_free(box);
 	}
 
 	gvl::gash::value_type& updateHash();
@@ -97,17 +112,43 @@ struct WormSettings : gvl::shared, WormSettingsExtensions
 	void saveProfile(FsNode node);
 	void loadProfile(FsNode node);
 
-	int health;
-	uint32_t controller; // CPU / Human
-	uint32_t controls[MaxControl];
-	uint32_t weapons[5]; // TODO: Adjustable
-	std::string name;
-	int rgb[3];
-	bool randomName;
+	// The settings in Rust, for Rust code to work on.
+	LieroWormSettingsBox* rust() const { return box; }
 
-	int color;
+private:
+	explicit WormSettings(LieroWormSettingsBox* box)
+	: box(box)
+	, data(*liero_worm_settings_box_data(box))
+	, controlsEx(data.controls_ex)
+	, health(data.health)
+	, controller(data.controller)
+	, controls(data.controls)
+	, weapons(data.weapons)
+	, name(box, &getName, &setName)
+	, rgb(data.rgb)
+	, randomName(data.random_name)
+	, color(data.color)
+	{
+	}
 
-	//std::string profilePath;
+	static LieroStr getName(void const* b) { return liero_worm_settings_box_name(static_cast<LieroWormSettingsBox const*>(b)); }
+	static void setName(void* b, LieroStr s) { liero_worm_settings_box_set_name(static_cast<LieroWormSettingsBox*>(b), s); }
+
+	LieroWormSettingsBox* box;
+	LieroWormSettingsData& data;
+
+public:
+	uint32_t (&controlsEx)[MaxControlEx];
+	int32_t& health;
+	uint32_t& controller; // CPU / Human
+	uint32_t (&controls)[MaxControl];
+	uint32_t (&weapons)[5]; // TODO: Adjustable
+	SettingsText name;
+	int32_t (&rgb)[3];
+	bool& randomName;
+
+	int32_t& color;
+
 	FsNode profileNode;
 
 	gvl::gash::value_type hash;

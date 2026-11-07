@@ -47,7 +47,7 @@ void StatsScreen::draw(double pane, double offset)
 		scene.worm_sprites[i].width = spr.width;
 		scene.worm_sprites[i].height = spr.height;
 		scene.worm_sprites[i].pitch = spr.pitch;
-		scene.names[i] = str(game.worms[i]->settings->name);
+		scene.names[i] = game.worms[i]->settings->name.view();
 	}
 	scene.game_mode = game.settings->gameMode;
 	scene.game_mode_name = str(common.texts.gameModes[game.settings->gameMode]);
