@@ -36,7 +36,8 @@ uint64_t hashStats(Game& game);
 void hashStatsScreen(char const* name, Game& game, Renderer& renderer);
 // Plays back and hashes a replay file, and replays recorded, changed and
 // broken in other ways. See hashreplays.cpp.
-void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks);
+void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks,
+	int rewindAt = 0);
 void hashReplays(gvl::shared_ptr<Common> common);
 // Games between the predictive bots, hashing their state too. See
 // hashai.cpp.

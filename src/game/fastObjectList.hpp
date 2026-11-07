@@ -3,96 +3,47 @@
 
 #include <cstddef>
 #include <cassert>
-#include <vector>
-#include <algorithm>
-#include <gvl/support/debug.hpp>
+#include "bobject.hpp"
+#include <liero_game.h>
 
-template<typename T>
-struct FastObjectList
+// The blood particles. Rust owns them (LieroBObjectList in
+// rust/liero-game/src/objects.rs), and Game::bobjects refers to them: `arr`
+// holds `limit` particles, and the first `count` are in use.
+struct BloodList
 {
-	struct iterator
-	{
-		iterator(T* cur_)
-		: cur(cur_)
-		{
-		}
+	typedef BObject* iterator;
 
-		iterator& operator++()
-		{
-			++cur;
-			return *this;
-		}
+	BloodList(BloodList const&) = delete;
+	BloodList& operator=(BloodList const&) = delete;
 
-		T& operator*()
-		{
-			return *cur;
-		}
-
-		T* operator->()
-		{
-			return cur;
-		}
-
-		bool operator!=(iterator b)
-		{
-			return cur != b.cur;
-		}
-
-		T* cur;
-	};
-
-	FastObjectList(std::size_t limit = 1)
-	: limit(limit), arr(limit)
-	{
-		clear();
-	}
-
-	T* getFreeObject()
+	BObject* getFreeObject()
 	{
 		assert(count < limit);
-		T* ptr = &arr[count++];
-		return ptr;
+		return &arr[count++];
 	}
 
-	T* newObjectReuse()
+	BObject* newObjectReuse()
 	{
-		T* ret;
 		if(count == limit)
-			ret = &arr[limit - 1];
-		else
-			ret = getFreeObject();
-
-		return ret;
+			return &arr[limit - 1];
+		return getFreeObject();
 	}
 
-	T* newObject()
+	BObject* newObject()
 	{
 		if(count == limit)
 			return 0;
-
-		T* ret = getFreeObject();
-		return ret;
+		return getFreeObject();
 	}
 
-	iterator begin()
-	{
-		return iterator(&arr[0]);
-	}
+	iterator begin() { return arr; }
+	iterator end() { return arr + count; }
 
-	iterator end()
+	// Moves the last particle in place of `ptr`.
+	void free(BObject* ptr)
 	{
-		return iterator(&arr[0] + count);
-	}
-
-	void free(T* ptr)
-	{
-		assert(ptr < &arr[0] + count && ptr >= &arr[0]);
+		assert(ptr < arr + count && ptr >= arr);
 		*ptr = arr[--count];
-	}
-
-	void free(iterator i)
-	{
-		free(&*i);
 	}
 
 	void clear()
@@ -100,11 +51,10 @@ struct FastObjectList
 		count = 0;
 	}
 
+	// Keeps the first particles. Pointers into the list are invalid after.
 	void resize(std::size_t newLimit)
 	{
-		limit = newLimit;
-		count = std::min(count, newLimit);
-		arr.resize(newLimit);
+		liero_bobject_list_resize(reinterpret_cast<LieroBObjectList*>(this), newLimit);
 	}
 
 	std::size_t size() const
@@ -112,8 +62,8 @@ struct FastObjectList
 		return count;
 	}
 
+	BObject* arr;
 	std::size_t limit;
-	std::vector<T> arr;
 	std::size_t count;
 };
 

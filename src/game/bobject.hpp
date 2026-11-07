@@ -2,7 +2,6 @@
 #define LIERO_BOBJECT_HPP
 
 #include "math.hpp"
-#include "fastObjectList.hpp"
 
 struct Game;
 

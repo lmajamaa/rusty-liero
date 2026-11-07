@@ -8,6 +8,7 @@
 #include "gfx/palette.hpp"
 #include "material.hpp"
 #include "common.hpp"
+#include "settingsffi.hpp"
 #include <liero_game.h>
 #include <gvl/math/vec.hpp>
 #include <gvl/math/rect.hpp>
@@ -17,17 +18,42 @@ struct Settings;
 struct Rand;
 struct Common;
 
-struct Level
+// A level's pixels or materials, which Rust owns: `size()` entries from
+// `data()`, row by row. Valid until the level is resized.
+template<typename T>
+struct LevelArray
 {
-	Level(Common& common)
-	: width(0)
-	, height(0)
+	LevelArray(T*& ptr, int& width, int& height)
+	: ptr(ptr), width(width), height(height)
 	{
-		zeroMaterial = common.materials[0];
 	}
 
-	bool load(Common& common, Settings const& settings, gvl::octet_reader r);
+	LevelArray(LevelArray const&) = delete;
+	LevelArray& operator=(LevelArray const&) = delete;
 
+	T& operator[](std::size_t i) const { return ptr[i]; }
+	std::size_t size() const { return std::size_t(width) * std::size_t(height); }
+	T* data() const { return ptr; }
+	T* begin() const { return ptr; }
+	T* end() const { return ptr + size(); }
+
+private:
+	T*& ptr;
+	int& width;
+	int& height;
+};
+
+// A level. Rust owns it (LieroLevelBox in rust/liero-game/src/level.rs);
+// the fields here refer to it.
+struct Level
+{
+	Level();
+	// A copy with pixels of its own.
+	Level(Level const& other);
+	Level& operator=(Level const& other);
+	~Level();
+
+	bool load(Common& common, Settings const& settings, gvl::octet_reader r);
 	void generateDirtPattern(Common& common, Rand& rand);
 	void generateRandom(Common& common, Settings const& settings, Rand& rand);
 	void makeShadow(Common& common);
@@ -77,22 +103,6 @@ struct Level
 		return &materials[x + y*width];
 	}
 
-	unsigned char checkedPixelWrap(int x, int y)
-	{
-		unsigned int idx = static_cast<unsigned int>(x + y*width);
-		if(idx < data.size())
-			return data[idx];
-		return 0;
-	}
-
-	Material checkedMatWrap(int x, int y)
-	{
-		unsigned int idx = static_cast<unsigned int>(x + y*width);
-		if(idx < materials.size())
-			return materials[idx];
-		return zeroMaterial;
-	}
-
 	bool inside(int x, int y)
 	{
 		return static_cast<unsigned int>(x) < static_cast<unsigned int>(width)
@@ -105,41 +115,45 @@ struct Level
 		    && static_cast<unsigned int>(pos.y) < static_cast<unsigned int>(height);
 	}
 
-	void swap(Level& other)
-	{
-		data.swap(other.data);
-		materials.swap(other.materials);
-		std::swap(width, other.width);
-		std::swap(height, other.height);
-		std::swap(origpal, other.origpal);
-		std::swap(oldRandomLevel, other.oldRandomLevel);
-		std::swap(oldLevelFile, other.oldLevelFile);
-		std::swap(zeroMaterial, other.zeroMaterial);
-	}
+	// The levels trade everything.
+	void swap(Level& other);
 
 	gvl::rect rect()
 	{
 		return gvl::rect(0, 0, width, height);
 	}
 
+	// Keeps the first pixels; new ones are zero.
 	void resize(int width_new, int height_new);
 
 	// View of the pixels and materials for the Rust level code
 	// (rust/liero-game/src/level.rs), valid until the level is resized.
 	LieroLevel view()
 	{
-		LieroLevel v = { data.data(), materials.data(), width, height };
-		return v;
+		return level.level;
 	}
 
-	std::vector<unsigned char> data;
-	std::vector<Material> materials;
+	// The level in Rust.
+	LieroLevelBox* rust() const { return box; }
 
-	bool oldRandomLevel;
-	std::string oldLevelFile;
-	int width, height;
-	Palette origpal;
-	Material zeroMaterial;
+private:
+	explicit Level(LieroLevelBox* box);
+
+	static LieroStr getOldLevelFile(void const* b) { return liero_level_box_old_level_file(static_cast<LieroLevelBox const*>(b)); }
+	static void setOldLevelFile(void* b, LieroStr s) { liero_level_box_set_old_level_file(static_cast<LieroLevelBox*>(b), s); }
+
+	LieroLevelBox* box;
+	LieroLevelData& level;
+
+public:
+	LevelArray<unsigned char> data;
+	LevelArray<Material> materials;
+	// What the level was made from.
+	bool& oldRandomLevel;
+	SettingsText oldLevelFile;
+	int& width;
+	int& height;
+	Palette& origpal;
 };
 
 #endif // LIERO_LEVEL_HPP

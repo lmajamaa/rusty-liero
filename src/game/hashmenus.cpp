@@ -237,7 +237,7 @@ void runWeaponSelection(gvl::shared_ptr<Common> common, char const* name, uint32
 	game.addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), 1, 504, 350));
 	game.addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
 	{
-		Level newLevel(*common);
+		Level newLevel;
 		newLevel.generateFromSettings(*common, *settings, gfx.rand);
 		game.level.swap(newLevel);
 	}
@@ -325,6 +325,17 @@ void runBoxes(Common& c)
 		drawInputBox(c, gfx.playRenderer.bmp, frozen, std::string(texts[r(6)]) + "_", 20 + int(r(200)), 10 + int(r(180)), r(2) == 1);
 		hashScreen(f, gfx.playRenderer);
 		print("menu-boxes", step, f);
+	}
+
+	// A one-character level file still names the level.
+	{
+		Fnv f;
+		Settings settings;
+		settings.levelFile = "A";
+		gfx.singleScreenRenderer.clear();
+		drawVersusInfo(c, gfx.singleScreenRenderer.bmp, settings, "x/A.lev", 320, 100);
+		hashScreen(f, gfx.singleScreenRenderer);
+		print("menu-boxes-short", 0, f);
 	}
 }
 

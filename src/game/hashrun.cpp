@@ -259,7 +259,7 @@ std::unique_ptr<Game> setUpGame(gvl::shared_ptr<Common> common, uint32_t seed, i
 	game.addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
 
 	{
-		Level newLevel(*common);
+		Level newLevel;
 		newLevel.generateFromSettings(*common, *settings, gfx.rand);
 		game.level.swap(newLevel);
 	}

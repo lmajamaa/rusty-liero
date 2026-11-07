@@ -92,15 +92,15 @@ struct WormSettings : gvl::shared, WormSettingsExtensions
 		setWormSettings(*this, r.worm());
 	}
 
-	// A copy with settings of its own.
-	WormSettings(WormSettings const& other)
-	: WormSettings(liero_worm_settings_box_clone(other.box))
-	{
-		profileNode = other.profileNode;
-		hash = other.hash;
-	}
-
+	WormSettings(WormSettings const&) = delete;
 	WormSettings& operator=(WormSettings const&) = delete;
+
+	// A copy of the settings, without the profile they came from. The game
+	// shares a worm's settings; only the hash run copies them.
+	std::unique_ptr<WormSettings> clone() const
+	{
+		return std::unique_ptr<WormSettings>(new WormSettings(liero_worm_settings_box_clone(box)));
+	}
 
 	~WormSettings()
 	{

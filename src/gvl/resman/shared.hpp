@@ -18,6 +18,20 @@ struct shared
 
 	}
 
+	// A copy is a new object, with one reference (its new owner's) and no
+	// weak pointers. Copying the count leaked every copy that was put in a
+	// shared_ptr, such as the stats when a replay is rewound.
+	shared(shared const&)
+	: _ref_count(1), _first(0)
+	{
+	}
+
+	// The target keeps its own references.
+	shared& operator=(shared const&)
+	{
+		return *this;
+	}
+
 	// const to allow shared_ptr<T const>
 	void add_ref() const
 	{

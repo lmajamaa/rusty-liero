@@ -8,8 +8,50 @@
 #include <cstring>
 
 // Level generation, shadows, spawn selection and the miniature are
-// implemented in Rust (rust/liero-game/src/level.rs). The level keeps its
-// pixels here and hands Rust a view of them.
+// implemented in Rust (rust/liero-game/src/level.rs), which owns the level.
+
+static_assert(sizeof(Palette) == sizeof(LieroColor) * 256, "Palette layout");
+static_assert(sizeof(Material) == sizeof(LieroMaterial), "Material layout");
+
+Level::Level(LieroLevelBox* box)
+: box(box)
+, level(*liero_level_box_data(box))
+, data(level.level.data, level.level.width, level.level.height)
+, materials(reinterpret_cast<Material*&>(level.level.materials), level.level.width, level.level.height)
+, oldRandomLevel(level.old_random_level)
+, oldLevelFile(box, &getOldLevelFile, &setOldLevelFile)
+, width(level.level.width)
+, height(level.level.height)
+, origpal(reinterpret_cast<Palette&>(level.origpal))
+{
+}
+
+Level::Level()
+: Level(liero_level_box_new())
+{
+}
+
+Level::Level(Level const& other)
+: Level(liero_level_box_clone(other.box))
+{
+}
+
+Level& Level::operator=(Level const& other)
+{
+	liero_level_box_assign(box, other.box);
+	return *this;
+}
+
+Level::~Level()
+{
+	liero_level_box_free(box);
+}
+
+void Level::swap(Level& other)
+{
+	if (this != &other)
+		liero_level_box_swap(box, other.box);
+}
 
 void Level::generateDirtPattern(Common& common, Rand& rand)
 {
@@ -38,10 +80,7 @@ void Level::makeShadow(Common& common)
 
 void Level::resize(int width_new, int height_new)
 {
-	width = width_new;
-	height = height_new;
-	data.resize(width * height);
-	materials.resize(width * height);
+	liero_level_box_resize(box, width_new, height_new);
 }
 
 bool Level::load(Common& common, Settings const& settings, gvl::octet_reader r)

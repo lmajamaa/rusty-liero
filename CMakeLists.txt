@@ -153,6 +153,14 @@ if(EMSCRIPTEN)
         "-sEXPORTED_RUNTIME_METHODS=callMain,FS,addRunDependency,removeRunDependency")
     set_property(TARGET openliero APPEND PROPERTY
         LINK_DEPENDS ${PROJECT_SOURCE_DIR}/web/shell.html)
+    # The web build's stack is 64 KB, and nothing stops a function from
+    # writing past it into the program's data. With this on, every function
+    # checks, and an overflow stops the game with an error. CI's hash run uses
+    # it; the deployed game doesn't, as it's slower.
+    option(LIERO_STACK_CHECK "Check for stack overflows in the web build" OFF)
+    if(LIERO_STACK_CHECK)
+        target_link_options(openliero PRIVATE "-sSTACK_OVERFLOW_CHECK=2")
+    endif()
 else()
     # Natively, only videotool is built, and only on request. tctool is the
     # Rust tool in tools/tctool.
