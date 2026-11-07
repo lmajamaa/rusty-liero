@@ -1322,6 +1322,14 @@ typedef struct LieroEvent {
 } LieroEvent;
 
 /**
+ * A key typed this frame, for a menu's search: SDL's key code and scancode.
+ */
+typedef struct LieroTypedKey {
+  int32_t sym;
+  uint32_t scancode;
+} LieroTypedKey;
+
+/**
  * What a Rust screen calls in C++.
  */
 typedef struct LieroScreenHost {
@@ -1353,6 +1361,24 @@ typedef struct LieroScreenHost {
    * Turns the browser's text input on or off.
    */
   void (*text_input)(bool on);
+  /**
+   * Whether an SDL key was pressed since it was last asked about, which
+   * it then forgets (`Gfx::testSDLKeyOnce`).
+   */
+  bool (*test_key_once)(uint32_t scancode);
+  /**
+   * The keys typed this frame, at most `cap`; returns how many.
+   */
+  uintptr_t (*typed_keys)(struct LieroTypedKey *out, uintptr_t cap);
+  /**
+   * The menus' clock, in milliseconds (`appTicks`).
+   */
+  uint32_t (*ticks)(void);
+  /**
+   * Fades the menus in and cycles their colours, once a frame
+   * (`Gfx::menuFade`).
+   */
+  void (*menu_fade)(void);
 } LieroScreenHost;
 
 /**
@@ -1369,6 +1395,79 @@ typedef struct LieroAppHost {
    */
   void (*idle)(void *data);
 } LieroAppHost;
+
+/**
+ * What a selector lists and where it starts.
+ */
+typedef struct LieroSelectorSpec {
+  /**
+   * The root folder's full path.
+   */
+  struct LieroStr root;
+  /**
+   * The extension of the files listed, or empty for all.
+   */
+  struct LieroStr filter;
+  /**
+   * The title, before the folder's path.
+   */
+  struct LieroStr title;
+  /**
+   * If not empty, a first item with this name chooses a random level.
+   */
+  struct LieroStr random_name;
+  /**
+   * The full path to start at, when `has_select`, and the one to start at
+   * when that one isn't there or not given, when not empty.
+   */
+  struct LieroStr select;
+  bool has_select;
+  struct LieroStr fallback;
+  /**
+   * Only the root's folders with a `tc.cfg`, chosen as files.
+   */
+  bool tcs;
+  /**
+   * Enter makes the choice sound, even on a folder.
+   */
+  bool enter_sound;
+} LieroSelectorSpec;
+
+/**
+ * What a selector calls in C++. `rel` is a path below the root, its parts
+ * joined with '/'.
+ */
+typedef struct LieroSelectorHooks {
+  void *ctx;
+  /**
+   * Lists folder `rel`: `add(list, name, is_dir)` for each entry, with a
+   * `.zip` file as a folder without its extension.
+   */
+  void (*list)(void *ctx, struct LieroStr rel, void *list, void (*add)(void *list,
+                                                                       struct LieroStr name,
+                                                                       bool is_dir));
+  /**
+   * Whether `rel` exists.
+   */
+  bool (*exists)(void *ctx, struct LieroStr rel);
+  /**
+   * The cursor moved to file `rel`: show what it is.
+   */
+  void (*preview)(void *ctx, struct LieroStr rel);
+  /**
+   * Enter on file `rel`, whose full path is `full_path` and name `name`,
+   * or on the random level. Returns what the screen closes with.
+   */
+  int32_t (*choose)(void *ctx,
+                    struct LieroStr rel,
+                    struct LieroStr full_path,
+                    struct LieroStr name,
+                    bool random);
+  /**
+   * Frees `ctx` when the screen closes.
+   */
+  void (*free)(void *ctx);
+} LieroSelectorHooks;
 
 /**
  * A gash value (`gvl::gash::value_type`).
@@ -3861,6 +3960,16 @@ bool liero_app_step(struct LieroApp *app, const struct LieroAppHost *host);
  * The screens' and host's functions are safe to call with their data.
  */
 bool liero_app_frame(struct LieroApp *app, uint32_t now_ms, const struct LieroAppHost *host);
+
+/**
+ * A file selector screen.
+ *
+ * # Safety
+ * The strings in `spec` must be valid; the hooks are called with `ctx`
+ * until `free`.
+ */
+struct LieroScreen liero_selector_screen(const struct LieroSelectorSpec *spec,
+                                         struct LieroSelectorHooks hooks);
 
 /**
  * The default settings, as `Settings::Settings` makes them.

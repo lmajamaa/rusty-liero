@@ -31,7 +31,6 @@
 #include "gfx/macros.hpp"
 
 #include "menu/arrayEnumBehavior.hpp"
-#include "menu/fileSelector.hpp"
 
 Gfx gfx;
 
@@ -1153,276 +1152,210 @@ using gvl::shared_ptr;
 namespace
 {
 
-// A file selector over the frozen menu. Each tick reads the events of the
-// frame before it, draws, and closes on Escape or a chosen file.
-struct SelectorScreen : Screen
+// The file selectors are screens in Rust (rust/liero-game/src/selector.rs).
+// What they still need from C++: listing a folder, which reads .zip files as
+// folders, and what choosing a file does.
+struct SelectorContext
 {
-	FileSelector sel;
-	bool shown = false;
+	enum Kind { Level, Profile, Replay, Options, Tc };
 
-	explicit SelectorScreen(int x = 178)
-	: sel(*gfx.common, x)
-	{
-	}
-
-	Tick tick() override
-	{
-		if (shown)
-			gfx.process();
-
-		gfx.playRenderer.bmp.copy(gfx.frozenScreen);
-		drawTitle();
-		sel.draw();
-
-		if (!sel.process())
-			return Tick::close(-1);
-
-		if(gfx.testSDLKeyOnce(SDL_SCANCODE_RETURN)
-		|| gfx.testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-		{
-			int result = -1;
-			if (enter(result))
-				return Tick::close(result);
-		}
-
-		gfx.menuFade();
-		shown = true;
-		return Tick::stay(true);
-	}
-
-	// The title, and anything else drawn before the list.
-	virtual void drawTitle() = 0;
-	// Enter was pressed: true to close with `result`.
-	virtual bool enter(int& result) = 0;
-
-	void drawFramedTitle(string title)
-	{
-		if (!sel.currentNode->fullPath.empty())
-		{
-			title += ' ';
-			title += sel.currentNode->fullPath;
-		}
-
-		gfx.common->font.drawFramedText(gfx.playRenderer.bmp, title, 178, 20, 50);
-	}
-};
-
-struct LevelSelectScreen : SelectorScreen
-{
-	shared_ptr<FileNode> random;
-	FileNode* previewNode = 0;
-
-	LevelSelectScreen()
-	{
-		Common& common = *gfx.common;
-		random.reset(new FileNode(LS(Random), "", "", false, &sel.rootNode));
-
-		sel.fill(gfx.getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LEV"); });
-
-		random->id = 1;
-		sel.rootNode.children.insert(sel.rootNode.children.begin(), random);
-		sel.setFolder(sel.rootNode);
-		sel.select(gfx.settings->levelFile);
-	}
-
-	void drawTitle() override
-	{
-		Common& common = *gfx.common;
-		string title = LS(SelLevel);
-		if (!sel.currentNode->fullPath.empty())
-		{
-			title += ' ';
-			title += sel.currentNode->fullPath;
-		}
-
-		int wid = common.font.getDims(title);
-
-		drawRoundedBox(gfx.playRenderer.bmp, 178, 20, 0, 7, wid);
-		common.font.drawText(gfx.playRenderer.bmp, title, 180, 21, 50);
-
-		FileNode* cur = sel.curSel();
-		if (previewNode != cur && cur && cur != random.get() && !cur->folder)
-		{
-			Level level(common);
-
-			try
-			{
-				if (level.load(common, *gfx.settings, cur->getFsNode().toOctetReader()))
-				{
-					int centerX = gfx.singleScreenRenderer.renderResX / 2;
-
-					level.drawMiniature(gfx.frozenScreen, 134, 162, 10);
-					level.drawMiniature(gfx.frozenSpectatorScreen, centerX - 126, gfx.singleScreenRenderer.renderResY - 208, 2);
-				}
-			}
-			catch (std::runtime_error&)
-			{
-				// Ignore
-			}
-
-			previewNode = cur;
-		}
-	}
-
-	bool enter(int& result) override
-	{
-		sfx.play(*gfx.common, 27);
-
-		auto* chosen = sel.enter();
-		if (!chosen)
-			return false;
-
-		if (chosen == random.get())
-		{
-			gfx.settings->randomLevel = true;
-			gfx.settings->levelFile.clear();
-		}
-		else
-		{
-			gfx.settings->randomLevel = false;
-			gfx.settings->levelFile = chosen->fullPath;
-		}
-		return true;
-	}
-};
-
-struct ProfileSelectScreen : SelectorScreen
-{
-	WormSettings& ws;
-
-	explicit ProfileSelectScreen(WormSettings& ws)
-	: SelectorScreen(28)
-	, ws(ws)
-	{
-		sel.fill(gfx.getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LPF"); });
-
-		sel.setFolder(sel.rootNode);
-		sel.select(joinPath(gfx.getConfigNode().fullPath(), "Profiles"));
-	}
-
-	void drawTitle() override
-	{
-		drawFramedTitle("Select profile:");
-	}
-
-	bool enter(int& result) override
-	{
-		auto* chosen = sel.enter();
-		if (!chosen)
-			return false;
-		ws.loadProfile(chosen->getFsNode());
-		return true;
-	}
-};
-
-struct ReplaySelectScreen : SelectorScreen
-{
-	ReplaySelectScreen()
-	: SelectorScreen(28)
-	{
-		sel.fill(gfx.getConfigNode(), [](string const& name, string const& ext) { return ciCompare(ext, "LRP"); });
-
-		sel.setFolder(sel.rootNode);
-		if (gfx.prevSelectedReplayPath.empty()
-		  || !sel.select(gfx.prevSelectedReplayPath))
-		{
-			sel.select(joinPath(gfx.getConfigNode().fullPath(), "Replays"));
-		}
-	}
-
-	void drawTitle() override
-	{
-		drawFramedTitle("Select replay:");
-	}
-
-	bool enter(int& result) override
-	{
-		auto* chosen = sel.enter();
-		if (!chosen)
-			return false;
-
-		gfx.prevSelectedReplayPath = chosen->fullPath;
-
-		// Reset controller before opening the replay, since we may be recording it
-		gfx.controller.reset();
-
-		gfx.controller.reset(new ReplayController(gfx.common, chosen->getFsNode().toSource()));
-
-		result = MainMenu::MaReplay;
-		return true;
-	}
-};
-
-struct OptionsSelectScreen : SelectorScreen
-{
-	OptionsSelectScreen()
-	: SelectorScreen(28)
-	{
-		sel.fill(gfx.getConfigNode(), [](string const& name, string const& ext) {
-			return ciCompare(ext, "CFG");
-		});
-
-		sel.setFolder(sel.rootNode);
-	}
-
-	void drawTitle() override
-	{
-		drawFramedTitle("Select options:");
-	}
-
-	bool enter(int& result) override
-	{
-		auto* chosen = sel.enter();
-		if (!chosen)
-			return false;
-		gfx.loadSettings(chosen->getFsNode());
-		return true;
-	}
-};
-
-struct TcSelectScreen : SelectorScreen
-{
+	Kind kind;
+	FsNode root;
+	WormSettings* ws = nullptr;
 	std::shared_ptr<std::unique_ptr<Common>> chosenTc;
 
-	explicit TcSelectScreen(std::shared_ptr<std::unique_ptr<Common>> chosenTc)
-	: SelectorScreen(28)
-	, chosenTc(chosenTc)
+	SelectorContext(Kind kind, FsNode root)
+	: kind(kind), root(std::move(root))
 	{
-		sel.fill(gfx.getTcNode(), 0);
+	}
 
-		sel.setFolder(sel.rootNode);
-
-		auto end = std::remove_if(sel.rootNode.children.begin(), sel.rootNode.children.end(), [](shared_ptr<FileNode> const& n) {
-			auto tc = n->getFsNode() / "tc.cfg";
-			return !tc.exists();
-		});
-
-		sel.rootNode.children.erase(end, sel.rootNode.children.end());
-
-		for (auto& c : sel.rootNode.children)
+	FsNode node(LieroStr rel) const
+	{
+		FsNode n = root;
+		std::string path(reinterpret_cast<char const*>(rel.ptr), rel.len);
+		std::size_t start = 0;
+		while (start < path.size())
 		{
-			c->folder = false;
+			std::size_t end = path.find('/', start);
+			if (end == std::string::npos)
+				end = path.size();
+			n = n / path.substr(start, end - start);
+			start = end + 1;
 		}
-	}
-
-	void drawTitle() override
-	{
-		drawFramedTitle("Select TC:");
-	}
-
-	bool enter(int& result) override
-	{
-		auto* chosen = sel.enter();
-		if (!chosen)
-			return false;
-
-		std::unique_ptr<Common> common(new Common());
-		common->load(chosen->getFsNode());
-		gfx.settings->tc = chosen->name;
-		*chosenTc = std::move(common);
-		return true;
+		return n;
 	}
 };
+
+std::string toString(LieroStr s)
+{
+	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
+}
+
+LieroStr lstr(std::string const& s)
+{
+	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
+	return r;
+}
+
+void selectorList(void* ctx, LieroStr rel, void* list, void (*add)(void*, LieroStr, bool))
+{
+	try
+	{
+		DirectoryListing di(static_cast<SelectorContext*>(ctx)->node(rel).iter());
+		for (auto const& name : di)
+			add(list, lstr(name.name), name.isDir);
+	}
+	catch (...)
+	{
+		deferException();
+	}
+}
+
+bool selectorExists(void* ctx, LieroStr rel)
+{
+	try
+	{
+		return static_cast<SelectorContext*>(ctx)->node(rel).exists();
+	}
+	catch (...)
+	{
+		deferException();
+		return false;
+	}
+}
+
+// The level under the cursor, in miniature on the menu and the spectator
+// screen.
+void selectorPreview(void* ctx, LieroStr rel)
+{
+	Common& common = *gfx.common;
+	Level level(common);
+
+	try
+	{
+		if (level.load(common, *gfx.settings, static_cast<SelectorContext*>(ctx)->node(rel).toOctetReader()))
+		{
+			int centerX = gfx.singleScreenRenderer.renderResX / 2;
+
+			level.drawMiniature(gfx.frozenScreen, 134, 162, 10);
+			level.drawMiniature(gfx.frozenSpectatorScreen, centerX - 126, gfx.singleScreenRenderer.renderResY - 208, 2);
+		}
+	}
+	catch (std::runtime_error&)
+	{
+		// Ignore
+	}
+	catch (...)
+	{
+		deferException();
+	}
+}
+
+int32_t selectorChoose(void* ctx, LieroStr rel, LieroStr fullPath, LieroStr name, bool random)
+{
+	SelectorContext& c = *static_cast<SelectorContext*>(ctx);
+	try
+	{
+		switch (c.kind)
+		{
+		case SelectorContext::Level:
+			if (random)
+			{
+				gfx.settings->randomLevel = true;
+				gfx.settings->levelFile.clear();
+			}
+			else
+			{
+				gfx.settings->randomLevel = false;
+				gfx.settings->levelFile = toString(fullPath);
+			}
+			return -1;
+
+		case SelectorContext::Profile:
+			c.ws->loadProfile(c.node(rel));
+			return -1;
+
+		case SelectorContext::Replay:
+			gfx.prevSelectedReplayPath = toString(fullPath);
+
+			// Reset controller before opening the replay, since we may be recording it
+			gfx.controller.reset();
+
+			gfx.controller.reset(new ReplayController(gfx.common, c.node(rel).toSource()));
+			return MainMenu::MaReplay;
+
+		case SelectorContext::Options:
+			gfx.loadSettings(c.node(rel));
+			return -1;
+
+		case SelectorContext::Tc:
+		{
+			std::unique_ptr<Common> common(new Common());
+			common->load(c.node(rel));
+			gfx.settings->tc = toString(name);
+			*c.chosenTc = std::move(common);
+			return -1;
+		}
+		}
+	}
+	catch (...)
+	{
+		deferException();
+	}
+	return -1;
+}
+
+void selectorFree(void* ctx)
+{
+	delete static_cast<SelectorContext*>(ctx);
+}
+
+struct SelectorStrings
+{
+	std::string root, filter, title, randomName, select, fallback;
+};
+
+std::unique_ptr<Screen> selectorScreen(SelectorContext* ctx, SelectorStrings const& s, bool hasSelect, bool tcs, bool preview)
+{
+	LieroSelectorSpec spec;
+	spec.root = lstr(s.root);
+	spec.filter = lstr(s.filter);
+	spec.title = lstr(s.title);
+	spec.random_name = lstr(s.randomName);
+	spec.select = lstr(s.select);
+	spec.has_select = hasSelect;
+	spec.fallback = lstr(s.fallback);
+	spec.tcs = tcs;
+	spec.enter_sound = ctx->kind == SelectorContext::Level;
+
+	LieroSelectorHooks hooks;
+	hooks.ctx = ctx;
+	hooks.list = selectorList;
+	hooks.exists = selectorExists;
+	hooks.preview = preview ? selectorPreview : nullptr;
+	hooks.choose = selectorChoose;
+	hooks.free = selectorFree;
+
+	LieroScreen screen = liero_selector_screen(&spec, hooks);
+	// Listing the folders at the start may have thrown.
+	rethrowDeferred();
+	return fromFfi(screen);
+}
+
+std::unique_ptr<Screen> configSelector(SelectorContext::Kind kind, std::string const& filter, std::string const& title,
+	std::string const& select, bool hasSelect, std::string const& fallback = "", WormSettings* ws = nullptr)
+{
+	FsNode root = gfx.getConfigNode();
+	SelectorContext* ctx = new SelectorContext(kind, root);
+	ctx->ws = ws;
+	SelectorStrings s;
+	s.root = root.fullPath();
+	s.filter = filter;
+	s.title = title;
+	s.select = select;
+	s.fallback = fallback;
+	return selectorScreen(ctx, s, hasSelect, false, false);
+}
 
 struct WeaponMenu : Menu
 {
@@ -1558,27 +1491,44 @@ struct WeaponOptionsScreen : Screen
 
 std::unique_ptr<Screen> selectLevelScreen()
 {
-	return std::unique_ptr<Screen>(new LevelSelectScreen);
+	Common& common = *gfx.common;
+	FsNode root = gfx.getConfigNode();
+	SelectorStrings s;
+	s.root = root.fullPath();
+	s.filter = "LEV";
+	s.title = LS(SelLevel);
+	s.randomName = LS(Random);
+	s.select = gfx.settings->levelFile;
+	return selectorScreen(new SelectorContext(SelectorContext::Level, root), s, true, false, true);
 }
 
 std::unique_ptr<Screen> selectProfileScreen(WormSettings& ws)
 {
-	return std::unique_ptr<Screen>(new ProfileSelectScreen(ws));
+	return configSelector(SelectorContext::Profile, "LPF", "Select profile:",
+		joinPath(gfx.getConfigNode().fullPath(), "Profiles"), true, "", &ws);
 }
 
 std::unique_ptr<Screen> selectReplayScreen()
 {
-	return std::unique_ptr<Screen>(new ReplaySelectScreen);
+	return configSelector(SelectorContext::Replay, "LRP", "Select replay:",
+		gfx.prevSelectedReplayPath, !gfx.prevSelectedReplayPath.empty(),
+		joinPath(gfx.getConfigNode().fullPath(), "Replays"));
 }
 
 std::unique_ptr<Screen> selectOptionsScreen()
 {
-	return std::unique_ptr<Screen>(new OptionsSelectScreen);
+	return configSelector(SelectorContext::Options, "CFG", "Select options:", "", false);
 }
 
 std::unique_ptr<Screen> selectTcScreen(std::shared_ptr<std::unique_ptr<Common>> chosen)
 {
-	return std::unique_ptr<Screen>(new TcSelectScreen(chosen));
+	FsNode root = gfx.getTcNode();
+	SelectorContext* ctx = new SelectorContext(SelectorContext::Tc, root);
+	ctx->chosenTc = chosen;
+	SelectorStrings s;
+	s.root = root.fullPath();
+	s.title = "Select TC:";
+	return selectorScreen(ctx, s, false, true, false);
 }
 
 std::unique_ptr<Screen> weaponOptionsScreen()

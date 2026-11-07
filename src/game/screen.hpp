@@ -41,6 +41,12 @@ struct Screen
 // A screen made in Rust (such as liero_info_box_screen), for C++ to open.
 std::unique_ptr<Screen> fromFfi(LieroScreen s);
 
+// C++ called from Rust can't let an exception through. It catches it and
+// calls this in the catch block; the exception is thrown again once the Rust
+// call returns to C++ (rethrowDeferred, which a Rust screen's tick calls).
+void deferException();
+void rethrowDeferred();
+
 // Runs `first` and whatever it opens until no screen is left. An exception
 // thrown by a screen closes them all and is rethrown here. Each step runs
 // as soon as the one before it is done, so this is for the hash run and for
