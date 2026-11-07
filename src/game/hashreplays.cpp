@@ -226,7 +226,9 @@ std::size_t frameOffset(std::size_t firstFrame, int k)
 // ticks. Prints the replay file, the game it starts with, the game state
 // every `interval` ticks and how it ended: the end of the replay, or the
 // error that stopped it, with the game and settings then.
-void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks)
+// With rewindAt, the replay is also rewound there, as R does in a replay.
+void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks,
+	int rewindAt)
 {
 	{
 		Fnv f;
@@ -265,6 +267,15 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 		game->startGame();
 		game->focus(renderer);
 
+		// What R rewinds to in ReplayController.
+		std::unique_ptr<Game> initialGame;
+		gvl::octet_reader initialReader = reader.reader;
+		if (rewindAt > 0)
+		{
+			initialGame.reset(new Game(*game));
+			initialGame->postClone(*game, true);
+		}
+
 		while (ticks < maxTicks)
 		{
 			if (!reader.playbackFrame(renderer))
@@ -273,6 +284,24 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 			++ticks;
 			if (ticks % interval == 0)
 				std::printf("%s-replay %d %016llx\n", name, ticks, (unsigned long long)hashGame(*game));
+
+			if (initialGame && ticks == rewindAt)
+			{
+				// As R in ReplayController::process: back to the start, then
+				// play to here again, which has to give the same game.
+				*game = *initialGame;
+				game->postClone(*initialGame, true);
+				reader.reader = initialReader;
+				int t = 0;
+				while (t < rewindAt && reader.playbackFrame(renderer))
+				{
+					game->processFrame();
+					++t;
+				}
+				std::printf("%s-replay-rewind %d %016llx\n", name, t, (unsigned long long)hashGame(*game));
+				// The run's heap is small.
+				initialGame.reset();
+			}
 		}
 		if (ticks == maxTicks)
 			outcome = "stopped";
@@ -318,7 +347,7 @@ void hashReplays(gvl::shared_ptr<Common> common)
 		std::snprintf(name, sizeof name, "replay-v%d", version);
 		FsNode node = tmpNode(std::string(name) + ".lrp");
 		recordGame(common, node, 21, Settings::GMKillEmAll, 0, 2200, version);
-		hashReplay(common, name, node, 200, 2200);
+		hashReplay(common, name, node, 200, 2200, 600);
 	}
 
 	// Started part way through games, when ropes, kills and the tag can
@@ -332,7 +361,7 @@ void hashReplays(gvl::shared_ptr<Common> common)
 			std::snprintf(name, sizeof name, "replay-mode%d-from%d", mode, start);
 			FsNode node = tmpNode(std::string(name) + ".lrp");
 			recordGame(common, node, 22 + mode, mode, start, 600, myReplayVersion);
-			hashReplay(common, name, node, 200, 600);
+			hashReplay(common, name, node, 200, 600, 0);
 		}
 	}
 

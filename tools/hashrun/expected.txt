@@ -17981,6 +17981,7 @@ menu-boxes 20 376d6adc3c8f22e3 frame
 menu-boxes 21 2e60df5eff63dd85 frame
 menu-boxes 22 f1923371866bc458 frame
 menu-boxes 23 24866e20dc0ac229 frame
+menu-boxes-short 0 9ee748bcd6446934 frame
 weapsel-1 0 c9ca7a67e0975bdc frame
 weapsel-1 1 16cd078605c1035d frame
 weapsel-1 2 71b1069ae29e1114 frame
@@ -19751,6 +19752,7 @@ replay-v0-replay-load 0 c870569d856fdca4
 replay-v0-replay 200 55d8d6d126fcb7cd
 replay-v0-replay 400 239cee332a4d0127
 replay-v0-replay 600 366ee01647611e7e
+replay-v0-replay-rewind 600 366ee01647611e7e
 replay-v0-replay 800 6fe43335f39407fd
 replay-v0-replay 1000 e7bff418e525d650
 replay-v0-replay 1200 1ca5b02ee5e672e0
@@ -19765,6 +19767,7 @@ replay-v1-replay-load 0 c870569d856fdca4
 replay-v1-replay 200 55d8d6d126fcb7cd
 replay-v1-replay 400 239cee332a4d0127
 replay-v1-replay 600 366ee01647611e7e
+replay-v1-replay-rewind 600 366ee01647611e7e
 replay-v1-replay 800 6fe43335f39407fd
 replay-v1-replay 1000 e7bff418e525d650
 replay-v1-replay 1200 1ca5b02ee5e672e0
@@ -19779,6 +19782,7 @@ replay-v2-replay-load 0 766654988524d039
 replay-v2-replay 200 55d8d6d126fcb7cd
 replay-v2-replay 400 239cee332a4d0127
 replay-v2-replay 600 366ee01647611e7e
+replay-v2-replay-rewind 600 366ee01647611e7e
 replay-v2-replay 800 6fe43335f39407fd
 replay-v2-replay 1000 e7bff418e525d650
 replay-v2-replay 1200 1ca5b02ee5e672e0
@@ -19793,6 +19797,7 @@ replay-v3-replay-load 0 766654988524d039
 replay-v3-replay 200 55d8d6d126fcb7cd
 replay-v3-replay 400 239cee332a4d0127
 replay-v3-replay 600 366ee01647611e7e
+replay-v3-replay-rewind 600 366ee01647611e7e
 replay-v3-replay 800 6fe43335f39407fd
 replay-v3-replay 1000 e7bff418e525d650
 replay-v3-replay 1200 1ca5b02ee5e672e0
@@ -19807,6 +19812,7 @@ replay-v4-replay-load 0 766654988524d039
 replay-v4-replay 200 55d8d6d126fcb7cd
 replay-v4-replay 400 239cee332a4d0127
 replay-v4-replay 600 366ee01647611e7e
+replay-v4-replay-rewind 600 366ee01647611e7e
 replay-v4-replay 800 6fe43335f39407fd
 replay-v4-replay 1000 e7bff418e525d650
 replay-v4-replay 1200 1ca5b02ee5e672e0

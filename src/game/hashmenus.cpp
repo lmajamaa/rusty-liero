@@ -326,6 +326,17 @@ void runBoxes(Common& c)
 		hashScreen(f, gfx.playRenderer);
 		print("menu-boxes", step, f);
 	}
+
+	// A one-character level file still names the level.
+	{
+		Fnv f;
+		Settings settings;
+		settings.levelFile = "A";
+		gfx.singleScreenRenderer.clear();
+		drawVersusInfo(c, gfx.singleScreenRenderer.bmp, settings, "x/A.lev", 320, 100);
+		hashScreen(f, gfx.singleScreenRenderer);
+		print("menu-boxes-short", 0, f);
+	}
 }
 
 }
