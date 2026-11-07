@@ -147,7 +147,10 @@ Once no C++ is left, the web build moves to `wasm32-unknown-unknown` with `wasm-
 2. [ ] The game's data in Rust, so Rust owns it instead of reaching into C++'s:
    - [x] `Settings` and `WormSettings`. Rust owns their fields (`LieroSettingsBox` and `LieroWormSettingsBox` in `settings.rs`), and the C++ structs hold references to them, so C++ code reads and writes them as before. The names and paths are `SettingsText`, whose conversion to `std::string` is explicit, so that no text points into a temporary copy.
    - [x] `Worm`. Rust owns its state (`LieroWormData` in `worm.rs`), and `Worm::process` hands Rust that one pointer instead of a pointer for each field. The settings and the AI stay C++ members.
-   - [ ] `Game`, the viewports and the controllers.
+   - [x] `Game`. Rust owns its own state (`LieroGameData` in `game.rs`): the tick count, 'it', the Holdazone zone and the random numbers. The game rules and the worm tick reach it, and each worm, through one pointer. What C++ still owns is in a `GameMembers` base, so copying a `Game` copies both.
+   - [x] The viewports. Rust owns a viewport's state (`LieroViewport` in `viewport.rs`), which it now processes and draws in place instead of copying in and out.
+   - [x] The controllers. Rust owns the state they share (`LieroControllerData` in `controller.rs`): the match's state, the fade and the frame skip.
+   - [ ] The object lists and the level, which C++ still owns. The worms' settings and AI are C++ members, until the AI and the menus move.
 3. [ ] The remaining screens in Rust: the weapon options, the menus, and the game and stats screens.
 4. [ ] Files in Rust: loading the TC, replays, settings and the file system layer, with `std::fs`; then `src/gvl` goes.
 5. [ ] Off Emscripten: `wasm32-unknown-unknown`, with a window, framebuffer and audio crate for each build, as in the table above. Each new dependency is agreed before it's added.
