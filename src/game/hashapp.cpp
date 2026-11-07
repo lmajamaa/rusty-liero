@@ -216,11 +216,11 @@ void buildScript(Script& s)
 	s.press(SDL_SCANCODE_RETURN);
 	s.press(SDL_SCANCODE_ESCAPE);
 
-	// Bots get random weapons, so the weapon screen is skipped. Games are
-	// recorded, which is on by default.
+	// Bots keep the weapons they have, so the weapon screen waits only for
+	// the right player. Games are recorded, which is on by default.
 	s.press(SDL_SCANCODE_F2);
 	s.press(SDL_SCANCODE_DOWN, 10);          // BOT WEAPONS
-	s.press(SDL_SCANCODE_LEFT);
+	s.press(SDL_SCANCODE_RIGHT);
 	s.press(SDL_SCANCODE_ESCAPE);
 
 	// The left player, chosen in the main menu: a name, a key, a saved and
@@ -255,15 +255,16 @@ void buildScript(Script& s)
 	s.press(SDL_SCANCODE_RIGHT);
 	s.press(SDL_SCANCODE_ESCAPE);
 
-	// The right player is a CPU bot too.
-	s.press(SDL_SCANCODE_F6);
-	s.press(SDL_SCANCODE_UP);
-	s.press(SDL_SCANCODE_RIGHT);
-	s.press(SDL_SCANCODE_ESCAPE);
-
-	// A game until one bot is out of lives, then the stats screen.
+	// A game until one player is out of lives, then the stats screen. The
+	// right player, on its default keys, picks weapons: a new first one,
+	// then down to DONE.
 	s.press(SDL_SCANCODE_F1);
-	s.wait(3000);
+	s.wait(60);
+	s.press(SDL_SCANCODE_K);
+	s.press(SDL_SCANCODE_L);
+	s.press(SDL_SCANCODE_K, 5);
+	s.press(SDL_SCANCODE_SLASH);
+	s.wait(3000 - 60 - 8 * 8);
 	// Scrolled down, then held up past the top; to the right pane and past
 	// it, then left with the key held, which moves one pane.
 	s.press(SDL_SCANCODE_DOWN, 1, 8);

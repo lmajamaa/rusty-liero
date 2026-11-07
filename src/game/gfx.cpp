@@ -1588,205 +1588,173 @@ namespace
 
 std::unique_ptr<Screen> menuScreen();
 
-// A game, until the controller stops it. What the controller opens while it
-// runs (the stats screen, a message) goes on top once its call returns.
-struct GameScreen : Screen
+// C++ called from Rust: an exception waits until the tick returns.
+template<typename F>
+auto guarded(F f, decltype(f()) fallback) -> decltype(f())
 {
-	enum { Focus, Process, Draw, Finish } next = Focus;
-	bool shown = false;
-	bool resumed = false;
-	std::function<int(int)> then;
-
-	Tick tick() override
+	try
 	{
-		Gfx& g = gfx;
-
-		// Each tick reads the events that came with the frame before it,
-		// unless a screen the controller opened just closed: it read them.
-		if (resumed)
-			resumed = false;
-		else if (shown)
-			g.process(g.controller.get());
-
-		if (next == Focus)
-		{
-			g.controller->focus();
-			next = Process;
-			if (g.opening)
-				return openPending();
-		}
-
-		if (next == Process)
-		{
-			next = g.controller->process() ? Draw : Finish;
-			if (g.opening)
-				return openPending();
-		}
-
-		if (next == Finish)
-		{
-			g.primaryRenderer = &g.playRenderer;
-
-			g.controller->unfocus();
-
-			g.clearKeys();
-			return Tick::close();
-		}
-
-		g.playRenderer.clear();
-		g.controller->draw(g.playRenderer, false);
-
-		g.singleScreenRenderer.clear();
-		g.controller->draw(g.singleScreenRenderer, true);
-
-		++g.menuCycles;
-
-		next = Process;
-		shown = true;
-		return Tick::stay(true);
+		return f();
 	}
-
-	Tick openPending()
+	catch (...)
 	{
-		Gfx& g = gfx;
-		then = std::move(g.openingThen);
-		g.openingThen = nullptr;
-		return Tick::push(std::move(g.opening));
+		deferException();
+		return fallback;
 	}
+}
 
-	void resume(int result) override
-	{
-		if (then)
-			then(result);
-		then = nullptr;
-		resumed = true;
-	}
-};
+// The app's screens are in Rust (rust/liero-game/src/app_screens.rs); these
+// are the controller and the menu's choices they call.
 
-// The app: a level behind the main menu, then whatever the menu chose.
-struct MainScreen : Screen
+// A new controller with a new level behind the menu.
+void restartApp()
 {
-	// What's open on top of it.
-	enum { Nothing, InMenu, InGame } open = Nothing;
-	int selection = -1;
+	Gfx& g = gfx;
+	g.controller.reset(new LocalController(g.common, g.settings));
 
-	Tick tick() override
 	{
-		if (open == Nothing)
-			restart();
-		else if (open == InMenu)
+		Level newLevel;
+		newLevel.generateFromSettings(*g.common, *g.settings, g.rand);
+		g.controller->swapLevel(newLevel);
+	}
+
+	g.controller->currentGame()->focus(g.playRenderer);
+	g.controller->currentGame()->focus(g.singleScreenRenderer);
+
+	// TODO: Unfocus game when necessary
+}
+
+// Does what the menu chose: quits, starts over with a new TC, or plays.
+int afterMenu(int selection)
+{
+	Gfx& g = gfx;
+	auto& settings = g.settings;
+	auto& controller = g.controller;
+
+	if(selection == MainMenu::MaNewGame)
+	{
+		std::unique_ptr<Controller> newController(new LocalController(g.common, settings));
+
+		Level* oldLevel = controller->currentLevel();
+
+		if(oldLevel
+		&& !settings->regenerateLevel
+		&& settings->randomLevel == oldLevel->oldRandomLevel
+		&& settings->levelFile == oldLevel->oldLevelFile)
 		{
-			switch (afterMenu())
-			{
-			case Quit:
-				gfx.controller.reset();
-				return Tick::close();
-			case Play:
-				open = InGame;
-				return Tick::push(std::unique_ptr<Screen>(new GameScreen));
-			default:
-				break;
-			}
+			// Take level and palette from old game
+			newController->swapLevel(*oldLevel);
 		}
-
-		// The level, or the game left off, behind the menu.
-		gfx.playRenderer.clear();
-		gfx.controller->draw(gfx.playRenderer, false);
-
-		gfx.singleScreenRenderer.clear();
-		gfx.controller->draw(gfx.singleScreenRenderer, true);
-
-		open = InMenu;
-		return Tick::push(menuScreen());
-	}
-
-	void resume(int result) override
-	{
-		selection = result;
-	}
-
-	void restart()
-	{
-		Gfx& g = gfx;
-		g.controller.reset(new LocalController(g.common, g.settings));
-
+		else
 		{
 			Level newLevel;
-			newLevel.generateFromSettings(*g.common, *g.settings, g.rand);
-			g.controller->swapLevel(newLevel);
+			newLevel.generateFromSettings(*g.common, *settings, g.rand);
+			newController->swapLevel(newLevel);
 		}
 
-		g.controller->currentGame()->focus(g.playRenderer);
-		g.controller->currentGame()->focus(g.singleScreenRenderer);
-
-		// TODO: Unfocus game when necessary
+		controller = std::move(newController);
+	}
+	else if(selection == MainMenu::MaResumeGame)
+	{
+		if (controller->isReplay())
+		{
+			g.primaryRenderer = &g.singleScreenRenderer;
+		}
+	}
+	else if(selection == MainMenu::MaQuit) // QUIT TO OS
+	{
+		return LIERO_AFTER_MENU_QUIT;
+	}
+	else if(selection == MainMenu::MaReplay)
+	{
+		if (settings->singleScreenReplay)
+		{
+			g.primaryRenderer = &g.singleScreenRenderer;
+		}
+	}
+	else if (selection == MainMenu::MaTc)
+	{
+		restartApp();
+		return LIERO_AFTER_MENU_RESTART;
 	}
 
-	enum { Quit, Restart, Play };
+	return LIERO_AFTER_MENU_PLAY;
+}
 
-	// Does what the menu chose: quits, starts over with a new TC, or plays.
-	int afterMenu()
+// What the controller does with the result of the screen it opened.
+std::function<int(int)> gameThen;
+
+void appProcess() { guarded([] { gfx.process(gfx.controller.get()); return 0; }, 0); }
+void appFocus() { guarded([] { gfx.controller->focus(); return 0; }, 0); }
+bool appRun() { return guarded([] { return gfx.controller->process(); }, false); }
+
+void appFinish()
+{
+	guarded([]
 	{
 		Gfx& g = gfx;
-		auto& settings = g.settings;
-		auto& controller = g.controller;
+		g.primaryRenderer = &g.playRenderer;
+		g.controller->unfocus();
+		g.clearKeys();
+		return 0;
+	}, 0);
+}
 
-		if(selection == MainMenu::MaNewGame)
-		{
-			std::unique_ptr<Controller> newController(new LocalController(g.common, settings));
+void appDraw(bool count)
+{
+	guarded([count]
+	{
+		Gfx& g = gfx;
+		g.playRenderer.clear();
+		g.controller->draw(g.playRenderer, false);
+		g.singleScreenRenderer.clear();
+		g.controller->draw(g.singleScreenRenderer, true);
+		if (count)
+			++g.menuCycles;
+		return 0;
+	}, 0);
+}
 
-			Level* oldLevel = controller->currentLevel();
+bool appTakeOpened(LieroScreen* out)
+{
+	if (!gfx.opening)
+		return false;
+	gameThen = std::move(gfx.openingThen);
+	gfx.openingThen = nullptr;
+	*out = screenToFfi(std::move(gfx.opening));
+	return true;
+}
 
-			if(oldLevel
-			&& !settings->regenerateLevel
-			&& settings->randomLevel == oldLevel->oldRandomLevel
-			&& settings->levelFile == oldLevel->oldLevelFile)
-			{
-				// Take level and palette from old game
-				newController->swapLevel(*oldLevel);
-			}
-			else
-			{
-				Level newLevel;
-				newLevel.generateFromSettings(*g.common, *settings, g.rand);
-				newController->swapLevel(newLevel);
-			}
+void appThen(int32_t result)
+{
+	std::function<int(int)> then = std::move(gameThen);
+	gameThen = nullptr;
+	if (then)
+		guarded([&] { return then(result); }, 0);
+}
 
-			controller = std::move(newController);
-		}
-		else if(selection == MainMenu::MaResumeGame)
-		{
-			if (controller->isReplay())
-			{
-				g.primaryRenderer = &g.singleScreenRenderer;
-			}
-		}
-		else if(selection == MainMenu::MaQuit) // QUIT TO OS
-		{
-			return Quit;
-		}
-		else if(selection == MainMenu::MaReplay)
-		{
-			if (settings->singleScreenReplay)
-			{
-				g.primaryRenderer = &g.singleScreenRenderer;
-			}
-		}
-		else if (selection == MainMenu::MaTc)
-		{
-			restart();
-			return Restart;
-		}
-
-		return Play;
-	}
-};
+void appRestart() { guarded([] { restartApp(); return 0; }, 0); }
+int32_t appAfterMenu(int32_t selection) { return guarded([selection] { return afterMenu(selection); }, LIERO_AFTER_MENU_QUIT); }
+void appQuit() { gfx.controller.reset(); }
+LieroScreen appMenuScreen() { return screenToFfi(menuScreen()); }
 
 }
 
 std::unique_ptr<Screen> mainScreen()
 {
-	return std::unique_ptr<Screen>(new MainScreen);
+	LieroAppHooks h;
+	h.process = appProcess;
+	h.focus = appFocus;
+	h.run = appRun;
+	h.finish = appFinish;
+	h.draw = appDraw;
+	h.take_opened = appTakeOpened;
+	h.then = appThen;
+	h.restart = appRestart;
+	h.after_menu = appAfterMenu;
+	h.quit = appQuit;
+	h.menu_screen = appMenuScreen;
+	return fromFfi(liero_main_screen(h));
 }
 
 void Gfx::saveSettings(FsNode node)
@@ -2076,20 +2044,6 @@ int kindOf(Menu* m)
 // What the item that opened a screen does when it closes.
 std::function<int(int)> menuThen;
 
-// C++ called from Rust: an exception waits until the tick returns.
-template<typename F>
-auto guarded(F f, decltype(f()) fallback) -> decltype(f())
-{
-	try
-	{
-		return f();
-	}
-	catch (...)
-	{
-		deferException();
-		return fallback;
-	}
-}
 
 LieroMenuBox* hookMenu(int32_t kind) { return menuOf(kind).box; }
 int32_t hookCur() { return kindOf(gfx.curMenu); }

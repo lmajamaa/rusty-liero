@@ -57,6 +57,15 @@
 #define JUMP 6
 
 /**
+ * What `after_menu` says to do.
+ */
+#define LIERO_AFTER_MENU_QUIT 0
+
+#define LIERO_AFTER_MENU_RESTART 1
+
+#define LIERO_AFTER_MENU_PLAY 2
+
+/**
  * `GameState`: before the match, choosing weapons, playing, and the match
  * over.
  */
@@ -632,6 +641,54 @@ typedef struct LieroScreen {
    */
   void (*free)(void *data);
 } LieroScreen;
+
+/**
+ * What the app's screens call in C++.
+ */
+typedef struct LieroAppHooks {
+  /**
+   * Reads the frame's events, passing keys to the controller
+   * (`Gfx::process(controller)`).
+   */
+  void (*process)(void);
+  /**
+   * The controller's `focus`, `process` (false when it stops) and
+   * `unfocus` with the keys cleared.
+   */
+  void (*focus)(void);
+  bool (*run)(void);
+  void (*finish)(void);
+  /**
+   * Draws the controller on both screens, counting a menu frame when
+   * `count`.
+   */
+  void (*draw)(bool count);
+  /**
+   * Moves the screen the controller opened (`Gfx::open`) into `out`.
+   * False if it opened none.
+   */
+  bool (*take_opened)(struct LieroScreen *out);
+  /**
+   * What the controller does with that screen's result.
+   */
+  void (*then)(int32_t result);
+  /**
+   * A new controller with a new level behind the menu.
+   */
+  void (*restart)(void);
+  /**
+   * Does what the menu chose (`selection`): a `LIERO_AFTER_MENU_*`.
+   */
+  int32_t (*after_menu)(int32_t selection);
+  /**
+   * Drops the controller before quitting.
+   */
+  void (*quit)(void);
+  /**
+   * The main menu screen.
+   */
+  struct LieroScreen (*menu_screen)(void);
+} LieroAppHooks;
 
 /**
  * Text from C++: `len` bytes from `ptr`.
@@ -3287,6 +3344,11 @@ uint32_t liero_dumb_ai_process(struct LieroRand *rand,
                                const int32_t (*others)[2],
                                uintptr_t count,
                                const int32_t (*k)[2][7]);
+
+/**
+ * The app's first screen.
+ */
+struct LieroScreen liero_main_screen(struct LieroAppHooks hooks);
 
 /**
  * A message centred on (x, y) until a key is pressed. With `clear_screen`
