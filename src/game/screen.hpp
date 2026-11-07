@@ -11,6 +11,7 @@
 
 #include <liero_game.h>
 
+#include <functional>
 #include <memory>
 
 struct Screen;
@@ -38,8 +39,17 @@ struct Screen
 };
 
 // Runs `first` and whatever it opens until no screen is left. An exception
-// thrown by a screen closes them all and is rethrown here.
+// thrown by a screen closes them all and is rethrown here. Each step runs
+// as soon as the one before it is done, so this is for the hash run and for
+// native builds, where Gfx::flip waits for the next frame.
 void runScreens(std::unique_ptr<Screen> first);
+
+// Runs `first` as the app, then calls `done`. In the browser this returns
+// at once: the browser calls the frame function every frame
+// (emscripten_set_main_loop), which runs the 14 ms steps that are due. An
+// exception thrown by a screen stops the app with its message. Elsewhere it
+// is runScreens followed by `done`.
+void startScreens(std::unique_ptr<Screen> first, std::function<void()> done);
 
 // The app: the main menu and what it opens (gfx.cpp). It closes when the
 // player quits.

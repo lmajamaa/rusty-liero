@@ -11,9 +11,6 @@
 #include <memory>
 #include <limits>
 #include <random>
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
 
 #include "gfx.hpp"
 #include "screen.hpp"
@@ -755,16 +752,14 @@ void Gfx::idle()
 		return;
 	}
 
-	// Until the frame function runs from the browser's main loop (PLAN.md,
-	// "Replacing the main loop", step 4), runScreens is a loop of its own:
-	// a screen waiting for an event gives the browser a frame's time to
-	// deliver it, as the SDL_WaitEvent it replaces did.
-#ifdef __EMSCRIPTEN__
-	emscripten_sleep(14);
-#else
+	// In the browser the next step comes with a later frame, by which time the
+	// event may have come. Natively runScreens is a loop of its own, so a
+	// screen waiting for an event gives it a step's time, as the SDL_WaitEvent
+	// it replaces did.
+#ifndef __EMSCRIPTEN__
 	SDL_Delay(14);
-#endif
 	lastFrame = SDL_GetTicks();
+#endif
 }
 
 void Gfx::process(Controller* controller)
@@ -876,16 +871,13 @@ void Gfx::flip()
 		draw(*sdlSpectatorDrawSurface, *sdlSpectatorTexture, *sdlSpectatorRenderer, singleScreenRenderer);
 	}
 
+#ifndef __EMSCRIPTEN__
+	// In the browser the frame function (startScreens) runs the steps that
+	// are due; natively each frame waits for its time here.
 	static unsigned int const delay = 14u;
 
 	uint32_t wantedTime = lastFrame + delay;
 
-#ifdef __EMSCRIPTEN__
-	// The browser only shows the frame and delivers input once we return to it,
-	// so yield (through ASYNCIFY) every frame, even when we're behind.
-	uint32_t now = SDL_GetTicks();
-	emscripten_sleep(now < wantedTime ? wantedTime - now : 0);
-#else
 	while(true)
 	{
 		uint32_t now = SDL_GetTicks();
@@ -894,9 +886,9 @@ void Gfx::flip()
 
 		SDL_Delay(wantedTime - now);
 	}
-#endif
 
 	lastFrame = wantedTime;
+#endif
 }
 
 void resetLeftRight()
