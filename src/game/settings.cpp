@@ -64,12 +64,12 @@ Settings::Settings()
 	setSettings(*this, r.settings());
 }
 
-Settings::Settings(Settings const& other)
-: Settings(liero_settings_box_clone(other.box))
+std::unique_ptr<Settings> Settings::clone() const
 {
-	wormSettings[0] = other.wormSettings[0];
-	wormSettings[1] = other.wormSettings[1];
-	hash = other.hash;
+	std::unique_ptr<Settings> r(new Settings(liero_settings_box_clone(box)));
+	r->wormSettings[0] = wormSettings[0];
+	r->wormSettings[1] = wormSettings[1];
+	return r;
 }
 
 Settings::~Settings()

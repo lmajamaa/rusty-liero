@@ -167,24 +167,28 @@ void recordGame(gvl::shared_ptr<Common> common, FsNode const& node, uint32_t see
 	}
 }
 
-Bytes settingsArchive(Settings settings)
+Bytes settingsArchive(Settings const& settings)
 {
 	FsNode node = tmpNode("settings.bin");
 	{
 		gvl::octet_writer w(node.toOctetWriter());
 		GameSerializationContext context;
-		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(w, context), settings);
+		// Writing sets the settings too, so a copy is written.
+		std::unique_ptr<Settings> copy(settings.clone());
+		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(w, context), *copy);
 	}
 	return readAll(node.toOctetReader());
 }
 
-Bytes wormSettingsArchive(WormSettings ws)
+Bytes wormSettingsArchive(WormSettings const& ws)
 {
 	FsNode node = tmpNode("worm.bin");
 	{
 		gvl::octet_writer w(node.toOctetWriter());
 		GameSerializationContext context;
-		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(w, context), ws);
+		// Writing sets the settings too, so a copy is written.
+		std::unique_ptr<WormSettings> copy(ws.clone());
+		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(w, context), *copy);
 	}
 	return readAll(node.toOctetReader());
 }

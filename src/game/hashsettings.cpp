@@ -645,11 +645,11 @@ void hashSettings()
 		fitSettings(s);
 		{
 			Fnv h;
-			Settings copy(s);
-			copy.wormSettings[0].reset(new WormSettings(*s.wormSettings[0]));
-			copy.wormSettings[1].reset(new WormSettings(*s.wormSettings[1]));
-			addHash(h, copy.updateHash());
-			addSettings(h, copy);
+			std::unique_ptr<Settings> copy(s.clone());
+			copy->wormSettings[0].reset(s.wormSettings[0]->clone().release());
+			copy->wormSettings[1].reset(s.wormSettings[1]->clone().release());
+			addHash(h, copy->updateHash());
+			addSettings(h, *copy);
 			print("hash", i, h);
 		}
 		Bytes bin;
@@ -703,15 +703,15 @@ void hashSettings()
 				Fnv h;
 				for (int rv : replayVersions)
 				{
-					WormSettings copy(ws);
-					Bytes b = writeWorm(h, copy, rv);
+					std::unique_ptr<WormSettings> copy(ws.clone());
+					Bytes b = writeWorm(h, *copy, rv);
 					WormSettings t;
 					if (r.flag()) randomWorm(r, t);
 					readWorm(h, b, t, rv);
 				}
-				WormSettings copy(ws);
-				addHash(h, copy.updateHash());
-				addWorm(h, copy);
+				std::unique_ptr<WormSettings> copy(ws.clone());
+				addHash(h, copy->updateHash());
+				addWorm(h, *copy);
 				print("worm", n, h);
 			}
 			{
@@ -722,7 +722,8 @@ void hashSettings()
 					Bytes b;
 					if (j < 4)
 					{
-						WormSettings copy(ws);
+						std::unique_ptr<WormSettings> owned(ws.clone());
+						WormSettings& copy = *owned;
 						Fnv ignore;
 						b = writeWorm(ignore, copy, rv);
 						b.resize(r.below(uint32_t(b.size() + 1)));
@@ -738,7 +739,8 @@ void hashSettings()
 			{
 				Fnv h;
 				FsNode lpf = tmpNode("worm.lpf");
-				WormSettings copy(ws);
+				std::unique_ptr<WormSettings> owned(ws.clone());
+				WormSettings& copy = *owned;
 				attempt(h, [&] { copy.saveProfile(lpf); });
 				Bytes b = readAll(lpf);
 				addBytes(h, b);

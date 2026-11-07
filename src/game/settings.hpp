@@ -2,6 +2,7 @@
 #define LIERO_SETTINGS_HPP
 
 #include "worm.hpp"
+#include <memory>
 #include <string>
 #include <cstring>
 #include <gvl/resman/shared_ptr.hpp>
@@ -35,9 +36,11 @@ struct Settings : gvl::shared
 	static int const wormAnimTab[];
 
 	Settings();
-	// A copy with settings of its own, sharing the worms' settings.
-	Settings(Settings const& other);
+	Settings(Settings const&) = delete;
 	Settings& operator=(Settings const&) = delete;
+	// A copy with settings of its own, sharing the worms' settings. The
+	// game shares one Settings; only the hash run copies them.
+	std::unique_ptr<Settings> clone() const;
 	~Settings();
 
 	// The settings in Rust, for Rust code to work on.
