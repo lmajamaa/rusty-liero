@@ -38,9 +38,7 @@ inline bool endsWith(std::string const& str, char const* end)
 	return pos != std::string::npos && pos + std::strlen(end) == str.size();
 }
 
-bool ciStartsWith(std::string const& a, std::string const& b);
 bool ciCompare(std::string const& a, std::string const& b);
-bool ciLess(std::string const& a, std::string const& b);
 // converts an extremely limited subset of UTF-8 to extended ASCII
 char utf8ToDOS(char* str);
 

@@ -242,6 +242,7 @@ mod tests {
             fill_screen: None,
             menu_palette: None,
             text_input: Some(text_input),
+            ..Default::default()
         })
     }
 

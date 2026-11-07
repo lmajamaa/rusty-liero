@@ -81,6 +81,8 @@ void hostIdle(void*)
 	gfx.idle();
 }
 
+std::exception_ptr deferred;
+
 // A Rust screen inside C++'s Screen, so C++ can open it.
 struct ForeignScreen : Screen
 {
@@ -99,6 +101,12 @@ struct ForeignScreen : Screen
 		LieroTick out = { TickStay, false, 0 };
 		LieroScreen next = { nullptr, nullptr, nullptr, nullptr };
 		s.tick(s.data, &out, &next);
+		if (deferred)
+		{
+			if (next.free)
+				next.free(next.data);
+			rethrowDeferred();
+		}
 		Tick t;
 		t.kind = out.kind;
 		t.shown = out.shown;
@@ -112,6 +120,7 @@ struct ForeignScreen : Screen
 	{
 		if (s.resume)
 			s.resume(s.data, result);
+		rethrowDeferred();
 	}
 };
 
@@ -179,6 +188,22 @@ void hostTextInput(bool on)
 #endif
 }
 
+bool hostTestKeyOnce(uint32_t scancode) { return gfx.testSDLKeyOnce(SDL_Scancode(scancode)); }
+
+size_t hostTypedKeys(LieroTypedKey* out, size_t cap)
+{
+	size_t n = 0;
+	for (SDL_Keysym* k = gfx.keyBuf; k != gfx.keyBufPtr && n < cap; ++k, ++n)
+	{
+		out[n].sym = k->sym;
+		out[n].scancode = k->scancode;
+	}
+	return n;
+}
+
+uint32_t hostTicks() { return appTicks(); }
+void hostMenuFade() { gfx.menuFade(); }
+
 void setScreenHost()
 {
 	LieroScreenHost h;
@@ -192,6 +217,10 @@ void setScreenHost()
 	h.fill_screen = hostFillScreen;
 	h.menu_palette = hostMenuPalette;
 	h.text_input = hostTextInput;
+	h.test_key_once = hostTestKeyOnce;
+	h.typed_keys = hostTypedKeys;
+	h.ticks = hostTicks;
+	h.menu_fade = hostMenuFade;
 	liero_screen_set_host(&h);
 }
 
@@ -243,6 +272,22 @@ void browserFrame(void* arg)
 }
 #endif
 
+}
+
+void deferException()
+{
+	if (!deferred)
+		deferred = std::current_exception();
+}
+
+void rethrowDeferred()
+{
+	if (deferred)
+	{
+		std::exception_ptr e = deferred;
+		deferred = nullptr;
+		std::rethrow_exception(e);
+	}
 }
 
 std::unique_ptr<Screen> fromFfi(LieroScreen s)
