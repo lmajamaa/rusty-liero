@@ -9,35 +9,65 @@
 
 struct Renderer;
 
+// A camera. Rust owns its state (LieroViewport in
+// rust/liero-game/src/viewport.rs); the fields here refer to it.
 struct Viewport
 {
 	Viewport(gvl::rect rect, int wormIdx, int levwidth, int levheight)
-	: wormIdx(wormIdx)
-	, bannerY(-8)
-	, rect(rect)
+	: Viewport(liero_viewport_new(LieroRect{ rect.x1, rect.y1, rect.x2, rect.y2 }, wormIdx, levwidth, levheight))
 	{
-		maxX = levwidth - rect.width();
-		maxY = levheight - rect.height();
-		centerX = rect.width() >> 1;
-		centerY = rect.height() >> 1;
-		x = 0;
-		y = 0;
-		shake = 0;
 	}
 
+	// Its fields are set after.
 	Viewport()
+	: Viewport(gvl::rect(0, 0, 0, 0), 0, 0, 0)
 	{
-
 	}
 
-	int x, y;
-	int shake;
-	int maxX, maxY;
-	int centerX, centerY;
-	int wormIdx;
-	int bannerY;
-	gvl::rect rect;
-	Rand rand;
+	// A copy with state of its own.
+	Viewport(Viewport const& other)
+	: Viewport(liero_viewport_clone(&other.data))
+	{
+	}
+
+	Viewport& operator=(Viewport const&) = delete;
+
+	virtual ~Viewport()
+	{
+		liero_viewport_free(&data);
+	}
+
+	// The viewport's state in Rust.
+	LieroViewport* rust() { return &data; }
+
+private:
+	explicit Viewport(LieroViewport* d)
+	: data(*d)
+	, x(d->x), y(d->y)
+	, shake(d->shake)
+	, maxX(d->max_x), maxY(d->max_y)
+	, centerX(d->center_x), centerY(d->center_y)
+	, wormIdx(d->worm_idx)
+	, bannerY(d->banner_y)
+	, rect(reinterpret_cast<gvl::rect&>(d->rect))
+	, rand(static_cast<Rand&>(d->rand))
+	{
+	}
+
+	LieroViewport& data;
+
+public:
+	int& x;
+	int& y;
+	int& shake;
+	int& maxX;
+	int& maxY;
+	int& centerX;
+	int& centerY;
+	int& wormIdx;
+	int& bannerY;
+	gvl::rect& rect;
+	Rand& rand;
 
 
 	void setCenter(int x, int y)

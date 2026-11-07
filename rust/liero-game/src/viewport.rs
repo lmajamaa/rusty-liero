@@ -7,8 +7,8 @@
 //! C++ still owns the game. For each draw it fills in a `LieroScene`: plain
 //! copies of the worms and objects in C++'s list order, the tables and
 //! sprites they are drawn with, and the texts. Rust decides everything that
-//! is drawn from that. A viewport's own state is copied in and out as a
-//! `LieroViewport`.
+//! is drawn from that. Rust owns a viewport's own state (`LieroViewport`),
+//! and the fields of C++'s `Viewport` refer to it.
 
 use std::ffi::c_void;
 
@@ -44,9 +44,10 @@ const FIRE_CONE_OFFSET: [[[i32; 2]; 7]; 2] = [
 /// Worm colours in the palette (`Palette::wormColourIndexes`).
 const WORM_COLOUR_INDEXES: [i32; 2] = [0x58, 0x78];
 
-/// A viewport's state, laid out like the fields of C++'s `Viewport`.
+/// A viewport's state. Rust owns it, and the fields of C++'s `Viewport`
+/// refer to it (`liero_viewport_new`).
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct LieroViewport {
     /// Top left of what is shown, in level coordinates.
     pub x: i32,
@@ -63,7 +64,7 @@ pub struct LieroViewport {
     /// Where on screen the viewport is.
     pub rect: LieroRect,
     /// Used for shaking and for the laser sight.
-    pub rand: *mut LieroRand,
+    pub rand: LieroRand,
 }
 
 /// A C++ `SpriteSet`: `count` sprites of `width` x `height` pixels, one after
@@ -771,7 +772,7 @@ impl<'a> Scene<'a> {
         }
 
         self.draw_objects(scr, offs);
-        self.draw_worms(scr, offs, &mut *vp.rand);
+        self.draw_worms(scr, offs, &mut vp.rand);
         self.draw_sight(scr, worm, offs);
         self.draw_bobjects(scr, offs);
 
@@ -875,7 +876,7 @@ impl<'a> Scene<'a> {
         }
 
         self.draw_objects(scr, offs);
-        self.draw_worms(scr, offs, &mut *vp.rand);
+        self.draw_worms(scr, offs, &mut vp.rand);
         for worm in self.worms {
             self.draw_sight(scr, worm, offs);
         }
@@ -884,6 +885,26 @@ impl<'a> Scene<'a> {
 }
 
 impl LieroViewport {
+    /// C++'s `Viewport` constructor: a viewport at `rect` on screen,
+    /// following worm `worm_idx` around a level of `level_width` x
+    /// `level_height`.
+    pub fn new(rect: LieroRect, worm_idx: i32, level_width: i32, level_height: i32) -> Self {
+        let (w, h) = (rect.x2 - rect.x1, rect.y2 - rect.y1);
+        LieroViewport {
+            x: 0,
+            y: 0,
+            shake: 0,
+            max_x: level_width - w,
+            max_y: level_height - h,
+            center_x: w >> 1,
+            center_y: h >> 1,
+            worm_idx,
+            banner_y: -8,
+            rect,
+            rand: LieroRand::default(),
+        }
+    }
+
     fn set_center(&mut self, x: i32, y: i32) {
         self.x = x - self.center_x;
         self.y = y - self.center_y;
@@ -902,7 +923,7 @@ impl LieroViewport {
     unsafe fn shake_and_clamp(&mut self) {
         let real_shake = ftoi(self.shake);
         if real_shake > 0 {
-            let rand = &mut *self.rand;
+            let rand = &mut self.rand;
             self.x += rand.below((real_shake * 2) as u32) as i32 - real_shake;
             self.y += rand.below((real_shake * 2) as u32) as i32 - real_shake;
         }
@@ -911,12 +932,34 @@ impl LieroViewport {
     }
 }
 
+/// See `LieroViewport::new`.
+#[no_mangle]
+pub extern "C" fn liero_viewport_new(rect: LieroRect, worm_idx: i32, level_width: i32, level_height: i32) -> *mut LieroViewport {
+    Box::into_raw(Box::new(LieroViewport::new(rect, worm_idx, level_width, level_height)))
+}
+
+/// # Safety
+/// `vp` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_viewport_clone(vp: &LieroViewport) -> *mut LieroViewport {
+    Box::into_raw(Box::new(*vp))
+}
+
+/// # Safety
+/// `vp` comes from `liero_viewport_new` or `_clone`, and isn't used after.
+#[no_mangle]
+pub unsafe extern "C" fn liero_viewport_free(vp: *mut LieroViewport) {
+    if !vp.is_null() {
+        drop(Box::from_raw(vp));
+    }
+}
+
 /// Moves the camera one tick: `Viewport::process` for `LIERO_VIEWPORT_WORM`,
 /// `SpectatorViewport::process` for `LIERO_VIEWPORT_SPECTATOR`. `worms` has
 /// `worm_count` entries in the order of `Game::worms`.
 ///
 /// # Safety
-/// `vp.rand` must be valid, and `worms` must hold `worm_count` worms.
+/// `worms` must hold `worm_count` worms.
 #[no_mangle]
 pub unsafe extern "C" fn liero_viewport_process(
     vp: &mut LieroViewport,
@@ -959,7 +1002,7 @@ pub unsafe extern "C" fn liero_viewport_process(
 ///
 /// # Safety
 /// See `LieroBitmap` and `LieroScene`: every pointer must be valid for its
-/// count, and `vp.rand` must be valid.
+/// count.
 #[no_mangle]
 pub unsafe extern "C" fn liero_viewport_draw(
     vp: &mut LieroViewport,
@@ -1021,19 +1064,29 @@ mod tests {
         }
     }
 
-    fn viewport(rand: &mut LieroRand) -> LieroViewport {
-        LieroViewport {
-            x: 0,
-            y: 0,
-            shake: 0,
-            max_x: 504 - 158,
-            max_y: 350 - 158,
-            center_x: 79,
-            center_y: 79,
-            worm_idx: 0,
-            banner_y: -8,
-            rect: LieroRect { x1: 0, y1: 0, x2: 158, y2: 158 },
-            rand,
+    fn viewport() -> LieroViewport {
+        LieroViewport::new(LieroRect { x1: 0, y1: 0, x2: 158, y2: 158 }, 0, 504, 350)
+    }
+
+    #[test]
+    fn new_viewport_matches_cpp_and_copies_are_separate() {
+        let vp = viewport();
+        // What C++'s Viewport constructor set.
+        assert_eq!((vp.max_x, vp.max_y, vp.center_x, vp.center_y), (504 - 158, 350 - 158, 79, 79));
+        assert_eq!((vp.x, vp.y, vp.shake, vp.banner_y), (0, 0, 0, -8));
+        assert_eq!(vp.rand, LieroRand::new(LIERO_RAND_DEFAULT_SEED));
+        unsafe {
+            let a = liero_viewport_new(LieroRect { x1: 160, y1: 0, x2: 318, y2: 158 }, 1, 504, 350);
+            (*a).x = 12;
+            (*a).shake = 3;
+            (*a).rand.next_u32();
+            let c = liero_viewport_clone(&*a);
+            // Every field is copied.
+            assert_eq!(format!("{:?}", *c), format!("{:?}", *a));
+            (*c).x = 1;
+            assert_eq!((*a).x, 12);
+            liero_viewport_free(c);
+            liero_viewport_free(a);
         }
     }
 
@@ -1043,8 +1096,7 @@ mod tests {
 
     #[test]
     fn worm_viewport_follows_its_worm() {
-        let mut rand = LieroRand::new(LIERO_RAND_DEFAULT_SEED);
-        let mut vp = viewport(&mut rand);
+        let mut vp = viewport();
         let mut w = worm(0);
 
         process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
@@ -1079,8 +1131,7 @@ mod tests {
 
     #[test]
     fn spectator_viewport_only_shakes() {
-        let mut rand = LieroRand::new(LIERO_RAND_DEFAULT_SEED);
-        let mut vp = viewport(&mut rand);
+        let mut vp = viewport();
         vp.x = 50;
         vp.y = 60;
         let worms = [worm(0), worm(1)];
@@ -1220,8 +1271,7 @@ mod tests {
             };
             f(&mut scene);
 
-            let mut rand = LieroRand::new(LIERO_RAND_DEFAULT_SEED);
-            let mut vp = viewport(&mut rand);
+            let mut vp = viewport();
             let scr = LieroBitmap {
                 pixels: self.screen.as_mut_ptr(),
                 w: 320,

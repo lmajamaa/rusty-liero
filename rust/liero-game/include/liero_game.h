@@ -1972,7 +1972,8 @@ typedef struct LieroTcData {
 } LieroTcData;
 
 /**
- * A viewport's state, laid out like the fields of C++'s `Viewport`.
+ * A viewport's state. Rust owns it, and the fields of C++'s `Viewport`
+ * refer to it (`liero_viewport_new`).
  */
 typedef struct LieroViewport {
   /**
@@ -2000,7 +2001,7 @@ typedef struct LieroViewport {
   /**
    * Used for shaking and for the laser sight.
    */
-  struct LieroRand *rand;
+  struct LieroRand rand;
 } LieroViewport;
 
 /**
@@ -4462,12 +4463,32 @@ void liero_time_to_string(int32_t sec, uint8_t *out);
 void liero_time_to_string_ex(int32_t ms, bool force_hours, bool force_minutes, uint8_t *out);
 
 /**
+ * See `LieroViewport::new`.
+ */
+struct LieroViewport *liero_viewport_new(struct LieroRect rect,
+                                         int32_t worm_idx,
+                                         int32_t level_width,
+                                         int32_t level_height);
+
+/**
+ * # Safety
+ * `vp` is valid.
+ */
+struct LieroViewport *liero_viewport_clone(const struct LieroViewport *vp);
+
+/**
+ * # Safety
+ * `vp` comes from `liero_viewport_new` or `_clone`, and isn't used after.
+ */
+void liero_viewport_free(struct LieroViewport *vp);
+
+/**
  * Moves the camera one tick: `Viewport::process` for `LIERO_VIEWPORT_WORM`,
  * `SpectatorViewport::process` for `LIERO_VIEWPORT_SPECTATOR`. `worms` has
  * `worm_count` entries in the order of `Game::worms`.
  *
  * # Safety
- * `vp.rand` must be valid, and `worms` must hold `worm_count` worms.
+ * `worms` must hold `worm_count` worms.
  */
 void liero_viewport_process(struct LieroViewport *vp,
                             int32_t kind,
@@ -4481,7 +4502,7 @@ void liero_viewport_process(struct LieroViewport *vp,
  *
  * # Safety
  * See `LieroBitmap` and `LieroScene`: every pointer must be valid for its
- * count, and `vp.rand` must be valid.
+ * count.
  */
 void liero_viewport_draw(struct LieroViewport *vp,
                          int32_t kind,
