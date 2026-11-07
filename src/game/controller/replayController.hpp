@@ -44,9 +44,6 @@ struct ReplayController : CommonController
 	gvl::octet_reader initialReader;
 
 
-	GameState state;
-	int fadeValue;
-	bool goingToMenu;
 	std::unique_ptr<ReplayReader> replay;
 	gvl::shared_ptr<Common> common;
 

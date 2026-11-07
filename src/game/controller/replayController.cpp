@@ -8,10 +8,7 @@
 
 ReplayController::ReplayController(
 	gvl::shared_ptr<Common> common, gvl::source source)
-: state(StateInitial)
-, fadeValue(0)
-, goingToMenu(false)
-, replay(new ReplayReader(source))
+: replay(new ReplayReader(source))
 , common(common)
 {
 }
@@ -63,7 +60,7 @@ void ReplayController::focus()
 
 bool ReplayController::process()
 {
-	if(state == StateGame || state == StateGameEnded)
+	if(liero_controller_in_game(rust()))
 	{
 		if(gfx.testSDLKeyOnce(SDL_SCANCODE_R))
 		{
@@ -72,8 +69,8 @@ bool ReplayController::process()
 			replay->reader = initialReader;
 		}
 
-		int realFrameSkip = inverseFrameSkip ? !(cycles % frameSkip) : frameSkip;
-		for(int i = 0; i < realFrameSkip && (state == StateGame || state == StateGameEnded); ++i)
+		int ticks = liero_controller_ticks(rust());
+		for(int i = 0; i < ticks && liero_controller_in_game(rust()); ++i)
 		{
 			if(replay.get())
 			{

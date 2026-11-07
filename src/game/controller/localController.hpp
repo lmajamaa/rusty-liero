@@ -36,9 +36,6 @@ struct LocalController : CommonController
 
 	Game game;
 	std::unique_ptr<WeaponSelection> ws;
-	GameState state;
-	int fadeValue;
-	bool goingToMenu;
 	std::unique_ptr<ReplayWriter> replay;
 };
 

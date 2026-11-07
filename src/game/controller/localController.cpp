@@ -29,9 +29,6 @@ gvl::shared_ptr<WormAI> createAi(int controller, Worm& worm, Settings& settings)
 
 LocalController::LocalController(gvl::shared_ptr<Common> common, gvl::shared_ptr<Settings> settings)
 : game(common, settings, gvl::shared_ptr<SoundPlayer>(new DefaultSoundPlayer(*common)))
-, state(StateInitial)
-, fadeValue(0)
-, goingToMenu(false)
 {
 	Worm* worm1 = new Worm();
 	worm1->settings = settings->wormSettings[0];
@@ -137,10 +134,10 @@ bool LocalController::process()
 		if(ws->processFrame())
 			changeState(StateGame);
 	}
-	else if(state == StateGame || state == StateGameEnded)
+	else if(liero_controller_in_game(rust()))
 	{
-		int realFrameSkip = inverseFrameSkip ? !(cycles % frameSkip) : frameSkip;
-		for(int i = 0; i < realFrameSkip && (state == StateGame || state == StateGameEnded); ++i)
+		int ticks = liero_controller_ticks(rust());
+		for(int i = 0; i < ticks && liero_controller_in_game(rust()); ++i)
 		{
 			int phase = game.cycles % 2;
 			for (std::size_t i = 0; i < game.worms.size(); ++i)

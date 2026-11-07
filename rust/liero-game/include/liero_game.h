@@ -57,6 +57,23 @@
 #define JUMP 6
 
 /**
+ * `GameState`: before the match, choosing weapons, playing, and the match
+ * over.
+ */
+#define LIERO_STATE_INITIAL 0
+
+#define LIERO_STATE_WEAPON_SELECTION 1
+
+#define LIERO_STATE_GAME 2
+
+#define LIERO_STATE_GAME_ENDED 3
+
+/**
+ * The fade value when the game is fully shown.
+ */
+#define LIERO_FADE_SHOWN 33
+
+/**
  * DOS scancodes are below this.
  */
 #define LIERO_MAX_DOS_KEY 177
@@ -551,6 +568,40 @@ typedef struct LieroStr {
 } LieroStr;
 
 /**
+ * A controller's state.
+ */
+typedef struct LieroControllerData {
+  /**
+   * `LIERO_STATE_*`.
+   */
+  int32_t state;
+  /**
+   * 0 is black, `LIERO_FADE_SHOWN` fully shown.
+   */
+  int32_t fade_value;
+  /**
+   * Fading out to the menu.
+   */
+  bool going_to_menu;
+  /**
+   * Game ticks per frame, or with `inverse_frame_skip`, frames per tick.
+   */
+  int32_t frame_skip;
+  bool inverse_frame_skip;
+  /**
+   * Frames the controller has run.
+   */
+  int32_t cycles;
+} LieroControllerData;
+
+/**
+ * Which DOS keys are down.
+ */
+typedef struct LieroKeys {
+  bool down[LIERO_MAX_DOS_KEY];
+} LieroKeys;
+
+/**
  * Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
  * `gvl::rect`.
  */
@@ -882,13 +933,6 @@ typedef struct LieroFontChar {
   uint8_t data[56];
   int32_t width;
 } LieroFontChar;
-
-/**
- * Which DOS keys are down.
- */
-typedef struct LieroKeys {
-  bool down[LIERO_MAX_DOS_KEY];
-} LieroKeys;
 
 /**
  * Key presses and releases that a joystick event made.
@@ -2853,6 +2897,30 @@ struct LieroScreen liero_input_box_screen(struct LieroStr text,
                                           bool digits_only,
                                           void (*done)(void *ctx, struct LieroStr text),
                                           void *ctx);
+
+struct LieroControllerData *liero_controller_data_new(void);
+
+/**
+ * # Safety
+ * `c` comes from `liero_controller_data_new`, and isn't used after.
+ */
+void liero_controller_data_free(struct LieroControllerData *c);
+
+/**
+ * See `LieroControllerData::ticks`.
+ */
+int32_t liero_controller_ticks(const struct LieroControllerData *c);
+
+/**
+ * See `LieroControllerData::in_game`.
+ */
+bool liero_controller_in_game(const struct LieroControllerData *c);
+
+/**
+ * `CommonController::process`: 1 to 0 choose the frame skip, with ctrl
+ * inverted, and the frame is counted.
+ */
+void liero_controller_process(struct LieroControllerData *c, struct LieroKeys *keys);
 
 struct LieroGameData *liero_game_data_new(void);
 
