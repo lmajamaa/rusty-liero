@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 use crate::ai::LieroWormAi;
 use crate::game::{LieroGameData, LieroGameFields, LieroGameWorm, LieroRect};
+use crate::gfx::LieroColor;
 use crate::level::LieroLevel;
 use crate::settings::{LieroWormSettingsBox, WormSettingsRef};
 use crate::sfx::LieroSoundOut;
@@ -277,6 +278,23 @@ pub extern "C" fn liero_game_viewport(g: &mut LieroGame, spectator_list: bool, i
     }
 }
 
+/// The palette the game starts from (`Game::updateSettings`): the level's,
+/// with the first two worms' colours from their settings.
+///
+/// # Safety
+/// `origpal` and `level_pal` hold 256 entries, and the listed worms have
+/// settings.
+#[no_mangle]
+pub unsafe extern "C" fn liero_game_origpal(g: &LieroGame, origpal: *mut LieroColor, level_pal: *const LieroColor) {
+    std::ptr::copy_nonoverlapping(level_pal, origpal, 256);
+    for w in g.worms().flatten() {
+        if (0..2).contains(&w.data.index) {
+            let s = w.settings();
+            crate::gfx::liero_palette_set_worm_colour(origpal, w.data.index, s.data.color, &s.data.rgb);
+        }
+    }
+}
+
 /// What the game's fields take from C++.
 #[repr(C)]
 pub struct LieroGameExtras {
@@ -472,6 +490,36 @@ mod tests {
             assert!(!a.owns(w) && b.owns(w));
             liero_game_free(a);
             liero_game_free(b);
+        }
+    }
+
+    #[test]
+    fn the_palette_has_the_first_two_worms_colours() {
+        unsafe {
+            let s = [settings(100, "a"), settings(50, "b"), settings(10, "c")];
+            for (i, &b) in s.iter().enumerate() {
+                (*b).data.color = 0x50 + 0x10 * i as i32;
+                (*b).data.rgb = [63, 0, 0];
+            }
+            let g = &mut *game(s);
+            let level = [LieroColor { r: 1, g: 2, b: 3, unused: 0 }; 256];
+            let mut pal = [LieroColor::default(); 256];
+            (*liero_game_worm(g, 2)).data.index = 1;
+            liero_game_origpal(g, pal.as_mut_ptr(), level.as_ptr());
+            // The first worm's colour, and the second's from the worm at
+            // index 1, not the empty place.
+            assert_eq!((pal[0x50].r, pal[0x59].r), (63, 63));
+            assert_eq!((pal[0x60].r, pal[0x79].r), (63, 63));
+            assert_eq!(pal[0x70].r, 1);
+            assert_eq!((pal[0].r, pal[255].b), (1, 3));
+            // Only the first two indexes have colours.
+            (*liero_game_worm(g, 0)).data.index = 2;
+            liero_game_origpal(g, pal.as_mut_ptr(), level.as_ptr());
+            assert_eq!(pal[0x50].r, 1);
+            liero_game_free(g);
+            for b in s {
+                liero_worm_settings_box_free(b);
+            }
         }
     }
 

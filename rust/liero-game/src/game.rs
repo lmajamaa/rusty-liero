@@ -604,6 +604,20 @@ pub unsafe extern "C" fn liero_game_spawn_zone(game: &LieroGameFields, settings:
     Game { f: game, s: settings }.spawn_zone();
 }
 
+/// `Game::startGame`: the start sound, the blood list made
+/// `blood_particle_max` long, and in Holdazone the first zone.
+///
+/// # Safety
+/// The pointers in `game` and `settings` are valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_game_start(game: &LieroGameFields, settings: &LieroGameSettings, blood_particle_max: i32) {
+    game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
+    (*game.game).bobjects.resize(blood_particle_max.max(0) as usize);
+    if settings.game_mode == LIERO_GAME_HOLDAZONE {
+        Game { f: game, s: settings }.spawn_zone();
+    }
+}
+
 /// Whether the game has ended: `Game::isGameOver`.
 ///
 /// # Safety
@@ -672,6 +686,30 @@ mod tests {
             sound: LieroSoundOut::NONE,
         };
         f(&fields);
+    }
+
+    #[test]
+    fn starting_plays_the_sound_and_sizes_the_blood() {
+        use std::sync::atomic::{AtomicI32, Ordering};
+        static PLAYED: AtomicI32 = AtomicI32::new(-1);
+        unsafe extern "C" fn report(sound: i32) {
+            PLAYED.store(sound, Ordering::SeqCst);
+        }
+        let layout = std::alloc::Layout::new::<crate::tc::LieroTcData>();
+        // SAFETY: all zeroes is a valid TC.
+        let tc: Box<crate::tc::LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
+        with_game(&mut [worm(100), worm(100)], |f| {
+            let mut f = *f;
+            f.tc = &*tc;
+            f.sound = LieroSoundOut { mixer: std::ptr::null_mut(), report: Some(report) };
+            unsafe {
+                liero_game_start(&f, &settings(LIERO_GAME_KILL_EM_ALL), 300);
+                assert_eq!(((*f.game).bobjects.limit, (*f.game).bobjects.count), (300, 0));
+                // No zone outside Holdazone.
+                assert_eq!((*f.game).holdazone.rect.x2, 0);
+            }
+        });
+        assert_eq!(PLAYED.load(Ordering::SeqCst), 22);
     }
 
     #[test]

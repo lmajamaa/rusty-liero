@@ -2815,6 +2815,17 @@ void liero_game_spawn_zone(const struct LieroGameFields *game,
                            const struct LieroGameSettings *settings);
 
 /**
+ * `Game::startGame`: the start sound, the blood list made
+ * `blood_particle_max` long, and in Holdazone the first zone.
+ *
+ * # Safety
+ * The pointers in `game` and `settings` are valid.
+ */
+void liero_game_start(const struct LieroGameFields *game,
+                      const struct LieroGameSettings *settings,
+                      int32_t blood_particle_max);
+
+/**
  * Whether the game has ended: `Game::isGameOver`.
  *
  * # Safety
@@ -2925,6 +2936,18 @@ void liero_game_clear_viewports(struct LieroGame *g);
 uintptr_t liero_game_viewport_count(const struct LieroGame *g, bool spectator_list);
 
 struct LieroViewport *liero_game_viewport(struct LieroGame *g, bool spectator_list, uintptr_t i);
+
+/**
+ * The palette the game starts from (`Game::updateSettings`): the level's,
+ * with the first two worms' colours from their settings.
+ *
+ * # Safety
+ * `origpal` and `level_pal` hold 256 entries, and the listed worms have
+ * settings.
+ */
+void liero_game_origpal(const struct LieroGame *g,
+                        struct LieroColor *origpal,
+                        const struct LieroColor *level_pal);
 
 /**
  * The game's fields, valid while the game's worms and viewports stay and
@@ -3284,6 +3307,22 @@ void liero_palette_rotate_from(struct LieroColor *pal,
                                int32_t from,
                                int32_t to,
                                uint32_t dist);
+
+/**
+ * The palette a game shows (`Game::draw`): `origpal` with the TC's four
+ * colour animations at `cycles`, faded by `fade` and lit up by the
+ * screen flash.
+ *
+ * # Safety
+ * `pal` and `origpal` hold 256 entries, and the animations' ranges are in
+ * them.
+ */
+void liero_game_palette(struct LieroColor *pal,
+                        const struct LieroColor *origpal,
+                        const int32_t (*color_anim)[8],
+                        int32_t cycles,
+                        int32_t fade,
+                        int32_t screen_flash);
 
 /**
  * Worm `i`'s colours from its settings' colour index and `rgb`:

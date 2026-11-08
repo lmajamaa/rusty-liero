@@ -120,35 +120,6 @@ void Game::syncViews()
 	}
 }
 
-void Game::onKey(uint32_t key, bool state)
-{
-	for(std::size_t i = 0; i < worms.size(); ++i)
-	{
-		Worm& w = *worms[i];
-
-		for(std::size_t control = 0; control < WormSettings::MaxControl; ++control)
-		{
-			if(w.settings->controls[control] == key)
-			{
-				w.setControlState(static_cast<Worm::Control>(control), state);
-			}
-		}
-	}
-}
-
-void Game::releaseControls()
-{
-	for(std::size_t i = 0; i < worms.size(); ++i)
-	{
-		Worm& w = *worms[i];
-
-		for(std::size_t control = 0; control < WormSettings::MaxControl; ++control)
-		{
-			w.release(static_cast<Worm::Control>(control));
-		}
-	}
-}
-
 void Game::clearViewports()
 {
 	liero_game_clear_viewports(g);
@@ -173,21 +144,6 @@ void Game::drawViewports(Renderer& renderer, GameState state, bool spectators, b
 {
 	for (std::size_t i = 0; i < liero_game_viewport_count(g, spectators); ++i)
 		drawViewport(*this, liero_game_viewport(g, spectators, i), renderer, state, isReplay);
-}
-
-void Game::resetWorms()
-{
-	for(std::size_t i = 0; i < worms.size(); ++i)
-	{
-		Worm& w = *worms[i];
-		w.health = w.settings->health;
-		w.lives = settings->lives; // Not in the original!
-		w.kills = 0;
-		w.visible = false;
-		w.killedTimer = 150;
-
-		w.currentWeapon = 1;
-	}
 }
 
 Worm* Game::addWorm(std::shared_ptr<WormSettings> settings)
@@ -219,20 +175,9 @@ void Game::listWorm(LieroWorm* w)
 void Game::draw(Renderer& renderer, GameState state, bool useSpectatorViewports, bool isReplay)
 {
 	drawViewports(renderer, state, useSpectatorViewports, isReplay);
-
-	//common->font.drawText(toString(cycles / 70), 10, 10, 7);
-
-	renderer.pal = renderer.origpal;
-
-	for(int w = 0; w < 4; ++w)
-		renderer.pal.rotateFrom(renderer.origpal, common->colorAnim[w].from, common->colorAnim[w].to, cycles >> 3);
-
-	renderer.pal.fade(renderer.fadeValue);
-
-	if(screenFlash > 0)
-	{
-		renderer.pal.lightUp(screenFlash);
-	}
+	liero_game_palette(
+		reinterpret_cast<LieroColor*>(renderer.pal.entries), reinterpret_cast<LieroColor const*>(renderer.origpal.entries),
+		&liero_tc_data(common->tc)->color_anim, cycles, renderer.fadeValue, screenFlash);
 }
 
 
@@ -339,31 +284,13 @@ void Game::focus(Renderer& renderer)
 
 void Game::updateSettings(Renderer& renderer)
 {
-	renderer.origpal = level.origpal; // Activate the Level palette
-
-	for(std::size_t i = 0; i < worms.size(); ++i)
-	{
-		Worm& worm = *worms[i];
-		if(worm.index >= 0 && worm.index < 2)
-			renderer.origpal.setWormColour(worm.index, *worm.settings);
-	}
-}
-
-void Game::spawnZone()
-{
-	GameView view(*this);
-	liero_game_spawn_zone(&view.fields, &view.settings);
+	liero_game_origpal(g, reinterpret_cast<LieroColor*>(renderer.origpal.entries), reinterpret_cast<LieroColor const*>(level.origpal.entries));
 }
 
 void Game::startGame()
 {
-	soundPlayer->play(22);
-	bobjects.resize(settings->bloodParticleMax);
-
-	if (settings->gameMode == Settings::GMHoldazone)
-	{
-		spawnZone();
-	}
+	GameView view(*this);
+	liero_game_start(&view.fields, &view.settings, settings->bloodParticleMax);
 }
 
 void NormalStatsRecorder::finish(Game& game)

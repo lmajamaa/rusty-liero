@@ -96,13 +96,13 @@ struct Game : GameMembers
 	// Makes this game a copy of `other`, as `clone` would.
 	void assign(Game const& other);
 
-	void onKey(uint32_t key, bool state);
-	void releaseControls();
 	// Runs the game for one tick, in Rust (rust/liero-game/src/game.rs).
 	void processFrame();
 	// Runs the worms' bots for the tick, in Rust (rust/liero-game/src/ai),
 	// timing them into the stats when `timed`.
 	void processAis(bool timed);
+	// The renderer's palette from the level's and the worms' colours, in
+	// Rust (focus is the same).
 	void focus(Renderer& renderer);
 	void updateSettings(Renderer& renderer);
 
@@ -120,12 +120,10 @@ struct Game : GameMembers
 	LieroWorm* newWorm();
 	// Lists one of newWorm's worms, or an empty place for null.
 	void listWorm(LieroWorm* w);
-	void resetWorms();
 	void draw(Renderer& renderer, GameState state, bool useSpectatorViewports, bool isReplay = false);
+	// The start sound, the blood list and the first zone, in Rust.
 	void startGame();
 	bool isGameOver();
-
-	void spawnZone();
 
 	Worm* wormByIdx(int idx)
 	{
