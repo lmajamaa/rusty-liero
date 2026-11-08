@@ -4039,15 +4039,6 @@ struct LieroReplayResult *liero_replay_write_frame(int32_t version,
 struct LieroReplayResult *liero_replay_write_end(void);
 
 /**
- * The checksum of the game's generator and worms' positions and
- * velocities.
- *
- * # Safety
- * `worms` must point to `count` arrays of x, y, velocity x and y.
- */
-uint32_t liero_replay_checksum(uint32_t rand_x, const int32_t (*worms)[4], uintptr_t count);
-
-/**
  * Reads a replay's header and game from `source`. With an Ok status,
  * `liero_replay_result_game` has the game.
  *
@@ -4137,6 +4128,50 @@ bool liero_replay_result_settings_changed(const struct LieroReplayResult *r);
  * `r` must come from a `liero_replay_*` call, or be null.
  */
 void liero_replay_result_free(struct LieroReplayResult *r);
+
+/**
+ * A worm as replays hold it (`wormFields`). Its rope's anchor is the
+ * anchor's place among the game's `worms`, or -1.
+ *
+ * # Safety
+ * `worms` holds `count` worms, which may be null.
+ */
+struct LieroReplayWorm liero_replay_worm_of(const struct LieroWormData *worm,
+                                            struct LieroWormData *const *worms,
+                                            uintptr_t count,
+                                            const struct LieroTcData *tc);
+
+/**
+ * Sets a worm from a replay's (`setWormFields`). Its rope's anchor is one
+ * of `all`, every worm the replay has. Weapons aren't checked, as in C++.
+ *
+ * # Safety
+ * `all` holds `count` worms.
+ */
+void liero_replay_worm_set(struct LieroWormData *worm,
+                           const struct LieroReplayWorm *f,
+                           struct LieroWormData *const *all,
+                           uintptr_t count,
+                           const struct LieroTcData *tc);
+
+/**
+ * A split-screen viewport as replays hold it (`viewportFields`).
+ */
+struct LieroReplayViewport liero_replay_viewport_of(const struct LieroViewport *vp);
+
+/**
+ * Sets a viewport from a replay's (`setViewportFields`).
+ */
+void liero_replay_viewport_set(struct LieroViewport *vp, const struct LieroReplayViewport *f);
+
+/**
+ * The checksum frames are checked with (`fastGameChecksum`): the game's
+ * generator and its worms' positions and velocities.
+ *
+ * # Safety
+ * The pointers in `game` are valid.
+ */
+uint32_t liero_replay_game_checksum(const struct LieroGameFields *game);
 
 /**
  * Sets the functions Rust screens call. Only the first call counts.

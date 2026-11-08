@@ -14,7 +14,13 @@
 //! that last killed it, before it appears in the game's list of worms.
 
 use crate::settings::{settings_from, settings_view, str, worm_from, worm_view, Hooked, LieroByteSource, LieroSettings, LieroWormSettings};
+use crate::game::{LieroGameFields, LieroRect};
+use crate::math::LieroIVec2;
+use crate::tc::{LieroTcData, LieroTcWeapon};
 use crate::text::LieroStr;
+use crate::viewport::LieroViewport;
+use crate::worm::LieroWormData;
+use std::ffi::c_void;
 use liero_data::settings::{self as data, ArchiveError, In, Out, ReadError, Settings, Source, WormSettings};
 use std::collections::HashMap;
 
@@ -890,16 +896,6 @@ pub extern "C" fn liero_replay_write_end() -> *mut LieroReplayResult {
     res.finish()
 }
 
-/// The checksum of the game's generator and worms' positions and
-/// velocities.
-///
-/// # Safety
-/// `worms` must point to `count` arrays of x, y, velocity x and y.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_checksum(rand_x: u32, worms: *const [i32; 4], count: usize) -> u32 {
-    checksum(rand_x, slice(worms, count))
-}
-
 /// Reads a replay's header and game from `source`. With an Ok status,
 /// `liero_replay_result_game` has the game.
 ///
@@ -1048,6 +1044,194 @@ pub unsafe extern "C" fn liero_replay_result_free(r: *mut LieroReplayResult) {
     if !r.is_null() {
         drop(Box::from_raw(r));
     }
+}
+
+// ---- The game's worms and viewports, as replays hold them ----
+
+/// Weapon `kind`'s place among the TC's weapons, by address, as C++ took
+/// it (`w.type - &common.weapons[0]`).
+fn weapon_place(kind: *const c_void, tc: &LieroTcData) -> i32 {
+    ((kind as isize).wrapping_sub(tc.weapons as isize) / std::mem::size_of::<LieroTcWeapon>() as isize) as i32
+}
+
+/// A worm as replays hold it (`wormFields`). Its rope's anchor is the
+/// anchor's place among the game's `worms`, or -1.
+///
+/// # Safety
+/// `worms` holds `count` worms, which may be null.
+#[no_mangle]
+pub unsafe extern "C" fn liero_replay_worm_of(
+    worm: &LieroWormData,
+    worms: *const *mut LieroWormData,
+    count: usize,
+    tc: &LieroTcData,
+) -> LieroReplayWorm {
+    let worms = slice(worms, count);
+    let anchor = worm.ninjarope.anchor as *mut LieroWormData;
+    let rope = &worm.ninjarope;
+    LieroReplayWorm {
+        pos: [worm.pos.x, worm.pos.y],
+        vel: [worm.vel.x, worm.vel.y],
+        logic_respawn: [worm.logic_respawn.x, worm.logic_respawn.y],
+        hotspot: [worm.hotspot_x, worm.hotspot_y],
+        aiming_angle: worm.aiming_angle,
+        aiming_speed: worm.aiming_speed,
+        able_to_jump: worm.able_to_jump,
+        able_to_dig: worm.able_to_dig,
+        key_change_pressed: worm.key_change_pressed,
+        movable: worm.movable,
+        animate: worm.animate,
+        visible: worm.visible,
+        ready: worm.ready,
+        flag: worm.flag,
+        make_sight_green: worm.make_sight_green,
+        health: worm.health,
+        lives: worm.lives,
+        kills: worm.kills,
+        timer: worm.timer,
+        killed_timer: worm.killed_timer,
+        current_frame: worm.current_frame,
+        flags: worm.flags,
+        // The game's ropes only attach to its own worms.
+        rope_anchor: if anchor.is_null() {
+            -1
+        } else {
+            worms.iter().position(|&w| w == anchor).map_or(-1, |i| i as i32)
+        },
+        rope_attached: rope.attached,
+        rope_cur_len: rope.cur_len,
+        rope_length: rope.length,
+        rope_out: rope.out,
+        rope_vel: [rope.vel.x, rope.vel.y],
+        rope_pos: [rope.pos.x, rope.pos.y],
+        current_weapon: worm.current_weapon,
+        last_killed_by: worm.last_killed_by_idx,
+        fire_cone: worm.fire_cone,
+        leave_shell_timer: worm.leave_shell_timer,
+        index: worm.index,
+        reacts: worm.reacts,
+        weapons: worm.weapons.map(|w| LieroReplayWeapon {
+            ammo: w.ammo,
+            delay_left: w.delay_left,
+            weapon: weapon_place(w.kind, tc),
+            loading_left: w.loading_left,
+        }),
+        direction: worm.direction,
+        control_states: worm.control_states,
+        prev_control_states: worm.prev_control_states,
+    }
+}
+
+/// Sets a worm from a replay's (`setWormFields`). Its rope's anchor is one
+/// of `all`, every worm the replay has. Weapons aren't checked, as in C++.
+///
+/// # Safety
+/// `all` holds `count` worms.
+#[no_mangle]
+pub unsafe extern "C" fn liero_replay_worm_set(
+    worm: &mut LieroWormData,
+    f: &LieroReplayWorm,
+    all: *const *mut LieroWormData,
+    count: usize,
+    tc: &LieroTcData,
+) {
+    let all = slice(all, count);
+    worm.pos = LieroIVec2 { x: f.pos[0], y: f.pos[1] };
+    worm.vel = LieroIVec2 { x: f.vel[0], y: f.vel[1] };
+    worm.logic_respawn = LieroIVec2 { x: f.logic_respawn[0], y: f.logic_respawn[1] };
+    worm.hotspot_x = f.hotspot[0];
+    worm.hotspot_y = f.hotspot[1];
+    worm.aiming_angle = f.aiming_angle;
+    worm.aiming_speed = f.aiming_speed;
+    worm.able_to_jump = f.able_to_jump;
+    worm.able_to_dig = f.able_to_dig;
+    worm.key_change_pressed = f.key_change_pressed;
+    worm.movable = f.movable;
+    worm.animate = f.animate;
+    worm.visible = f.visible;
+    worm.ready = f.ready;
+    worm.flag = f.flag;
+    worm.make_sight_green = f.make_sight_green;
+    worm.health = f.health;
+    worm.lives = f.lives;
+    worm.kills = f.kills;
+    worm.timer = f.timer;
+    worm.killed_timer = f.killed_timer;
+    worm.current_frame = f.current_frame;
+    worm.flags = f.flags;
+
+    let rope = &mut worm.ninjarope;
+    rope.anchor = if f.rope_anchor < 0 { std::ptr::null_mut() } else { all[f.rope_anchor as usize].cast() };
+    rope.attached = f.rope_attached;
+    rope.cur_len = f.rope_cur_len;
+    rope.length = f.rope_length;
+    rope.out = f.rope_out;
+    rope.vel = LieroIVec2 { x: f.rope_vel[0], y: f.rope_vel[1] };
+    rope.pos = LieroIVec2 { x: f.rope_pos[0], y: f.rope_pos[1] };
+    worm.current_weapon = f.current_weapon;
+    worm.last_killed_by_idx = f.last_killed_by;
+    worm.fire_cone = f.fire_cone;
+    worm.leave_shell_timer = f.leave_shell_timer;
+    worm.index = f.index;
+    worm.reacts = f.reacts;
+    for (w, r) in worm.weapons.iter_mut().zip(&f.weapons) {
+        w.ammo = r.ammo;
+        w.delay_left = r.delay_left;
+        w.kind = tc.weapons.wrapping_offset(r.weapon as isize).cast();
+        w.loading_left = r.loading_left;
+    }
+    worm.direction = f.direction;
+    worm.control_states = f.control_states;
+    worm.prev_control_states = f.prev_control_states;
+}
+
+/// A split-screen viewport as replays hold it (`viewportFields`).
+#[no_mangle]
+pub extern "C" fn liero_replay_viewport_of(vp: &LieroViewport) -> LieroReplayViewport {
+    LieroReplayViewport {
+        x: vp.x,
+        y: vp.y,
+        shake: vp.shake,
+        max_x: vp.max_x,
+        max_y: vp.max_y,
+        center_x: vp.center_x,
+        center_y: vp.center_y,
+        worm_idx: vp.worm_idx,
+        banner_y: vp.banner_y,
+        rect: [vp.rect.x1, vp.rect.y1, vp.rect.x2, vp.rect.y2],
+    }
+}
+
+/// Sets a viewport from a replay's (`setViewportFields`).
+#[no_mangle]
+pub extern "C" fn liero_replay_viewport_set(vp: &mut LieroViewport, f: &LieroReplayViewport) {
+    vp.x = f.x;
+    vp.y = f.y;
+    vp.shake = f.shake;
+    vp.max_x = f.max_x;
+    vp.max_y = f.max_y;
+    vp.center_x = f.center_x;
+    vp.center_y = f.center_y;
+    vp.worm_idx = f.worm_idx;
+    vp.banner_y = f.banner_y;
+    vp.rect = LieroRect { x1: f.rect[0], y1: f.rect[1], x2: f.rect[2], y2: f.rect[3] };
+}
+
+/// The checksum frames are checked with (`fastGameChecksum`): the game's
+/// generator and its worms' positions and velocities.
+///
+/// # Safety
+/// The pointers in `game` are valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_replay_game_checksum(game: &LieroGameFields) -> u32 {
+    let worms: Vec<[i32; 4]> = slice(game.worms, game.worm_count.max(0) as usize)
+        .iter()
+        .map(|w| {
+            let d = &*w.data;
+            [d.pos.x, d.pos.y, d.vel.x, d.vel.y]
+        })
+        .collect();
+    checksum((*game.game).rand.x, &worms)
 }
 
 #[cfg(test)]

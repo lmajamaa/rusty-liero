@@ -5,7 +5,6 @@
 #include "viewport.hpp"
 #include "settingsffi.hpp"
 
-#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -74,151 +73,13 @@ struct ReplayResult
 
 typedef ArchiveByteSource<ByteReader> ReplaySource;
 
-LieroReplayWorm wormFields(Worm const& worm, Game& game)
+// The worms' and viewports' fields are copied in Rust.
+std::vector<LieroWormData*> rustWorms(std::vector<Worm*> const& worms)
 {
-	LieroReplayWorm f;
-	f.pos[0] = worm.pos.x; f.pos[1] = worm.pos.y;
-	f.vel[0] = worm.vel.x; f.vel[1] = worm.vel.y;
-	f.logic_respawn[0] = worm.logicRespawn.x; f.logic_respawn[1] = worm.logicRespawn.y;
-	f.hotspot[0] = worm.hotspotX; f.hotspot[1] = worm.hotspotY;
-	f.aiming_angle = worm.aimingAngle;
-	f.aiming_speed = worm.aimingSpeed;
-	f.able_to_jump = worm.ableToJump;
-	f.able_to_dig = worm.ableToDig;
-	f.key_change_pressed = worm.keyChangePressed;
-	f.movable = worm.movable;
-	f.animate = worm.animate;
-	f.visible = worm.visible;
-	f.ready = worm.ready;
-	f.flag = worm.flag;
-	f.make_sight_green = worm.makeSightGreen;
-	f.health = worm.health;
-	f.lives = worm.lives;
-	f.kills = worm.kills;
-	f.timer = worm.timer;
-	f.killed_timer = worm.killedTimer;
-	f.current_frame = worm.currentFrame;
-	f.flags = worm.flags;
-
-	// The anchor by its place among the game's worms. The game's ropes only
-	// attach to its own worms.
-	auto anchor = std::find_if(game.worms.begin(), game.worms.end(),
-		[&](Worm* w) { return w->rust() == worm.ninjarope.anchor; });
-	f.rope_anchor = worm.ninjarope.anchor && anchor != game.worms.end() ? int(anchor - game.worms.begin()) : -1;
-	f.rope_attached = worm.ninjarope.attached;
-	f.rope_cur_len = worm.ninjarope.curLen;
-	f.rope_length = worm.ninjarope.length;
-	f.rope_out = worm.ninjarope.out;
-	f.rope_vel[0] = worm.ninjarope.vel.x; f.rope_vel[1] = worm.ninjarope.vel.y;
-	f.rope_pos[0] = worm.ninjarope.pos.x; f.rope_pos[1] = worm.ninjarope.pos.y;
-	f.current_weapon = worm.currentWeapon;
-	f.last_killed_by = worm.lastKilledByIdx;
-	f.fire_cone = worm.fireCone;
-	f.leave_shell_timer = worm.leaveShellTimer;
-	f.index = worm.index;
-	for (int i = 0; i < 4; ++i)
-		f.reacts[i] = worm.reacts[i];
-	for (int i = 0; i < 5; ++i)
-	{
-		WormWeapon const& w = worm.weapons[i];
-		f.weapons[i].ammo = w.ammo;
-		f.weapons[i].delay_left = w.delayLeft;
-		f.weapons[i].weapon = int(w.type - &game.common->weapons[0]);
-		f.weapons[i].loading_left = w.loadingLeft;
-	}
-	f.direction = worm.direction;
-	f.control_states = worm.controlStates.pack();
-	f.prev_control_states = worm.prevControlStates.pack();
-	return f;
-}
-
-void setWormFields(Worm& worm, LieroReplayWorm const& f, std::vector<Worm*> const& all, Common& common)
-{
-	worm.pos.x = f.pos[0]; worm.pos.y = f.pos[1];
-	worm.vel.x = f.vel[0]; worm.vel.y = f.vel[1];
-	worm.logicRespawn.x = f.logic_respawn[0]; worm.logicRespawn.y = f.logic_respawn[1];
-	worm.hotspotX = f.hotspot[0]; worm.hotspotY = f.hotspot[1];
-	worm.aimingAngle = f.aiming_angle;
-	worm.aimingSpeed = f.aiming_speed;
-	worm.ableToJump = f.able_to_jump;
-	worm.ableToDig = f.able_to_dig;
-	worm.keyChangePressed = f.key_change_pressed;
-	worm.movable = f.movable;
-	worm.animate = f.animate;
-	worm.visible = f.visible;
-	worm.ready = f.ready;
-	worm.flag = f.flag;
-	worm.makeSightGreen = f.make_sight_green;
-	worm.health = f.health;
-	worm.lives = f.lives;
-	worm.kills = f.kills;
-	worm.timer = f.timer;
-	worm.killedTimer = f.killed_timer;
-	worm.currentFrame = f.current_frame;
-	worm.flags = f.flags;
-
-	worm.ninjarope.anchor = f.rope_anchor < 0 ? 0 : all[f.rope_anchor]->rust();
-	worm.ninjarope.attached = f.rope_attached;
-	worm.ninjarope.curLen = f.rope_cur_len;
-	worm.ninjarope.length = f.rope_length;
-	worm.ninjarope.out = f.rope_out;
-	worm.ninjarope.vel.x = f.rope_vel[0]; worm.ninjarope.vel.y = f.rope_vel[1];
-	worm.ninjarope.pos.x = f.rope_pos[0]; worm.ninjarope.pos.y = f.rope_pos[1];
-	worm.currentWeapon = f.current_weapon;
-	worm.lastKilledByIdx = f.last_killed_by;
-	worm.fireCone = f.fire_cone;
-	worm.leaveShellTimer = f.leave_shell_timer;
-	worm.index = f.index;
-	for (int i = 0; i < 4; ++i)
-		worm.reacts[i] = f.reacts[i];
-	for (int i = 0; i < 5; ++i)
-	{
-		WormWeapon& w = worm.weapons[i];
-		w.ammo = f.weapons[i].ammo;
-		w.delayLeft = f.weapons[i].delay_left;
-		// Unchecked, as before.
-		w.type = &common.weapons[0] + f.weapons[i].weapon;
-		w.loadingLeft = f.weapons[i].loading_left;
-	}
-	worm.direction = f.direction;
-	worm.controlStates.istate = f.control_states;
-	worm.prevControlStates.istate = f.prev_control_states;
-}
-
-LieroReplayViewport viewportFields(Viewport const& vp)
-{
-	LieroReplayViewport f;
-	f.x = vp.x;
-	f.y = vp.y;
-	f.shake = vp.shake;
-	f.max_x = vp.maxX;
-	f.max_y = vp.maxY;
-	f.center_x = vp.centerX;
-	f.center_y = vp.centerY;
-	f.worm_idx = vp.wormIdx;
-	f.banner_y = vp.bannerY;
-	f.rect[0] = vp.rect.x1;
-	f.rect[1] = vp.rect.y1;
-	f.rect[2] = vp.rect.x2;
-	f.rect[3] = vp.rect.y2;
-	return f;
-}
-
-void setViewportFields(Viewport& vp, LieroReplayViewport const& f)
-{
-	vp.x = f.x;
-	vp.y = f.y;
-	vp.shake = f.shake;
-	vp.maxX = f.max_x;
-	vp.maxY = f.max_y;
-	vp.centerX = f.center_x;
-	vp.centerY = f.center_y;
-	vp.wormIdx = f.worm_idx;
-	vp.bannerY = f.banner_y;
-	vp.rect.x1 = f.rect[0];
-	vp.rect.y1 = f.rect[1];
-	vp.rect.x2 = f.rect[2];
-	vp.rect.y2 = f.rect[3];
+	std::vector<LieroWormData*> r;
+	for (Worm* w : worms)
+		r.push_back(w ? w->rust() : nullptr);
+	return r;
 }
 
 // What frames read and write of the game's worms.
@@ -256,16 +117,8 @@ void copyFrameSettings(ReplayResult const& r, Game& game)
 
 uint32_t fastGameChecksum(Game& game)
 {
-	std::vector<int32_t> worms(game.worms.size() * 4);
-	for (std::size_t i = 0; i < game.worms.size(); ++i)
-	{
-		Worm& worm = *game.worms[i];
-		worms[i * 4 + 0] = worm.pos.x;
-		worms[i * 4 + 1] = worm.pos.y;
-		worms[i * 4 + 2] = worm.vel.x;
-		worms[i * 4 + 3] = worm.vel.y;
-	}
-	return liero_replay_checksum(game.rand.x, reinterpret_cast<int32_t const (*)[4]>(worms.data()), game.worms.size());
+	GameView view(game);
+	return liero_replay_game_checksum(&view.fields);
 }
 
 void ReplayWriter::Writer::put(uint8_t const* p, std::size_t n)
@@ -332,9 +185,11 @@ std::unique_ptr<Game> ReplayReader::beginPlayback(std::shared_ptr<Common> common
 	std::vector<Worm*> all(g.worm_count);
 	for (auto& w : all)
 		w = new Worm();
+	std::vector<LieroWormData*> allData = rustWorms(all);
+	LieroTcData const* tc = liero_tc_data(common->tc);
 	for (std::size_t i = 0; i < g.worm_count; ++i)
 	{
-		setWormFields(*all[i], g.worms[i], all, *common);
+		liero_replay_worm_set(all[i]->rust(), &g.worms[i], allData.data(), allData.size(), tc);
 		all[i]->settings.reset(new WormSettings);
 		setWormSettings(*all[i]->settings, g.worm_settings[i]);
 	}
@@ -344,7 +199,7 @@ std::unique_ptr<Game> ReplayReader::beginPlayback(std::shared_ptr<Common> common
 	for (std::size_t i = 0; i < g.viewport_count; ++i)
 	{
 		Viewport* vp = new Viewport();
-		setViewportFields(*vp, g.viewports[i]);
+		liero_replay_viewport_set(vp->rust(), &g.viewports[i]);
 		game->addViewport(vp);
 	}
 
@@ -369,14 +224,16 @@ void ReplayWriter::beginRecord(Game& game)
 
 	std::vector<LieroReplayWorm> worms;
 	std::vector<LieroWormSettings> wormSettings;
+	std::vector<LieroWormData*> gameWorms = rustWorms(game.worms);
+	LieroTcData const* tc = liero_tc_data(game.common->tc);
 	for (auto* worm : game.worms)
 	{
-		worms.push_back(wormFields(*worm, game));
+		worms.push_back(liero_replay_worm_of(worm->rust(), gameWorms.data(), gameWorms.size(), tc));
 		wormSettings.push_back(wormSettingsView(*worm->settings));
 	}
 	std::vector<LieroReplayViewport> viewports;
 	for (auto* vp : game.viewports)
-		viewports.push_back(viewportFields(*vp));
+		viewports.push_back(liero_replay_viewport_of(vp->rust()));
 	uint8_t palette[768];
 	for (int i = 0; i < 256; ++i)
 	{
