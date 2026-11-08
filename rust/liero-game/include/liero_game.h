@@ -428,6 +428,11 @@ typedef enum LieroTickKind {
 typedef struct LieroApp LieroApp;
 
 /**
+ * A bitmap that owns its pixels, which `view` points to.
+ */
+typedef struct LieroBitmapBox LieroBitmapBox;
+
+/**
  * A replay file being written.
  */
 typedef struct LieroDeflateOut LieroDeflateOut;
@@ -468,6 +473,11 @@ typedef struct LieroMenus LieroMenus;
  * The mixer's channels and time. Opaque to C++.
  */
 typedef struct LieroMixer LieroMixer;
+
+/**
+ * A bitmap to draw on, with its palettes.
+ */
+typedef struct LieroRenderer LieroRenderer;
 
 /**
  * A replay being played (`ReplayReader`).
@@ -1732,6 +1742,26 @@ typedef struct LieroMenusHooks {
    */
   bool (*save_profile_as)(int32_t player, struct LieroStr name);
 } LieroMenusHooks;
+
+/**
+ * A renderer's palettes and size, which C++'s `Renderer` refers to.
+ */
+typedef struct LieroRendererData {
+  /**
+   * The palette shown.
+   */
+  struct LieroColor pal[256];
+  /**
+   * The palette `pal` is made from.
+   */
+  struct LieroColor origpal[256];
+  int32_t fade_value;
+  /**
+   * The size drawn at, which `set_render_resolution` sets.
+   */
+  int32_t render_res_x;
+  int32_t render_res_y;
+} LieroRendererData;
 
 /**
  * How a replay call ended, for C++ to throw as its replay code did.
@@ -4063,6 +4093,46 @@ uint32_t liero_rand_below(struct LieroRand *rand, uint32_t max);
 uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
 
 double liero_rand_double_below(struct LieroRand *rand, double max);
+
+struct LieroBitmapBox *liero_bitmap_box_new(void);
+
+/**
+ * # Safety
+ * `b` comes from `liero_bitmap_box_new`, or is null, and isn't used again.
+ */
+void liero_bitmap_box_free(struct LieroBitmapBox *b);
+
+/**
+ * The bitmap's fields, at a fixed address. Its pixels move when it's
+ * reallocated.
+ */
+struct LieroBitmap *liero_bitmap_box_view(struct LieroBitmapBox *b);
+
+void liero_bitmap_box_alloc(struct LieroBitmapBox *b, int32_t w, int32_t h, int32_t pitch);
+
+/**
+ * # Safety
+ * Both are valid; they may be the same.
+ */
+void liero_bitmap_box_copy(struct LieroBitmapBox *to, const struct LieroBitmapBox *from);
+
+struct LieroRenderer *liero_renderer_new(void);
+
+/**
+ * # Safety
+ * `r` comes from `liero_renderer_new`, or is null, and isn't used again.
+ */
+void liero_renderer_free(struct LieroRenderer *r);
+
+struct LieroRendererData *liero_renderer_data(struct LieroRenderer *r);
+
+struct LieroBitmapBox *liero_renderer_bitmap(struct LieroRenderer *r);
+
+void liero_renderer_set_render_resolution(struct LieroRenderer *r, int32_t x, int32_t y);
+
+void liero_renderer_clear(struct LieroRenderer *r);
+
+void liero_renderer_load_palette(struct LieroRenderer *r, const struct LieroTcData *tc);
 
 /**
  * Starts writing a replay at `node`, or null if it can't be created.

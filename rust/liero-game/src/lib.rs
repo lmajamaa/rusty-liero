@@ -26,6 +26,7 @@ pub mod math;
 pub mod object;
 pub mod objects;
 pub mod rand;
+pub mod renderer;
 pub mod replay;
 pub mod replay_file;
 pub mod screen;
