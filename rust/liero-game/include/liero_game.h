@@ -457,12 +457,6 @@ typedef struct LieroStatsScreen LieroStatsScreen;
 typedef struct LieroTc LieroTc;
 
 /**
- * A file's contents, filled in by the C++ read hook with
- * `liero_tc_file_set`.
- */
-typedef struct LieroTcFile LieroTcFile;
-
-/**
  * Weapon selection: each viewport's worm's menu (`WeaponSelection`).
  */
 typedef struct LieroWeapsel LieroWeapsel;
@@ -2261,15 +2255,6 @@ typedef struct LieroStatsScene {
    */
   uint64_t ticks_per_sec;
 } LieroStatsScene;
-
-typedef struct LieroTcHooks {
-  void *ctx;
-  /**
-   * Reads `path` (inside the TC, with `/` between folders) into `out`.
-   * Returns false if the file can't be read.
-   */
-  bool (*read)(void *ctx, struct LieroStr path, struct LieroTcFile *out);
-} LieroTcHooks;
 
 typedef struct LieroTcWeapon {
   struct LieroStr name;
@@ -5305,21 +5290,10 @@ struct LieroScreen liero_stats_presenter_screen(const struct LieroStats *stats,
                                                 const struct LieroStatsScene *scene);
 
 /**
- * Copies `len` bytes from `data` into `out`.
- *
- * # Safety
- * `out` must come from the read hook and `data` must be valid for `len` bytes.
+ * Loads the TC in `node` (`Common::load`). Always returns a TC to free with
+ * `liero_tc_free`; `liero_tc_error` says whether loading failed.
  */
-void liero_tc_file_set(struct LieroTcFile *out, const uint8_t *data, uintptr_t len);
-
-/**
- * Loads a TC, reading its files through `hooks`. Always returns a TC to free
- * with `liero_tc_free`; `liero_tc_error` says whether loading failed.
- *
- * # Safety
- * `hooks` must be valid for the call.
- */
-struct LieroTc *liero_tc_load(const struct LieroTcHooks *hooks);
+struct LieroTc *liero_tc_load(const struct LieroFsNode *node);
 
 /**
  * Why loading failed, or an empty string.

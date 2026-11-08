@@ -237,38 +237,6 @@ void Common::drawTextSmall(Bitmap& scr, char const* str, int x, int y)
 namespace
 {
 
-// Reads `path` (folders separated by '/') under the FsNode in `ctx`, which
-// may be a folder, a zip file or joined folders.
-bool readTcFile(void* ctx, LieroStr path, LieroTcFile* out)
-{
-	try
-	{
-		FsNode node = *static_cast<FsNode*>(ctx);
-		std::string p(reinterpret_cast<char const*>(path.ptr), path.len);
-		std::size_t start = 0;
-		for (;;)
-		{
-			std::size_t slash = p.find('/', start);
-			node = node / p.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
-			if (slash == std::string::npos)
-				break;
-			start = slash + 1;
-		}
-
-		gvl::octet_reader r(node.toOctetReader());
-		std::vector<uint8_t> data;
-		uint8_t b;
-		while (r.try_get(b))
-			data.push_back(b);
-		liero_tc_file_set(out, data.data(), data.size());
-		return true;
-	}
-	catch (std::exception&)
-	{
-		return false;
-	}
-}
-
 std::string str(LieroStr s)
 {
 	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
@@ -291,8 +259,9 @@ struct TcHandle
 // The TC is read in Rust (liero_data::load); this copies the result in.
 void Common::load(FsNode node)
 {
-	LieroTcHooks hooks = { &node, readTcFile };
-	TcHandle handle = { liero_tc_load(&hooks) };
+	if (!node.rust())
+		throw std::runtime_error("Could not load the TC: Could not read tc.cfg");
+	TcHandle handle = { liero_tc_load(node.rust()) };
 	LieroTcData const* d = liero_tc_data(handle.tc);
 	if (!d)
 		throw std::runtime_error("Could not load the TC: " + str(liero_tc_error(handle.tc)));

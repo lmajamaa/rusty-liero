@@ -550,6 +550,12 @@ pub extern "C" fn liero_fs_node_prepare_write(n: &LieroFsNode) -> LieroStr {
     }
 }
 
+/// The zip checksum, for other modules' tests to make archives with.
+#[cfg(test)]
+pub(crate) fn tests_crc32(data: &[u8]) -> u32 {
+    crc32(data)
+}
+
 #[cfg(test)]
 #[path = "fs_tests.rs"]
 mod tests;

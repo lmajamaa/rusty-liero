@@ -1,42 +1,15 @@
 //! Loading a TC for the C++ game: `Common::load` and `Common::precompute`.
 //!
-//! The reading itself is `liero_data::load`. C++ supplies the files through
-//! a hook, because a TC can be a folder, a zip file or several folders joined
-//! (`FsNode`), and copies the result into `Common` from the `LieroTcData`
-//! views here, which point into the `LieroTc` until it's freed.
+//! The reading itself is `liero_data::load`, from a file node (`fs.rs`),
+//! since a TC can be a folder, a zip file or both joined. C++ copies the
+//! result into `Common` from the `LieroTcData` views here, which point into
+//! the `LieroTc` until it's freed.
 
 use crate::level::{LieroTexture, LIERO_TEXTURE_COUNT};
 use crate::text::LieroStr;
 use liero_data::model::{self, Common};
 use liero_data::Error;
-use std::ffi::c_void;
-
-/// A file's contents, filled in by the C++ read hook with
-/// `liero_tc_file_set`.
-pub struct LieroTcFile {
-    data: Vec<u8>,
-}
-
-#[repr(C)]
-pub struct LieroTcHooks {
-    pub ctx: *mut c_void,
-    /// Reads `path` (inside the TC, with `/` between folders) into `out`.
-    /// Returns false if the file can't be read.
-    pub read: unsafe extern "C" fn(ctx: *mut c_void, path: LieroStr, out: *mut LieroTcFile) -> bool,
-}
-
-/// Copies `len` bytes from `data` into `out`.
-///
-/// # Safety
-/// `out` must come from the read hook and `data` must be valid for `len` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_file_set(out: *mut LieroTcFile, data: *const u8, len: usize) {
-    let out = &mut *out;
-    out.data.clear();
-    if len > 0 {
-        out.data.extend_from_slice(std::slice::from_raw_parts(data, len));
-    }
-}
+use crate::fs::{LieroFsNode, Node};
 
 #[repr(C)]
 pub struct LieroTcWeapon {
@@ -512,26 +485,24 @@ impl LieroTc {
     }
 }
 
-/// Loads a TC, reading its files through `hooks`. Always returns a TC to free
-/// with `liero_tc_free`; `liero_tc_error` says whether loading failed.
-///
-/// # Safety
-/// `hooks` must be valid for the call.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_load(hooks: &LieroTcHooks) -> *mut LieroTc {
+/// Loads the TC in `node`, each file at its path inside it (`/` between
+/// folders).
+fn load(node: &Node) -> LieroTc {
     let mut read = |path: &str| {
-        let mut file = LieroTcFile { data: Vec::new() };
-        if (hooks.read)(hooks.ctx, str(path.as_bytes()), &mut file) {
-            Ok(file.data)
-        } else {
-            Err(Error(format!("Could not read {path}")))
-        }
+        let file = path.as_bytes().split(|&c| c == b'/').fold(node.clone(), |n, part| n.go(part));
+        file.read().ok_or_else(|| Error(format!("Could not read {path}")))
     };
-    let tc = match liero_data::load::load(&mut read).and_then(LieroTc::new) {
+    match liero_data::load::load(&mut read).and_then(LieroTc::new) {
         Ok(tc) => tc,
         Err(e) => LieroTc::failed(e.0),
-    };
-    Box::into_raw(Box::new(tc))
+    }
+}
+
+/// Loads the TC in `node` (`Common::load`). Always returns a TC to free with
+/// `liero_tc_free`; `liero_tc_error` says whether loading failed.
+#[no_mangle]
+pub extern "C" fn liero_tc_load(node: &LieroFsNode) -> *mut LieroTc {
+    Box::into_raw(Box::new(load(&node.0)))
 }
 
 /// Why loading failed, or an empty string.
@@ -611,34 +582,101 @@ mod tests {
         assert!(order.windows(2).all(|w| c.weapons[w[0] as usize].name <= c.weapons[w[1] as usize].name));
     }
 
-    unsafe extern "C" fn read_dir(ctx: *mut c_void, path: LieroStr, out: *mut LieroTcFile) -> bool {
-        let dir = &*(ctx as *const std::path::PathBuf);
-        let path = std::str::from_utf8(path.bytes()).unwrap();
-        match std::fs::read(dir.join(path)) {
-            Ok(data) => {
-                liero_tc_file_set(out, data.as_ptr(), data.len());
-                true
+    /// A zip of the files under `dir`, stored, with `/` between folders.
+    fn stored_zip(dir: &Path) -> Vec<u8> {
+        fn files(dir: &Path, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) {
+            let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().collect();
+            entries.sort_by_key(|e| e.file_name());
+            for e in entries {
+                let name = format!("{prefix}{}", e.file_name().to_str().unwrap());
+                if e.path().is_dir() {
+                    files(&e.path(), &format!("{name}/"), out);
+                } else {
+                    out.push((name, std::fs::read(e.path()).unwrap()));
+                }
             }
-            Err(_) => false,
+        }
+        let mut list = Vec::new();
+        files(dir, "", &mut list);
+        let (mut out, mut central) = (Vec::new(), Vec::new());
+        for (name, data) in &list {
+            let crc = crate::fs::tests_crc32(data);
+            let head = |sig: u32| {
+                let mut h = sig.to_le_bytes().to_vec();
+                h.extend_from_slice(&[20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+                h.extend_from_slice(&crc.to_le_bytes());
+                h.extend_from_slice(&(data.len() as u32).to_le_bytes());
+                h.extend_from_slice(&(data.len() as u32).to_le_bytes());
+                h.extend_from_slice(&(name.len() as u16).to_le_bytes());
+                h
+            };
+            let offset = out.len() as u32;
+            out.extend(head(0x0403_4b50));
+            out.extend_from_slice(&[0, 0]);
+            out.extend_from_slice(name.as_bytes());
+            out.extend_from_slice(data);
+            // The central header has "version made by" before the rest.
+            let mut c = 0x0201_4b50u32.to_le_bytes().to_vec();
+            c.extend_from_slice(&[20, 0]);
+            c.extend(head(0).split_off(4));
+            c.extend_from_slice(&[0; 12]);
+            c.extend_from_slice(&offset.to_le_bytes());
+            c.extend_from_slice(name.as_bytes());
+            central.extend(c);
+        }
+        let start = out.len() as u32;
+        out.extend_from_slice(&central);
+        out.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+        out.extend_from_slice(&[0; 4]);
+        out.extend_from_slice(&(list.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(list.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(central.len() as u32).to_le_bytes());
+        out.extend_from_slice(&start.to_le_bytes());
+        out.extend_from_slice(&[0, 0]);
+        out
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
+    fn a_zipped_tc_loads_as_its_folder_does() {
+        let dir = "target/tc-tests/zipped";
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
+        let tc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../TC/openliero");
+        std::fs::write(format!("{dir}/openliero.zip"), stored_zip(&tc)).unwrap();
+
+        let from_folder = LieroFsNode(Node::new(b"../../TC/openliero"));
+        let from_zip = LieroFsNode(Node::new(format!("{dir}/openliero").as_bytes()));
+        unsafe {
+            let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
+            assert!((*b).error.is_empty(), "{}", (*b).error);
+            let (da, db) = (&*liero_tc_data(&*a), &*liero_tc_data(&*b));
+            assert_eq!(da.weapon_count, db.weapon_count);
+            assert_eq!(da.sound_count, db.sound_count);
+            for i in 0..da.sound_count {
+                let (sa, sb) = (&*da.sounds.add(i), &*db.sounds.add(i));
+                assert_eq!((sa.valid, sa.len), (sb.valid, sb.len));
+            }
+            liero_tc_free(a);
+            liero_tc_free(b);
         }
     }
 
     #[test]
     #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
-    fn loads_through_the_hook_and_reports_errors() {
-        let mut dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../TC/openliero");
+    fn loads_from_a_node_and_reports_errors() {
+        // Relative to the crate, where the tests run.
+        let node = LieroFsNode(Node::new(b"../../TC/openliero"));
         unsafe {
-            let hooks = LieroTcHooks { ctx: &mut dir as *mut _ as *mut c_void, read: read_dir };
-            let tc = liero_tc_load(&hooks);
+            let tc = liero_tc_load(&node);
             assert!((*tc).error.is_empty(), "{}", (*tc).error);
             let data = &*liero_tc_data(&*tc);
             assert_eq!(data.weapon_count, 40);
             assert_eq!(data.font[b'A' as usize].width, 5);
             liero_tc_free(tc);
 
-            let mut missing = Path::new("/nonexistent").to_path_buf();
-            let hooks = LieroTcHooks { ctx: &mut missing as *mut _ as *mut c_void, read: read_dir };
-            let tc = liero_tc_load(&hooks);
+            let missing = LieroFsNode(Node::new(b"target/no-such-tc"));
+            let tc = liero_tc_load(&missing);
             assert_eq!(liero_tc_error(&*tc).bytes(), b"Could not read tc.cfg");
             assert!(liero_tc_data(&*tc).is_null());
             liero_tc_free(tc);
