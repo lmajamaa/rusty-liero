@@ -36,6 +36,7 @@ pub mod viewport;
 pub mod weapon;
 pub mod weapon_options;
 pub mod weapsel;
+pub mod world;
 pub mod worm;
 
 use std::ffi::c_char;

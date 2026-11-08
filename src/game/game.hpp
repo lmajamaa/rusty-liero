@@ -84,8 +84,6 @@ struct Game : GameMembers
 	void focus(Renderer& renderer);
 	void updateSettings(Renderer& renderer);
 
-	void createBObject(fixedvec pos, fixedvec vel);
-
 	void clearViewports();
 	void addViewport(Viewport*);
 	void addSpectatorViewport(SpectatorViewport*);
@@ -98,16 +96,9 @@ struct Game : GameMembers
 	void draw(Renderer& renderer, GameState state, bool useSpectatorViewports, bool isReplay = false);
 	void startGame();
 	bool isGameOver();
-	void doDamage(Worm& w, int amount, int byIdx);
-	void doHealing(Worm& w, int amount);
 	void postClone(Game& original, bool complete = false);
 
 	void spawnZone();
-
-	Material pixelMat(int x, int y)
-	{
-		return common->materials[level.pixel(x, y)];
-	}
 
 	Worm* wormByIdx(int idx)
 	{

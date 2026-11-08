@@ -103,7 +103,7 @@ const SINT8: &[(&str, usize)] = &[
 ];
 
 /// Constants in the order they are written to tc.cfg (LIERO_CDEFS).
-pub(crate) const CONSTANT_ORDER: &[&str] = &[
+pub const CONSTANT_ORDER: &[&str] = &[
     "NRInitialLength", "NRAttachLength", "MinBounceUp", "MinBounceDown", "MinBounceLeft",
     "MinBounceRight", "WormGravity", "WalkVelLeft", "MaxVelLeft", "WalkVelRight", "MaxVelRight",
     "JumpForce", "MaxAimVelLeft", "AimAccLeft", "MaxAimVelRight", "AimAccRight",
@@ -167,7 +167,7 @@ pub(crate) const TEXTS: &[(&str, usize)] = &[
 
 /// A hack is active when all of its (offset, byte) indicators match.
 /// Listed in the order they are written to tc.cfg (LIERO_HDEFS).
-pub(crate) const HACKS: &[(&str, &[(usize, u8)])] = &[
+pub const HACKS: &[(&str, &[(usize, u8)])] = &[
     ("FallDamage", &[(0x3A0A, 0x26), (0x3A87, 0x26), (0x3B04, 0x26), (0x3B81, 0x26)]),
     // One byte only, because ProMode has a silly jump destination
     ("BonusReloadOnly", &[(0x2DB1, 0xEB)]),

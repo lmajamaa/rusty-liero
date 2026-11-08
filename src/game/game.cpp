@@ -261,6 +261,15 @@ struct GameView
 		fields.worm_count = int32_t(worms.size());
 		fields.game = game.rust();
 		fields.level = game.level.view();
+		fields.tc = common.tc ? liero_tc_data(common.tc) : nullptr;
+		for (Viewport* v : game.viewports)
+			viewports.push_back(v->rust());
+		for (SpectatorViewport* v : game.spectatorViewports)
+			spectatorViewports.push_back(v->rust());
+		fields.viewports = viewports.data();
+		fields.viewport_count = int32_t(viewports.size());
+		fields.spectator_viewports = spectatorViewports.data();
+		fields.spectator_viewport_count = int32_t(spectatorViewports.size());
 
 		settings.game_mode = int32_t(s.gameMode);
 		settings.max_bonuses = s.maxBonuses;
@@ -281,173 +290,30 @@ struct GameView
 		settings.bonus_only_health = common.H[HBonusOnlyHealth];
 		settings.bonus_only_weapon = common.H[HBonusOnlyWeapon];
 		settings.bonus_disable = common.H[HBonusDisable];
+		settings.blood = s.blood;
+		settings.shadow = s.shadow;
+		settings.loading_time = s.loadingTime;
+		settings.load_change = s.loadChange;
 	}
 
 	std::vector<LieroGameWorm> worms;
+	std::vector<LieroViewport*> viewports;
+	std::vector<LieroViewport*> spectatorViewports;
 	LieroGameFields fields;
 	LieroGameSettings settings;
 };
 
 static_assert(sizeof(Settings::weapTable[0]) == sizeof(uint32_t), "weapTable type");
 
-int wormPosition(Game& game, Worm& w)
-{
-	for (std::size_t i = 0; i < game.worms.size(); ++i)
-	{
-		if (game.worms[i] == &w)
-			return int(i);
-	}
-	assert(false);
-	return -1;
-}
-
 Game& gameOf(void* ctx)
 {
 	return *static_cast<Game*>(ctx);
 }
 
-void hookBeginTick(void* ctx)
+void hookPreTick(void* ctx)
 {
 	Game& game = gameOf(ctx);
 	game.statsRecorder->preTick(game);
-
-	if(game.screenFlash > 0)
-		--game.screenFlash;
-
-	for(std::size_t i = 0; i < game.viewports.size(); ++i)
-	{
-		if(game.viewports[i]->shake > 0)
-			game.viewports[i]->shake -= 4000; // TODO: Read 4000 from exe?
-	}
-
-	for(std::size_t i = 0; i < game.spectatorViewports.size(); ++i)
-	{
-		if(game.spectatorViewports[i]->shake > 0)
-			game.spectatorViewports[i]->shake -= 4000; // TODO: Read 4000 from exe?
-	}
-}
-
-void hookProcessBonuses(void* ctx)
-{
-	Game& game = gameOf(ctx);
-	auto br = game.bonuses.all();
-	for (Bonus* i; (i = br.next()); )
-	{
-		i->process(game);
-	}
-}
-
-void moveBanner(int& bannerY, bool down)
-{
-	if(down)
-	{
-		if(bannerY < 2)
-			++bannerY;
-	}
-	else
-	{
-		if(bannerY > -8)
-			--bannerY;
-	}
-}
-
-void hookUpdateBanners(void* ctx)
-{
-	Game& game = gameOf(ctx);
-	for(std::size_t i = 0; i < game.viewports.size(); ++i)
-	{
-		Viewport& v = *game.viewports[i];
-		moveBanner(v.bannerY, game.wormByIdx(v.wormIdx)->killedTimer > 16);
-	}
-
-	for(std::size_t i = 0; i < game.spectatorViewports.size(); ++i)
-	{
-		SpectatorViewport& v = *game.spectatorViewports[i];
-		moveBanner(v.bannerY, game.wormByIdx(0)->killedTimer > 16 || game.wormByIdx(1)->killedTimer > 16);
-	}
-}
-
-void hookProcessSObjects(void* ctx)
-{
-	Game& game = gameOf(ctx);
-	auto sr = game.sobjects.all();
-	for (SObject* i; (i = sr.next()); )
-	{
-		i->process(game);
-	}
-}
-
-void hookProcessWObjects(void* ctx)
-{
-	Game& game = gameOf(ctx);
-	auto wr = game.wobjects.all();
-	for (WObject* i; (i = wr.next()); )
-	{
-		i->process(game);
-	}
-}
-
-void hookProcessNObjects(void* ctx)
-{
-	Game& game = gameOf(ctx);
-	auto nr = game.nobjects.all();
-	for (NObject* i; (i = nr.next()); )
-	{
-		i->process(game);
-	}
-}
-
-void hookProcessBObjects(void* ctx)
-{
-	Game& game = gameOf(ctx);
-	for(Game::BObjectList::iterator i = game.bobjects.begin(); i != game.bobjects.end(); )
-	{
-		if(i->process(game))
-			++i;
-		else
-			game.bobjects.free(i);
-	}
-}
-
-int32_t hookBonusCount(void* ctx)
-{
-	return int32_t(gameOf(ctx).bonuses.size());
-}
-
-void* hookNewBonus(void* ctx)
-{
-	return gameOf(ctx).bonuses.newObject();
-}
-
-void hookSetBonus(void*, void* bonus, LieroBonusState const* state)
-{
-	Bonus& b = *static_cast<Bonus*>(bonus);
-	b.x = state->x;
-	b.y = state->y;
-	b.velY = state->vel_y;
-	b.frame = state->frame;
-	b.timer = state->timer;
-	// Health bonuses keep the weapon of the bonus that used the slot before.
-	if (state->frame == 0)
-		b.weapon = state->weapon;
-}
-
-void hookCreateSObject(void* ctx, int32_t kind, int32_t x, int32_t y)
-{
-	Game& game = gameOf(ctx);
-	createSObject(game, game.common->sobjectTypes[kind], x, y, 0, 0);
-}
-
-void hookProcessWorm(void* ctx, int32_t i)
-{
-	Game& game = gameOf(ctx);
-	game.worms[i]->process(game);
-}
-
-void hookProcessRope(void* ctx, int32_t i)
-{
-	Game& game = gameOf(ctx);
-	game.worms[i]->ninjarope.process(*game.worms[i], game);
 }
 
 void hookEndTick(void* ctx)
@@ -464,16 +330,72 @@ void hookEndTick(void* ctx)
 	game.statsRecorder->tick(game);
 }
 
+void hookPlaySound(void* ctx, int32_t sound, void* id, int32_t loops)
+{
+	gameOf(ctx).soundPlayer->play(sound, id, loops);
+}
+
+bool hookSoundPlaying(void* ctx, void* id)
+{
+	return gameOf(ctx).soundPlayer->isPlaying(id);
+}
+
+void hookStopSound(void* ctx, void* id)
+{
+	gameOf(ctx).soundPlayer->stop(id);
+}
+
+WormWeapon* wormWeapon(LieroWormWeapon* w)
+{
+	return reinterpret_cast<WormWeapon*>(w);
+}
+
+void hookDamagePotential(void* ctx, int32_t by, LieroWormWeapon* weapon, int32_t hp)
+{
+	Game& game = gameOf(ctx);
+	game.statsRecorder->damagePotential(game.wormByIdx(by), wormWeapon(weapon), hp);
+}
+
+void hookDamageDealt(void* ctx, int32_t by, LieroWormWeapon* weapon, int32_t to, int32_t hp, bool hasHit)
+{
+	Game& game = gameOf(ctx);
+	game.statsRecorder->damageDealt(game.wormByIdx(by), wormWeapon(weapon), game.worms[to], hp, hasHit);
+}
+
+void hookShot(void* ctx, int32_t by, LieroWormWeapon* weapon)
+{
+	Game& game = gameOf(ctx);
+	game.statsRecorder->shot(game.wormByIdx(by), wormWeapon(weapon));
+}
+
+void hookHit(void* ctx, int32_t by, LieroWormWeapon* weapon, int32_t to)
+{
+	Game& game = gameOf(ctx);
+	game.statsRecorder->hit(game.wormByIdx(by), wormWeapon(weapon), game.worms[to]);
+}
+
+void hookAfterDeath(void* ctx, int32_t worm)
+{
+	Game& game = gameOf(ctx);
+	game.statsRecorder->afterDeath(game.worms[worm]);
+}
+
+void hookAfterSpawn(void* ctx, int32_t worm)
+{
+	Game& game = gameOf(ctx);
+	game.statsRecorder->afterSpawn(game.worms[worm]);
+}
+
 } // namespace
 
 void Game::processFrame()
 {
 	GameView view(*this);
 	LieroGameHooks hooks = {
-		this, hookBeginTick, hookProcessBonuses, hookUpdateBanners,
-		hookProcessSObjects, hookProcessWObjects, hookProcessNObjects, hookProcessBObjects,
-		hookBonusCount, hookNewBonus, hookSetBonus, hookCreateSObject,
-		hookProcessWorm, hookProcessRope, hookEndTick,
+		this, hookPreTick, hookEndTick,
+		hookPlaySound, hookSoundPlaying, hookStopSound,
+		hookDamagePotential, hookDamageDealt, hookShot, hookHit,
+		hookAfterDeath, hookAfterSpawn,
 	};
 	liero_game_process_frame(&view.fields, &view.settings, &hooks);
 }
@@ -516,18 +438,6 @@ bool Game::isGameOver()
 {
 	GameView view(*this);
 	return liero_game_is_over(&view.fields, &view.settings);
-}
-
-void Game::doDamage(Worm& w, int amount, int byIdx)
-{
-	GameView view(*this);
-	liero_game_damage(&view.fields, &view.settings, wormPosition(*this, w), amount, byIdx);
-}
-
-void Game::doHealing(Worm& w, int amount)
-{
-	GameView view(*this);
-	liero_game_heal(&view.fields, &view.settings, wormPosition(*this, w), amount);
 }
 
 void Game::postClone(Game& original, bool complete)

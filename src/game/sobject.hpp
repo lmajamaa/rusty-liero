@@ -14,11 +14,9 @@ struct WObject;
 // rust/liero-game/src/tc.rs).
 typedef LieroTcSObject SObjectType;
 
-void createSObject(Game& game, SObjectType const& type, int x, int y, int ownedIdx, WormWeapon* firedBy, WObject* from = 0);
 
 struct SObject : ExactObjectListBase
 {
-	void process(Game& game);
 
 	int x, y;
 	int id; // type

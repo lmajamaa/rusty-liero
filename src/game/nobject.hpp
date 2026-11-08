@@ -14,13 +14,9 @@ struct NObject;
 // rust/liero-game/src/tc.rs).
 typedef LieroTcNObject NObjectType;
 
-NObject& createNObject(Game& game, NObjectType const& type, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy);
-NObject& createNObject1(Game& game, NObjectType const& type, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy);
-void createNObject2(Game& game, NObjectType const& type, int angle, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy);
 
 struct NObject : ExactObjectListBase
 {
-	void process(Game& game);
 
 	fixedvec pos, vel;
 	int timeLeft;

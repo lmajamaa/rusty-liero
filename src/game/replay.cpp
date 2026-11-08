@@ -102,7 +102,8 @@ LieroReplayWorm wormFields(Worm const& worm, Game& game)
 
 	// The anchor by its place among the game's worms. The game's ropes only
 	// attach to its own worms.
-	auto anchor = std::find(game.worms.begin(), game.worms.end(), worm.ninjarope.anchor);
+	auto anchor = std::find_if(game.worms.begin(), game.worms.end(),
+		[&](Worm* w) { return w->rust() == worm.ninjarope.anchor; });
 	f.rope_anchor = worm.ninjarope.anchor && anchor != game.worms.end() ? int(anchor - game.worms.begin()) : -1;
 	f.rope_attached = worm.ninjarope.attached;
 	f.rope_cur_len = worm.ninjarope.curLen;
@@ -156,7 +157,7 @@ void setWormFields(Worm& worm, LieroReplayWorm const& f, std::vector<Worm*> cons
 	worm.currentFrame = f.current_frame;
 	worm.flags = f.flags;
 
-	worm.ninjarope.anchor = f.rope_anchor < 0 ? 0 : all[f.rope_anchor];
+	worm.ninjarope.anchor = f.rope_anchor < 0 ? 0 : all[f.rope_anchor]->rust();
 	worm.ninjarope.attached = f.rope_attached;
 	worm.ninjarope.curLen = f.rope_cur_len;
 	worm.ninjarope.length = f.rope_length;

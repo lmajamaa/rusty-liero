@@ -4,13 +4,12 @@
 //! (`ninjarope.cpp`). Results have to stay bit-identical to the C++ versions,
 //! which the replay system and `tools/hashrun` check.
 //!
-//! C++ still owns the objects, their lists and the worms. Rust gets pointers
-//! to an object's fields and a table of C++ functions ("hooks") for what
-//! stays in C++: creating other objects, hitting worms, sounds and stats.
+//! Each kind of object gets pointers to its fields and a table of hooks
+//! (`world.rs`) for creating other objects, hitting worms, sounds and stats.
 //! A hook can change any object, including the one being processed (an
 //! explosion pushes nearby objects, and a new object can reuse a freed
-//! slot), so Rust reads and writes fields through the pointers at the same
-//! points the C++ code did, and never keeps references across a hook.
+//! slot), so the code reads and writes fields through the pointers at the
+//! same points the C++ code did, and never keeps references across a hook.
 
 use std::ffi::c_void;
 
@@ -98,8 +97,7 @@ impl LieroBObject {
 ///
 /// # Safety
 /// See `LieroLevel` and `LieroLevelCommon`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_bobject_process(
+pub unsafe fn liero_bobject_process(
     obj: &mut LieroBObject,
     level: &LieroLevel,
     common: &LieroLevelCommon,
@@ -124,8 +122,7 @@ pub struct LieroBonusConstants {
 ///
 /// # Safety
 /// See `LieroLevel`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_bonus_process(
+pub unsafe fn liero_bonus_process(
     x: i32,
     y: &mut i32,
     vel_y: &mut i32,
@@ -160,8 +157,7 @@ pub unsafe extern "C" fn liero_bonus_process(
 
 /// Advances an explosion's animation one tick. Returns true when the
 /// animation is over, so C++ frees the object.
-#[no_mangle]
-pub extern "C" fn liero_sobject_animate(
+pub fn liero_sobject_animate(
     cur_frame: &mut i32,
     anim_delay: &mut i32,
     type_anim_delay: i32,
@@ -188,8 +184,7 @@ fn in_blast(px: i32, py: i32, x: i32, y: i32, range: i32) -> bool {
 /// `SObjectType::create` does. A worm already moving at 2 pixels per tick or
 /// more on an axis isn't pushed on that axis. Returns false when the worm is
 /// out of range; otherwise sets `power_sum`, which sets the damage.
-#[no_mangle]
-pub extern "C" fn liero_explosion_push_worm(
+pub fn liero_explosion_push_worm(
     pos: LieroIVec2,
     vel: &mut LieroIVec2,
     x: i32,
@@ -227,8 +222,7 @@ pub extern "C" fn liero_explosion_push_worm(
 }
 
 /// The damage an explosion does to a worm, from `power_sum`.
-#[no_mangle]
-pub extern "C" fn liero_explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
+pub fn liero_explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
     let z = damage.wrapping_mul(power_sum);
     if range != 0 {
         z / range
@@ -239,8 +233,7 @@ pub extern "C" fn liero_explosion_damage(damage: i32, power_sum: i32, range: i32
 
 /// Pushes an object that explosions affect away from an explosion at
 /// (x, y). Returns whether it was in range (for chain explosions).
-#[no_mangle]
-pub extern "C" fn liero_explosion_push_object(
+pub fn liero_explosion_push_object(
     pos: LieroIVec2,
     vel: &mut LieroIVec2,
     x: i32,
@@ -386,8 +379,7 @@ impl LieroNObjectEnv {
 /// # Safety
 /// The field pointers, views and `rand` must be valid for the call. The
 /// hooks may change them (but not free their memory).
-#[no_mangle]
-pub unsafe extern "C" fn liero_nobject_process(
+pub unsafe fn liero_nobject_process(
     obj: &LieroNObjectFields,
     t: &LieroNObjectType,
     env: &LieroNObjectEnv,
@@ -579,8 +571,7 @@ pub struct LieroNinjaropeHooks {
 /// # Safety
 /// All pointers must be valid for the call, and `owner` must be the
 /// rope's worm.
-#[no_mangle]
-pub unsafe extern "C" fn liero_ninjarope_process(
+pub unsafe fn liero_ninjarope_process(
     rope: *mut LieroNinjarope,
     owner: LieroWormMotion,
     level: &LieroLevel,

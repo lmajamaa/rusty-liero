@@ -721,8 +721,7 @@ pub unsafe extern "C" fn liero_level_blit_stone(
 /// # Safety
 /// See `LieroLevel` and `LieroLevelCommon`; `image` must point to
 /// `width * height` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_level_blit_image(
+pub unsafe fn liero_level_blit_image(
     level: &LieroLevel,
     common: &LieroLevelCommon,
     image: *const u8,
@@ -739,8 +738,7 @@ pub unsafe extern "C" fn liero_level_blit_image(
 ///
 /// # Safety
 /// See `LieroLevel` and `LieroLevelCommon`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_level_draw_dirt_effect(
+pub unsafe fn liero_level_draw_dirt_effect(
     level: &LieroLevel,
     common: &LieroLevelCommon,
     rand: &mut LieroRand,
@@ -755,8 +753,7 @@ pub unsafe extern "C" fn liero_level_draw_dirt_effect(
 ///
 /// # Safety
 /// See `LieroLevel` and `LieroLevelCommon`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_level_correct_shadow(
+pub unsafe fn liero_level_correct_shadow(
     level: &LieroLevel,
     common: &LieroLevelCommon,
     x1: i32,

@@ -3,12 +3,11 @@
 //! (`Worm::process` and the functions it calls in `worm.cpp`). Results have
 //! to stay bit-identical to the C++ versions, which `tools/hashrun` checks.
 //!
-//! As in `object.rs`, C++ owns the worms. Rust gets pointers to a worm's
-//! fields and a table of C++ hooks for what stays in C++: the bonus and
-//! weapon object lists, sounds, healing, creating objects, the other worm
-//! and stats. Rust reads and writes fields through the pointers where the
-//! C++ did, since a hook can change them (healing changes health and lives,
-//! and an explosion can push the worm).
+//! As in `object.rs`, the code works on a worm's fields with a table of
+//! hooks (`world.rs`) for the bonus and weapon object lists, sounds,
+//! healing, creating objects, the other worm and stats. It reads and writes
+//! fields where the C++ did, since a hook can change them (healing changes
+//! health and lives, and an explosion can push the worm).
 
 use std::ffi::c_void;
 
@@ -1343,8 +1342,7 @@ impl Worm<'_> {
 /// # Safety
 /// `worm`, the views and the pointers in `env` must be valid for the call.
 /// The hooks may change them (but not free their memory).
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_process(
+pub unsafe fn liero_worm_process(
     worm: *mut LieroWormData,
     max_health: i32,
     constants: &LieroWormConstants,

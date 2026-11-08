@@ -58,7 +58,7 @@ uint64_t hashFrame(Game& game, Renderer& split, Renderer& spectator)
 namespace
 {
 
-int wormIndex(Worm const* w)
+int wormIndex(LieroWormData const* w)
 {
 	return w ? w->index : -1;
 }

@@ -4,18 +4,20 @@
 //! end of the game. Results have to stay bit-identical to the C++ versions,
 //! which `tools/hashrun` checks.
 //!
-//! Rust owns the game's own state (`LieroGameData`) and each worm's
-//! (`LieroWormData`); C++ still owns the game's object lists, level and
-//! viewports. The tick runs in Rust in the original order and calls C++
-//! hooks for each object list, each worm and the viewports and stats, which
-//! are not game logic.
+//! Rust owns the game's state (`LieroGameData`, with the object lists) and
+//! each worm's (`LieroWormData`). The tick itself is in `world.rs`; it calls
+//! C++ only for sounds, stats and the viewports' own processing.
 
 use std::ffi::c_void;
 
 use crate::level::LieroLevel;
 use crate::objects::{zeroed_box, LieroBObjectList, LieroBonusList, LieroNObjectList, LieroSObjectList, LieroWObjectList};
-use crate::math::{ftoi, itof};
+use crate::math::ftoi;
 use crate::rand::LieroRand;
+use crate::tc::LieroTcData;
+use crate::viewport::LieroViewport;
+use crate::weapon::LieroWormWeapon;
+use crate::world::World;
 use crate::worm::{LieroWormData, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE};
 
 /// Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
@@ -193,6 +195,13 @@ pub struct LieroGameFields {
     pub worm_count: i32,
     pub game: *mut LieroGameData,
     pub level: LieroLevel,
+    /// The TC. Only the tick reads it, so the rules may leave it null.
+    pub tc: *const LieroTcData,
+    /// The viewports, whose shake and death banners the tick moves.
+    pub viewports: *const *mut LieroViewport,
+    pub viewport_count: i32,
+    pub spectator_viewports: *const *mut LieroViewport,
+    pub spectator_viewport_count: i32,
 }
 
 /// Game settings, and TC constants and hacks, for the rules.
@@ -224,50 +233,53 @@ pub struct LieroGameSettings {
     pub bonus_only_health: bool,
     pub bonus_only_weapon: bool,
     pub bonus_disable: bool,
+    /// Blood amount, in percent.
+    pub blood: i32,
+    pub shadow: bool,
+    /// Weapon loading time, in percent.
+    pub loading_time: i32,
+    /// Whether weapons can be changed while loading.
+    pub load_change: bool,
 }
 
-/// What C++ does during a tick. `ctx` is passed back to each function.
+/// What C++ does during a tick: sounds, stats and the viewports. `ctx` is
+/// passed back to each function. Worms are positions in the game's worms;
+/// a negative `by` is no worm.
 #[repr(C)]
 pub struct LieroGameHooks {
     pub ctx: *mut c_void,
-    /// Stats, screen flash and viewport shake at the start of the tick.
-    pub begin_tick: unsafe extern "C" fn(ctx: *mut c_void),
-    pub process_bonuses: unsafe extern "C" fn(ctx: *mut c_void),
-    /// Moves the viewports' death banners, every other tick.
-    pub update_banners: unsafe extern "C" fn(ctx: *mut c_void),
-    pub process_sobjects: unsafe extern "C" fn(ctx: *mut c_void),
-    pub process_wobjects: unsafe extern "C" fn(ctx: *mut c_void),
-    pub process_nobjects: unsafe extern "C" fn(ctx: *mut c_void),
-    pub process_bobjects: unsafe extern "C" fn(ctx: *mut c_void),
-    /// How many bonuses there are.
-    pub bonus_count: unsafe extern "C" fn(ctx: *mut c_void) -> i32,
-    /// A new bonus, or null when the list is full.
-    pub new_bonus: unsafe extern "C" fn(ctx: *mut c_void) -> *mut c_void,
-    /// Sets the fields of a bonus from `new_bonus`.
-    pub set_bonus: unsafe extern "C" fn(ctx: *mut c_void, bonus: *mut c_void, state: &LieroBonusState),
-    /// `SObjectType::create` for sobject type `kind`, owned by nobody.
-    pub create_sobject: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
-    /// `Worm::process` and `Ninjarope::process` for worm `i`.
-    pub process_worm: unsafe extern "C" fn(ctx: *mut c_void, i: i32),
-    pub process_rope: unsafe extern "C" fn(ctx: *mut c_void, i: i32),
+    /// Stats at the start of the tick.
+    pub pre_tick: unsafe extern "C" fn(ctx: *mut c_void),
     /// Viewports, the control states replays compare against, and stats.
     pub end_tick: unsafe extern "C" fn(ctx: *mut c_void),
+    /// Plays `sound` as `id`'s (null for none), looping when `loops` isn't 0.
+    pub play_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32, id: *mut c_void, loops: i32),
+    pub sound_playing: unsafe extern "C" fn(ctx: *mut c_void, id: *mut c_void) -> bool,
+    pub stop_sound: unsafe extern "C" fn(ctx: *mut c_void, id: *mut c_void),
+    pub damage_potential: unsafe extern "C" fn(ctx: *mut c_void, by: i32, weapon: *mut LieroWormWeapon, hp: i32),
+    pub damage_dealt:
+        unsafe extern "C" fn(ctx: *mut c_void, by: i32, weapon: *mut LieroWormWeapon, to: i32, hp: i32, has_hit: bool),
+    pub shot: unsafe extern "C" fn(ctx: *mut c_void, by: i32, weapon: *mut LieroWormWeapon),
+    pub hit: unsafe extern "C" fn(ctx: *mut c_void, by: i32, weapon: *mut LieroWormWeapon, to: i32),
+    pub after_death: unsafe extern "C" fn(ctx: *mut c_void, worm: i32),
+    pub after_spawn: unsafe extern "C" fn(ctx: *mut c_void, worm: i32),
 }
 
 /// Getters and setters for the game's fields. SAFETY for all of them: the
 /// pointers are valid for the call, and no reference outlives the statement.
-struct Game<'a> {
-    f: &'a LieroGameFields,
-    s: &'a LieroGameSettings,
+#[derive(Clone, Copy)]
+pub(crate) struct Game<'a> {
+    pub(crate) f: &'a LieroGameFields,
+    pub(crate) s: &'a LieroGameSettings,
 }
 
 impl Game<'_> {
-    fn worm(&self, i: i32) -> LieroGameWorm {
+    pub(crate) fn worm(&self, i: i32) -> LieroGameWorm {
         assert!(0 <= i && i < self.f.worm_count);
         unsafe { *self.f.worms.add(i as usize) }
     }
 
-    fn worms(&self) -> impl Iterator<Item = (i32, LieroGameWorm)> + '_ {
+    pub(crate) fn worms(&self) -> impl Iterator<Item = (i32, LieroGameWorm)> + '_ {
         (0..self.f.worm_count).map(|i| (i, self.worm(i)))
     }
 
@@ -279,11 +291,6 @@ impl Game<'_> {
         // SAFETY: valid for the call, and only used within a statement or
         // between hook calls.
         unsafe { &mut (*self.f.game).holdazone }
-    }
-
-    fn rand(&self, max: u32) -> u32 {
-        // SAFETY: valid for the call, and no hook runs during this.
-        unsafe { (*self.f.game).rand.below(max) }
     }
 
     /// `Game::doDamageDirect`.
@@ -331,7 +338,7 @@ impl Game<'_> {
 
     /// `Game::doDamage`: in Scales of Justice, the killer (or, without one,
     /// everyone else) gets the health the worm loses.
-    fn damage(&self, target: i32, amount: i32, by_idx: i32) {
+    pub(crate) fn damage(&self, target: i32, amount: i32, by_idx: i32) {
         let w = self.worm(target);
         self.damage_direct(w, amount, by_idx);
 
@@ -346,7 +353,7 @@ impl Game<'_> {
 
     /// `Game::doHealing`: in Scales of Justice, the other worms lose the
     /// health the worm gains.
-    fn heal(&self, target: i32, amount: i32) {
+    pub(crate) fn heal(&self, target: i32, amount: i32) {
         let w = self.worm(target);
         self.heal_direct(w, amount);
 
@@ -362,7 +369,7 @@ impl Game<'_> {
     }
 
     /// `checkBonusSpawnPosition`: no dirt or rock within 2 pixels.
-    fn bonus_spawn_position_free(&self, x: i32, y: i32) -> bool {
+    pub(crate) fn bonus_spawn_position_free(&self, x: i32, y: i32) -> bool {
         // SAFETY: the view is valid for the call.
         let lv = unsafe { self.f.level.get() };
         let (x1, y1) = ((x - 2).max(0), (y - 2).max(0));
@@ -378,71 +385,8 @@ impl Game<'_> {
         true
     }
 
-    /// `Game::createBonus`.
-    fn create_bonus(&self, hooks: &LieroGameHooks) {
-        let s = self.s;
-        let ctx = hooks.ctx;
-
-        if unsafe { (hooks.bonus_count)(ctx) } >= s.max_bonuses {
-            return;
-        }
-
-        for _ in 0..50000 {
-            let mut ix = self.rand(s.bonus_spawn_rect_w as u32) as i32;
-            let mut iy = self.rand(s.bonus_spawn_rect_h as u32) as i32;
-
-            if s.bonus_spawn_rect {
-                ix += s.bonus_spawn_rect_x;
-                iy += s.bonus_spawn_rect_y;
-            }
-
-            if !self.bonus_spawn_position_free(ix, iy) {
-                continue;
-            }
-
-            let frame = if s.bonus_only_health {
-                1
-            } else if s.bonus_only_weapon {
-                0
-            } else {
-                self.rand(2) as i32
-            };
-
-            let bonus = unsafe { (hooks.new_bonus)(ctx) };
-            if bonus.is_null() {
-                return;
-            }
-
-            let [min_time, rand_time] = s.bonus_rand_timer[frame as usize];
-            let mut b = LieroBonusState {
-                x: itof(ix),
-                y: itof(iy),
-                vel_y: 0,
-                frame,
-                timer: self.rand(rand_time as u32).wrapping_add(min_time as u32) as i32,
-                weapon: 0,
-            };
-
-            if frame == 0 {
-                loop {
-                    b.weapon = self.rand(s.weapon_count as u32) as i32;
-                    // SAFETY: weap_table has weapon_count entries.
-                    if unsafe { *s.weap_table.add(b.weapon as usize) } != 2 {
-                        break;
-                    }
-                }
-            }
-
-            unsafe {
-                (hooks.set_bonus)(ctx, bonus, &b);
-                (hooks.create_sobject)(ctx, 7, ix, iy);
-            }
-            return;
-        } // 234F
-    }
-
     /// `Game::spawnZone`: moves Holdazone's zone, halving it until it fits.
-    fn spawn_zone(&self) {
+    pub(crate) fn spawn_zone(&self) {
         let z = self.zone();
 
         while z.zone_width >= 5 {
@@ -545,46 +489,13 @@ impl Game<'_> {
         }
     }
 
-    fn process_frame(&self, hooks: &LieroGameHooks) {
-        let s = self.s;
-        let ctx = hooks.ctx;
-
-        unsafe {
-            (hooks.begin_tick)(ctx);
-            (hooks.process_bonuses)(ctx);
-
-            if self.cycles() & 1 == 0 {
-                (hooks.update_banners)(ctx);
-            }
-
-            (hooks.process_sobjects)(ctx);
-            (hooks.process_wobjects)(ctx);
-            (hooks.process_nobjects)(ctx);
-            (hooks.process_bobjects)(ctx);
-
-            // This was originally the beginning of the tick, but has been
-            // rotated down to separate out the drawing.
-            (*self.f.game).cycles += 1;
-        }
-
-        if !s.bonus_disable && s.max_bonuses > 0 && self.rand(s.bonus_drop_chance as u32) == 0 {
-            self.create_bonus(hooks);
-        }
-
-        for i in 0..self.f.worm_count {
-            unsafe { (hooks.process_worm)(ctx, i) };
-        }
-        for i in 0..self.f.worm_count {
-            unsafe { (hooks.process_rope)(ctx, i) };
-        }
-
-        match s.game_mode {
+    /// The game mode's part of the tick.
+    pub(crate) fn game_mode_tick(&self) {
+        match self.s.game_mode {
             LIERO_GAME_GAME_OF_TAG => self.game_of_tag(),
             LIERO_GAME_HOLDAZONE => self.holdazone(),
             _ => {}
         }
-
-        unsafe { (hooks.end_tick)(ctx) };
     }
 
     fn is_over(&self) -> bool {
@@ -612,7 +523,7 @@ pub unsafe extern "C" fn liero_game_process_frame(
     settings: &LieroGameSettings,
     hooks: &LieroGameHooks,
 ) {
-    Game { f: game, s: settings }.process_frame(hooks);
+    World { g: Game { f: game, s: settings }, h: hooks }.process_frame();
 }
 
 /// Hurts worm `target` (a position in `game.worms`) by `amount`, caused by
@@ -620,8 +531,7 @@ pub unsafe extern "C" fn liero_game_process_frame(
 ///
 /// # Safety
 /// See above.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_damage(
+pub unsafe fn liero_game_damage(
     game: &LieroGameFields,
     settings: &LieroGameSettings,
     target: i32,
@@ -635,8 +545,7 @@ pub unsafe extern "C" fn liero_game_damage(
 ///
 /// # Safety
 /// See above.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_heal(game: &LieroGameFields, settings: &LieroGameSettings, target: i32, amount: i32) {
+pub unsafe fn liero_game_heal(game: &LieroGameFields, settings: &LieroGameSettings, target: i32, amount: i32) {
     Game { f: game, s: settings }.heal(target, amount);
 }
 
@@ -685,6 +594,10 @@ mod tests {
             bonus_only_health: false,
             bonus_only_weapon: false,
             bonus_disable: false,
+            blood: 100,
+            shadow: false,
+            loading_time: 100,
+            load_change: false,
         }
     }
 
@@ -704,6 +617,11 @@ mod tests {
             worm_count: views.len() as i32,
             game: &mut *game,
             level: LieroLevel { data: std::ptr::null_mut(), materials: std::ptr::null_mut(), width: 0, height: 0 },
+            tc: std::ptr::null(),
+            viewports: std::ptr::null(),
+            viewport_count: 0,
+            spectator_viewports: std::ptr::null(),
+            spectator_viewport_count: 0,
         };
         f(&fields);
     }

@@ -33,8 +33,6 @@ if(NOT EMSCRIPTEN)
 endif()
 
 set(SOURCES
-    src/game/bobject.cpp
-    src/game/bonus.cpp
     src/game/common.cpp
     src/game/console.cpp
     src/game/constants.cpp
@@ -42,11 +40,8 @@ set(SOURCES
     src/game/game.cpp
     src/game/level.cpp
     src/game/math.cpp
-    src/game/ninjarope.cpp
-    src/game/nobject.cpp
     src/game/rand.cpp
     src/game/settings.cpp
-    src/game/sobject.cpp
     src/game/stats_recorder.cpp
     src/game/text.cpp
     src/game/viewport.cpp

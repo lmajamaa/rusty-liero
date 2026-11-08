@@ -30,12 +30,11 @@ struct Ninjarope
 
 	bool out;            //Is the ninjarope out?
 	bool attached;
-	Worm* anchor;			// If non-zero, the worm the ninjarope is attached to
+	LieroWormData* anchor;	// If non-zero, the worm the ninjarope is attached to
 	fixedvec pos, vel; //Ninjarope props
 	// Not needed as far as I can tell: fixed forceX, forceY;
 	int length, curLen;
 
-	void process(Worm& owner, Game& game);
 };
 
 /*
@@ -321,8 +320,6 @@ struct Worm
 		return 129 + index * 4;
 	}
 
-	// Runs the worm for one tick, in Rust (rust/liero-game/src/worm.rs).
-	void process(Game& game);
 	void initWeapons(Game& game);
 	int angleFrame() const;
 
@@ -397,8 +394,6 @@ public:
 	std::shared_ptr<WormAI> ai;
 };
 
-bool checkForWormHit(Game& game, int x, int y, int dist, Worm* ownWorm);
-bool checkForSpecWormHit(Game& game, int x, int y, int dist, Worm& w);
 int sqrVectorLength(int x, int y);
 
 

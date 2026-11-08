@@ -102,33 +102,11 @@ void blitShadowImage(Common& common, Bitmap& scr, PalIdx* mem, int x, int y, int
 // The terrain operations below are implemented in Rust
 // (rust/liero-game/src/level.rs).
 
-void blitImageOnMap(Common& common, Level& level, PalIdx const* mem, int x, int y, int width, int height)
-{
-	LieroLevel v = level.view();
-	LieroLevelCommon c = common.levelCommon();
-	liero_level_blit_image(&v, &c, mem, x, y, width, height);
-}
-
 void blitStone(Common& common, Level& level, bool p1, PalIdx* mem, int x, int y)
 {
 	LieroLevel v = level.view();
 	LieroLevelCommon c = common.levelCommon();
 	liero_level_blit_stone(&v, &c, p1, mem, x, y);
-}
-
-void drawDirtEffect(Common& common, Rand& rand, Level& level, int dirtEffect, int x, int y)
-{
-	assert(dirtEffect >= 0 && dirtEffect < LIERO_TEXTURE_COUNT);
-	LieroLevel v = level.view();
-	LieroLevelCommon c = common.levelCommon();
-	liero_level_draw_dirt_effect(&v, &c, &rand, dirtEffect, x, y);
-}
-
-void correctShadow(Common& common, Level& level, Rect rect)
-{
-	LieroLevel v = level.view();
-	LieroLevelCommon c = common.levelCommon();
-	liero_level_correct_shadow(&v, &c, rect.x1, rect.y1, rect.x2, rect.y2);
 }
 
 void drawNinjarope(Common& common, Bitmap& scr, int fromX, int fromY, int toX, int toY)
