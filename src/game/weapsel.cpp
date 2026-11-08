@@ -22,7 +22,7 @@ LieroWeapselEnv weapselEnv(Game& game)
 	Common& common = *game.common;
 	LieroWeapselEnv e;
 	e.weap_table = game.settings->weapTable;
-	e.weap_order = common.weapOrder.data();
+	e.weap_order = common.weapOrder.items;
 	e.weapon_count = int32_t(common.weapOrder.size());
 	e.rand = &gfx.rand;
 	return e;
@@ -112,9 +112,9 @@ WeaponSelection::WeaponSelection(Game& game)
 	}
 	std::vector<LieroStr> names;
 	for (auto const& w : common.weapons)
-		names.push_back({ reinterpret_cast<uint8_t const*>(w.name.data()), w.name.size() });
+		names.push_back(w.name);
 
-	std::string const& randomize = LS(Randomize);
+	std::string randomize = LS(Randomize);
 	std::string const& done = LS(Done);
 	LieroWeapselSpec spec;
 	spec.worms = worms.data();

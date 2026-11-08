@@ -6,6 +6,7 @@
 //! the `LieroTc` until it's freed.
 
 use crate::level::{LieroTexture, LIERO_TEXTURE_COUNT};
+use crate::rand::LieroRand;
 use crate::text::LieroStr;
 use liero_data::model::{self, Common};
 use liero_data::Error;
@@ -13,6 +14,8 @@ use crate::fs::{LieroFsNode, Node};
 
 #[repr(C)]
 pub struct LieroTcWeapon {
+    /// Its index in the TC's weapons.
+    pub id: i32,
     pub name: LieroStr,
     pub id_str: LieroStr,
     pub detect_distance: i32,
@@ -68,6 +71,7 @@ pub struct LieroTcWeapon {
 
 #[repr(C)]
 pub struct LieroTcNObject {
+    pub id: i32,
     pub id_str: LieroStr,
     pub detect_distance: i32,
     pub gravity: i32,
@@ -101,6 +105,7 @@ pub struct LieroTcNObject {
 
 #[repr(C)]
 pub struct LieroTcSObject {
+    pub id: i32,
     pub id_str: LieroStr,
     pub start_sound: i32,
     pub num_sounds: i32,
@@ -299,7 +304,9 @@ impl LieroTc {
         tc.weapons = c
             .weapons
             .iter()
-            .map(|w| LieroTcWeapon {
+            .enumerate()
+            .map(|(i, w)| LieroTcWeapon {
+                id: i as i32,
                 name: str(&w.name),
                 id_str: str(w.id_str.as_bytes()),
                 detect_distance: w.detect_distance,
@@ -356,7 +363,9 @@ impl LieroTc {
         tc.nobjects = c
             .nobjects
             .iter()
-            .map(|n| LieroTcNObject {
+            .enumerate()
+            .map(|(i, n)| LieroTcNObject {
+                id: i as i32,
                 id_str: str(n.id_str.as_bytes()),
                 detect_distance: n.detect_distance,
                 gravity: n.gravity,
@@ -391,7 +400,9 @@ impl LieroTc {
         tc.sobjects = c
             .sobjects
             .iter()
-            .map(|s| LieroTcSObject {
+            .enumerate()
+            .map(|(i, s)| LieroTcSObject {
+                id: i as i32,
                 id_str: str(s.id_str.as_bytes()),
                 start_sound: s.start_sound,
                 num_sounds: s.num_sounds,
@@ -483,6 +494,137 @@ impl LieroTc {
         tc.common = Some(common);
         Ok(tc)
     }
+}
+
+impl LieroTc {
+    /// F8 on the menu: the developers' random TC (`Gfx::randomizeTc`). The
+    /// values come from a generator seeded with 14, as the C++ did. The
+    /// order the object types get theirs in is shuffled from `shuffle_seed`;
+    /// the C++ shuffled it with `std::random_device`, so it never repeated.
+    pub fn randomize(&mut self, shuffle_seed: u32) {
+        let Some(c) = &self.common else { return };
+        let mut r = LieroRand::new(14);
+        let sobjects = self.sobjects.len() as u32;
+        let nobjects = self.nobjects.len() as u32;
+        let sounds = self.sounds.len() as u32;
+        let small = c.small_sprites.count as u32;
+        let large = c.large_sprites.count as u32;
+
+        let mut order: Vec<usize> = (0..self.nobjects.len()).collect();
+        let mut shuffle = LieroRand::new(shuffle_seed);
+        for i in (1..order.len()).rev() {
+            order.swap(i, shuffle.below(i as u32 + 1) as usize);
+        }
+
+        // `r(n)` as the C++ wrote it: unsigned, then stored in an int.
+        let mut r = |n: u32| r.below(n) as i32;
+        for w in &mut self.weapons {
+            w.add_speed = r(30) - 5;
+            w.affect_by_explosions = r(2) == 0;
+            w.affect_by_worm = r(3) == 0;
+            w.ammo = r(20) + 1;
+            w.blood_on_hit = r(50);
+            w.blow_away = r(10);
+            w.bounce = r(90);
+            w.collide_with_objects = r(10) == 0;
+            w.color_bullets = 3 + r(250);
+            w.create_on_exp = r(sobjects);
+            w.delay = r(70);
+            w.detect_distance = r(20);
+            w.dirt_effect = r(9);
+            w.distribution = r(5000) - 2500;
+            w.expl_ground = r(2) == 0;
+            w.explo_sound = r(sounds);
+            w.fire_cone = r(10);
+            w.gravity = r(2000) - 1000;
+            w.hit_damage = r(20);
+            w.laser_sight = r(5) == 0;
+            w.launch_sound = r(sounds);
+            w.leave_shell_delay = r(30);
+            w.leave_shells = (r(1) == 0) as i32;
+            w.loading_time = r(70 * 3);
+            w.loop_anim = r(10) == 0;
+            w.loop_sound = 0;
+            w.mult_speed = if r(2) != 0 { 100 } else { 99 + r(5) };
+            w.obj_trail_delay = 10 + r(70);
+            w.obj_trail_type = if r(4) == 0 { r(sobjects) } else { -1 };
+            w.parts = if r(2) == 0 { r(10) } else { 1 };
+            w.part_trail_delay = 10 + r(70);
+            w.part_trail_obj = if r(4) == 0 { r(nobjects) } else { -1 };
+            w.part_trail_type = r(2);
+            w.play_reload_sound = r(2) == 0;
+            w.recoil = r(20);
+            w.shadow = r(2) == 0;
+            w.shot_type = r(5);
+            w.speed = r(200);
+            w.splinter_amount = if r(5) == 0 { r(10) } else { 0 };
+            w.splinter_colour = r(256);
+            w.splinter_scatter = r(2);
+            w.splinter_type = r(nobjects);
+            w.start_frame = r(small.wrapping_sub(13));
+            w.num_frames = r(5);
+            w.time_to_explo = 50 + r(200);
+            w.time_to_explo_v = 10 + r(50);
+            w.worm_collide = r(3) > 0;
+            w.worm_explode = r(3) > 0;
+        }
+
+        for (idx, &i) in order.iter().enumerate() {
+            let n = &mut self.nobjects[i];
+            n.affect_by_explosions = r(5) == 0;
+            n.blood_on_hit = r(5);
+            n.blood_trail = r(10) == 0;
+            n.blood_trail_delay = r(20) + 3;
+            n.blow_away = r(10);
+            n.bounce = r(90);
+            n.color_bullets = 3 + r(250);
+            n.create_on_exp = if r(3) == 0 { r(sobjects) } else { -1 };
+            n.detect_distance = r(20);
+            n.dirt_effect = r(9);
+            n.distribution = r(5000) - 2500;
+            n.draw_on_map = r(20) == 0;
+            n.expl_ground = r(4) > 0;
+            n.gravity = r(2000) - 1000;
+            n.hit_damage = r(10);
+            n.leave_obj = if r(5) == 0 { r(sobjects) } else { -1 };
+            n.leave_obj_delay = 10 + r(80);
+            n.start_frame = r(small.wrapping_sub(13));
+            n.num_frames = r(5);
+            n.speed = r(150);
+            n.splinter_amount = if idx > 0 && r(5) == 0 { r(10) } else { 0 };
+            n.splinter_colour = r(256);
+            n.splinter_type = if idx > 0 { order[r(idx as u32) as usize] as i32 } else { 0 };
+            n.time_to_explo = 50 + r(70 * 3);
+            n.time_to_explo_v = r(30);
+            n.worm_destroy = r(3) == 0;
+            n.worm_explode = r(2) == 0;
+        }
+
+        for s in &mut self.sobjects {
+            s.anim_delay = 1 + r(10);
+            s.blow_away = if r(2) == 0 { r(10000) } else { 0 };
+            s.damage = r(30);
+            s.detect_range = r(20);
+            s.dirt_effect = r(9);
+            s.flash = r(5);
+            s.start_frame = r(large.wrapping_sub(7));
+            s.num_frames = r(7);
+            s.start_sound = r(sounds);
+            s.shake = r(10);
+            s.shadow = r(2) != 0;
+            s.num_sounds = 1;
+        }
+    }
+}
+
+/// F8's random TC (`LieroTc::randomize`). What `liero_tc_data` points to
+/// changes in place.
+///
+/// # Safety
+/// `tc` must come from `liero_tc_load`.
+#[no_mangle]
+pub unsafe extern "C" fn liero_tc_randomize(tc: &mut LieroTc, shuffle_seed: u32) {
+    tc.randomize(shuffle_seed);
 }
 
 /// Loads the TC in `node`, each file at its path inside it (`/` between

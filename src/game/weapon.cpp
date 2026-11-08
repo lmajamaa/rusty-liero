@@ -6,9 +6,9 @@
 #include "constants.hpp"
 #include "worm.hpp"
 
-int Weapon::computedLoadingTime(Settings& settings) const
+int computedLoadingTime(Weapon const& type, Settings& settings)
 {
-	int ret = (settings.loadingTime * loadingTime) / 100;
+	int ret = (settings.loadingTime * type.loading_time) / 100;
 	if(ret == 0)
 		ret = 1;
 	return ret;
@@ -18,55 +18,55 @@ LieroWeapon toRust(Weapon const& w)
 {
 	LieroWeapon r;
 	r.id = w.id;
-	r.detect_distance = w.detectDistance;
-	r.affect_by_worm = w.affectByWorm;
-	r.blow_away = w.blowAway;
+	r.detect_distance = w.detect_distance;
+	r.affect_by_worm = w.affect_by_worm;
+	r.blow_away = w.blow_away;
 	r.gravity = w.gravity;
-	r.explo_sound = w.exploSound;
+	r.explo_sound = w.explo_sound;
 	r.speed = w.speed;
-	r.add_speed = w.addSpeed;
+	r.add_speed = w.add_speed;
 	r.distribution = w.distribution;
 	r.parts = w.parts;
 	r.recoil = w.recoil;
-	r.mult_speed = w.multSpeed;
+	r.mult_speed = w.mult_speed;
 	r.delay = w.delay;
-	r.loading_time = w.loadingTime;
+	r.loading_time = w.loading_time;
 	r.ammo = w.ammo;
-	r.create_on_exp = w.createOnExp;
-	r.dirt_effect = w.dirtEffect;
-	r.leave_shells = w.leaveShells;
-	r.leave_shell_delay = w.leaveShellDelay;
-	r.play_reload_sound = w.playReloadSound;
-	r.expl_ground = w.explGround;
-	r.fire_cone = w.fireCone;
-	r.collide_with_objects = w.collideWithObjects;
+	r.create_on_exp = w.create_on_exp;
+	r.dirt_effect = w.dirt_effect;
+	r.leave_shells = w.leave_shells;
+	r.leave_shell_delay = w.leave_shell_delay;
+	r.play_reload_sound = w.play_reload_sound;
+	r.expl_ground = w.expl_ground;
+	r.fire_cone = w.fire_cone;
+	r.collide_with_objects = w.collide_with_objects;
 	r.bounce = w.bounce;
-	r.time_to_explo = w.timeToExplo;
-	r.time_to_explo_v = w.timeToExploV;
-	r.start_frame = w.startFrame;
-	r.num_frames = w.numFrames;
-	r.loop_anim = w.loopAnim;
-	r.shot_type = w.shotType;
-	r.color_bullets = w.colorBullets;
-	r.splinter_amount = w.splinterAmount;
-	r.splinter_colour = w.splinterColour;
-	r.splinter_type = w.splinterType;
-	r.splinter_scatter = w.splinterScatter;
-	r.obj_trail_type = w.objTrailType;
-	r.obj_trail_delay = w.objTrailDelay;
-	r.part_trail_type = w.partTrailType;
-	r.part_trail_obj = w.partTrailObj;
-	r.part_trail_delay = w.partTrailDelay;
-	r.loop_sound = w.loopSound;
-	r.laser_sight = w.laserSight;
+	r.time_to_explo = w.time_to_explo;
+	r.time_to_explo_v = w.time_to_explo_v;
+	r.start_frame = w.start_frame;
+	r.num_frames = w.num_frames;
+	r.loop_anim = w.loop_anim;
+	r.shot_type = w.shot_type;
+	r.color_bullets = w.color_bullets;
+	r.splinter_amount = w.splinter_amount;
+	r.splinter_colour = w.splinter_colour;
+	r.splinter_type = w.splinter_type;
+	r.splinter_scatter = w.splinter_scatter;
+	r.obj_trail_type = w.obj_trail_type;
+	r.obj_trail_delay = w.obj_trail_delay;
+	r.part_trail_type = w.part_trail_type;
+	r.part_trail_obj = w.part_trail_obj;
+	r.part_trail_delay = w.part_trail_delay;
+	r.loop_sound = w.loop_sound;
+	r.laser_sight = w.laser_sight;
 	return r;
 }
 
-void Weapon::fire(Game& game, int angle, fixedvec vel, int speed, fixedvec pos, int ownerIdx, WormWeapon* ww) const
+void fireWeapon(Game& game, Weapon const& type, int angle, fixedvec vel, int speed, fixedvec pos, int ownerIdx, WormWeapon* ww)
 {
 	WObject* obj = game.wobjects.newObjectReuse();
 
-	obj->type = this;
+	obj->type = &type;
 	obj->pos = pos;
 	obj->ownerIdx = ownerIdx;
 
@@ -75,10 +75,10 @@ void Weapon::fire(Game& game, int angle, fixedvec vel, int speed, fixedvec pos, 
 	obj->hasHit = false;
 
 	Worm* owner = game.wormByIdx(ownerIdx);
-	game.statsRecorder->damagePotential(owner, ww, hitDamage);
+	game.statsRecorder->damagePotential(owner, ww, type.hit_damage);
 	game.statsRecorder->shot(owner, ww);
 
-	LieroWeapon w = toRust(*this);
+	LieroWeapon w = toRust(type);
 	LieroLaunch launch = liero_weapon_launch(&w, &game.rand, angle, toRust(vel), speed);
 	obj->vel = fromRust(launch.vel);
 	obj->curFrame = launch.cur_frame;
@@ -109,7 +109,7 @@ struct BlowUpContext
 void blowUpCreateSObject(void* ctx, int32_t kind, int32_t x, int32_t y)
 {
 	auto& c = *static_cast<BlowUpContext*>(ctx);
-	c.game.common->sobjectTypes[kind].create(c.game, x, y, c.causeIdx, c.obj.firedBy, &c.obj);
+	createSObject(c.game, c.game.common->sobjectTypes[kind], x, y, c.causeIdx, c.obj.firedBy, &c.obj);
 }
 
 void blowUpPlaySound(void* ctx, int32_t sound)
@@ -121,13 +121,13 @@ void blowUpPlaySound(void* ctx, int32_t sound)
 void blowUpCreateNObject1(void* ctx, int32_t kind, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
 {
 	auto& c = *static_cast<BlowUpContext*>(ctx);
-	c.game.common->nobjectTypes[kind].create1(c.game, fromRust(vel), fromRust(pos), color, c.causeIdx, c.obj.firedBy);
+	createNObject1(c.game, c.game.common->nobjectTypes[kind], fromRust(vel), fromRust(pos), color, c.causeIdx, c.obj.firedBy);
 }
 
 void blowUpCreateNObject2(void* ctx, int32_t kind, int32_t angle, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
 {
 	auto& c = *static_cast<BlowUpContext*>(ctx);
-	c.game.common->nobjectTypes[kind].create2(c.game, angle, fromRust(vel), fromRust(pos), color, c.causeIdx, c.obj.firedBy);
+	createNObject2(c.game, c.game.common->nobjectTypes[kind], angle, fromRust(vel), fromRust(pos), color, c.causeIdx, c.obj.firedBy);
 }
 
 } // namespace
@@ -169,19 +169,19 @@ bool hookOwnerSteers(void* ctx)
 void hookCreateSObject(void* ctx, int32_t kind, int32_t x, int32_t y)
 {
 	auto& c = *static_cast<WObjectContext*>(ctx);
-	c.game.common->sobjectTypes[kind].create(c.game, x, y, c.obj.ownerIdx, c.obj.firedBy);
+	createSObject(c.game, c.game.common->sobjectTypes[kind], x, y, c.obj.ownerIdx, c.obj.firedBy);
 }
 
 void hookCreateNObject1(void* ctx, int32_t kind, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
 {
 	auto& c = *static_cast<WObjectContext*>(ctx);
-	c.game.common->nobjectTypes[kind].create1(c.game, fromRust(vel), fromRust(pos), color, c.obj.ownerIdx, c.obj.firedBy);
+	createNObject1(c.game, c.game.common->nobjectTypes[kind], fromRust(vel), fromRust(pos), color, c.obj.ownerIdx, c.obj.firedBy);
 }
 
 void hookCreateNObject2(void* ctx, int32_t kind, int32_t angle, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
 {
 	auto& c = *static_cast<WObjectContext*>(ctx);
-	c.game.common->nobjectTypes[kind].create2(c.game, angle, fromRust(vel), fromRust(pos), color, c.obj.ownerIdx, c.obj.firedBy);
+	createNObject2(c.game, c.game.common->nobjectTypes[kind], angle, fromRust(vel), fromRust(pos), color, c.obj.ownerIdx, c.obj.firedBy);
 }
 
 void hookPushObjects(void* ctx, LieroIVec2 impulseRust)
@@ -234,26 +234,26 @@ uint32_t hookHitWorms(void* ctx)
 	{
 		Worm& worm = *game.worms[i];
 
-		if((w.hitDamage || w.blowAway || w.bloodOnHit || w.wormCollide)
-		&& checkForSpecWormHit(game, ftoi(o.pos.x), ftoi(o.pos.y), w.detectDistance, worm))
+		if((w.hit_damage || w.blow_away || w.blood_on_hit || w.worm_collide)
+		&& checkForSpecWormHit(game, ftoi(o.pos.x), ftoi(o.pos.y), w.detect_distance, worm))
 		{
-			worm.vel += o.vel * w.blowAway / 100;
+			worm.vel += o.vel * w.blow_away / 100;
 
-			game.doDamage(worm, w.hitDamage, o.ownerIdx);
-			game.statsRecorder->damageDealt(c.owner, o.firedBy, &worm, w.hitDamage, o.hasHit);
+			game.doDamage(worm, w.hit_damage, o.ownerIdx);
+			game.statsRecorder->damageDealt(c.owner, o.firedBy, &worm, w.hit_damage, o.hasHit);
 			if (!o.hasHit)
 				game.statsRecorder->hit(c.owner, o.firedBy, &worm);
 			o.hasHit = true;
 
-			int bloodAmount = w.bloodOnHit * game.settings->blood / 100;
+			int bloodAmount = w.blood_on_hit * game.settings->blood / 100;
 
 			for(int i = 0; i < bloodAmount; ++i)
 			{
 				int angle = game.rand(128);
-				common.nobjectTypes[6].create2(game, angle, o.vel / 3, o.pos, 0, worm.index, o.firedBy);
+				createNObject2(game, common.nobjectTypes[6], angle, o.vel / 3, o.pos, 0, worm.index, o.firedBy);
 			}
 
-			if(w.hitDamage > 0
+			if(w.hit_damage > 0
 			&& worm.health > 0
 			&& game.rand(3) == 0)
 			{
@@ -264,11 +264,11 @@ uint32_t hookHitWorms(void* ctx)
 				}
 			}
 
-			if(w.wormCollide)
+			if(w.worm_collide)
 			{
-				if(game.rand(w.wormCollide) == 0)
+				if(game.rand(w.worm_collide) == 0)
 				{
-					if(w.wormExplode)
+					if(w.worm_explode)
 						result |= LIERO_HIT_EXPLODE;
 
 					result |= LIERO_HIT_REMOVE;

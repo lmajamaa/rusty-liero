@@ -208,7 +208,7 @@ void setWeapons(Common& common, WormSettings& ws, char const* const* names)
 		ws.weapons[j] = 0;
 		for (std::size_t k = 0; k < common.weapOrder.size(); ++k)
 		{
-			if (common.weapons[common.weapOrder[k]].name == names[j])
+			if (tcString(common.weapons[common.weapOrder[k]].name) == names[j])
 				ws.weapons[j] = int(k) + 1;
 		}
 		if (ws.weapons[j] == 0)
@@ -425,6 +425,7 @@ int hashRun(int argc, char* argv[])
 	hashSfxAndInput(common);
 	hashApp(common);
 	hashLevelFiles(common);
+	hashRandomTc();
 
 	return 0;
 }

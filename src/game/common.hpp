@@ -76,13 +76,41 @@ struct FsNode;
 
 using std::vector;
 
+// A list of the TC's, in Rust.
+template<typename T>
+struct TcList
+{
+	TcList()
+	{
+	}
+
+	TcList(T const* items, std::size_t count)
+	: items(items), count(count)
+	{
+	}
+
+	T const* items = nullptr;
+	std::size_t count = 0;
+
+	std::size_t size() const { return count; }
+	bool empty() const { return count == 0; }
+	T const& operator[](std::size_t i) const { return items[i]; }
+	T const* begin() const { return items; }
+	T const* end() const { return items + count; }
+};
+
+// A TC's name or text as a std::string.
+inline std::string tcString(LieroStr s)
+{
+	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
+}
+
 struct Common
 {
 	Common();
-
-	~Common()
-	{
-	}
+	~Common();
+	Common(Common const&) = delete;
+	Common& operator=(Common const&) = delete;
 
 	static int fireConeOffset[2][7][2];
 
@@ -106,17 +134,21 @@ struct Common
 		return fireConeSprites.spritePtr(f + dir*7);
 	}
 
+	// The TC, loaded in Rust (rust/liero-game/src/tc.rs), which owns what
+	// the lists and tables below point to.
+	LieroTc* tc = nullptr;
+
 	// Computed
 	Texts texts;
-	vector<int> weapOrder;
+	TcList<int32_t> weapOrder;
 	SpriteSet wormSprites;
 	SpriteSet fireConeSprites;
 
 	Material materials[256];
 	Texture textures[LIERO_TEXTURE_COUNT];
-	vector<Weapon> weapons;
-	vector<SObjectType> sobjectTypes;
-	vector<NObjectType> nobjectTypes;
+	TcList<Weapon> weapons;
+	TcList<SObjectType> sobjectTypes;
+	TcList<NObjectType> nobjectTypes;
 	int bonusRandTimer[2][2];
 	int bonusSObjects[2];
 	AIParams aiParams;
@@ -137,9 +169,10 @@ struct Common
 	Font font;
 	vector<SfxSample> sounds;
 
-	int32_t C[MaxC];
-	std::string S[MaxS];
-	bool H[MaxH];
+	// The constants, texts and hacks, in the order of the C, S and H enums.
+	int32_t const* C = nullptr;
+	LieroStr const* S = nullptr;
+	bool const* H = nullptr;
 };
 
 #endif // UUID_9E238CFB9F074A3A432E22AE5B8EE5FB

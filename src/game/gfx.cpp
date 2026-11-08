@@ -214,7 +214,7 @@ struct WeaponEnumBehavior : EnumBehavior
 
 	void onUpdate(Menu& menu, int item)
 	{
-		menu.setItemValue(item, common.weapons[common.weapOrder[v - 1]].name);
+		menu.setItemValue(item, tcString(common.weapons[common.weapOrder[v - 1]].name));
 	}
 
 	int onEnter(Menu& menu, int item)
@@ -244,8 +244,7 @@ struct WeaponEnumBehavior : EnumBehavior
 			std::vector<LieroStr> names;
 			for (uint32_t i = min; i <= max; ++i)
 			{
-				std::string& name = common.weapons[common.weapOrder[i - 1]].name;
-				names.push_back({ reinterpret_cast<uint8_t const*>(name.data()), name.size() });
+				names.push_back(common.weapons[common.weapOrder[i - 1]].name);
 			}
 
 			int closest = liero_menu_closest_name(names.data(), int32_t(names.size()),
@@ -1405,7 +1404,7 @@ std::unique_ptr<Screen> weaponOptionsScreen()
 	std::vector<int32_t> order;
 	for (int i = 0; i < (int)common.weapons.size(); ++i)
 	{
-		names.push_back(str(common.weapons[common.weapOrder[i]].name));
+		names.push_back(common.weapons[common.weapOrder[i]].name);
 		order.push_back(common.weapOrder[i]);
 	}
 	std::vector<LieroStr> states;
@@ -1420,9 +1419,9 @@ std::unique_ptr<Screen> weaponOptionsScreen()
 	spec.weap_table = reinterpret_cast<uint32_t*>(gfx.settings->weapTable);
 	spec.states = states.data();
 	spec.state_count = states.size();
-	spec.weapon_title = str(LS(Weapon));
-	spec.availability_title = str(LS(Availability));
-	spec.no_weapons = str(LS(NoWeaps));
+	spec.weapon_title = LSV(Weapon);
+	spec.availability_title = LSV(Availability);
+	spec.no_weapons = LSV(NoWeaps);
 	return fromFfi(liero_weapon_options_screen(&spec));
 }
 
@@ -1893,126 +1892,11 @@ int Gfx::menuStart()
 	return startItemId;
 }
 
-// F8 on the menu: the developers' random TC.
+// F8 on the menu: the developers' random TC, in Rust (liero_tc_randomize).
 void Gfx::randomizeTc()
 {
-	uint32_t s = 14;
-
-	Rand r;
-	r.seed(s);
-
-	Common& common = *this->common;
-
-	vector<std::size_t> nobjMap;
-
-	for (std::size_t i = 0; i < common.nobjectTypes.size(); ++i)
-	{
-		nobjMap.push_back(i);
-	}
-	std::random_device rd;
-	std::mt19937 g(rd());
-	std::shuffle(nobjMap.begin(), nobjMap.end(), g);
-
-	for (auto& w : common.weapons)
-	{
-		w.addSpeed = r(30) - 5;
-		w.affectByExplosions = r(2) == 0;
-		w.affectByWorm = r(3) == 0;
-		w.ammo = r(20) + 1;
-		w.bloodOnHit = r(50);
-		w.blowAway = r(10);
-		w.bounce = r(90);
-		w.collideWithObjects = r(10) == 0;
-		w.colorBullets = 3 + r(250);
-		w.createOnExp = r(common.sobjectTypes.size());
-		w.delay = r(70);
-		w.detectDistance = r(20);
-		w.dirtEffect = r(9);
-		w.distribution = r(5000) - 2500;
-		w.explGround = r(2) == 0;
-		w.exploSound = r(common.sounds.size());
-		w.fireCone = r(10);
-		w.gravity = r(2000) - 1000;
-		w.hitDamage = r(20);
-		w.laserSight = r(5) == 0;
-		w.launchSound = r(common.sounds.size());
-		w.leaveShellDelay = r(30);
-		w.leaveShells = r(1) == 0;
-		w.loadingTime = r(70 * 3);
-		w.loopAnim = r(10) == 0;
-		w.loopSound = false;
-		w.multSpeed = r(2) ? 100 : 99 + r(5);
-		w.objTrailDelay = 10 + r(70);
-		w.objTrailType = r(4) == 0 ? r(common.sobjectTypes.size()) : -1;
-		w.parts = r(2) == 0 ? r(10) : 1;
-		w.partTrailDelay = 10 + r(70);
-		w.partTrailObj = r(4) == 0 ? r(common.nobjectTypes.size()) : -1;
-		w.partTrailType = r(2);
-		w.playReloadSound = r(2) == 0;
-		w.recoil = r(20);
-		w.shadow = r(2) == 0;
-		w.shotType = r(5);
-		w.speed = r(200);
-		w.splinterAmount = r(5) == 0 ? r(10) : 0;
-		w.splinterColour = r(256);
-		w.splinterScatter = r(2);
-		w.splinterType = r(common.nobjectTypes.size());
-		w.startFrame = r((uint32_t)common.smallSprites.count - 13);
-		w.numFrames = r(5);
-		w.timeToExplo = 50 + r(200);
-		w.timeToExploV = 10 + r(50);
-		w.wormCollide = r(3) > 0;
-		w.wormExplode = r(3) > 0;
-	}
-
-	//for (auto& n : common.nobjectTypes)
-	for (std::size_t idx = 0; idx < common.nobjectTypes.size(); ++idx)
-	{
-		auto& n = common.nobjectTypes[nobjMap[idx]];
-		n.affectByExplosions = r(5) == 0;
-		n.bloodOnHit = r(5);
-		n.bloodTrail = r(10) == 0;
-		n.bloodTrailDelay = r(20) + 3;
-		n.blowAway = r(10);
-		n.bounce = r(90);
-		n.colorBullets = 3 + r(250);
-		n.createOnExp = r(3) == 0 ? r(common.sobjectTypes.size()) : -1;
-		n.detectDistance = r(20);
-		n.dirtEffect = r(9);
-		n.distribution = r(5000) - 2500;
-		n.drawOnMap = r(20) == 0;
-		n.explGround = r(4) > 0;
-		n.gravity = r(2000) - 1000;
-		n.hitDamage = r(10);
-		n.leaveObj = r(5) == 0 ? r(common.sobjectTypes.size()) : -1;
-		n.leaveObjDelay = 10 + r(80);
-		n.startFrame = r((uint32_t)common.smallSprites.count - 13);
-		n.numFrames = r(5);
-		n.speed = r(150);
-		n.splinterAmount = idx > 0 && r(5) == 0 ? r(10) : 0;
-		n.splinterColour = r(256);
-		n.splinterType = idx > 0 ? nobjMap[r(idx)] : 0;
-		n.timeToExplo = 50 + r(70 * 3);
-		n.timeToExploV = r(30);
-		n.wormDestroy = r(3) == 0;
-		n.wormExplode = r(2) == 0;
-	}
-
-	for (auto& s : common.sobjectTypes)
-	{
-		s.animDelay = 1 + r(10);
-		s.blowAway = r(2) == 0 ? r(10000) : 0;
-		s.damage = r(30);
-		s.detectRange = r(20);
-		s.dirtEffect = r(9);
-		s.flash = r(5);
-		s.startFrame = r((uint32_t)common.largeSprites.count - 7);
-		s.numFrames = r(7);
-		s.startSound = r(common.sounds.size());
-		s.shake = r(10);
-		s.shadow = r(2);
-		s.numSounds = 1;
-	}
+	if (common->tc)
+		liero_tc_randomize(common->tc, std::random_device()());
 }
 
 namespace

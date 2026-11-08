@@ -15,7 +15,7 @@
 
 struct Worm;
 struct Game;
-struct Weapon;
+#include "weapon.hpp"
 
 struct Ninjarope
 {

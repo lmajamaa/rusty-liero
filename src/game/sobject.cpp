@@ -12,16 +12,16 @@
 #include <cstdlib>
 #include <cassert>
 
-void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* firedBy, WObject* from)
+void createSObject(Game& game, SObjectType const& type, int x, int y, int ownerIdx, WormWeapon* firedBy, WObject* from)
 {
 	Common& common = *game.common;
 	SObject& obj = *game.sobjects.newObjectReuse();
 
 
-	assert(numSounds < 10);
+	assert(type.num_sounds < 10);
 
-	if(startSound >= 0)
-		game.soundPlayer->play(game.rand(numSounds) + startSound);
+	if(type.start_sound >= 0)
+		game.soundPlayer->play(game.rand(type.num_sounds) + type.start_sound);
 
 	for(std::size_t i = 0; i < game.viewports.size(); ++i)
 	{
@@ -32,36 +32,36 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 		&& y > v.y
 		&& y < v.y + v.rect.height())
 		{
-			if(itof(shake) > v.shake)
-				v.shake = itof(shake);
+			if(itof(type.shake) > v.shake)
+				v.shake = itof(type.shake);
 		}
 	}
 
-	obj.id = id;
+	obj.id = type.id;
 	obj.x = x - 8;
 	obj.y = y - 8;
 	obj.curFrame = 0;
-	obj.animDelay = animDelay;
+	obj.animDelay = type.anim_delay;
 
-	if(flash > game.screenFlash)
+	if(type.flash > game.screenFlash)
 	{
-		game.screenFlash = flash;
+		game.screenFlash = type.flash;
 	}
 
 	Worm* owner = game.wormByIdx(ownerIdx);
 
-	game.statsRecorder->damagePotential(owner, firedBy, damage);
+	game.statsRecorder->damagePotential(owner, firedBy, type.damage);
 
-	if(damage > 0)
+	if(type.damage > 0)
 	{
 		for(std::size_t i = 0; i < game.worms.size(); ++i)
 		{
 			Worm& w = *game.worms[i];
 
 			int powerSum;
-			if(liero_explosion_push_worm(toRust(w.pos), toRust(&w.vel), x, y, detectRange, blowAway, &powerSum))
+			if(liero_explosion_push_worm(toRust(w.pos), toRust(&w.vel), x, y, type.detect_range, type.blow_away, &powerSum))
 			{
-				int z = liero_explosion_damage(damage, powerSum, detectRange);
+				int z = liero_explosion_damage(type.damage, powerSum, type.detect_range);
 
 				if (from && !from->hasHit)
 				{
@@ -81,8 +81,7 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 						for(int i = 0; i < bloodAmount; ++i)
 						{
 							int angle = game.rand(128);
-							common.nobjectTypes[6].create2(
-								game,
+							createNObject2(game, common.nobjectTypes[6],
 								angle,
 								w.vel / 3,
 								w.pos,
@@ -104,16 +103,16 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 			}
 		} // for( ... worms ...
 
-		int objBlowAway = blowAway / 3; // TODO: Read from EXE
+		int objBlowAway = type.blow_away / 3; // TODO: Read from EXE
 
 		auto wr = game.wobjects.all();
 		for (WObject* i; (i = wr.next()); )
 		{
 			Weapon const& weapon = *i->type;
 
-			if(weapon.affectByExplosions
-			&& liero_explosion_push_object(toRust(i->pos), toRust(&i->vel), x, y, detectRange, objBlowAway)
-			&& weapon.chainExplosion)
+			if(weapon.affect_by_explosions
+			&& liero_explosion_push_object(toRust(i->pos), toRust(&i->vel), x, y, type.detect_range, objBlowAway)
+			&& weapon.chain_explosion)
 			{
 				i->blowUpObject(game, ownerIdx);
 			} // if( ... affectByExplosions ...
@@ -124,12 +123,12 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 		{
 			NObjectType const& t = *i->type;
 
-			if(t.affectByExplosions)
-				liero_explosion_push_object(toRust(i->pos), toRust(&i->vel), x, y, detectRange, objBlowAway);
+			if(t.affect_by_explosions)
+				liero_explosion_push_object(toRust(i->pos), toRust(&i->vel), x, y, type.detect_range, objBlowAway);
 		}
 
 		{
-			int width = detectRange / 2;
+			int width = type.detect_range / 2;
 
 			Rect rect(x - width, y - width, x + width + 1, y + width + 1);
 
@@ -143,8 +142,7 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 				{
 					PalIdx pix = game.level.pixel(x, y);
 					int angle = game.rand(128);
-					common.nobjectTypes[2].create2(
-						game,
+					createNObject2(game, common.nobjectTypes[2],
 						angle,
 						fixedvec(),
 						itof(IVec2(x, y)),
@@ -155,9 +153,9 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 
 	} // if(damage ...
 
-	if(dirtEffect >= 0)
+	if(type.dirt_effect >= 0)
 	{
-		drawDirtEffect(common, game.rand, game.level, dirtEffect, x - 7, y - 7);
+		drawDirtEffect(common, game.rand, game.level, type.dirt_effect, x - 7, y - 7);
 
 		if(game.settings->shadow)
 			correctShadow(common, game.level, Rect(x - 10, y - 10, x + 11, y + 11));
@@ -168,13 +166,13 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 	{
 		int ix = ftoi(i->x), iy = ftoi(i->y);
 
-		if(ix > x - detectRange
-		&& ix < x + detectRange
-		&& iy > y - detectRange
-		&& iy < y + detectRange)
+		if(ix > x - type.detect_range
+		&& ix < x + type.detect_range
+		&& iy > y - type.detect_range
+		&& iy < y + type.detect_range)
 		{
 			game.bonuses.free(br);
-			common.sobjectTypes[0].create(game, ix, iy, ownerIdx, firedBy);
+			createSObject(game, common.sobjectTypes[0], ix, iy, ownerIdx, firedBy);
 		}
 	} // for( ... bonuses ...
 }
@@ -182,8 +180,8 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 void SObject::process(Game& game)
 {
 	Common& common = *game.common;
-	SObjectType& t = common.sobjectTypes[id];
+	SObjectType const& t = common.sobjectTypes[id];
 
-	if(liero_sobject_animate(&curFrame, &animDelay, t.animDelay, t.numFrames))
+	if(liero_sobject_animate(&curFrame, &animDelay, t.anim_delay, t.num_frames))
 		game.sobjects.free(this);
 }

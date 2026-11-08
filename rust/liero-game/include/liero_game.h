@@ -2262,6 +2262,10 @@ typedef struct LieroStatsScene {
 } LieroStatsScene;
 
 typedef struct LieroTcWeapon {
+  /**
+   * Its index in the TC's weapons.
+   */
+  int32_t id;
   struct LieroStr name;
   struct LieroStr id_str;
   int32_t detect_distance;
@@ -2316,6 +2320,7 @@ typedef struct LieroTcWeapon {
 } LieroTcWeapon;
 
 typedef struct LieroTcNObject {
+  int32_t id;
   struct LieroStr id_str;
   int32_t detect_distance;
   int32_t gravity;
@@ -2348,6 +2353,7 @@ typedef struct LieroTcNObject {
 } LieroTcNObject;
 
 typedef struct LieroTcSObject {
+  int32_t id;
   struct LieroStr id_str;
   int32_t start_sound;
   int32_t num_sounds;
@@ -5324,6 +5330,15 @@ void liero_stats_screen_draw(const struct LieroStatsScreen *screen,
  */
 struct LieroScreen liero_stats_presenter_screen(const struct LieroStats *stats,
                                                 const struct LieroStatsScene *scene);
+
+/**
+ * F8's random TC (`LieroTc::randomize`). What `liero_tc_data` points to
+ * changes in place.
+ *
+ * # Safety
+ * `tc` must come from `liero_tc_load`.
+ */
+void liero_tc_randomize(struct LieroTc *tc, uint32_t shuffle_seed);
 
 /**
  * Loads the TC in `node` (`Common::load`). Always returns a TC to free with

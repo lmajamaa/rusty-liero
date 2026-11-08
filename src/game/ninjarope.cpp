@@ -52,8 +52,7 @@ LieroWormMotion hookWormMotion(void* worm)
 void hookRopeCreateNObject2(void* ctx, int32_t kind, int32_t angle, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
 {
 	auto& c = *static_cast<RopeContext*>(ctx);
-	c.game.common->nobjectTypes[kind].create2(
-		c.game, angle, fromRust(vel), fromRust(pos), color, c.owner.index, 0);
+	createNObject2(c.game, c.game.common->nobjectTypes[kind], angle, fromRust(vel), fromRust(pos), color, c.owner.index, 0);
 }
 
 } // namespace

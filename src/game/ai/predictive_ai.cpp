@@ -74,7 +74,7 @@ void wormInfo(void* game, int32_t place, LieroAiWorm* out)
 		o.ammo = ww.ammo;
 		o.delay_left = ww.delayLeft;
 		o.loading_left = ww.loadingLeft;
-		o.loading_time = ww.type->loadingTime;
+		o.loading_time = ww.type->loading_time;
 		o.max_ammo = ww.type->ammo;
 	}
 	out->rope_out = w.ninjarope.out;

@@ -127,15 +127,15 @@ void draw(Viewport& vp, int kind, Game& game, Renderer& renderer, GameState game
 	for (Weapon const& w : common.weapons)
 	{
 		LieroViewWeapon r;
-		r.name = str(w.name);
+		r.name = w.name;
 		r.ammo = w.ammo;
-		r.loading_time = w.loadingTime;
-		r.computed_loading_time = w.computedLoadingTime(settings);
-		r.laser_sight = w.laserSight;
-		r.color_bullets = w.colorBullets;
-		r.fire_cone = w.fireCone;
-		r.start_frame = w.startFrame;
-		r.shot_type = w.shotType;
+		r.loading_time = w.loading_time;
+		r.computed_loading_time = computedLoadingTime(w, settings);
+		r.laser_sight = w.laser_sight;
+		r.color_bullets = w.color_bullets;
+		r.fire_cone = w.fire_cone;
+		r.start_frame = w.start_frame;
+		r.shot_type = w.shot_type;
 		r.shadow = w.shadow;
 		d.weapons.push_back(r);
 	}
@@ -146,7 +146,7 @@ void draw(Viewport& vp, int kind, Game& game, Renderer& renderer, GameState game
 
 	auto sr = game.sobjects.all();
 	for (SObject* i; (i = sr.next()); )
-		d.sobjects.push_back({ i->x, i->y, i->curFrame, common.sobjectTypes[i->id].startFrame });
+		d.sobjects.push_back({ i->x, i->y, i->curFrame, common.sobjectTypes[i->id].start_frame });
 
 	auto wr = game.wobjects.all();
 	for (WObject* i; (i = wr.next()); )
@@ -154,7 +154,7 @@ void draw(Viewport& vp, int kind, Game& game, Renderer& renderer, GameState game
 
 	auto nr = game.nobjects.all();
 	for (NObject* i; (i = nr.next()); )
-		d.nobjects.push_back({ { i->pos.x, i->pos.y }, i->curFrame, i->type->startFrame });
+		d.nobjects.push_back({ { i->pos.x, i->pos.y }, i->curFrame, i->type->start_frame });
 
 	for (Game::BObjectList::iterator i = game.bobjects.begin(); i != game.bobjects.end(); ++i)
 		d.bobjects.push_back({ { i->pos.x, i->pos.y }, i->color });
@@ -200,13 +200,13 @@ void draw(Viewport& vp, int kind, Game& game, Renderer& renderer, GameState game
 	s.bonus_frames[0] = common.bonusFrames[0];
 	s.bonus_frames[1] = common.bonusFrames[1];
 
-	s.reloading = str(LS(Reloading));
-	s.kills = str(LS(Kills));
-	s.lives = str(LS(Lives));
-	s.press_fire = str(LS(PressFire));
-	s.youre_it = str(LS(YoureIt));
-	s.killed_msg = str(LS(KilledMsg));
-	s.committed_suicide_msg = str(LS(CommittedSuicideMsg));
+	s.reloading = LSV(Reloading);
+	s.kills = LSV(Kills);
+	s.lives = LSV(Lives);
+	s.press_fire = LSV(PressFire);
+	s.youre_it = LSV(YoureIt);
+	s.killed_msg = LSV(KilledMsg);
+	s.committed_suicide_msg = LSV(CommittedSuicideMsg);
 
 	s.cycles = game.cycles;
 	s.game_mode = settings.gameMode;

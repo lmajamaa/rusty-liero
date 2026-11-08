@@ -3,33 +3,18 @@
 
 #include "math.hpp"
 #include "exactObjectList.hpp"
-#include <string>
+#include <liero_game.h>
 
 struct Worm;
 struct Game;
 struct WormWeapon;
 struct WObject;
 
-struct SObjectType
-{
-	void create(Game& game, int x, int y, int ownedIdx, WormWeapon* firedBy, WObject* from = 0);
+// A special object type of the TC, owned by Rust (LieroTcSObject in
+// rust/liero-game/src/tc.rs).
+typedef LieroTcSObject SObjectType;
 
-	int startSound;
-	int numSounds;
-	int animDelay;
-	int startFrame;
-	int numFrames;
-	int detectRange;
-	int damage;
-	int blowAway;
-	bool shadow;
-	int shake;
-	int flash;
-	int dirtEffect;
-
-	int id;
-	std::string idStr;
-};
+void createSObject(Game& game, SObjectType const& type, int x, int y, int ownedIdx, WormWeapon* firedBy, WObject* from = 0);
 
 struct SObject : ExactObjectListBase
 {

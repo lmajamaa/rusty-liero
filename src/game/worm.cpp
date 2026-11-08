@@ -106,18 +106,18 @@ void hookLaunchSound(void* ctx)
 	Worm& worm = c.worm;
 	Weapon const& w = *worm.weapons[worm.currentWeapon].type;
 
-	if(w.launchSound >= 0)
+	if(w.launch_sound >= 0)
 	{
-		if(w.loopSound)
+		if(w.loop_sound)
 		{
 			if(!c.game.soundPlayer->isPlaying(&worm.weapons[worm.currentWeapon]))
 			{
-				c.game.soundPlayer->play(w.launchSound, &worm.weapons[worm.currentWeapon], -1);
+				c.game.soundPlayer->play(w.launch_sound, &worm.weapons[worm.currentWeapon], -1);
 			}
 		}
 		else
 		{
-			c.game.soundPlayer->play(w.launchSound);
+			c.game.soundPlayer->play(w.launch_sound);
 		}
 	}
 }
@@ -127,7 +127,7 @@ void hookFirePart(void* ctx, int32_t angle, LieroIVec2 vel, int32_t speed, Liero
 	auto& c = context(ctx);
 	Worm& worm = c.worm;
 	WormWeapon& ww = worm.weapons[worm.currentWeapon];
-	ww.type->fire(c.game, angle, fromRust(vel), speed, fromRust(pos), worm.index, &ww);
+	fireWeapon(c.game, *ww.type, angle, fromRust(vel), speed, fromRust(pos), worm.index, &ww);
 }
 
 void hookPlaySound(void* ctx, int32_t sound)
@@ -138,7 +138,7 @@ void hookPlaySound(void* ctx, int32_t sound)
 void hookCreateNObject1(void* ctx, int32_t kind, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
 {
 	auto& c = context(ctx);
-	c.game.common->nobjectTypes[kind].create1(c.game, fromRust(vel), fromRust(pos), color, c.worm.index, 0);
+	createNObject1(c.game, c.game.common->nobjectTypes[kind], fromRust(vel), fromRust(pos), color, c.worm.index, 0);
 }
 
 LieroWeapon hookWeapon(void*, void const* kind)
@@ -189,13 +189,13 @@ void hookHeal(void* ctx, int32_t amount)
 void hookCreateSObject(void* ctx, int32_t kind, int32_t x, int32_t y)
 {
 	auto& c = context(ctx);
-	c.game.common->sobjectTypes[kind].create(c.game, x, y, c.worm.index, 0);
+	createSObject(c.game, c.game.common->sobjectTypes[kind], x, y, c.worm.index, 0);
 }
 
 void hookCreateNObject2(void* ctx, int32_t kind, int32_t angle, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
 {
 	auto& c = context(ctx);
-	c.game.common->nobjectTypes[kind].create2(c.game, angle, fromRust(vel), fromRust(pos), color, c.worm.index, 0);
+	createNObject2(c.game, c.game.common->nobjectTypes[kind], angle, fromRust(vel), fromRust(pos), color, c.worm.index, 0);
 }
 
 void hookPlayWormSound(void* ctx, int32_t sound)
@@ -428,8 +428,8 @@ void DumbLieroAI::process(Game& game, Worm& worm)
 	me.rope_out = worm.ninjarope.out;
 	me.rope_attached = worm.ninjarope.attached;
 	me.control_states = worm.controlStates.pack();
-	me.time_to_explo = w.timeToExplo;
-	me.time_to_explo_v = w.timeToExploV;
+	me.time_to_explo = w.time_to_explo;
+	me.time_to_explo_v = w.time_to_explo_v;
 	me.speed = w.speed;
 	me.gravity = w.gravity;
 

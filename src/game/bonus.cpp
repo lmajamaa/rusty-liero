@@ -16,7 +16,7 @@ void Bonus::process(Game& game)
 	if(liero_bonus_process(x, &y, &velY, &timer, &v, &k))
 	{
 		int iy = ftoi(y);
-		common.sobjectTypes[common.bonusSObjects[frame]].create(game, ix, iy, 0, 0);
+		createSObject(game, common.sobjectTypes[common.bonusSObjects[frame]], ix, iy, 0, 0);
 		if(used)
 			game.bonuses.free(this);
 	}

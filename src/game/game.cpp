@@ -435,7 +435,7 @@ void hookSetBonus(void*, void* bonus, LieroBonusState const* state)
 void hookCreateSObject(void* ctx, int32_t kind, int32_t x, int32_t y)
 {
 	Game& game = gameOf(ctx);
-	game.common->sobjectTypes[kind].create(game, x, y, 0, 0);
+	createSObject(game, game.common->sobjectTypes[kind], x, y, 0, 0);
 }
 
 void hookProcessWorm(void* ctx, int32_t i)

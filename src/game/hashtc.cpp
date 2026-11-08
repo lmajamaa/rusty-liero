@@ -6,6 +6,8 @@
 #include "hashrun.hpp"
 
 #include "common_model.hpp"
+#include "filesystem.hpp"
+#include "gfx.hpp"
 
 #include <cstdio>
 #include <string>
@@ -143,7 +145,12 @@ struct TomlWriter
 		resolver.v2r(*this, v);
 	}
 
-	void str(char const* name, std::string& s)
+	void str(char const* name, LieroStr s)
+	{
+		str(name, tcString(s));
+	}
+
+	void str(char const* name, std::string const& s)
 	{
 		f(name);
 		*this << '"';
@@ -197,7 +204,7 @@ void hashTc(Common& common)
 		TomlWriter ar;
 		archive_text(common, weapon, ar);
 		ar.h.add(int32_t(weapon.id));
-		ar.h.bytes((uint8_t const*)weapon.idStr.data(), weapon.idStr.size());
+		ar.h.bytes(weapon.id_str.ptr, weapon.id_str.len);
 		print("tc-weapon", (int)i, ar.h);
 	}
 
@@ -207,7 +214,7 @@ void hashTc(Common& common)
 		TomlWriter ar;
 		archive_text(common, nobject, ar);
 		ar.h.add(int32_t(nobject.id));
-		ar.h.bytes((uint8_t const*)nobject.idStr.data(), nobject.idStr.size());
+		ar.h.bytes(nobject.id_str.ptr, nobject.id_str.len);
 		print("tc-nobject", (int)i, ar.h);
 	}
 
@@ -217,7 +224,7 @@ void hashTc(Common& common)
 		TomlWriter ar;
 		archive_text(common, sobject, ar);
 		ar.h.add(int32_t(sobject.id));
-		ar.h.bytes((uint8_t const*)sobject.idStr.data(), sobject.idStr.size());
+		ar.h.bytes(sobject.id_str.ptr, sobject.id_str.len);
 		print("tc-sobject", (int)i, ar.h);
 	}
 
@@ -266,5 +273,31 @@ void hashTc(Common& common)
 		addSprites(h, common.wormSprites);
 		addSprites(h, common.fireConeSprites);
 		print("tc-computed", 0, h);
+	}
+}
+
+// F8's random TC, on a TC of its own. Only the weapons and special objects:
+// the order the other objects get their values in was shuffled with
+// std::random_device in the C++.
+void hashRandomTc()
+{
+	std::shared_ptr<Common> common(new Common());
+	common->load(FsNode(std::string("TC/openliero")));
+	std::shared_ptr<Common> old = gfx.common;
+	gfx.common = common;
+	gfx.randomizeTc();
+	gfx.common = old;
+
+	for (std::size_t i = 0; i < common->weapons.size(); ++i)
+	{
+		TomlWriter ar;
+		archive_text(*common, common->weapons[i], ar);
+		print("tc-random-weapon", (int)i, ar.h);
+	}
+	for (std::size_t i = 0; i < common->sobjectTypes.size(); ++i)
+	{
+		TomlWriter ar;
+		archive_text(*common, common->sobjectTypes[i], ar);
+		print("tc-random-sobject", (int)i, ar.h);
 	}
 }

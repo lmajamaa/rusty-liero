@@ -14,8 +14,7 @@ StatsScreen::StatsScreen(NormalStatsRecorder& recorder, Game& game, Renderer& re
 {
 	for (auto const& w : game.common->weapons)
 	{
-		LieroStr name = { reinterpret_cast<uint8_t const*>(w.name.data()), w.name.size() };
-		weaponNames.push_back(name);
+		weaponNames.push_back(w.name);
 	}
 }
 
@@ -75,7 +74,7 @@ void presentStats(NormalStatsRecorder& recorder, Game& game)
 	// outlive it.
 	std::vector<LieroStr> weaponNames;
 	for (auto const& w : game.common->weapons)
-		weaponNames.push_back(str(w.name));
+		weaponNames.push_back(w.name);
 	LieroStatsScene scene = statsScene(game, gfx.playRenderer, weaponNames);
 	gfx.open(fromFfi(liero_stats_presenter_screen(recorder.s, &scene)), [](int) { return -1; });
 }

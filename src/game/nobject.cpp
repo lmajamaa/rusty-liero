@@ -6,11 +6,11 @@
 #include "worm.hpp"
 #include "gfx/blit.hpp"
 
-NObject& NObjectType::create(Game& game, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy)
+NObject& createNObject(Game& game, NObjectType const& type, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy)
 {
 	NObject& obj = *game.nobjects.newObjectReuse();
 
-	obj.type = this;
+	obj.type = &type;
 	obj.ownerIdx = ownerIdx;
 	obj.pos = pos;
 
@@ -21,11 +21,11 @@ NObject& NObjectType::create(Game& game, fixedvec vel, fixedvec pos, int color, 
 	obj.hasHit = false;
 
 	Worm* owner = game.wormByIdx(ownerIdx);
-	game.statsRecorder->damagePotential(owner, firedBy, hitDamage);
+	game.statsRecorder->damagePotential(owner, firedBy, type.hit_damage);
 
-	if(startFrame > 0)
+	if(type.start_frame > 0)
 	{
-		obj.curFrame = game.rand(numFrames + 1);
+		obj.curFrame = game.rand(type.num_frames + 1);
 	}
 	else if(color != 0)
 	{
@@ -33,42 +33,42 @@ NObject& NObjectType::create(Game& game, fixedvec vel, fixedvec pos, int color, 
 	}
 	else
 	{
-		obj.curFrame = colorBullets;
+		obj.curFrame = type.color_bullets;
 	}
 
-	obj.timeLeft = timeToExplo;
+	obj.timeLeft = type.time_to_explo;
 
-	if(timeToExploV)
-		obj.timeLeft -= game.rand(timeToExploV);
+	if(type.time_to_explo_v)
+		obj.timeLeft -= game.rand(type.time_to_explo_v);
 
 	return obj;
 }
 
-NObject& NObjectType::create1(Game& game, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy)
+NObject& createNObject1(Game& game, NObjectType const& type, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy)
 {
-	if(distribution)
+	if(type.distribution)
 	{
-		vel.x += distribution - game.rand(distribution * 2);
-		vel.y += distribution - game.rand(distribution * 2);
+		vel.x += type.distribution - game.rand(type.distribution * 2);
+		vel.y += type.distribution - game.rand(type.distribution * 2);
 	}
 
-	return create(game, vel, pos, color, ownerIdx, firedBy);
+	return createNObject(game, type, vel, pos, color, ownerIdx, firedBy);
 }
 
-void NObjectType::create2(Game& game, int angle, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy)
+void createNObject2(Game& game, NObjectType const& type, int angle, fixedvec vel, fixedvec pos, int color, int ownerIdx, WormWeapon* firedBy)
 {
-	int realSpeed = speed - game.rand(speedV);
+	int realSpeed = type.speed - game.rand(type.speed_v);
 
 	vel += cossinTable[angle] * realSpeed / 100;
 
 	// TODO: !REPLAYS Make the distributions use the same code
-	if(distribution)
+	if(type.distribution)
 	{
-		vel.x += game.rand(distribution * 2) - distribution;
-		vel.y += game.rand(distribution * 2) - distribution;
+		vel.x += game.rand(type.distribution * 2) - type.distribution;
+		vel.y += game.rand(type.distribution * 2) - type.distribution;
 	}
 
-	auto& obj = create(game,
+	auto& obj = createNObject(game, type,
 		vel,
 		pos, color, ownerIdx, firedBy);
 
@@ -94,14 +94,13 @@ void hookCreateBObject(void* ctx, LieroIVec2 pos, LieroIVec2 vel)
 void hookCreateSObject(void* ctx, int32_t kind, int32_t x, int32_t y)
 {
 	auto& c = *static_cast<NObjectContext*>(ctx);
-	c.game.common->sobjectTypes[kind].create(c.game, x, y, c.obj.ownerIdx, c.obj.firedBy);
+	createSObject(c.game, c.game.common->sobjectTypes[kind], x, y, c.obj.ownerIdx, c.obj.firedBy);
 }
 
 void hookCreateNObject2(void* ctx, int32_t kind, int32_t angle, LieroIVec2 vel, LieroIVec2 pos, int32_t color)
 {
 	auto& c = *static_cast<NObjectContext*>(ctx);
-	c.game.common->nobjectTypes[kind].create2(
-		c.game, angle, fromRust(vel), fromRust(pos), color, c.obj.ownerIdx, 0);
+	createNObject2(c.game, c.game.common->nobjectTypes[kind], angle, fromRust(vel), fromRust(pos), color, c.obj.ownerIdx, 0);
 }
 
 void hookDrawOnMap(void* ctx, int32_t x, int32_t y)
@@ -113,7 +112,7 @@ void hookDrawOnMap(void* ctx, int32_t x, int32_t y)
 	blitImageOnMap(
 		common,
 		c.game.level,
-		common.smallSprites.spritePtr(t.startFrame + c.obj.curFrame),
+		common.smallSprites.spritePtr(t.start_frame + c.obj.curFrame),
 		x,
 		y,
 		7,
@@ -137,17 +136,17 @@ bool hookHitWorms(void* ctx)
 	{
 		Worm& w = *game.worms[i];
 
-		if(checkForSpecWormHit(game, ftoi(o.pos.x), ftoi(o.pos.y), t.detectDistance, w))
+		if(checkForSpecWormHit(game, ftoi(o.pos.x), ftoi(o.pos.y), t.detect_distance, w))
 		{
-			w.vel += o.vel * t.blowAway / 100;
+			w.vel += o.vel * t.blow_away / 100;
 
-			game.doDamage(w, t.hitDamage, o.ownerIdx);
+			game.doDamage(w, t.hit_damage, o.ownerIdx);
 
 			Worm* owner = game.wormByIdx(o.ownerIdx);
-			game.statsRecorder->damageDealt(owner, o.firedBy, &w, t.hitDamage, o.hasHit);
+			game.statsRecorder->damageDealt(owner, o.firedBy, &w, t.hit_damage, o.hasHit);
 			o.hasHit = true;
 
-			if(t.hitDamage > 0
+			if(t.hit_damage > 0
 			&& w.health > 0
 			&& game.rand(3) == 0)
 			{
@@ -158,13 +157,12 @@ bool hookHitWorms(void* ctx)
 				}
 			}
 
-			int blood = t.bloodOnHit * game.settings->blood / 100;
+			int blood = t.blood_on_hit * game.settings->blood / 100;
 
 			for(int i = 0; i < blood; ++i)
 			{
 				int angle = game.rand(128);
-				common.nobjectTypes[6].create2(
-					game,
+				createNObject2(game, common.nobjectTypes[6],
 					angle,
 					o.vel / 3,
 					o.pos,
@@ -173,9 +171,9 @@ bool hookHitWorms(void* ctx)
 					0);
 			}
 
-			if(t.wormExplode)
+			if(t.worm_explode)
 				doExplode = true;
-			else if (t.wormDestroy && o.used)
+			else if (t.worm_destroy && o.used)
 				game.nobjects.free(&o);
 		}
 	}
@@ -195,21 +193,21 @@ LieroNObjectType toRust(NObjectType const& t)
 	LieroNObjectType r;
 	r.gravity = t.gravity;
 	r.bounce = t.bounce;
-	r.hit_damage = t.hitDamage;
-	r.expl_ground = t.explGround;
-	r.blood_trail = t.bloodTrail;
-	r.blood_trail_delay = t.bloodTrailDelay;
-	r.start_frame = t.startFrame;
-	r.num_frames = t.numFrames;
-	r.draw_on_map = t.drawOnMap;
-	r.leave_obj = t.leaveObj;
-	r.leave_obj_delay = t.leaveObjDelay;
-	r.time_to_explo = t.timeToExplo;
-	r.create_on_exp = t.createOnExp;
-	r.dirt_effect = t.dirtEffect;
-	r.splinter_amount = t.splinterAmount;
-	r.splinter_colour = t.splinterColour;
-	r.splinter_type = t.splinterType;
+	r.hit_damage = t.hit_damage;
+	r.expl_ground = t.expl_ground;
+	r.blood_trail = t.blood_trail;
+	r.blood_trail_delay = t.blood_trail_delay;
+	r.start_frame = t.start_frame;
+	r.num_frames = t.num_frames;
+	r.draw_on_map = t.draw_on_map;
+	r.leave_obj = t.leave_obj;
+	r.leave_obj_delay = t.leave_obj_delay;
+	r.time_to_explo = t.time_to_explo;
+	r.create_on_exp = t.create_on_exp;
+	r.dirt_effect = t.dirt_effect;
+	r.splinter_amount = t.splinter_amount;
+	r.splinter_colour = t.splinter_colour;
+	r.splinter_type = t.splinter_type;
 	return r;
 }
 

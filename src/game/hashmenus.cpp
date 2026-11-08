@@ -202,7 +202,7 @@ void runMenus(std::shared_ptr<Common> common)
 	weapons.setHeight(14);
 	weapons.valueOffsetX = 89;
 	for (int i = 0; i < (int)c.weapons.size(); ++i)
-		weapons.addItem(MenuItem(48, 7, c.weapons[c.weapOrder[i]].name, i));
+		weapons.addItem(MenuItem(48, 7, tcString(c.weapons[c.weapOrder[i]].name), i));
 	runMenu(c, "menu-weapons", weapons, {}, {}, true, 5, 400);
 }
 
