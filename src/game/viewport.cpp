@@ -9,19 +9,3 @@ static_assert(LIERO_GAME_KILL_EM_ALL == Settings::GMKillEmAll, "game modes");
 static_assert(LIERO_GAME_GAME_OF_TAG == Settings::GMGameOfTag, "game modes");
 static_assert(LIERO_GAME_HOLDAZONE == Settings::GMHoldazone, "game modes");
 static_assert(LIERO_GAME_SCALES_OF_JUSTICE == Settings::GMScalesOfJustice, "game modes");
-
-void drawViewport(Game& game, LieroViewport* vp, Renderer& renderer, GameState gameState, bool isReplay)
-{
-	Settings& s = *game.settings;
-	GameView view(game);
-	LieroDrawSettings d;
-	d.names_on_bonuses = s.namesOnBonuses;
-	d.allow_viewing_spawn_point = s.allowViewingSpawnPoint;
-	d.map = s.map;
-	d.render_res_x = renderer.renderResX;
-	d.render_res_y = renderer.renderResY;
-	d.state_game = gameState == StateGame;
-	d.is_replay = isReplay;
-	LieroBitmap scr = renderer.bmp.view();
-	liero_game_draw_viewport(&view.fields, &view.settings, &d, vp, &scr);
-}

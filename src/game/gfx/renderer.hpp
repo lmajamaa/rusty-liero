@@ -9,7 +9,10 @@
 // rust/liero-game/src/renderer.rs); the fields here refer to it.
 struct Renderer
 {
+	// A renderer of its own.
 	Renderer();
+	// A view of `r`, which someone else owns (the app's).
+	explicit Renderer(LieroRenderer* r);
 	~Renderer();
 	Renderer(Renderer const&) = delete;
 	Renderer& operator=(Renderer const&) = delete;
@@ -24,6 +27,7 @@ struct Renderer
 
 private:
 	LieroRenderer* r;
+	bool owned;
 	LieroRendererData& d;
 
 public:

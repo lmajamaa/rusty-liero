@@ -148,12 +148,6 @@ void Game::addSpectatorViewport(Rect rect, int levwidth, int levheight)
 	liero_game_add_viewport(g, r, 0, levwidth, levheight, LIERO_VIEWPORT_SPECTATOR, true);
 }
 
-void Game::drawViewports(Renderer& renderer, GameState state, bool spectators, bool isReplay)
-{
-	for (std::size_t i = 0; i < liero_game_viewport_count(g, spectators); ++i)
-		drawViewport(*this, liero_game_viewport(g, spectators, i), renderer, state, isReplay);
-}
-
 Worm* Game::addWorm(std::shared_ptr<WormSettings> settings)
 {
 	LieroWorm* w = newWorm();
@@ -182,10 +176,7 @@ void Game::listWorm(LieroWorm* w)
 
 void Game::draw(Renderer& renderer, GameState state, bool useSpectatorViewports, bool isReplay)
 {
-	drawViewports(renderer, state, useSpectatorViewports, isReplay);
-	liero_game_palette(
-		reinterpret_cast<LieroColor*>(renderer.pal.entries), reinterpret_cast<LieroColor const*>(renderer.origpal.entries),
-		&liero_tc_data(common->tc)->color_anim, cycles, renderer.fadeValue, screenFlash);
+	liero_game_draw(g, renderer.rust(), state, useSpectatorViewports, isReplay);
 }
 
 

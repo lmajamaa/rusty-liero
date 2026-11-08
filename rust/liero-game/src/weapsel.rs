@@ -10,7 +10,13 @@
 
 use std::ffi::c_void;
 
-use crate::gfx::{liero_gfx_draw_rounded_box, LieroBitmap};
+use crate::app::app;
+use crate::game_box::LieroGame;
+use crate::gfx::{liero_gfx_draw_rounded_box, liero_palette_fade, liero_palette_rotate_from, LieroBitmap, LieroFontChar};
+use crate::level::liero_level_draw_miniature;
+use crate::menu::liero_menu_draw_versus;
+use crate::renderer::LieroRenderer;
+use crate::tc::{s as text, LIERO_TC_FONT_CHARS};
 use crate::menu::{LieroMenuBox, LieroMenuHooks, LieroMenuItemSpec, Menu, OwnedMenu};
 use crate::rand::LieroRand;
 use crate::text::{LieroFont, LieroStr};
@@ -45,6 +51,15 @@ pub struct LieroWeapsel {
     menus: Vec<WeapselMenu>,
     /// Each weapon's name, by weapon index.
     weapon_names: Vec<Vec<u8>>,
+    /// The game whose worms choose, when started from one
+    /// (`liero_weapsel_start`).
+    game: *mut LieroGame,
+    /// What's behind the menus has been drawn and frozen, on the play and
+    /// the spectator screen.
+    cached: bool,
+    cached_spectator: bool,
+    /// Shown, not behind the menu.
+    focused: bool,
 }
 
 /// A worm choosing weapons.
@@ -284,7 +299,14 @@ pub unsafe extern "C" fn liero_weapsel_new(spec: &LieroWeapselSpec, env: &LieroW
             color: w.color,
         });
     }
-    Box::into_raw(Box::new(LieroWeapsel { menus, weapon_names }))
+    Box::into_raw(Box::new(LieroWeapsel {
+        menus,
+        weapon_names,
+        game: std::ptr::null_mut(),
+        cached: false,
+        cached_spectator: false,
+        focused: true,
+    }))
 }
 
 /// # Safety
@@ -476,9 +498,206 @@ pub unsafe extern "C" fn liero_weapsel_draw_spectator(ws: &mut LieroWeapsel, scr
     }
 }
 
+/// The weapon tables of `game`, with the app's random numbers.
+unsafe fn game_env(game: &LieroGame) -> LieroWeapselEnv {
+    let tc = &*game.tc_data();
+    LieroWeapselEnv {
+        weap_table: game.settings_box().data.weap_table.as_ptr(),
+        weap_order: tc.weap_order,
+        weapon_count: tc.weapon_count as i32,
+        rand: &mut app().rand,
+        tc,
+        sound: game.sound(),
+    }
+}
+
+/// The TC's font.
+pub(crate) fn tc_font(tc: &LieroTcData) -> LieroFont {
+    LieroFont { chars: tc.font.as_ptr().cast::<LieroFontChar>(), count: LIERO_TC_FONT_CHARS }
+}
+
+/// The part of a path after the last slash (`getLeaf`).
+pub(crate) fn leaf(path: &[u8]) -> &[u8] {
+    path.iter().rposition(|&c| c == b'/' || c == b'\\').map_or(path, |i| &path[i + 1..])
+}
+
+/// A file name without what follows its last dot (`getBasename`).
+pub(crate) fn basename(name: &[u8]) -> &[u8] {
+    name.iter().rposition(|&c| c == b'.').map_or(name, |i| &name[..i])
+}
+
+/// The line naming the level: random if the game's settings have no level
+/// file, and otherwise the menus' level file's name, as C++ took it.
+pub(crate) fn level_line(tc: &LieroTcData, game_level_file: &[u8], menu_level_file: &[u8]) -> Vec<u8> {
+    if game_level_file.is_empty() {
+        tc.text(text("LevelRandom")).to_vec()
+    } else {
+        [tc.text(text("LevelIs1")), basename(leaf(menu_level_file)), tc.text(text("LevelIs2"))].concat()
+    }
+}
+
+/// Starts weapon selection for `game`'s split-screen viewports' worms
+/// (`WeaponSelection::WeaponSelection`): bots that don't choose take random
+/// weapons, or their own, as the settings say.
+///
+/// # Safety
+/// The game has its context, and outlives the selection; each viewport's
+/// worm is listed and has settings.
+#[no_mangle]
+pub unsafe extern "C" fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
+    let g: *mut LieroGame = game;
+    let tc = &*game.tc_data();
+    let select = game.settings_box().data.select_bot_weapons;
+    let viewports: Vec<(i32, i32, i32)> = game
+        .split_viewports()
+        .iter()
+        .map(|vp| (vp.worm_idx, (vp.rect.x1 + vp.rect.x2) / 2, (vp.rect.y1 + vp.rect.y2) / 2))
+        .collect();
+    let mut worms = Vec::new();
+    for (idx, center_x, center_y) in viewports {
+        let w = game.worm_at(idx as usize).expect("an empty place in a viewport");
+        let worm: *mut LieroWormData = &mut w.data;
+        let ws = w.settings_mut();
+        let bot = ws.data.controller != 0;
+        worms.push(LieroWeapselWorm {
+            worm,
+            weapons: ws.data.weapons.as_mut_ptr(),
+            name: LieroStr { ptr: ws.name.as_ptr(), len: ws.name.len() },
+            color: ws.data.color,
+            center_x,
+            center_y,
+            random: bot && select == 0,
+            ready: bot && select != 1,
+        });
+    }
+    let names: Vec<LieroStr> = (0..tc.weapon_count).map(|i| (*tc.weapons.add(i)).name).collect();
+    let spec = LieroWeapselSpec {
+        worms: worms.as_ptr(),
+        worm_count: worms.len() as i32,
+        weapon_names: names.as_ptr(),
+        weapon_count: names.len() as i32,
+        randomize: LieroStr::of(tc.text(text("Randomize"))),
+        done: LieroStr::of(tc.text(text("Done"))),
+    };
+    let env = game_env(game);
+    let ws = liero_weapsel_new(&spec, &env);
+    (*ws).game = g;
+    ws
+}
+
+/// `processFrame` for a selection started from a game.
+///
+/// # Safety
+/// See `liero_weapsel_start`.
+#[no_mangle]
+pub unsafe extern "C" fn liero_weapsel_process_game(ws: &mut LieroWeapsel) -> bool {
+    let env = game_env(&*ws.game);
+    liero_weapsel_process(ws, &env)
+}
+
+/// `finalize` for a selection started from a game: gives each of the
+/// game's worms the weapons its settings chose.
+///
+/// # Safety
+/// See `liero_weapsel_start`; every listed worm has settings.
+#[no_mangle]
+pub unsafe extern "C" fn liero_weapsel_finish(ws: &mut LieroWeapsel) {
+    let game = &mut *ws.game;
+    let tc = &*game.tc_data();
+    let mut worms = Vec::new();
+    let mut weapons = Vec::new();
+    for w in game.listed_worms() {
+        let w = w.expect("an empty place among the game's worms");
+        weapons.push(w.settings().data.weapons.as_ptr());
+        worms.push(&mut w.data as *mut LieroWormData);
+    }
+    liero_weapsel_finalize(worms.as_ptr(), weapons.as_ptr(), worms.len() as i32, tc);
+}
+
+/// Hides the menus (the game went behind the menu), or shows them again.
+#[no_mangle]
+pub extern "C" fn liero_weapsel_set_focused(ws: &mut LieroWeapsel, focused: bool) {
+    ws.focused = focused;
+}
+
+/// The renderer's palette as the menus show it: cycling and fading.
+unsafe fn menu_palette(r: *mut LieroRenderer) {
+    let d = &mut (*r).data;
+    d.pal = d.origpal;
+    liero_palette_rotate_from(d.pal.as_mut_ptr(), d.origpal.as_ptr(), 168, 174, app().menu_cycles);
+    liero_palette_fade(d.pal.as_mut_ptr(), d.fade_value);
+}
+
+/// `WeaponSelection::draw` for a selection started from a game: on the
+/// spectator screen, who plays whom and the level, and on the play screen
+/// the frozen game, with the menus over it while focused. The palette
+/// changes are the app's renderers', whichever `r` is.
+///
+/// # Safety
+/// See `liero_weapsel_start`; `r` is valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRenderer, state: i32, spectators: bool) {
+    let game = &mut *ws.game;
+    let tc = &*game.tc_data();
+    let font = tc_font(tc);
+    let a = app();
+    let g: *const LieroGame = game;
+    let line = || level_line(tc, &(*g).settings_box().level_file, &app().menu_settings().level_file);
+    if spectators {
+        let (cx, cy) = ((*r).data.render_res_x / 2, (*r).data.render_res_y / 4);
+        if !ws.cached_spectator {
+            let scr = (*r).bmp.view();
+            let w = &game.settings_box().worms;
+            liero_menu_draw_versus(&scr, &font, LieroStr::of(&line()), LieroStr::of(&w[0].name), LieroStr::of(&w[1].name),
+                w[0].data.color, w[1].data.color, cx, cy);
+            font.centered(&scr, b"WEAPON SELECTION", cx, cy + 48, 7, 2);
+            let level = game.level_box().data().level;
+            liero_level_draw_miniature(&level, scr.pixels, scr.pitch, cx - 126, (*r).data.render_res_y - 208, 2);
+            a.frozen_spectator.copy_from(&(*r).bmp);
+            ws.cached_spectator = true;
+        }
+        (*r).bmp.copy_from(&a.frozen_spectator);
+        if !ws.focused {
+            return;
+        }
+        liero_weapsel_draw_spectator(ws, &(*r).bmp.view(), &font);
+        menu_palette(&mut *a.single);
+    } else {
+        if !ws.cached {
+            game.draw(r, state, false, false);
+            font.text(&(*r).bmp.view(), &line(), 0, 162, 50, 1);
+            a.frozen.copy_from(&(*r).bmp);
+            ws.cached = true;
+        }
+        (*r).bmp.copy_from(&a.frozen);
+        if !ws.focused {
+            return;
+        }
+        // C++ drew the menus on the play screen, whatever `r` was.
+        let menu_scr = a.play.bmp.view();
+        liero_weapsel_draw(ws, &(*r).bmp.view(), &menu_scr, &font, LieroStr::of(tc.text(text("SelWeap"))));
+        menu_palette(&mut *a.play);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_level_line_names_the_menus_level_file() {
+        let texts: Vec<LieroStr> = liero_data::exe::TEXTS.iter().map(|t| LieroStr::of(t.0.as_bytes())).collect();
+        let layout = std::alloc::Layout::new::<LieroTcData>();
+        // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
+        let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
+        tc.texts = texts.as_ptr();
+        tc.text_count = texts.len();
+        assert_eq!(level_line(&tc, b"", b"a/b.lev"), b"LevelRandom");
+        assert_eq!(level_line(&tc, b"x", b"C:\\lev/a.b.lev"), b"LevelIs1a.bLevelIs2");
+        assert_eq!(level_line(&tc, b"x", b"dir.d\\name"), b"LevelIs1nameLevelIs2");
+        assert_eq!((leaf(b"a/b\\c"), leaf(b"abc"), leaf(b"a/")), (&b"c"[..], &b"abc"[..], &b""[..]));
+        assert_eq!((basename(b"a.b.c"), basename(b"abc"), basename(b".x")), (&b"a.b"[..], &b"abc"[..], &b""[..]));
+    }
     use crate::rand::LIERO_RAND_DEFAULT_SEED;
 
     fn env(table: &[u32; 40], order: &[i32], rand: &mut LieroRand) -> LieroWeapselEnv {

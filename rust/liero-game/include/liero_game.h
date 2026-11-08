@@ -1309,6 +1309,13 @@ typedef struct LieroGameHooks {
 } LieroGameHooks;
 
 /**
+ * Which DOS keys are down.
+ */
+typedef struct LieroKeys {
+  bool down[LIERO_MAX_DOS_KEY];
+} LieroKeys;
+
+/**
  * A tick's outcome.
  */
 typedef struct LieroTick {
@@ -1417,13 +1424,6 @@ typedef struct LieroControllerData {
    */
   int32_t cycles;
 } LieroControllerData;
-
-/**
- * Which DOS keys are down.
- */
-typedef struct LieroKeys {
-  bool down[LIERO_MAX_DOS_KEY];
-} LieroKeys;
 
 /**
  * View of a C++ `Bitmap`: `h` rows of `pitch` bytes, of which the first
@@ -2626,6 +2626,32 @@ void liero_game_process_ais(const struct LieroGameFields *game,
                             const struct LieroGameHooks *hooks);
 
 /**
+ * The app, at a fixed address.
+ */
+struct LieroApp *liero_app(void);
+
+struct LieroRand *liero_app_rand(struct LieroApp *a);
+
+/**
+ * The play renderer, or with `single`, the single screen one.
+ */
+struct LieroRenderer *liero_app_renderer(struct LieroApp *a, bool single);
+
+/**
+ * The frozen play screen, or with `spectator`, the spectator one.
+ */
+struct LieroBitmapBox *liero_app_frozen(struct LieroApp *a, bool spectator);
+
+struct LieroKeys *liero_app_keys(struct LieroApp *a);
+
+/**
+ * Where the app finds the menus' settings.
+ */
+void liero_app_set_menu_settings(struct LieroApp *a, struct LieroSettingsBox *(*f)(void));
+
+uint32_t *liero_app_menu_cycles(struct LieroApp *a);
+
+/**
  * The app's first screen.
  */
 struct LieroScreen liero_main_screen(struct LieroAppHooks hooks);
@@ -2877,6 +2903,18 @@ struct LieroGame *liero_game_clone(const struct LieroGame *g);
  * kept, as ropes copied before may be anchored to them.
  */
 void liero_game_assign(struct LieroGame *to, const struct LieroGame *from);
+
+/**
+ * `Game::draw`; see `LieroGame::draw`.
+ *
+ * # Safety
+ * See `LieroGame::draw`.
+ */
+void liero_game_draw(struct LieroGame *g,
+                     struct LieroRenderer *r,
+                     int32_t state,
+                     bool spectators,
+                     bool is_replay);
 
 /**
  * Sets what the game is played with: the settings, the TC (or null) and
@@ -4926,6 +4964,53 @@ void liero_weapsel_draw(struct LieroWeapsel *ws,
 void liero_weapsel_draw_spectator(struct LieroWeapsel *ws,
                                   const struct LieroBitmap *scr,
                                   const struct LieroFont *font);
+
+/**
+ * Starts weapon selection for `game`'s split-screen viewports' worms
+ * (`WeaponSelection::WeaponSelection`): bots that don't choose take random
+ * weapons, or their own, as the settings say.
+ *
+ * # Safety
+ * The game has its context, and outlives the selection; each viewport's
+ * worm is listed and has settings.
+ */
+struct LieroWeapsel *liero_weapsel_start(struct LieroGame *game);
+
+/**
+ * `processFrame` for a selection started from a game.
+ *
+ * # Safety
+ * See `liero_weapsel_start`.
+ */
+bool liero_weapsel_process_game(struct LieroWeapsel *ws);
+
+/**
+ * `finalize` for a selection started from a game: gives each of the
+ * game's worms the weapons its settings chose.
+ *
+ * # Safety
+ * See `liero_weapsel_start`; every listed worm has settings.
+ */
+void liero_weapsel_finish(struct LieroWeapsel *ws);
+
+/**
+ * Hides the menus (the game went behind the menu), or shows them again.
+ */
+void liero_weapsel_set_focused(struct LieroWeapsel *ws, bool focused);
+
+/**
+ * `WeaponSelection::draw` for a selection started from a game: on the
+ * spectator screen, who plays whom and the level, and on the play screen
+ * the frozen game, with the menus over it while focused. The palette
+ * changes are the app's renderers', whichever `r` is.
+ *
+ * # Safety
+ * See `liero_weapsel_start`; `r` is valid.
+ */
+void liero_weapsel_draw_game(struct LieroWeapsel *ws,
+                             struct LieroRenderer *r,
+                             int32_t state,
+                             bool spectators);
 
 struct LieroWormData *liero_worm_data_new(void);
 

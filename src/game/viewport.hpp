@@ -68,7 +68,4 @@ public:
 	}
 };
 
-// Draws one of the game's viewports, by its kind, in Rust.
-void drawViewport(Game& game, LieroViewport* vp, Renderer& renderer, GameState state, bool isReplay);
-
 #endif // LIERO_VIEWPORT_HPP

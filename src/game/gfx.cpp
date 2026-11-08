@@ -45,7 +45,6 @@ Gfx::Gfx()
 , sdlDrawSurface(0)
 , running(true)
 , doubleRes(true)
-, menuCycles(0)
 , windowW(320 * 2)
 , windowH(200 * 2)
 , prevMag(0)
@@ -53,6 +52,7 @@ Gfx::Gfx()
 {
 	clearKeys();
 	primaryRenderer = &playRenderer;
+	liero_app_set_menu_settings(app, []() { return gfx.settings->rust(); });
 }
 
 void Gfx::init()

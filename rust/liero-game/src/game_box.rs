@@ -13,7 +13,10 @@ use std::rc::Rc;
 use crate::ai::LieroWormAi;
 use crate::game::{LieroGameData, LieroGameFields, LieroGameWorm, LieroRect};
 use crate::gfx::LieroColor;
+use crate::controller::LIERO_STATE_GAME;
 use crate::game::LieroGameSettings;
+use crate::renderer::{LieroRenderer, LieroRendererData};
+use crate::scene::{liero_game_draw_viewport, LieroDrawSettings};
 use crate::level::LieroLevelBox;
 use crate::settings::{LieroSettingsBox, LieroWormSettingsBox, WormSettingsRef};
 use crate::sfx::LieroSoundOut;
@@ -50,8 +53,12 @@ impl LieroWorm {
         self.settings = (!s.is_null()).then(|| unsafe { WormSettingsRef::retain(s) });
     }
 
-    fn settings(&self) -> &LieroWormSettingsBox {
+    pub(crate) fn settings(&self) -> &LieroWormSettingsBox {
         self.settings.as_deref().expect("a worm without settings")
+    }
+
+    pub(crate) fn settings_mut(&mut self) -> &mut LieroWormSettingsBox {
+        self.settings.as_deref_mut().expect("a worm without settings")
     }
 }
 
@@ -82,6 +89,69 @@ impl LieroGame {
     /// The game's TC, from its context.
     pub(crate) fn tc_data(&self) -> *const LieroTcData {
         self.tc
+    }
+
+    /// The game's settings, from its context.
+    pub(crate) fn settings_box(&self) -> &mut LieroSettingsBox {
+        // SAFETY: the context outlives the game.
+        unsafe { &mut *self.settings }
+    }
+
+    pub(crate) fn sound(&self) -> LieroSoundOut {
+        self.sound
+    }
+
+    pub(crate) fn level_box(&self) -> &LieroLevelBox {
+        &self.level
+    }
+
+    /// The listed worm at `i` (`Game::wormByIdx`), or None for an empty
+    /// place.
+    pub(crate) fn worm_at(&mut self, i: usize) -> Option<&mut LieroWorm> {
+        // SAFETY: listed worms are in the pool.
+        unsafe { self.list[i].as_mut() }
+    }
+
+    pub(crate) fn listed_worms(&mut self) -> impl Iterator<Item = Option<&mut LieroWorm>> {
+        // SAFETY: listed worms are in the pool, each listed once.
+        self.list.iter().map(|&w| unsafe { w.as_mut() })
+    }
+
+    /// The split-screen viewports.
+    pub(crate) fn split_viewports(&self) -> &[Box<LieroViewport>] {
+        &self.viewports
+    }
+
+    /// `Game::draw`: the split-screen viewports, or with `spectators` the
+    /// spectator ones, on `r`, and the palette with the TC's colour
+    /// animations, the fade and the screen flash.
+    ///
+    /// # Safety
+    /// The game has its context; `r` is valid and the game's worms don't
+    /// point into it.
+    pub(crate) unsafe fn draw(&mut self, r: *mut LieroRenderer, state: i32, spectators: bool, is_replay: bool) {
+        let d = draw_settings(&(*self.settings).data, &(*r).data, state, is_replay);
+        let scr = (*r).bmp.view();
+        let v = liero_game_view_new(self);
+        let (f, gs) = (&(*v).fields, &(*v).settings);
+        let (list, count) = if spectators {
+            (f.spectator_viewports, f.spectator_viewport_count)
+        } else {
+            (f.viewports, f.viewport_count)
+        };
+        for i in 0..count.max(0) as usize {
+            liero_game_draw_viewport(f, gs, &d, *list.add(i), &scr);
+        }
+        liero_game_view_free(v);
+        let data = &mut (*r).data;
+        crate::gfx::liero_game_palette(
+            data.pal.as_mut_ptr(),
+            data.origpal.as_ptr(),
+            &(*self.tc).color_anim,
+            self.data.cycles,
+            data.fade_value,
+            self.data.screen_flash,
+        );
     }
 
     fn owns(&self, w: *const LieroWorm) -> bool {
@@ -175,6 +245,28 @@ pub extern "C" fn liero_game_assign(to: &mut LieroGame, from: &LieroGame) {
     *to.stats = *stats;
     to.level.assign(&level);
     (to.settings, to.tc, to.sound) = (settings, tc, sound);
+}
+
+/// What drawing a viewport takes of the settings and the renderer.
+fn draw_settings(s: &crate::settings::LieroSettingsData, r: &LieroRendererData, state: i32, is_replay: bool) -> LieroDrawSettings {
+    LieroDrawSettings {
+        names_on_bonuses: s.names_on_bonuses,
+        allow_viewing_spawn_point: s.allow_viewing_spawn_point,
+        map: s.map,
+        render_res_x: r.render_res_x,
+        render_res_y: r.render_res_y,
+        state_game: state == LIERO_STATE_GAME,
+        is_replay,
+    }
+}
+
+/// `Game::draw`; see `LieroGame::draw`.
+///
+/// # Safety
+/// See `LieroGame::draw`.
+#[no_mangle]
+pub unsafe extern "C" fn liero_game_draw(g: &mut LieroGame, r: *mut LieroRenderer, state: i32, spectators: bool, is_replay: bool) {
+    g.draw(r, state, spectators, is_replay);
 }
 
 /// Sets what the game is played with: the settings, the TC (or null) and
@@ -661,6 +753,27 @@ mod tests {
             assert_eq!(got, std::array::from_fn(|j| j == i), "{name}");
         }
         unsafe { crate::settings::liero_settings_box_free(s) };
+    }
+
+    #[test]
+    fn viewports_are_drawn_with_the_settings_and_the_renderers_size() {
+        use crate::controller::{LIERO_STATE_GAME_ENDED, LIERO_STATE_WEAPON_SELECTION};
+        let b = crate::settings::liero_settings_box_new();
+        let mut r = crate::renderer::LieroRenderer::new();
+        r.set_render_resolution(640, 400);
+        unsafe {
+            let s = &mut (*b).data;
+            s.names_on_bonuses = true;
+            let d = draw_settings(s, &r.data, LIERO_STATE_GAME, true);
+            assert_eq!((d.names_on_bonuses, d.allow_viewing_spawn_point, d.map), (true, false, false));
+            assert_eq!((d.render_res_x, d.render_res_y, d.state_game, d.is_replay), (640, 400, true, true));
+            (s.names_on_bonuses, s.allow_viewing_spawn_point, s.map) = (false, true, true);
+            let d = draw_settings(s, &r.data, LIERO_STATE_GAME_ENDED, false);
+            assert_eq!((d.names_on_bonuses, d.allow_viewing_spawn_point, d.map), (false, true, true));
+            assert!(!d.state_game && !d.is_replay);
+            assert!(!draw_settings(s, &r.data, LIERO_STATE_WEAPON_SELECTION, false).state_game);
+            crate::settings::liero_settings_box_free(b);
+        }
     }
 
     #[test]

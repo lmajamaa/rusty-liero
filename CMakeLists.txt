@@ -56,7 +56,6 @@ set(GAME_SOURCES
     src/game/replay.cpp
     src/game/screen.cpp
     src/game/sfx.cpp
-    src/game/weapsel.cpp
     src/game/controller/commonController.cpp
     src/game/controller/localController.cpp
     src/game/controller/replayController.cpp

@@ -6,6 +6,7 @@
 //! (see README).
 
 pub mod ai;
+pub mod app;
 pub mod app_screens;
 pub mod boxes;
 pub mod controller;

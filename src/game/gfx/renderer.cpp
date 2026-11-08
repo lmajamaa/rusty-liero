@@ -32,7 +32,14 @@ Bitmap::~Bitmap()
 }
 
 Renderer::Renderer()
-: r(liero_renderer_new())
+: Renderer(liero_renderer_new())
+{
+	owned = true;
+}
+
+Renderer::Renderer(LieroRenderer* r)
+: r(r)
+, owned(false)
 , d(*liero_renderer_data(r))
 , bmp(liero_renderer_bitmap(r))
 , pal(reinterpret_cast<Palette&>(d.pal))
@@ -45,7 +52,8 @@ Renderer::Renderer()
 
 Renderer::~Renderer()
 {
-	liero_renderer_free(r);
+	if (owned)
+		liero_renderer_free(r);
 }
 
 void Renderer::init(int x, int y)

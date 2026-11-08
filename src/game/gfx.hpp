@@ -85,9 +85,13 @@ struct AppDriver
 	virtual void sound(int id) {}
 };
 
+// The app. Rust owns what it keeps besides the SDL windows (LieroApp in
+// rust/liero-game/src/app.rs); the fields here refer to it.
 struct Gfx
 {
 	Gfx();
+
+	LieroApp* app = liero_app();
 
 	AppDriver* driver = nullptr;
 	bool pollEvent(SDL_Event& ev);
@@ -224,13 +228,13 @@ struct Gfx
 	}
 
 	// PRNG for things that don't affect the game
-	Rand rand;
+	Rand& rand = static_cast<Rand&>(*liero_app_rand(app));
 
 	// renders everything for actual play
-	Renderer playRenderer;
+	Renderer playRenderer{liero_app_renderer(app, false)};
 	// renders everything on a single screen, for single screen replay and
 	// the spectator window
-	Renderer singleScreenRenderer;
+	Renderer singleScreenRenderer{liero_app_renderer(app, true)};
 
 	// the renderer currently in use by the primary window. Usually
 	// playRenderer, but is singleScreenRenderer if watching a replay in
@@ -253,7 +257,7 @@ struct Gfx
 	FsNode settingsNode; // Currently loaded settings file. TODO: This is only used for display. We could just remember the name.
 	std::shared_ptr<Settings> settings;
 
-	LieroKeys dosKeys;
+	LieroKeys& dosKeys = *liero_app_keys(app);
 	// the window to render into
 	SDL_Window* sdlWindow = NULL;
 	// the window to render the spectator view into
@@ -272,16 +276,16 @@ struct Gfx
 	SDL_Surface* sdlSpectatorDrawSurface = NULL;
 	// when the menu is open, the ongoing game on the screen is paused and
 	// stored in this bitmap
-	Bitmap frozenScreen;
+	Bitmap frozenScreen{liero_app_frozen(app, false)};
 	// when the menu is open, the ongoing game on the spectator screen is
 	// paused and stored in this bitmap
-	Bitmap frozenSpectatorScreen;
+	Bitmap frozenSpectatorScreen{liero_app_frozen(app, true)};
 
 	bool running;
 	bool spectatorFullscreen, doubleRes;
 
 	Uint32 lastFrame;
-	unsigned menuCycles;
+	uint32_t& menuCycles = *liero_app_menu_cycles(app);
 	int windowW, windowH;
 	int prevMag; // Previous magnification used for drawing
 	Rect lastUpdateRect; // Last region that was updated when flipping

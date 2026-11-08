@@ -111,14 +111,14 @@ struct Game : GameMembers
 	Viewport* addViewport(Rect rect, int wormIdx, int levwidth, int levheight, int kind = LIERO_VIEWPORT_WORM);
 	// One of the spectator viewports, which copies of the game share.
 	void addSpectatorViewport(Rect rect, int levwidth, int levheight);
-	// Draws the split-screen viewports, or the spectator ones.
-	void drawViewports(Renderer& renderer, GameState state, bool spectators, bool isReplay = false);
 	// A new worm with `settings`, at the end of the list.
 	Worm* addWorm(std::shared_ptr<WormSettings> settings);
 	// A new worm the game keeps without listing it, for listWorm.
 	LieroWorm* newWorm();
 	// Lists one of newWorm's worms, or an empty place for null.
 	void listWorm(LieroWorm* w);
+	// The split-screen viewports, or the spectator ones, and the palette,
+	// in Rust.
 	void draw(Renderer& renderer, GameState state, bool useSpectatorViewports, bool isReplay = false);
 	// The start sound, the blood list and the first zone, in Rust.
 	void startGame();
