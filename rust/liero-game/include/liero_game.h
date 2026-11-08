@@ -3466,6 +3466,14 @@ bool liero_fs_node_read(const struct LieroFsNode *n, void *ctx, void (*got)(void
                                                                             struct LieroStr data));
 
 /**
+ * Writes `data` as the whole file. False if it can't be.
+ *
+ * # Safety
+ * `data` must be valid.
+ */
+bool liero_fs_node_write(const struct LieroFsNode *n, struct LieroStr data);
+
+/**
  * Makes the node writable, creating its folders if needed, and gives the
  * path to write it at (valid while the node lives), or an empty one if it
  * can't be.
@@ -4931,6 +4939,49 @@ struct LieroSettingsResult *liero_settings_write_text(const struct LieroSettings
 struct LieroSettingsResult *liero_settings_read_legacy(const struct LieroSettings *s,
                                                        const uint8_t *data,
                                                        uintptr_t len);
+
+/**
+ * Reads liero.cfg (or LIERO.DAT, if `legacy`) from `node` over `s`, as
+ * `liero_settings_read_text` or `liero_settings_read_legacy` would. Null if
+ * the file can't be read.
+ *
+ * # Safety
+ * `s`'s strings must be valid.
+ */
+struct LieroSettingsResult *liero_settings_load(const struct LieroSettings *s,
+                                                const struct LieroFsNode *node,
+                                                bool legacy);
+
+/**
+ * Writes `s` to `node` as liero.cfg. False if the file can't be written.
+ *
+ * # Safety
+ * `s`'s strings must be valid.
+ */
+bool liero_settings_save(const struct LieroSettings *s, const struct LieroFsNode *node);
+
+/**
+ * Reads a profile from `node` over `ws`: Ok, or ReadError if it ends
+ * early, with the worm settings as far as they were read. Null if the
+ * file can't be read.
+ *
+ * # Safety
+ * `ws`'s name must be valid.
+ */
+struct LieroSettingsResult *liero_worm_settings_load_profile(const struct LieroWormSettings *ws,
+                                                             int32_t replay_version,
+                                                             const struct LieroFsNode *node);
+
+/**
+ * Writes `ws` to `node` as a profile, with the worm settings after writing
+ * it. Null, with nothing changed, if the file can't be written.
+ *
+ * # Safety
+ * `ws`'s name must be valid.
+ */
+struct LieroSettingsResult *liero_worm_settings_save_profile(const struct LieroWormSettings *ws,
+                                                             int32_t replay_version,
+                                                             const struct LieroFsNode *node);
 
 /**
  * Reads the settings archive over `s`: Ok, ReadError or CheckError.

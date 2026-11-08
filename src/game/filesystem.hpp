@@ -101,6 +101,13 @@ struct FsNode
 
 	gvl::sink toSink() const;
 
+	// The Rust node, or null.
+	LieroFsNode* rust() const
+	{ return node; }
+
+	// Writes the whole file, or throws if it can't.
+	void write(std::string const& data) const;
+
 private:
 	explicit FsNode(LieroFsNode* node);
 

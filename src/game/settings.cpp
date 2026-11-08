@@ -97,11 +97,6 @@ void copyArray(T (&dest)[N], U const (&src)[N])
 		dest[i] = src[i];
 }
 
-// The whole file, or a std::runtime_error if it can't be opened.
-std::vector<uint8_t> readAll(FsNode const& node)
-{
-	return node.read();
-}
 
 }
 
@@ -230,9 +225,11 @@ bool Settings::load(FsNode node, Rand& rand)
 {
 	try
 	{
-		std::vector<uint8_t> data = readAll(node);
 		LieroSettings view = settingsView(*this);
-		SettingsResult r(liero_settings_read_text(&view, data.data(), data.size()));
+		LieroSettingsResult* read = node.rust() ? liero_settings_load(&view, node.rust(), false) : nullptr;
+		if (!read)
+			return false;
+		SettingsResult r(read);
 		setSettings(*this, r.settings());
 
 		switch (r.status())
@@ -256,9 +253,11 @@ bool Settings::loadLegacy(FsNode node, Rand& rand)
 {
 	try
 	{
-		std::vector<uint8_t> data = readAll(node);
 		LieroSettings view = settingsView(*this);
-		SettingsResult r(liero_settings_read_legacy(&view, data.data(), data.size()));
+		LieroSettingsResult* read = node.rust() ? liero_settings_load(&view, node.rust(), true) : nullptr;
+		if (!read)
+			return false;
+		SettingsResult r(read);
 		setSettings(*this, r.settings());
 		return r.status() == LieroSettingsStatus_Ok;
 	}
@@ -279,11 +278,9 @@ gvl::gash::value_type& Settings::updateHash()
 
 void Settings::save(FsNode node, Rand& rand)
 {
-	auto writer = node.toOctetWriter();
-
 	LieroSettings view = settingsView(*this);
-	SettingsResult r(liero_settings_write_text(&view));
-	r.writeTo(writer);
+	if (!node.rust() || !liero_settings_save(&view, node.rust()))
+		throw std::runtime_error("Could not write " + node.fullPath());
 }
 
 std::string Settings::text()

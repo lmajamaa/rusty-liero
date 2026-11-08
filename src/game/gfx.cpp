@@ -1771,9 +1771,7 @@ void Gfx::saveSettingsIfChanged()
 	savedSettingsText = text;
 	try
 	{
-		auto writer = (configNode / "liero.cfg").toOctetWriter();
-		for (char c : text)
-			writer.put(uint8_t(c));
+		(configNode / "liero.cfg").write(text);
 	}
 	catch (std::runtime_error&)
 	{

@@ -30,47 +30,34 @@ gvl::gash::value_type& WormSettings::updateHash()
 
 void WormSettings::saveProfile(FsNode node)
 {
-	try
-	{
-		//auto const& fullPath = path + ".lpf";
-		//create_directories(fullPath);
-		//gvl::sink str(new gvl::file_bucket_pipe(fullPath.c_str(), "wb"));
-
-		//gvl::octet_writer writer(str);
-
-		auto writer = node.toOctetWriter();
-
-		//profilePath = path;
-		profileNode = node;
-		GameSerializationContext context;
-		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(writer, context), *this);
-	}
-	catch(gvl::stream_error& e)
-	{
-		Console::writeWarning(std::string("Stream error saving profile: ") + e.what());
-	}
+	// Profiles use the archive of the current replay version.
+	LieroWormSettings view = wormSettingsView(*this);
+	LieroSettingsResult* saved = node.rust()
+		? liero_worm_settings_save_profile(&view, GameSerializationContext().replayVersion, node.rust())
+		: nullptr;
+	if (!saved)
+		throw std::runtime_error("Could not write " + node.fullPath());
+	SettingsResult r(saved);
+	profileNode = node;
+	setWormSettings(*this, r.worm());
 }
 
 void WormSettings::loadProfile(FsNode node)
 {
 	int oldColor = color;
-	try
-	{
-		//gvl::source str(gvl::to_source(new gvl::file_bucket_pipe(path.c_str(), "rb")));
-
-		//gvl::octet_reader reader(str);
-
-		auto reader = node.toOctetReader();
-
-		profileNode = node;
-		GameSerializationContext context;
-		archive(gvl::in_archive<gvl::octet_reader, GameSerializationContext>(reader, context), *this);
-	}
-	catch(gvl::stream_error& e)
-	{
-		Console::writeWarning(std::string("Stream error loading profile: ") + e.what());
-		Console::writeWarning("The profile may just be old, in which case there is nothing to worry about");
-	}
+	LieroWormSettings view = wormSettingsView(*this);
+	LieroSettingsResult* loaded = node.rust()
+		? liero_worm_settings_load_profile(&view, GameSerializationContext().replayVersion, node.rust())
+		: nullptr;
+	if (!loaded)
+		throw std::runtime_error("Could not read " + node.fullPath());
+	SettingsResult r(loaded);
+	profileNode = node;
+	setWormSettings(*this, r.worm());
+	// A profile that ends early, or fails its checkpoint, throws before the
+	// colour is put back. Nothing catches it: the warnings the C++ had for
+	// stream errors were never reached.
+	throwArchiveError(r.status(), nullptr);
 
 	color = oldColor;  // We preserve the color
 }

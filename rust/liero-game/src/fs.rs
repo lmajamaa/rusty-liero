@@ -428,6 +428,17 @@ impl Node {
     }
 }
 
+impl Node {
+    /// Writes the whole file, as `toSink` and a writer did. False if it
+    /// can't be created or written.
+    pub fn write(&self, data: &[u8]) -> bool {
+        match self.prepare_write() {
+            Some(p) => fs::write(path_str(p), data).is_ok(),
+            None => false,
+        }
+    }
+}
+
 // ---- What C++ calls
 
 /// A file node for C++'s `FsNode` to own.
@@ -517,6 +528,15 @@ pub unsafe extern "C" fn liero_fs_node_read(
         }
         None => false,
     }
+}
+
+/// Writes `data` as the whole file. False if it can't be.
+///
+/// # Safety
+/// `data` must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_fs_node_write(n: &LieroFsNode, data: LieroStr) -> bool {
+    n.0.write(data.bytes())
 }
 
 /// Makes the node writable, creating its folders if needed, and gives the

@@ -121,6 +121,12 @@ gvl::source FsNode::toSource() const
 	return gvl::to_source(new BytesPipe(read()));
 }
 
+void FsNode::write(std::string const& data) const
+{
+	if (!node || !liero_fs_node_write(node, lstr(data)))
+		throw std::runtime_error("Could not write " + path);
+}
+
 gvl::sink FsNode::toSink() const
 {
 	LieroStr p = node ? liero_fs_node_prepare_write(node) : LieroStr{ nullptr, 0 };
