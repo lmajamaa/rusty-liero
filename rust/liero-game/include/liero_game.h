@@ -470,9 +470,14 @@ typedef struct LieroMenus LieroMenus;
 typedef struct LieroMixer LieroMixer;
 
 /**
- * What a replay call gives back. C++ copies out what it needs and frees it.
+ * A replay being played (`ReplayReader`).
  */
-typedef struct LieroReplayResult LieroReplayResult;
+typedef struct LieroReplayReader LieroReplayReader;
+
+/**
+ * A replay being recorded (`ReplayWriter`).
+ */
+typedef struct LieroReplayWriter LieroReplayWriter;
 
 /**
  * The game's settings, with a reference to each player's worm settings,
@@ -1737,226 +1742,26 @@ typedef struct LieroMenusHooks {
   bool (*save_profile_as)(int32_t player, struct LieroStr name);
 } LieroMenusHooks;
 
-typedef struct LieroWormSettings {
-  int32_t health;
-  uint32_t controller;
-  uint32_t controls[LIERO_MAX_CONTROL];
-  uint32_t weapons[5];
-  struct LieroStr name;
-  int32_t rgb[3];
-  bool random_name;
-  int32_t color;
-  uint32_t controls_ex[LIERO_MAX_CONTROL_EX];
-} LieroWormSettings;
-
-typedef struct LieroSettings {
-  bool record_replays;
-  bool load_powerlevel_palette;
-  int32_t blood_particle_max;
-  int32_t ai_frames;
-  int32_t ai_mutations;
-  bool ai_traces;
-  int32_t ai_parallels;
-  bool fullscreen;
-  int32_t zone_timeout;
-  uint32_t select_bot_weapons;
-  bool allow_viewing_spawn_point;
-  bool single_screen_replay;
-  bool spectator_window;
-  struct LieroStr tc;
-  uint32_t weap_table[40];
-  int32_t max_bonuses;
-  int32_t blood;
-  int32_t time_to_lose;
-  int32_t flags_to_win;
-  uint32_t game_mode;
-  bool shadow;
-  bool load_change;
-  bool names_on_bonuses;
-  bool regenerate_level;
-  int32_t lives;
-  int32_t loading_time;
-  bool random_level;
-  struct LieroStr level_file;
-  bool map;
-  bool screen_sync;
-  struct LieroWormSettings worms[2];
-} LieroSettings;
-
 /**
- * The `Game` fields a replay stores, apart from the settings, worms,
- * viewports and level.
+ * How a replay call ended, for C++ to throw as its replay code did.
  */
-typedef struct LieroReplayGameFields {
-  int32_t cycles;
-  bool got_changed;
+typedef struct LieroReplayOutcome {
+  enum LieroReplayStatus status;
   /**
-   * `lastKilledIdx`: a worm's `index`.
+   * For `CheckError`, the `gvl::archive_check_error` message; for
+   * `ReadError`, what the reader threw at the end of its bytes.
    */
-  int32_t last_killed;
-  int32_t screen_flash;
-  uint32_t rand_x;
-  uint32_t rand_c;
-} LieroReplayGameFields;
-
-/**
- * A worm weapon's state.
- */
-typedef struct LieroReplayWeapon {
-  int32_t ammo;
-  int32_t delay_left;
+  struct LieroStr message;
   /**
-   * The weapon's index in the TC.
+   * The replay ended (a frame).
    */
-  int32_t weapon;
-  int32_t loading_left;
-} LieroReplayWeapon;
-
-/**
- * What a replay stores of a `Worm`, in the archive's order. Worms refer to
- * each other by their place in the list of worms passed or returned, or -1.
- */
-typedef struct LieroReplayWorm {
-  int32_t pos[2];
-  int32_t vel[2];
-  int32_t logic_respawn[2];
-  int32_t hotspot[2];
-  int32_t aiming_angle;
-  int32_t aiming_speed;
-  bool able_to_jump;
-  bool able_to_dig;
-  bool key_change_pressed;
-  bool movable;
-  bool animate;
-  bool visible;
-  bool ready;
-  bool flag;
-  bool make_sight_green;
-  int32_t health;
-  int32_t lives;
-  int32_t kills;
-  int32_t timer;
-  int32_t killed_timer;
-  int32_t current_frame;
-  int32_t flags;
+  bool end;
   /**
-   * The worm the rope is attached to.
+   * The frame read settings, so the game needs `updateSettings`, which
+   * C++ calls before throwing a checksum error.
    */
-  int32_t rope_anchor;
-  bool rope_attached;
-  int32_t rope_cur_len;
-  int32_t rope_length;
-  bool rope_out;
-  int32_t rope_vel[2];
-  int32_t rope_pos[2];
-  int32_t current_weapon;
-  /**
-   * `lastKilledByIdx`: a worm's `index`, not its place in the list.
-   */
-  int32_t last_killed_by;
-  int32_t fire_cone;
-  int32_t leave_shell_timer;
-  int32_t index;
-  int32_t reacts[4];
-  struct LieroReplayWeapon weapons[5];
-  int32_t direction;
-  uint32_t control_states;
-  uint32_t prev_control_states;
-} LieroReplayWorm;
-
-/**
- * What a replay stores of a `Viewport`.
- */
-typedef struct LieroReplayViewport {
-  int32_t x;
-  int32_t y;
-  int32_t shake;
-  int32_t max_x;
-  int32_t max_y;
-  int32_t center_x;
-  int32_t center_y;
-  /**
-   * The followed worm's `index`.
-   */
-  int32_t worm_idx;
-  int32_t banner_y;
-  int32_t rect[4];
-} LieroReplayViewport;
-
-/**
- * A game for `liero_replay_write_start`, pointing at C++'s data.
- */
-typedef struct LieroReplayGameIn {
-  struct LieroSettings settings;
-  struct LieroReplayGameFields fields;
-  /**
-   * The game's worms, in order, and their settings.
-   */
-  const struct LieroReplayWorm *worms;
-  const struct LieroWormSettings *worm_settings;
-  uintptr_t worm_count;
-  const struct LieroReplayViewport *viewports;
-  uintptr_t viewport_count;
-  uint32_t level_width;
-  uint32_t level_height;
-  /**
-   * `level_width * level_height` pixels.
-   */
-  const uint8_t *level_pixels;
-  /**
-   * 768 bytes.
-   */
-  const uint8_t *level_palette;
-} LieroReplayGameIn;
-
-/**
- * What a frame writes or reads of a worm.
- */
-typedef struct LieroReplayFrameWorm {
-  int32_t index;
-  uint32_t control_states;
-  uint32_t prev_control_states;
-  /**
-   * Whether the worm's settings changed since they were last written.
-   */
-  bool settings_expired;
-  struct LieroWormSettings settings;
-} LieroReplayFrameWorm;
-
-/**
- * Bytes for the binary readers. `get` returns the next byte, or -1 when
- * the C++ reader throws, which C++ keeps to rethrow.
- */
-typedef struct LieroByteSource {
-  void *ctx;
-  int32_t (*get)(void *ctx);
-} LieroByteSource;
-
-/**
- * A game read by `liero_replay_read_start`, pointing into the result.
- */
-typedef struct LieroReplayGameOut {
-  int32_t version;
-  struct LieroSettings settings;
-  struct LieroReplayGameFields fields;
-  /**
-   * Every worm read: the game's worms and any only referred to.
-   */
-  const struct LieroReplayWorm *worms;
-  const struct LieroWormSettings *worm_settings;
-  uintptr_t worm_count;
-  /**
-   * The game's worms in order, as places in `worms`, or -1.
-   */
-  const int32_t *list;
-  uintptr_t list_len;
-  const struct LieroReplayViewport *viewports;
-  uintptr_t viewport_count;
-  uint32_t level_width;
-  uint32_t level_height;
-  const uint8_t *level_pixels;
-  const uint8_t *level_palette;
-} LieroReplayGameOut;
+  bool settings_changed;
+} LieroReplayOutcome;
 
 /**
  * An event as a Rust screen sees it. C++ has already passed it to
@@ -2136,6 +1941,61 @@ typedef struct LieroSelectorHooks {
    */
   void (*free)(void *ctx);
 } LieroSelectorHooks;
+
+typedef struct LieroWormSettings {
+  int32_t health;
+  uint32_t controller;
+  uint32_t controls[LIERO_MAX_CONTROL];
+  uint32_t weapons[5];
+  struct LieroStr name;
+  int32_t rgb[3];
+  bool random_name;
+  int32_t color;
+  uint32_t controls_ex[LIERO_MAX_CONTROL_EX];
+} LieroWormSettings;
+
+typedef struct LieroSettings {
+  bool record_replays;
+  bool load_powerlevel_palette;
+  int32_t blood_particle_max;
+  int32_t ai_frames;
+  int32_t ai_mutations;
+  bool ai_traces;
+  int32_t ai_parallels;
+  bool fullscreen;
+  int32_t zone_timeout;
+  uint32_t select_bot_weapons;
+  bool allow_viewing_spawn_point;
+  bool single_screen_replay;
+  bool spectator_window;
+  struct LieroStr tc;
+  uint32_t weap_table[40];
+  int32_t max_bonuses;
+  int32_t blood;
+  int32_t time_to_lose;
+  int32_t flags_to_win;
+  uint32_t game_mode;
+  bool shadow;
+  bool load_change;
+  bool names_on_bonuses;
+  bool regenerate_level;
+  int32_t lives;
+  int32_t loading_time;
+  bool random_level;
+  struct LieroStr level_file;
+  bool map;
+  bool screen_sync;
+  struct LieroWormSettings worms[2];
+} LieroSettings;
+
+/**
+ * Bytes for the binary readers. `get` returns the next byte, or -1 when
+ * the C++ reader throws, which C++ keeps to rethrow.
+ */
+typedef struct LieroByteSource {
+  void *ctx;
+  int32_t (*get)(void *ctx);
+} LieroByteSource;
 
 /**
  * A gash value (`gvl::gash::value_type`).
@@ -4154,172 +4014,110 @@ uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
 double liero_rand_double_below(struct LieroRand *rand, double max);
 
 /**
- * Starts a replay of `version` with the game in `g`: the bytes to write,
- * and the settings and worm settings to copy back. With an `OutOfRange`
- * status, C++ writes the bytes before throwing, as it had written them.
+ * Starts writing a replay at `node`, or null if it can't be created.
+ */
+struct LieroReplayWriter *liero_replay_writer_new(const struct LieroFsNode *node);
+
+/**
+ * Ends the replay and closes the file.
  *
  * # Safety
- * The pointers in `g` must hold what their counts say.
+ * `w` comes from `liero_replay_writer_new`, or is null, and isn't used
+ * again.
  */
-struct LieroReplayResult *liero_replay_write_start(const struct LieroReplayGameIn *g,
-                                                   int32_t version);
+void liero_replay_writer_free(struct LieroReplayWriter *w);
 
 /**
- * A frame of a replay of `version`. `worms` are the game's worms in order.
- * The result has the bytes to write, and what settings were written
- * (`liero_replay_result_touched`), which change as for
- * `liero_replay_write_start`.
+ * The version to write, before `liero_replay_writer_begin`; the hash run
+ * writes old ones.
+ */
+void liero_replay_writer_set_version(struct LieroReplayWriter *w, int32_t version);
+
+/**
+ * `beginRecord`: writes the game as it is, with `settings`, `level` and
+ * the TC's weapons. The game and settings must stay while the writer
+ * records them. Writing changes the settings as `write_start` says; with
+ * an `OutOfRange` outcome, what was written stays.
  *
  * # Safety
- * `worms` must point to `count` worms.
+ * The game, settings, level and TC are valid.
  */
-struct LieroReplayResult *liero_replay_write_frame(int32_t version,
-                                                   const struct LieroSettings *settings,
-                                                   bool settings_expired,
-                                                   const struct LieroReplayFrameWorm *worms,
-                                                   uintptr_t count,
-                                                   int32_t cycles,
-                                                   uint32_t checksum);
+struct LieroReplayOutcome liero_replay_writer_begin(struct LieroReplayWriter *w,
+                                                    struct LieroGame *game,
+                                                    struct LieroSettingsBox *settings,
+                                                    const struct LieroLevelBox *level,
+                                                    const struct LieroTcData *tc);
 
 /**
- * The end of a replay.
- */
-struct LieroReplayResult *liero_replay_write_end(void);
-
-/**
- * Reads a replay's header and game from `source`. With an Ok status,
- * `liero_replay_result_game` has the game.
+ * `recordFrame`: the game's controls this tick, and any settings that
+ * changed since they were written (a worm's only with more than three
+ * worms).
  *
  * # Safety
- * `source` must be callable as `LieroByteSource` says.
+ * The game and settings `liero_replay_writer_begin` had are still valid.
  */
-struct LieroReplayResult *liero_replay_read_start(const struct LieroByteSource *source);
+void liero_replay_writer_frame(struct LieroReplayWriter *w);
 
 /**
- * Reads a frame's headers and control changes for a replay of `version`.
- * `worms` are the game's worms in order. Whatever the status, the result
- * has each worm's controls (`liero_replay_result_frame_state`) and the
- * settings that were read, even partly (`liero_replay_result_touched`), for
- * C++ to copy back.
+ * The game lost focus (the menu opened): remembers the settings' hashes.
  *
  * # Safety
- * `source` must be callable as `LieroByteSource` says, and `worms` point to
- * `count` worms.
+ * As for `liero_replay_writer_frame`, once recording has begun.
  */
-struct LieroReplayResult *liero_replay_read_frame(const struct LieroByteSource *source,
-                                                  int32_t version,
-                                                  const struct LieroSettings *settings,
-                                                  const struct LieroReplayFrameWorm *worms,
-                                                  uintptr_t count);
+void liero_replay_writer_unfocus(struct LieroReplayWriter *w);
 
 /**
- * Reads and checks the checksum after a frame, when `cycles` is on one.
+ * The game has focus again: settings that changed are written with the
+ * next frame.
  *
  * # Safety
- * `source` must be callable as `LieroByteSource` says.
+ * As for `liero_replay_writer_unfocus`.
  */
-struct LieroReplayResult *liero_replay_read_checksum(const struct LieroByteSource *source,
-                                                     int32_t cycles,
-                                                     uint32_t actual);
-
-enum LieroReplayStatus liero_replay_result_status(const struct LieroReplayResult *r);
+void liero_replay_writer_focus(struct LieroReplayWriter *w);
 
 /**
- * The `gvl::archive_check_error` message for a `CheckError`.
+ * Reads and inflates the replay at `node`, or null if it can't be read.
  */
-struct LieroStr liero_replay_result_message(const struct LieroReplayResult *r);
-
-/**
- * The bytes to write.
- */
-struct LieroStr liero_replay_result_bytes(const struct LieroReplayResult *r);
-
-/**
- * The game read by `liero_replay_read_start`, or null.
- */
-const struct LieroReplayGameOut *liero_replay_result_game(const struct LieroReplayResult *r);
-
-/**
- * The game's settings after a write or frame read.
- */
-const struct LieroSettings *liero_replay_result_settings(const struct LieroReplayResult *r);
-
-/**
- * Worm `i`'s settings after a write or frame read.
- */
-const struct LieroWormSettings *liero_replay_result_worm_settings(const struct LieroReplayResult *r,
-                                                                  uintptr_t i);
-
-/**
- * Whether a frame changed or wrote the game's settings (0) or worm
- * `i - 1`'s.
- */
-bool liero_replay_result_touched(const struct LieroReplayResult *r, uintptr_t i);
-
-/**
- * Worm `i`'s controls after a frame read.
- */
-uint32_t liero_replay_result_frame_state(const struct LieroReplayResult *r, uintptr_t i);
-
-/**
- * Whether a frame read found the end of the replay.
- */
-bool liero_replay_result_end(const struct LieroReplayResult *r);
-
-/**
- * Whether a frame read read the game's or a worm's settings.
- */
-bool liero_replay_result_settings_changed(const struct LieroReplayResult *r);
+struct LieroReplayReader *liero_replay_reader_new(const struct LieroFsNode *node);
 
 /**
  * # Safety
- * `r` must come from a `liero_replay_*` call, or be null.
+ * `r` comes from `liero_replay_reader_new`, or is null, and isn't used
+ * again.
  */
-void liero_replay_result_free(struct LieroReplayResult *r);
+void liero_replay_reader_free(struct LieroReplayReader *r);
 
 /**
- * A worm as replays hold it (`wormFields`). Its rope's anchor is the
- * anchor's place among the game's `worms`, or -1.
+ * How far playback has read, to go back to with `_set_pos`.
+ */
+uintptr_t liero_replay_reader_pos(const struct LieroReplayReader *r);
+
+void liero_replay_reader_set_pos(struct LieroReplayReader *r, uintptr_t pos);
+
+/**
+ * `beginPlayback`: reads the game the replay starts with into `game`, a
+ * new one with no worms or viewports, its new `settings` and `level`.
+ * They must stay while the reader plays them. On an error they are left
+ * as they were.
  *
  * # Safety
- * `worms` holds `count` worms, which may be null.
+ * The game, settings, level and TC are valid.
  */
-struct LieroReplayWorm liero_replay_worm_of(const struct LieroWormData *worm,
-                                            struct LieroWormData *const *worms,
-                                            uintptr_t count,
-                                            const struct LieroTcData *tc);
+struct LieroReplayOutcome liero_replay_reader_begin(struct LieroReplayReader *r,
+                                                    struct LieroGame *game,
+                                                    struct LieroSettingsBox *settings,
+                                                    struct LieroLevelBox *level,
+                                                    const struct LieroTcData *tc);
 
 /**
- * Sets a worm from a replay's (`setWormFields`). Its rope's anchor is one
- * of `all`, every worm the replay has. Weapons aren't checked, as in C++.
+ * `playbackFrame` without the renderer: sets the worms' controls for the
+ * tick and any settings the frame changes, then checks the checksum due.
+ * What was read stays, even when the frame broke off.
  *
  * # Safety
- * `all` holds `count` worms.
+ * The game and settings `liero_replay_reader_begin` had are still valid.
  */
-void liero_replay_worm_set(struct LieroWormData *worm,
-                           const struct LieroReplayWorm *f,
-                           struct LieroWormData *const *all,
-                           uintptr_t count,
-                           const struct LieroTcData *tc);
-
-/**
- * A split-screen viewport as replays hold it (`viewportFields`).
- */
-struct LieroReplayViewport liero_replay_viewport_of(const struct LieroViewport *vp);
-
-/**
- * Sets a viewport from a replay's (`setViewportFields`).
- */
-void liero_replay_viewport_set(struct LieroViewport *vp, const struct LieroReplayViewport *f);
-
-/**
- * The checksum frames are checked with (`fastGameChecksum`): the game's
- * generator and its worms' positions and velocities.
- *
- * # Safety
- * The pointers in `game` are valid.
- */
-uint32_t liero_replay_game_checksum(const struct LieroGameFields *game);
+struct LieroReplayOutcome liero_replay_reader_frame(struct LieroReplayReader *r);
 
 /**
  * Sets the functions Rust screens call. Only the first call counts.

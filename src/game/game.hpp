@@ -135,6 +135,8 @@ struct Game : GameMembers
 
 	// The game in Rust.
 	LieroGame* handle() const { return g; }
+	// Remakes the views of the worms and viewports, after Rust changes them.
+	void syncViews();
 	// The game's state in Rust.
 	LieroGameData* rust() { return &data; }
 
@@ -145,9 +147,6 @@ private:
 	Game(LieroGame* g, Members&&... members);
 	template<typename... Members>
 	Game(LieroGame* g, LieroGameData* d, Members&&... members);
-
-	// Remakes the views of the worms and viewports.
-	void syncViews();
 
 	LieroGame* g;
 	LieroGameData& data;

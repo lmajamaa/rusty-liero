@@ -756,6 +756,97 @@ impl std::ops::DerefMut for WormSettingsRef {
     }
 }
 
+impl LieroSettingsBox {
+    /// The settings as the formats read and write them, with the worms'.
+    pub(crate) fn settings(&self) -> Settings {
+        let mut s = data_settings(self);
+        s.worms = [self.worms[0].worm(), self.worms[1].worm()];
+        s
+    }
+
+    /// Sets the settings and the worms' from `s`.
+    pub(crate) fn set_settings(&mut self, s: &Settings) {
+        let v = settings_view(s);
+        let d = &mut self.data;
+        d.record_replays = v.record_replays;
+        d.load_powerlevel_palette = v.load_powerlevel_palette;
+        d.blood_particle_max = v.blood_particle_max;
+        d.ai_frames = v.ai_frames;
+        d.ai_mutations = v.ai_mutations;
+        d.ai_traces = v.ai_traces;
+        d.ai_parallels = v.ai_parallels;
+        d.fullscreen = v.fullscreen;
+        d.zone_timeout = v.zone_timeout;
+        d.select_bot_weapons = v.select_bot_weapons;
+        d.allow_viewing_spawn_point = v.allow_viewing_spawn_point;
+        d.single_screen_replay = v.single_screen_replay;
+        d.spectator_window = v.spectator_window;
+        d.weap_table = v.weap_table;
+        d.max_bonuses = v.max_bonuses;
+        d.blood = v.blood;
+        d.time_to_lose = v.time_to_lose;
+        d.flags_to_win = v.flags_to_win;
+        d.game_mode = v.game_mode;
+        d.shadow = v.shadow;
+        d.load_change = v.load_change;
+        d.names_on_bonuses = v.names_on_bonuses;
+        d.regenerate_level = v.regenerate_level;
+        d.lives = v.lives;
+        d.loading_time = v.loading_time;
+        d.random_level = v.random_level;
+        d.map = v.map;
+        d.screen_sync = v.screen_sync;
+        self.tc = s.ext.tc.clone();
+        self.level_file = s.level_file.clone();
+        // The game's settings first: a worm's can be one of these, which
+        // the caller may set after.
+        self.worms[0].set_worm(&s.worms[0]);
+        self.worms[1].set_worm(&s.worms[1]);
+    }
+}
+
+/// The settings without the worms', which are left as the defaults.
+fn data_settings(b: &LieroSettingsBox) -> Settings {
+    let d = &b.data;
+    let w = worm_view(&WormSettings::default());
+    let v = LieroSettings {
+        record_replays: d.record_replays,
+        load_powerlevel_palette: d.load_powerlevel_palette,
+        blood_particle_max: d.blood_particle_max,
+        ai_frames: d.ai_frames,
+        ai_mutations: d.ai_mutations,
+        ai_traces: d.ai_traces,
+        ai_parallels: d.ai_parallels,
+        fullscreen: d.fullscreen,
+        zone_timeout: d.zone_timeout,
+        select_bot_weapons: d.select_bot_weapons,
+        allow_viewing_spawn_point: d.allow_viewing_spawn_point,
+        single_screen_replay: d.single_screen_replay,
+        spectator_window: d.spectator_window,
+        tc: str(&b.tc),
+        weap_table: d.weap_table,
+        max_bonuses: d.max_bonuses,
+        blood: d.blood,
+        time_to_lose: d.time_to_lose,
+        flags_to_win: d.flags_to_win,
+        game_mode: d.game_mode,
+        shadow: d.shadow,
+        load_change: d.load_change,
+        names_on_bonuses: d.names_on_bonuses,
+        regenerate_level: d.regenerate_level,
+        lives: d.lives,
+        loading_time: d.loading_time,
+        random_level: d.random_level,
+        level_file: str(&b.level_file),
+        map: d.map,
+        screen_sync: d.screen_sync,
+        worms: [w, w],
+    };
+    // SAFETY: the strings are the box's and the default worm's, which live
+    // through the call.
+    unsafe { settings_from(&v) }
+}
+
 
 /// A worm's settings, shared by the C++ `WormSettings` that refer to them
 /// and the game's worms: each holds a reference (`_retain` and `_free`).
@@ -783,7 +874,7 @@ impl Default for LieroWormSettingsBox {
 
 impl LieroWormSettingsBox {
     /// The settings as the archives read and write them.
-    fn worm(&self) -> WormSettings {
+    pub(crate) fn worm(&self) -> WormSettings {
         let d = &self.data;
         let view = LieroWormSettings {
             health: d.health,
@@ -800,7 +891,7 @@ impl LieroWormSettingsBox {
         unsafe { worm_from(&view) }
     }
 
-    fn set_worm(&mut self, w: &WormSettings) {
+    pub(crate) fn set_worm(&mut self, w: &WormSettings) {
         let v = worm_view(w);
         self.data = LieroWormSettingsData {
             health: v.health,

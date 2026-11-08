@@ -818,6 +818,26 @@ impl LieroLevelBox {
         self.update_view();
     }
 
+    pub(crate) fn data(&self) -> &LieroLevelData {
+        &self.data
+    }
+
+    pub(crate) fn data_mut(&mut self) -> &mut LieroLevelData {
+        &mut self.data
+    }
+
+    pub(crate) fn pixels(&self) -> &[u8] {
+        &self.pixels
+    }
+
+    /// Sets every pixel, with its material (`Level::setPixel`).
+    pub(crate) fn set_pixels(&mut self, pixels: &[u8], material: impl Fn(u8) -> LieroMaterial) {
+        for ((p, m), &new) in self.pixels.iter_mut().zip(&mut self.materials).zip(pixels) {
+            *p = new;
+            *m = material(new);
+        }
+    }
+
     /// Makes this a copy of `other`, in place, so that C++'s references
     /// into `data` stay valid.
     pub fn assign(&mut self, other: &Self) {

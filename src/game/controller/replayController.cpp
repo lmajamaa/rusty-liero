@@ -64,7 +64,7 @@ bool ReplayController::process()
 		if(gfx.testSDLKeyOnce(SDL_SCANCODE_R))
 		{
 			game->assign(*initialGame);
-			replay->reader = initialReader;
+			replay->setPos(initialPos);
 		}
 
 		int ticks = liero_controller_ticks(rust());
@@ -173,7 +173,7 @@ void ReplayController::changeState(GameState newState)
 		}
 		game->startGame();
 		initialGame = game->clone();
-		initialReader = replay->reader;
+		initialPos = replay->pos();
 	}
 	else if(newState == StateGameEnded)
 	{

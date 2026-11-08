@@ -11,6 +11,7 @@
 #include "hashrun.hpp"
 
 #include "settings.hpp"
+#include "bytes.hpp"
 #include "worm.hpp"
 #include "replay.hpp"
 #include "rand.hpp"

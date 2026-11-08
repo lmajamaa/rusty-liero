@@ -144,7 +144,7 @@ void recordGame(std::shared_ptr<Common> common, FsNode const& node, uint32_t see
 {
 	std::unique_ptr<Game> game;
 	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(node));
-	replay->context.replayVersion = version;
+	replay->setVersion(version);
 	if (startTick == 0)
 	{
 		game = setUpGame(common, seed, gameMode, nullptr);
@@ -189,7 +189,7 @@ Bytes settingsArchive(Settings const& settings)
 Bytes wormSettingsArchive(WormSettings const& ws)
 {
 	std::unique_ptr<WormSettings> copy(ws.clone());
-	return writeWormArchive(*copy, GameSerializationContext().replayVersion);
+	return writeWormArchive(*copy, myReplayVersion);
 }
 
 void putU32(Bytes& b, uint32_t v)
@@ -275,7 +275,7 @@ void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& 
 
 		// What R rewinds to in ReplayController.
 		std::unique_ptr<Game> initialGame;
-		ByteReader initialReader = reader.reader;
+		std::size_t initialPos = reader.pos();
 		if (rewindAt > 0)
 		{
 			initialGame = game->clone();
@@ -295,7 +295,7 @@ void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& 
 				// As R in ReplayController::process: back to the start, then
 				// play to here again, which has to give the same game.
 				game->assign(*initialGame);
-				reader.reader = initialReader;
+				reader.setPos(initialPos);
 				int t = 0;
 				while (t < rewindAt && reader.playbackFrame(renderer))
 				{

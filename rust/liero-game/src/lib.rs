@@ -27,6 +27,7 @@ pub mod object;
 pub mod objects;
 pub mod rand;
 pub mod replay;
+pub mod replay_file;
 pub mod screen;
 pub mod selector;
 pub mod settings;

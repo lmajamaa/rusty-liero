@@ -41,7 +41,7 @@ struct ReplayController : CommonController
 
 	std::unique_ptr<Game> initialGame;
 	// Where R rewinds the replay to.
-	ByteReader initialReader;
+	std::size_t initialPos = 0;
 
 
 	std::unique_ptr<ReplayReader> replay;
