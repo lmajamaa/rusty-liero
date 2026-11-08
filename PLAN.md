@@ -31,7 +31,7 @@ The codebase is about 70,000 lines of C++11 and C. SDL2 and SDL2\_image are its 
 
 Phase 1 is done when local 2-player games, menus, sound and saved settings all work in the browser, built from the same sources as the desktop version.
 
-**Toolchain.** The repo's `docker-compose.yml` provides both toolchains in Docker, so nothing else needs installing: `native` (Alpine 3.22, CMake, SDL2, SDL2\_image, Cargo) and `web` (Debian trixie with emsdk 4.0.0 and Bun 1.4.4; emsdk's prebuilt tools need glibc, so not Alpine).
+**Toolchain.** The repo's `docker-compose.yml` provides both toolchains in Docker, so nothing else needs installing: `native` (Alpine 3.22 and Cargo) and `web` (Debian trixie with emsdk 4.0.0 and Bun 1.4.4; emsdk's prebuilt tools need glibc, so not Alpine).
 
 - [x] **Build target.** An `if(EMSCRIPTEN)` branch in `CMakeLists.txt` links Emscripten's SDL2 ports (`-sUSE_SDL=2 -sUSE_SDL_IMAGE=2 -sSDL2_IMAGE_FORMATS=tga,png`) and builds only `openliero`, as `build/web/openliero.html`, `.js` and `.wasm`. `gvl` and `tl` now recognise wasm32 as a little-endian architecture. The build links but doesn't run yet: it needs the main loop and game data steps below.
 - [x] **Main loop.** Linked with `-sASYNCIFY -sASYNCIFY_STACK_SIZE=65536` (the 4 KB default crashed at the first sleep). `Gfx::flip()` calls `emscripten_sleep` every frame, even when behind, because the browser only shows a frame once control returns to it. `SDL_WaitEvent` already yields, since SDL's `SDL_Delay` calls `emscripten_sleep` under ASYNCIFY. Menus, weapon select and 2-player games run. The build also needs `-fexceptions`, because the game reports errors with C++ exceptions. ASYNCIFY grew the `.wasm` from 1.3 MB to 1.9 MB. Phase 3's "Replacing the main loop" has since removed it.

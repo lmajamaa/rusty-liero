@@ -2,9 +2,6 @@
 # 1.87.0, the RUST_VERSION in .github/workflows/test.yml.
 FROM alpine:3.22
 
-# sdl2_image's CMake config only reports itself found when the dev packages
-# of its image codecs are installed too.
-RUN apk add --no-cache build-base cargo cmake sdl2-dev sdl2_image-dev \
-    libavif-dev libjpeg-turbo-dev libpng-dev libwebp-dev tiff-dev
+RUN apk add --no-cache build-base cargo
 
 WORKDIR /src
