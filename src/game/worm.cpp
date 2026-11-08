@@ -135,18 +135,3 @@ int sqrVectorLength(int x, int y)
 {
 	return x*x + y*y;
 }
-
-void Worm::initWeapons(Game& game)
-{
-	Common& common = *game.common;
-	currentWeapon = 0; // It was 1 in OpenLiero A1
-
-	for(int j = 0; j < Settings::selectableWeapons; ++j)
-	{
-		WormWeapon& ww = weapons[j];
-		ww.type = &common.weapons[common.weapOrder[settings->weapons[j] - 1]];
-		ww.ammo = ww.type->ammo;
-		ww.delayLeft = 0;
-		ww.loadingLeft = 0;
-	}
-}

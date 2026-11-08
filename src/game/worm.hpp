@@ -314,7 +314,6 @@ struct Worm
 		return 129 + index * 4;
 	}
 
-	void initWeapons(Game& game);
 	int angleFrame() const;
 
 	// The worm's state in Rust.

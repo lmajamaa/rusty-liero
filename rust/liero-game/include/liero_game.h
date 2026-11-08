@@ -2598,12 +2598,22 @@ typedef struct LieroWeapselEnv {
    * `gfx.rand`, which the menus use.
    */
   struct LieroRand *rand;
+  /**
+   * The weapons the worms are given, and the menus' sounds, which play
+   * on `sound`.
+   */
+  const struct LieroTcData *tc;
+  struct LieroSoundOut sound;
 } LieroWeapselEnv;
 
 /**
  * A worm choosing weapons.
  */
 typedef struct LieroWeapselWorm {
+  /**
+   * The worm in the viewport.
+   */
+  struct LieroWormData *worm;
   /**
    * `WormSettings::weapons`, which the menu changes in place.
    */
@@ -2639,35 +2649,6 @@ typedef struct LieroWeapselSpec {
   struct LieroStr randomize;
   struct LieroStr done;
 } LieroWeapselSpec;
-
-/**
- * What C++ does for weapon selection. `menu` is a position in the menu list.
- */
-typedef struct LieroWeapselHooks {
-  void *ctx;
-  /**
-   * `Worm::pressed`.
-   */
-  bool (*pressed)(void *ctx, int32_t menu, uint32_t control);
-  /**
-   * `Worm::release`.
-   */
-  void (*release)(void *ctx, int32_t menu, uint32_t control);
-  /**
-   * `Worm::pressedOnce`: whether it was pressed, then clears it.
-   */
-  bool (*pressed_once)(void *ctx, int32_t menu, uint32_t control);
-  void (*play_sound)(void *ctx, int32_t sound);
-  /**
-   * Gives the worm weapon `weapon` in `slot`.
-   */
-  void (*set_weapon)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
-  /**
-   * Starts the worm with weapon `weapon` in `slot`, empty, and its first
-   * weapon current.
-   */
-  void (*init_weapon)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
-} LieroWeapselHooks;
 
 #ifdef __cplusplus
 extern "C" {
@@ -4738,15 +4719,14 @@ void liero_weapsel_choose(uint32_t *weapons,
 /**
  * Starts weapon selection (`WeaponSelection::WeaponSelection`): each
  * worm's menu below its viewport's centre, with its starting weapons,
- * which the worm is given.
+ * which the worm is given, empty, with its first weapon current.
  *
  * # Safety
  * `spec`'s pointers are valid for their counts, and see `LieroWeapselEnv`.
- * The worms' `weapons` outlive the selection.
+ * The worms and their `weapons` outlive the selection.
  */
 struct LieroWeapsel *liero_weapsel_new(const struct LieroWeapselSpec *spec,
-                                       const struct LieroWeapselEnv *env,
-                                       const struct LieroWeapselHooks *hooks);
+                                       const struct LieroWeapselEnv *env);
 
 /**
  * # Safety
@@ -4764,6 +4744,20 @@ struct LieroMenuBox *liero_weapsel_menu(struct LieroWeapsel *ws, int32_t i);
 bool liero_weapsel_ready(const struct LieroWeapsel *ws, int32_t i);
 
 /**
+ * Gives each worm its chosen weapons, loaded, with the first current
+ * (`WeaponSelection::finalize`, `Worm::initWeapons`), and releases their
+ * controls.
+ *
+ * # Safety
+ * `worms` holds `count` valid worms, each with its settings' 5 weapon
+ * numbers in `weapons`, and `tc` is valid.
+ */
+void liero_weapsel_finalize(struct LieroWormData *const *worms,
+                            const uint32_t *const *weapons,
+                            int32_t count,
+                            const struct LieroTcData *tc);
+
+/**
  * One frame of weapon selection: `WeaponSelection::processFrame`. Each
  * worm not ready changes the selected weapon with left and right, moves
  * with up and down, and picks random weapons or finishes with fire.
@@ -4772,9 +4766,7 @@ bool liero_weapsel_ready(const struct LieroWeapsel *ws, int32_t i);
  * # Safety
  * See `LieroWeapselEnv`.
  */
-bool liero_weapsel_process(struct LieroWeapsel *ws,
-                           const struct LieroWeapselEnv *env,
-                           const struct LieroWeapselHooks *hooks);
+bool liero_weapsel_process(struct LieroWeapsel *ws, const struct LieroWeapselEnv *env);
 
 /**
  * The split-screen weapon selection over the frozen game: the title, each

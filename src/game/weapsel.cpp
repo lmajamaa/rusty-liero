@@ -25,61 +25,9 @@ LieroWeapselEnv weapselEnv(Game& game)
 	e.weap_order = common.weapOrder.items;
 	e.weapon_count = int32_t(common.weapOrder.size());
 	e.rand = &gfx.rand;
+	e.tc = liero_tc_data(common.tc);
+	e.sound = game.soundPlayer->out();
 	return e;
-}
-
-Worm& menuWorm(WeaponSelection& ws, int menu)
-{
-	return *ws.game.wormByIdx(ws.game.viewports[menu]->wormIdx);
-}
-
-WeaponSelection& weapselOf(void* ctx)
-{
-	return *static_cast<WeaponSelection*>(ctx);
-}
-
-bool hookPressed(void* ctx, int32_t menu, uint32_t control)
-{
-	return menuWorm(weapselOf(ctx), menu).pressed(Worm::Control(control));
-}
-
-void hookRelease(void* ctx, int32_t menu, uint32_t control)
-{
-	menuWorm(weapselOf(ctx), menu).release(Worm::Control(control));
-}
-
-bool hookPressedOnce(void* ctx, int32_t menu, uint32_t control)
-{
-	return menuWorm(weapselOf(ctx), menu).pressedOnce(Worm::Control(control));
-}
-
-void hookPlaySound(void* ctx, int32_t sound)
-{
-	weapselOf(ctx).game.soundPlayer->play(sound);
-}
-
-void hookSetWeapon(void* ctx, int32_t menu, int32_t slot, int32_t weapon)
-{
-	WeaponSelection& ws = weapselOf(ctx);
-	menuWorm(ws, menu).weapons[slot].type = &ws.game.common->weapons[weapon];
-}
-
-void hookInitWeapon(void* ctx, int32_t menu, int32_t slot, int32_t weapon)
-{
-	WeaponSelection& ws = weapselOf(ctx);
-	Worm& worm = menuWorm(ws, menu);
-	WormWeapon& ww = worm.weapons[slot];
-	ww.ammo = 0;
-	ww.type = &ws.game.common->weapons[weapon];
-	worm.currentWeapon = 0;
-}
-
-LieroWeapselHooks weapselHooks(WeaponSelection& ws)
-{
-	LieroWeapselHooks hooks = {
-		&ws, hookPressed, hookRelease, hookPressedOnce, hookPlaySound, hookSetWeapon, hookInitWeapon
-	};
-	return hooks;
 }
 
 }
@@ -101,6 +49,7 @@ WeaponSelection::WeaponSelection(Game& game)
 		Viewport& vp = *game.viewports[i];
 		WormSettings& ws = *game.wormByIdx(vp.wormIdx)->settings;
 		LieroWeapselWorm w;
+		w.worm = game.wormByIdx(vp.wormIdx)->rust();
 		w.weapons = ws.weapons;
 		w.name = ws.name.view();
 		w.color = ws.color;
@@ -125,8 +74,7 @@ WeaponSelection::WeaponSelection(Game& game)
 	spec.done = { reinterpret_cast<uint8_t const*>(done.data()), done.size() };
 
 	LieroWeapselEnv env = weapselEnv(game);
-	LieroWeapselHooks hooks = weapselHooks(*this);
-	box = liero_weapsel_new(&spec, &env, &hooks);
+	box = liero_weapsel_new(&spec, &env);
 }
 
 WeaponSelection::~WeaponSelection()
@@ -225,26 +173,20 @@ void WeaponSelection::draw(Renderer& renderer, GameState state, bool useSpectato
 bool WeaponSelection::processFrame()
 {
 	LieroWeapselEnv env = weapselEnv(game);
-	LieroWeapselHooks hooks = weapselHooks(*this);
-	return liero_weapsel_process(box, &env, &hooks);
+	return liero_weapsel_process(box, &env);
 }
 
+// Gives the worms their weapons and releases their controls, in Rust.
 void WeaponSelection::finalize()
 {
-	for(std::size_t i = 0; i < game.worms.size(); ++i)
+	std::vector<LieroWormData*> worms;
+	std::vector<uint32_t const*> weapons;
+	for (Worm* w : game.worms)
 	{
-		Worm& worm = *game.worms[i];
-
-		worm.initWeapons(game);
-		/*
-		for(int j = 0; j < 6; ++j)
-		{
-			gfx.releaseKey(worm.settings->controls[j]);
-		}*/
+		worms.push_back(w->rust());
+		weapons.push_back(w->settings->weapons);
 	}
-	game.releaseControls();
-
-	// TODO: Make sure the weapon selection is transfered back to Gfx to be saved
+	liero_weapsel_finalize(worms.data(), weapons.data(), int32_t(worms.size()), liero_tc_data(game.common->tc));
 }
 
 void WeaponSelection::focus()
