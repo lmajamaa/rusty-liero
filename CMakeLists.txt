@@ -59,15 +59,11 @@ set(SOURCES
     src/game/gfx/palette.cpp
     src/game/gfx/renderer.cpp
     src/game/gfx/sprite.cpp
-    src/gvl/zlib/miniz.c
     src/gvl/system/system.c
     src/gvl/support/bits.c
     src/gvl/support/debug.cpp
-    src/gvl/support/platform.cpp
-    src/gvl/support/profile.cpp
     src/gvl/io2/stream.cpp
     src/gvl/io2/convert.cpp
-    src/gvl/containers/list.cpp
 )
 
 set(GAME_SOURCES ${SOURCES}

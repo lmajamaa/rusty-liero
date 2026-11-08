@@ -26,9 +26,7 @@ void replayToVideo(
 	std::string const& fullPath,
 	std::string const& replayVideoName)
 {
-	auto replay(
-		gvl::to_source(new gvl::file_bucket_pipe(fullPath.c_str(), "rb")));
-	ReplayReader replayReader(replay);
+	ReplayReader replayReader{FsNode(fullPath)};
 	Renderer renderer;
 
 	if (spectator)
