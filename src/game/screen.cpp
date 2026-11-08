@@ -189,6 +189,8 @@ void hostTextInput(bool on)
 }
 
 bool hostTestKeyOnce(uint32_t scancode) { return gfx.testSDLKeyOnce(SDL_Scancode(scancode)); }
+bool hostTestKey(uint32_t scancode) { return gfx.testSDLKey(SDL_Scancode(scancode)); }
+void hostDrawBasicMenu() { gfx.drawBasicMenu(); }
 
 size_t hostTypedKeys(LieroTypedKey* out, size_t cap)
 {
@@ -221,6 +223,8 @@ void setScreenHost()
 	h.typed_keys = hostTypedKeys;
 	h.ticks = hostTicks;
 	h.menu_fade = hostMenuFade;
+	h.test_key = hostTestKey;
+	h.draw_basic_menu = hostDrawBasicMenu;
 	liero_screen_set_host(&h);
 }
 
@@ -288,6 +292,11 @@ void rethrowDeferred()
 		deferred = nullptr;
 		std::rethrow_exception(e);
 	}
+}
+
+LieroScreen screenToFfi(std::unique_ptr<Screen> s)
+{
+	return toFfi(std::move(s));
 }
 
 std::unique_ptr<Screen> fromFfi(LieroScreen s)

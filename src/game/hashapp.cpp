@@ -5,7 +5,8 @@
 // of the hash run starts the app's screens as the game does, with an AppDriver
 // (gfx.hpp) in place of the window: each flip prints a hash of the screen
 // and its palette (lines "app N hash frame"), and the events come from a
-// timeline of key presses and typing fixed before the run. Nothing about it
+// timeline of key presses and typing fixed before the run. Each sound started
+// prints a line too ("app-sound N id"). Nothing about it
 // depends on how the loops are written, so a version that runs the same
 // screens one frame at a time from a single loop must show the same frames.
 //
@@ -65,6 +66,11 @@ struct ScriptDriver : AppDriver
 		++now;
 		if (shown > limit)
 			throw std::runtime_error("the app ran past the end of its script");
+	}
+
+	void sound(int id) override
+	{
+		std::printf("app-sound %d %016x\n", shown, unsigned(id));
 	}
 
 	bool pollEvent(SDL_Event& ev) override
@@ -183,9 +189,23 @@ void buildScript(Script& s)
 	s.press(SDL_SCANCODE_RETURN);
 	s.wait(20);
 	s.press(SDL_SCANCODE_DOWN, 3);
-	s.press(SDL_SCANCODE_RIGHT);
+	s.press(SDL_SCANCODE_RIGHT);             // bots only, and back
+	s.press(SDL_SCANCODE_LEFT);
+	s.press(SDL_SCANCODE_UP);
+	s.press(SDL_SCANCODE_LEFT);              // off, wrapping round
+	s.press(SDL_SCANCODE_PAGEDOWN);
+	s.press(SDL_SCANCODE_PAGEUP);
+	s.press(SDL_SCANCODE_Z);                 // the first name starting with Z
 	s.press(SDL_SCANCODE_ESCAPE);
-	s.press(SDL_SCANCODE_DOWN, 7);           // SAVE SETUP AS...
+	s.press(SDL_SCANCODE_DOWN);              // MAX BONUSES, held up, then
+	s.press(SDL_SCANCODE_RIGHT, 1, 30);      // more digits than the box takes
+	s.press(SDL_SCANCODE_RETURN);
+	s.press(SDL_SCANCODE_BACKSPACE, 3);
+	s.type("123");
+	s.press(SDL_SCANCODE_RETURN);
+	s.press(SDL_SCANCODE_DOWN, 3);           // AMOUNT OF BLOOD, not typed in
+	s.press(SDL_SCANCODE_RETURN);
+	s.press(SDL_SCANCODE_DOWN, 3);           // SAVE SETUP AS...
 	s.press(SDL_SCANCODE_RETURN);
 	s.type("HASHAPP");
 	s.press(SDL_SCANCODE_RETURN);
@@ -196,16 +216,17 @@ void buildScript(Script& s)
 	s.press(SDL_SCANCODE_RETURN);
 	s.press(SDL_SCANCODE_ESCAPE);
 
-	// Bots get random weapons, so the weapon screen is skipped. Games are
-	// recorded, which is on by default.
+	// Bots keep the weapons they have, so the weapon screen waits only for
+	// the right player. Games are recorded, which is on by default.
 	s.press(SDL_SCANCODE_F2);
 	s.press(SDL_SCANCODE_DOWN, 10);          // BOT WEAPONS
-	s.press(SDL_SCANCODE_LEFT);
+	s.press(SDL_SCANCODE_RIGHT);
 	s.press(SDL_SCANCODE_ESCAPE);
 
-	// The left player: a name, a key, a saved and reloaded profile, and the
-	// CPU bot.
-	s.press(SDL_SCANCODE_F5);
+	// The left player, chosen in the main menu: a name, a key, a saved and
+	// reloaded profile, and the CPU bot.
+	s.press(SDL_SCANCODE_DOWN, 4);           // OPTIONS to LEFT PLAYER
+	s.press(SDL_SCANCODE_RETURN);
 	s.wait(10);
 	s.press(SDL_SCANCODE_DOWN, 2);           // NAME
 	s.press(SDL_SCANCODE_RETURN);
@@ -234,16 +255,25 @@ void buildScript(Script& s)
 	s.press(SDL_SCANCODE_RIGHT);
 	s.press(SDL_SCANCODE_ESCAPE);
 
-	// The right player is a CPU bot too.
-	s.press(SDL_SCANCODE_F6);
-	s.press(SDL_SCANCODE_UP);
-	s.press(SDL_SCANCODE_RIGHT);
-	s.press(SDL_SCANCODE_ESCAPE);
-
-	// A game until one bot is out of lives, then the stats screen.
+	// A game until one player is out of lives, then the stats screen. The
+	// right player, on its default keys, picks weapons: a new first one,
+	// then down to DONE.
 	s.press(SDL_SCANCODE_F1);
-	s.wait(3000);
-	s.press(SDL_SCANCODE_RIGHT);
+	s.wait(60);
+	s.press(SDL_SCANCODE_K);
+	s.press(SDL_SCANCODE_L);
+	s.press(SDL_SCANCODE_K, 5);
+	s.press(SDL_SCANCODE_SLASH);
+	s.wait(3000 - 60 - 8 * 8);
+	// Scrolled down, then held up past the top; to the right pane and past
+	// it, then left with the key held, which moves one pane.
+	s.press(SDL_SCANCODE_DOWN, 1, 8);
+	s.wait(20);
+	s.press(SDL_SCANCODE_UP, 1, 20);
+	s.wait(20);
+	s.press(SDL_SCANCODE_RIGHT, 2);
+	s.wait(30);
+	s.press(SDL_SCANCODE_LEFT, 1, 6);
 	s.wait(30);
 	s.press(SDL_SCANCODE_ESCAPE);
 	s.wait(60);

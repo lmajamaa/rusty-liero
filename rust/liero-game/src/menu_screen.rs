@@ -1,0 +1,393 @@
+//! The main menu screen: the main menu with the match setup, player or
+//! options menu beside it, its keys, and the fade-out when an item is
+//! chosen (`MenuScreen` and `Gfx::menuStep` in C++). It closes with the item
+//! chosen.
+//!
+//! The menus' items and what they do stay in C++ for now
+//! (`LieroMenuScreenHooks`): an item may open a screen, and the screen goes
+//! on where it stopped when that one closes.
+
+use crate::menu::LieroMenuBox;
+use crate::screen::{Host, LieroScreen, Screen, Tick};
+
+const SCANCODE_RETURN: u32 = 40;
+const SCANCODE_ESCAPE: u32 = 41;
+const SCANCODE_F1: u32 = 58;
+const SCANCODE_F2: u32 = 59;
+const SCANCODE_F3: u32 = 60;
+const SCANCODE_F5: u32 = 62;
+const SCANCODE_F6: u32 = 63;
+const SCANCODE_F7: u32 = 64;
+const SCANCODE_F8: u32 = 65;
+const SCANCODE_PAGEUP: u32 = 75;
+const SCANCODE_PAGEDOWN: u32 = 78;
+const SCANCODE_RIGHT: u32 = 79;
+const SCANCODE_LEFT: u32 = 80;
+const SCANCODE_DOWN: u32 = 81;
+const SCANCODE_UP: u32 = 82;
+const SCANCODE_KP_ENTER: u32 = 88;
+
+const SOUND_UP: i32 = 26;
+const SOUND_DOWN: i32 = 25;
+const SOUND_CHOICE: i32 = 27;
+
+/// The menus, as `LieroMenuScreenHooks` names them.
+pub const LIERO_MENU_MAIN: i32 = 0;
+pub const LIERO_MENU_SETTINGS: i32 = 1;
+pub const LIERO_MENU_PLAYER: i32 = 2;
+pub const LIERO_MENU_HIDDEN: i32 = 3;
+
+/// The main menu's item ids (`MainMenu`).
+pub const LIERO_MAIN_SETTINGS: i32 = 2;
+pub const LIERO_MAIN_PLAYER1_SETTINGS: i32 = 3;
+pub const LIERO_MAIN_PLAYER2_SETTINGS: i32 = 4;
+pub const LIERO_MAIN_ADVANCED: i32 = 5;
+pub const LIERO_MAIN_QUIT: i32 = 6;
+pub const LIERO_MAIN_REPLAYS: i32 = 7;
+pub const LIERO_MAIN_TC: i32 = 9;
+
+/// What the menu screen calls in C++. Menus are named by the
+/// `LIERO_MENU_*` constants.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct LieroMenuScreenHooks {
+    /// The menu's box, which stays put while the screen is up.
+    pub menu: unsafe extern "C" fn(kind: i32) -> *mut LieroMenuBox,
+    /// The menu taking the keys (`Gfx::curMenu`), and changing it.
+    pub cur: unsafe extern "C" fn() -> i32,
+    pub set_cur: unsafe extern "C" fn(kind: i32),
+    /// Blacks out the palettes before the first frame.
+    pub clear_palettes: unsafe extern "C" fn(),
+    /// Sets the menus up (`Gfx::menuStart`) and returns the item F1 picks.
+    pub start: unsafe extern "C" fn() -> i32,
+    /// `Gfx::menuFade(true)`, for the fade-out.
+    pub fade_out: unsafe extern "C" fn(),
+    /// The screen's fade level, and setting it.
+    pub fade_value: unsafe extern "C" fn() -> i32,
+    pub set_fade_value: unsafe extern "C" fn(v: i32),
+    /// In the browser, saves liero.cfg when the settings changed.
+    pub save_settings_if_changed: unsafe extern "C" fn(),
+    /// Draws the menus over the frozen screen.
+    pub draw: unsafe extern "C" fn(),
+    /// The menu's `onEnter` and `onLeftRight` on its selected item.
+    pub enter: unsafe extern "C" fn(kind: i32) -> i32,
+    pub left_right: unsafe extern "C" fn(kind: i32, dir: i32) -> bool,
+    /// Moves the screen the last `enter` opened (`Gfx::open`) into `out`.
+    /// False if it opened none.
+    pub take_opened: unsafe extern "C" fn(out: *mut LieroScreen) -> bool,
+    /// What the item that opened it does with the screen's result; returns
+    /// what the item's `onEnter` would have.
+    pub then: unsafe extern "C" fn(result: i32) -> i32,
+    /// Shows player `player`'s menu (`Gfx::playerSettings`).
+    pub player_settings: unsafe extern "C" fn(player: i32),
+    /// Shows the options menu (`Gfx::openHiddenMenu`).
+    pub open_hidden_menu: unsafe extern "C" fn(),
+    /// F8: the developers' random TC.
+    pub randomize_tc: unsafe extern "C" fn(),
+    /// Lets go of left and right, so they act once (`resetLeftRight`).
+    pub release_left_right: unsafe extern "C" fn(),
+}
+
+/// Where a pass stopped for a screen an item opened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Part {
+    Top,
+    AfterEnter,
+    AfterF3,
+}
+
+/// What the item's result means.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Use {
+    Ignore,
+    Select,
+    Tc,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Phase {
+    Start,
+    Setup,
+    Menu,
+    FadeOut,
+}
+
+/// How a pass ended.
+enum Step {
+    Done,
+    Opened(LieroScreen),
+    Close,
+}
+
+struct MenuScreen {
+    h: LieroMenuScreenHooks,
+    phase: Phase,
+    start_item: i32,
+    selected: i32,
+    part: Part,
+    how: Use,
+    entered: i32,
+    resumed: bool,
+}
+
+impl MenuScreen {
+    fn menu(&self, kind: i32) -> &mut LieroMenuBox {
+        // SAFETY: C++'s menus outlive the screen.
+        unsafe { &mut *(self.h.menu)(kind) }
+    }
+
+    fn cur(&self) -> i32 {
+        unsafe { (self.h.cur)() }
+    }
+
+    fn set_cur(&self, kind: i32) {
+        unsafe { (self.h.set_cur)(kind) }
+    }
+
+    fn move_main_to(&self, id: i32) {
+        let main = self.menu(LIERO_MENU_MAIN);
+        let i = (0..main.0.len()).find(|&i| main.0.ids[i] == id).map_or(-1, |i| i as i32);
+        main.0.move_to(i);
+    }
+
+    fn main_selected_id(&self) -> i32 {
+        let main = self.menu(LIERO_MENU_MAIN);
+        main.0.selected().map_or(-1, |i| main.0.ids[i])
+    }
+
+    /// What an item's `onEnter` returned, put to `how`. True if the menu
+    /// closes at once (a new TC).
+    fn take_result(&mut self, how: Use, r: i32) -> bool {
+        match how {
+            Use::Select => self.selected = r,
+            Use::Tc if r == LIERO_MAIN_TC => {
+                self.selected = LIERO_MAIN_TC;
+                return true;
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Enter on `kind`'s item. Returns the screen it opened, if any; else
+    /// whether the menu closes at once.
+    fn enter(&mut self, kind: i32, how: Use) -> Result<bool, LieroScreen> {
+        let r = unsafe { (self.h.enter)(kind) };
+        let mut opened = LieroScreen::empty();
+        if unsafe { (self.h.take_opened)(&mut opened) } {
+            self.how = how;
+            return Err(opened);
+        }
+        Ok(self.take_result(how, r))
+    }
+
+    /// One pass of the menu's loop (`Gfx::menuStep`).
+    fn step(&mut self, host: &Host) -> Step {
+        let h = self.h;
+        if self.part != Part::Top {
+            if self.take_result(self.how, self.entered) {
+                return Step::Close;
+            }
+        }
+
+        // Enter or F3 on an item: stop at `part` if it opened a screen.
+        macro_rules! enter {
+            ($kind:expr, $how:expr, $part:expr) => {
+                match self.enter($kind, $how) {
+                    Err(screen) => {
+                        self.part = $part;
+                        return Step::Opened(screen);
+                    }
+                    Ok(close) => close,
+                }
+            };
+        }
+
+        if self.part == Part::Top {
+            unsafe {
+                (h.save_settings_if_changed)();
+                (h.draw)();
+            }
+
+            if host.test_key_once(SCANCODE_ESCAPE) {
+                if self.cur() == LIERO_MENU_MAIN {
+                    self.move_main_to(LIERO_MAIN_QUIT);
+                } else {
+                    self.set_cur(LIERO_MENU_MAIN);
+                }
+            }
+            if host.test_key_once(SCANCODE_UP) {
+                host.play_sound(SOUND_UP);
+                self.menu(self.cur()).0.movement(-1);
+            }
+            if host.test_key_once(SCANCODE_DOWN) {
+                host.play_sound(SOUND_DOWN);
+                self.menu(self.cur()).0.movement(1);
+            }
+
+            if host.test_key_once(SCANCODE_RETURN) || host.test_key_once(SCANCODE_KP_ENTER) {
+                let cur = self.cur();
+                if cur == LIERO_MENU_MAIN {
+                    host.play_sound(SOUND_CHOICE);
+                    let s = self.main_selected_id();
+                    match s {
+                        LIERO_MAIN_SETTINGS => self.set_cur(LIERO_MENU_SETTINGS),
+                        LIERO_MAIN_PLAYER1_SETTINGS | LIERO_MAIN_PLAYER2_SETTINGS => unsafe {
+                            (h.player_settings)(s - LIERO_MAIN_PLAYER1_SETTINGS)
+                        },
+                        LIERO_MAIN_ADVANCED => unsafe { (h.open_hidden_menu)() },
+                        LIERO_MAIN_REPLAYS => {
+                            enter!(cur, Use::Select, Part::AfterEnter);
+                        }
+                        LIERO_MAIN_TC => {
+                            if enter!(cur, Use::Tc, Part::AfterEnter) {
+                                return Step::Close;
+                            }
+                        }
+                        _ => {
+                            self.set_cur(LIERO_MENU_MAIN);
+                            self.selected = s;
+                        }
+                    }
+                } else if cur == LIERO_MENU_SETTINGS {
+                    enter!(cur, Use::Ignore, Part::AfterEnter);
+                } else {
+                    enter!(cur, Use::Select, Part::AfterEnter);
+                }
+            }
+        }
+
+        if self.part != Part::AfterF3 {
+            if host.test_key_once(SCANCODE_F1) {
+                self.set_cur(LIERO_MENU_MAIN);
+                self.move_main_to(self.start_item);
+                self.selected = self.start_item;
+            }
+            if host.test_key_once(SCANCODE_F2) {
+                self.move_main_to(LIERO_MAIN_ADVANCED);
+                unsafe { (h.open_hidden_menu)() };
+            }
+            if host.test_key_once(SCANCODE_F3) {
+                self.set_cur(LIERO_MENU_MAIN);
+                self.move_main_to(LIERO_MAIN_REPLAYS);
+                enter!(LIERO_MENU_MAIN, Use::Select, Part::AfterF3);
+            }
+        }
+
+        if host.test_key_once(SCANCODE_F5) {
+            self.move_main_to(LIERO_MAIN_PLAYER1_SETTINGS);
+            unsafe { (h.player_settings)(0) };
+        }
+        if host.test_key_once(SCANCODE_F6) {
+            self.move_main_to(LIERO_MAIN_PLAYER2_SETTINGS);
+            unsafe { (h.player_settings)(1) };
+        }
+        if host.test_key_once(SCANCODE_F7) {
+            self.move_main_to(LIERO_MAIN_SETTINGS);
+            self.set_cur(LIERO_MENU_SETTINGS);
+        }
+        if host.test_key_once(SCANCODE_F8) {
+            unsafe { (h.randomize_tc)() };
+        }
+
+        for (key, dir) in [(SCANCODE_LEFT, -1), (SCANCODE_RIGHT, 1)] {
+            if host.test_key(key) && !unsafe { (h.left_right)(self.cur(), dir) } {
+                unsafe { (h.release_left_right)() };
+            }
+        }
+
+        if host.test_key_once(SCANCODE_PAGEUP) {
+            host.play_sound(SOUND_UP);
+            self.menu(self.cur()).0.movement_page(-1);
+        }
+        if host.test_key_once(SCANCODE_PAGEDOWN) {
+            host.play_sound(SOUND_DOWN);
+            self.menu(self.cur()).0.movement_page(1);
+        }
+
+        self.part = Part::Top;
+        Step::Done
+    }
+
+    fn run_step(&mut self, host: &Host) -> Tick {
+        match self.step(host) {
+            Step::Close => Tick::close(self.selected),
+            Step::Opened(screen) => Tick::push(screen),
+            Step::Done => {
+                host.menu_fade();
+                Tick::stay(true)
+            }
+        }
+    }
+}
+
+impl Screen for MenuScreen {
+    fn tick(&mut self, host: &Host) -> Tick {
+        // The pass an item stopped goes on; the screen that closed read the
+        // events.
+        if self.resumed {
+            self.resumed = false;
+            return self.run_step(host);
+        }
+
+        // Each tick reads the events that came with the frame before it.
+        if self.phase != Phase::Start {
+            host.process();
+        }
+
+        let h = self.h;
+        match self.phase {
+            Phase::Start => {
+                unsafe { (h.clear_palettes)() };
+                self.phase = Phase::Setup;
+                Tick::stay(true)
+            }
+            Phase::Setup => {
+                self.start_item = unsafe { (h.start)() };
+                self.selected = -1;
+                self.phase = Phase::Menu;
+                self.run_step(host)
+            }
+            Phase::Menu => {
+                if self.selected < 0 {
+                    return self.run_step(host);
+                }
+                self.phase = Phase::FadeOut;
+                unsafe {
+                    (h.set_fade_value)(32);
+                    (h.fade_out)();
+                }
+                Tick::stay(true)
+            }
+            Phase::FadeOut => {
+                let v = unsafe { (h.fade_value)() } - 1;
+                unsafe { (h.set_fade_value)(v) };
+                if v > 0 {
+                    unsafe { (h.fade_out)() };
+                    return Tick::stay(true);
+                }
+                Tick::close(self.selected)
+            }
+        }
+    }
+
+    fn resume(&mut self, _host: &Host, result: i32) {
+        self.entered = unsafe { (self.h.then)(result) };
+        self.resumed = true;
+    }
+}
+
+/// The main menu screen.
+#[no_mangle]
+pub extern "C" fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> LieroScreen {
+    crate::screen::into_ffi(Box::new(MenuScreen {
+        h: hooks,
+        phase: Phase::Start,
+        start_item: 0,
+        selected: -1,
+        part: Part::Top,
+        how: Use::Ignore,
+        entered: -1,
+        resumed: false,
+    }))
+}

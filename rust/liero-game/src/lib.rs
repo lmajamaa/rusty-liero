@@ -6,15 +6,18 @@
 //! (see README).
 
 pub mod ai;
+pub mod app_screens;
 pub mod boxes;
 pub mod controller;
 pub mod cpp_sort;
 pub mod game;
 pub mod gfx;
+pub mod item;
 pub mod keys;
 pub mod level;
 pub mod material;
 pub mod menu;
+pub mod menu_screen;
 pub mod math;
 pub mod object;
 pub mod objects;
@@ -29,6 +32,7 @@ pub mod tc;
 pub mod text;
 pub mod viewport;
 pub mod weapon;
+pub mod weapon_options;
 pub mod weapsel;
 pub mod worm;
 

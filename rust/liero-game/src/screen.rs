@@ -137,6 +137,11 @@ pub struct LieroScreenHost {
     /// Fades the menus in and cycles their colours, once a frame
     /// (`Gfx::menuFade`).
     pub menu_fade: Option<unsafe extern "C" fn()>,
+    /// Whether an SDL key is held (`Gfx::testSDLKey`).
+    pub test_key: Option<unsafe extern "C" fn(scancode: u32) -> bool>,
+    /// The frozen screen with the main menu over it, greyed out while
+    /// another menu is up (`Gfx::drawBasicMenu`).
+    pub draw_basic_menu: Option<unsafe extern "C" fn()>,
 }
 
 static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
@@ -205,6 +210,14 @@ impl Host {
             unsafe { f(on) }
         }
     }
+    pub fn test_key(&self, scancode: u32) -> bool {
+        self.0.test_key.is_some_and(|f| unsafe { f(scancode) })
+    }
+    pub fn draw_basic_menu(&self) {
+        if let Some(f) = self.0.draw_basic_menu {
+            unsafe { f() }
+        }
+    }
     pub fn test_key_once(&self, scancode: u32) -> bool {
         self.0.test_key_once.is_some_and(|f| unsafe { f(scancode) })
     }
@@ -260,6 +273,11 @@ fn host() -> Host {
     Host(HOST.get().copied().unwrap_or_default())
 }
 
+/// The host, for a screen being made from C++.
+pub(crate) fn current_host() -> Host {
+    host()
+}
+
 type BoxedScreen = Box<dyn Screen>;
 
 unsafe extern "C" fn rust_tick(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen) {
@@ -299,7 +317,7 @@ pub struct LieroApp {
 }
 
 impl LieroScreen {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         LieroScreen { data: std::ptr::null_mut(), tick: None, resume: None, free: None }
     }
 

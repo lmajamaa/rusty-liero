@@ -32,17 +32,25 @@ void hashString(Fnv& f, std::string const& s)
 	f.bytes(reinterpret_cast<uint8_t const*>(s.data()), s.size());
 }
 
+void hashMenu(Fnv& f, LieroMenuBox* b)
+{
+	LieroMenu& m = *liero_menu_box_state(b);
+	f.add(int32_t(m.selection)); f.add(int32_t(m.top_item)); f.add(int32_t(m.bottom_item));
+	f.add(int32_t(m.visible_item_count)); f.add(int32_t(m.height));
+	auto text = [](LieroStr s) { return std::string(reinterpret_cast<char const*>(s.ptr), s.len); };
+	hashString(f, text(liero_menu_box_search_text(b)));
+	for (int i = 0; i < liero_menu_box_count(b); ++i)
+	{
+		LieroMenuItem it = liero_menu_box_item(b, i);
+		hashString(f, text(it.string));
+		hashString(f, text(it.value));
+		f.add(it.has_value); f.add(it.visible); f.add(it.selectable);
+	}
+}
+
 void hashMenu(Fnv& f, Menu& m)
 {
-	f.add(int32_t(m.selection())); f.add(int32_t(m.topItem)); f.add(int32_t(m.bottomItem));
-	f.add(int32_t(m.visibleItemCount)); f.add(int32_t(m.height));
-	hashString(f, m.searchPrefix);
-	for (MenuItem& i : m.items)
-	{
-		hashString(f, i.string);
-		hashString(f, i.value);
-		f.add(i.hasValue); f.add(i.visible); f.add(i.selectable);
-	}
+	hashMenu(f, m.box);
 }
 
 void hashScreen(Fnv& f, Renderer& r)
@@ -70,9 +78,9 @@ struct AvailabilityMenu : Menu
 	{
 	}
 
-	ItemBehavior* getItemBehavior(Common& common, MenuItem& item)
+	ItemBehavior* getItemBehavior(Common& common, int item)
 	{
-		int index = common.weapOrder[item.id];
+		int index = common.weapOrder[itemId(item)];
 		return new ArrayEnumBehavior(common, gfx.settings->weapTable[index], common.texts.weapStates);
 	}
 };
@@ -126,9 +134,9 @@ void runMenu(Common& common, char const* name, Menu& menu, std::set<int> const& 
 		}
 		case 7:
 		{
-			int i = int(r(uint32_t(menu.items.size())));
-			if (menu.items[i].id >= 0 && menu.indexFromId(menu.items[i].id) == i)
-				menu.setVisibility(menu.items[i].id, !menu.items[i].visible);
+			int i = int(r(uint32_t(menu.itemCount())));
+			if (menu.itemId(i) >= 0 && menu.indexFromId(menu.itemId(i)) == i)
+				menu.setVisibility(menu.itemId(i), !menu.itemVisible(i));
 			break;
 		}
 		case 8: menu.updateItems(common); break;
@@ -167,7 +175,7 @@ void runMenus(gvl::shared_ptr<Common> common)
 
 	// As the menu loop sets them up before a game.
 	gfx.mainMenu.setVisibility(MainMenu::MaResumeGame, false);
-	gfx.mainMenu.itemFromId(MainMenu::MaNewGame)->string = "NEW GAME (F1)";
+	gfx.mainMenu.setItemString(gfx.mainMenu.indexFromId(MainMenu::MaNewGame), "NEW GAME (F1)");
 
 	runMenu(c, "menu-main", gfx.mainMenu, { MainMenu::MaReplays, MainMenu::MaTc }, {}, false, 1, 200);
 
@@ -266,10 +274,10 @@ void runWeaponSelection(gvl::shared_ptr<Common> common, char const* name, uint32
 		++gfx.menuCycles;
 
 		Fnv f;
-		for (std::size_t i = 0; i < ws.menus.size(); ++i)
+		for (int i = 0; i < ws.menuCount(); ++i)
 		{
-			f.add(bool(ws.isReady[i]));
-			hashMenu(f, ws.menus[i]);
+			f.add(ws.isReady(i));
+			hashMenu(f, ws.menu(i));
 		}
 		for (Worm* w : game.worms)
 		{

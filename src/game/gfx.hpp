@@ -83,9 +83,9 @@ struct PlayerMenu : Menu
 		PlLoadedProfile,
 	};
 
-	virtual void drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled);
+	virtual void drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled);
 
-	virtual ItemBehavior* getItemBehavior(Common& common, MenuItem& item);
+	virtual ItemBehavior* getItemBehavior(Common& common, int item);
 
 	gvl::shared_ptr<WormSettings> ws;
 };
@@ -118,18 +118,11 @@ struct SettingsMenu : Menu
 	{
 	}
 
-	virtual ItemBehavior* getItemBehavior(Common& common, MenuItem& item);
+	virtual ItemBehavior* getItemBehavior(Common& common, int item);
 
 	virtual void onUpdate();
 };
 
-// Where a pass of the main menu's loop (Gfx::menuStep) stopped for a screen
-// a menu item opened, and what to do with what the item returns.
-struct MenuPass
-{
-	enum Part { Top, AfterEnter, AfterF3 } part = Top;
-	enum Use { Ignore, Select, Tc } use = Ignore;
-};
 
 // The file selectors and weapon options (gfx.cpp). The TC selector puts the
 // TC chosen in `chosen`. The replay selector closes with MainMenu::MaReplay
@@ -174,6 +167,8 @@ struct AppDriver
 	virtual void idle() = 0;
 	virtual uint32_t ticks() = 0;
 	virtual std::time_t time() = 0;
+	// A sound was started (Sfx::play).
+	virtual void sound(int id) {}
 };
 
 struct Gfx
@@ -261,15 +256,11 @@ struct Gfx
 
 	void processEvent(SDL_Event& ev, Controller* controller = 0);
 
-	// The main menu (MenuScreen in gfx.cpp): its setup, which returns the
-	// item F1 picks, and one pass of its loop, without the flip, which goes
-	// on from where `pass` stopped with `entered`, what the item that stopped
-	// it returned.
-	enum { MenuDone, MenuOpened, MenuClose };
+	// The main menu's setup (rust/liero-game/src/menu_screen.rs runs the
+	// menu), which returns the item F1 picks.
 	int menuStart();
-	// MenuDone: the pass drew a frame. MenuOpened: an item opened a screen
-	// (`opening`). MenuClose: the menu closes at once with `selected`.
-	int menuStep(int startItemId, int& selected, MenuPass& pass, int entered);
+	// F8 on the menu: the developers' random TC.
+	void randomizeTc();
 
 	// A menu item opens `screen` from its onEnter, or a controller from its
 	// focus or process; the menu or game screen pushes it, and when it closes

@@ -7,9 +7,15 @@
 
 struct Game;
 
+// Weapon selection before a game. Its menus and which worms are ready are in
+// Rust (LieroWeapsel, rust/liero-game/src/weapsel.rs).
 struct WeaponSelection
 {
 	WeaponSelection(Game& game);
+	~WeaponSelection();
+
+	WeaponSelection(WeaponSelection const&) = delete;
+	WeaponSelection& operator=(WeaponSelection const&) = delete;
 
 	void draw(Renderer& renderer, GameState state, bool useSpectatorViewports);
 	void drawNormalViewports(Renderer& renderer, GameState state);
@@ -20,12 +26,12 @@ struct WeaponSelection
 	void focus();
 	void unfocus();
 
-	Game& game;
+	int menuCount() const { return liero_weapsel_menu_count(box); }
+	LieroMenuBox* menu(int i) { return liero_weapsel_menu(box, i); }
+	bool isReady(int i) const { return liero_weapsel_ready(box, i); }
 
-	int enabledWeaps;
-	int fadeValue;
-	std::vector<bool> isReady;
-	std::vector<Menu> menus;
+	Game& game;
+	LieroWeapsel* box;
 	bool cachedBackground, cachedSpectatorBackground;
 	bool focused;
 };

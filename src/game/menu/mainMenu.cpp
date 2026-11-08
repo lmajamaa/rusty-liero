@@ -10,7 +10,7 @@ struct ReplaySelectBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
@@ -32,7 +32,7 @@ struct TcSelectBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		std::shared_ptr<std::unique_ptr<Common>> chosen(new std::unique_ptr<Common>());
@@ -52,9 +52,9 @@ struct TcSelectBehavior : ItemBehavior
 	Common& common;
 };
 
-ItemBehavior* MainMenu::getItemBehavior(Common& common, MenuItem& item)
+ItemBehavior* MainMenu::getItemBehavior(Common& common, int item)
 {
-	switch(item.id)
+	switch(itemId(item))
 	{
 		case MaReplays:
 			return new ReplaySelectBehavior(common);

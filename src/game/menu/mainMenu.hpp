@@ -27,7 +27,7 @@ struct MainMenu : Menu
 	{
 	}
 
-	virtual ItemBehavior* getItemBehavior(Common& common, MenuItem& item);
+	virtual ItemBehavior* getItemBehavior(Common& common, int item);
 };
 
 #endif // LIERO_MENU_MAINMENU_HPP

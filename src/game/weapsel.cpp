@@ -28,47 +28,6 @@ LieroWeapselEnv weapselEnv(Game& game)
 	return e;
 }
 
-// The menus as Rust sees them, written back when done.
-struct WeapselMenus
-{
-	WeapselMenus(WeaponSelection& ws)
-	: ws(ws)
-	{
-		Game& game = ws.game;
-		for (std::size_t i = 0; i < ws.menus.size(); ++i)
-		{
-			Menu& m = ws.menus[i];
-			WormSettings& s = *game.wormByIdx(game.viewports[i]->wormIdx)->settings;
-			items.push_back(m.itemViews());
-			LieroWeapselMenu v;
-			v.menu = m.state();
-			v.items = items.back().data();
-			v.item_count = int32_t(items.back().size());
-			v.weapons = s.weapons;
-			v.ready = ws.isReady[i];
-			v.name = s.name.view();
-			v.color = s.color;
-			views.push_back(v);
-		}
-		// `items` doesn't move from here on.
-		for (std::size_t i = 0; i < views.size(); ++i)
-			views[i].items = items[i].data();
-	}
-
-	~WeapselMenus()
-	{
-		for (std::size_t i = 0; i < views.size(); ++i)
-		{
-			ws.menus[i].setState(views[i].menu, items[i]);
-			ws.isReady[i] = views[i].ready;
-		}
-	}
-
-	WeaponSelection& ws;
-	std::vector<std::vector<LieroMenuItem>> items;
-	std::vector<LieroWeapselMenu> views;
-};
-
 Worm& menuWorm(WeaponSelection& ws, int menu)
 {
 	return *ws.game.wormByIdx(ws.game.viewports[menu]->wormIdx);
@@ -99,80 +58,80 @@ void hookPlaySound(void* ctx, int32_t sound)
 	weapselOf(ctx).game.soundPlayer->play(sound);
 }
 
-void hookSetItemName(void* ctx, int32_t menu, int32_t slot, int32_t weapon)
-{
-	WeaponSelection& ws = weapselOf(ctx);
-	ws.menus[menu].items[slot + 1].string = ws.game.common->weapons[weapon].name;
-}
-
 void hookSetWeapon(void* ctx, int32_t menu, int32_t slot, int32_t weapon)
 {
 	WeaponSelection& ws = weapselOf(ctx);
 	menuWorm(ws, menu).weapons[slot].type = &ws.game.common->weapons[weapon];
-	hookSetItemName(ctx, menu, slot, weapon);
+}
+
+void hookInitWeapon(void* ctx, int32_t menu, int32_t slot, int32_t weapon)
+{
+	WeaponSelection& ws = weapselOf(ctx);
+	Worm& worm = menuWorm(ws, menu);
+	WormWeapon& ww = worm.weapons[slot];
+	ww.ammo = 0;
+	ww.type = &ws.game.common->weapons[weapon];
+	worm.currentWeapon = 0;
+}
+
+LieroWeapselHooks weapselHooks(WeaponSelection& ws)
+{
+	LieroWeapselHooks hooks = {
+		&ws, hookPressed, hookRelease, hookPressedOnce, hookPlaySound, hookSetWeapon, hookInitWeapon
+	};
+	return hooks;
 }
 
 }
 
 WeaponSelection::WeaponSelection(Game& game)
 : game(game)
-, enabledWeaps(0)
-, isReady(game.viewports.size())
-, menus(game.viewports.size())
+, box(nullptr)
 , cachedBackground(false)
 , cachedSpectatorBackground(false)
 , focused(true)
 {
 	Common& common = *game.common;
-
-	for(int i = 0; i < 40; ++i)
-	{
-		if(game.settings->weapTable[i] == 0)
-			++enabledWeaps;
-	}
 	static_assert(LIERO_WEAPON_TABLE_SIZE == 40, "Settings::weapTable");
 	static_assert(LIERO_SELECTABLE_WEAPONS == Settings::selectableWeapons, "selectable weapons");
 
-	for(std::size_t i = 0; i < menus.size(); ++i)
+	std::vector<LieroWeapselWorm> worms;
+	for (std::size_t i = 0; i < game.viewports.size(); ++i)
 	{
 		Viewport& vp = *game.viewports[i];
-
-		Worm& worm = *game.wormByIdx(vp.wormIdx);
-		WormSettings& ws = *worm.settings;
-
-		menus[i].items.push_back(MenuItem(57, 57, LS(Randomize)));
-
-		{
-			int x = vp.rect.center_x() - 31;
-			int y = vp.rect.center_y() - 51;
-			menus[i].place(x, y);
-		}
-
-		bool randomWeapons = (ws.controller != 0 && game.settings->selectBotWeapons == 0);
-
-		LieroWeapselEnv env = weapselEnv(game);
-		int32_t chosen[Settings::selectableWeapons];
-		liero_weapsel_choose(ws.weapons, randomWeapons, &env, chosen);
-
-		for(int j = 0; j < Settings::selectableWeapons; ++j)
-		{
-			int w = chosen[j];
-
-			WormWeapon& ww = worm.weapons[j];
-
-			ww.ammo = 0;
-			ww.type = &common.weapons[w];
-
-			menus[i].items.push_back(MenuItem(48, 48, common.weapons[w].name));
-		}
-
-		menus[i].items.push_back(MenuItem(10, 10, LS(Done)));
-
-		worm.currentWeapon = 0;
-
-		menus[i].moveToFirstVisible();
-		isReady[i] = (ws.controller != 0 && game.settings->selectBotWeapons != 1);
+		WormSettings& ws = *game.wormByIdx(vp.wormIdx)->settings;
+		LieroWeapselWorm w;
+		w.weapons = ws.weapons;
+		w.name = ws.name.view();
+		w.color = ws.color;
+		w.center_x = vp.rect.center_x();
+		w.center_y = vp.rect.center_y();
+		w.random = ws.controller != 0 && game.settings->selectBotWeapons == 0;
+		w.ready = ws.controller != 0 && game.settings->selectBotWeapons != 1;
+		worms.push_back(w);
 	}
+	std::vector<LieroStr> names;
+	for (auto const& w : common.weapons)
+		names.push_back({ reinterpret_cast<uint8_t const*>(w.name.data()), w.name.size() });
+
+	std::string const& randomize = LS(Randomize);
+	std::string const& done = LS(Done);
+	LieroWeapselSpec spec;
+	spec.worms = worms.data();
+	spec.worm_count = int32_t(worms.size());
+	spec.weapon_names = names.data();
+	spec.weapon_count = int32_t(names.size());
+	spec.randomize = { reinterpret_cast<uint8_t const*>(randomize.data()), randomize.size() };
+	spec.done = { reinterpret_cast<uint8_t const*>(done.data()), done.size() };
+
+	LieroWeapselEnv env = weapselEnv(game);
+	LieroWeapselHooks hooks = weapselHooks(*this);
+	box = liero_weapsel_new(&spec, &env, &hooks);
+}
+
+WeaponSelection::~WeaponSelection()
+{
+	liero_weapsel_free(box);
 }
 
 void WeaponSelection::drawSpectatorViewports(Renderer& renderer, GameState state)
@@ -197,10 +156,9 @@ void WeaponSelection::drawSpectatorViewports(Renderer& renderer, GameState state
 		return;
 
 	{
-		WeapselMenus m(*this);
 		LieroBitmap scr = renderer.bmp.view();
 		LieroFont font = common.font.view();
-		liero_weapsel_draw_spectator(m.views.data(), int32_t(m.views.size()), &scr, &font);
+		liero_weapsel_draw_spectator(box, &scr, &font);
 	}
 
 	// TODO: This just uses the currently activated palette, which might well be wrong.
@@ -237,14 +195,13 @@ void WeaponSelection::drawNormalViewports(Renderer& renderer, GameState state)
 		return;
 
 	{
-		WeapselMenus m(*this);
 		LieroBitmap scr = renderer.bmp.view();
 		// C++ drew the menus on the play screen, whatever `renderer` was.
 		LieroBitmap menuScr = gfx.playRenderer.bmp.view();
 		LieroFont font = common.font.view();
 		std::string const& title = LS(SelWeap);
 		LieroStr t = { reinterpret_cast<uint8_t const*>(title.data()), title.size() };
-		liero_weapsel_draw(m.views.data(), int32_t(m.views.size()), &scr, &menuScr, &font, t);
+		liero_weapsel_draw(box, &scr, &menuScr, &font, t);
 	}
 
 	// TODO: This just uses the currently activated palette, which might well be wrong.
@@ -268,11 +225,8 @@ void WeaponSelection::draw(Renderer& renderer, GameState state, bool useSpectato
 bool WeaponSelection::processFrame()
 {
 	LieroWeapselEnv env = weapselEnv(game);
-	LieroWeapselHooks hooks = {
-		this, hookPressed, hookRelease, hookPressedOnce, hookPlaySound, hookSetWeapon, hookSetItemName
-	};
-	WeapselMenus m(*this);
-	return liero_weapsel_process(m.views.data(), int32_t(m.views.size()), &env, &hooks);
+	LieroWeapselHooks hooks = weapselHooks(*this);
+	return liero_weapsel_process(box, &env, &hooks);
 }
 
 void WeaponSelection::finalize()

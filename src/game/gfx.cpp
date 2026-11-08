@@ -44,11 +44,11 @@ struct KeyBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		KeyBehavior self = *this;
-		gfx.open(keyChoiceScreen(extended), [self, &menu, &item](int result) mutable
+		gfx.open(keyChoiceScreen(extended), [self, &menu, item](int result) mutable
 		{
 			uint32_t k = uint32_t(result);
 			if(k != DkEscape)
@@ -66,10 +66,9 @@ struct KeyBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.value = gfx.getKeyName(extended ? keyEx : key);
-		item.hasValue = true;
+		menu.setItemValue(item, gfx.getKeyName(extended ? keyEx : key));
 	}
 
 	Common& common;
@@ -86,7 +85,7 @@ struct WormNameBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 
@@ -99,7 +98,7 @@ struct WormNameBehavior : ItemBehavior
 		x += menu.valueOffsetX + 2;
 
 		WormNameBehavior self = *this;
-		gfx.openInputString(ws.name.str(), 20, x, y, [self, &menu, &item](bool ok, std::string const& name) mutable
+		gfx.openInputString(ws.name.str(), 20, x, y, [self, &menu, item](bool ok, std::string const& name) mutable
 		{
 			if (ok)
 				self.ws.name = name;
@@ -115,10 +114,9 @@ struct WormNameBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.value = ws.name.str();
-		item.hasValue = true;
+		menu.setItemValue(item, ws.name.str());
 	}
 
 	Common& common;
@@ -135,7 +133,7 @@ struct ProfileSaveBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 
@@ -170,11 +168,11 @@ struct ProfileSaveBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
 		if(!saveAs)
 		{
-			item.visible = (bool)ws.profileNode;
+			menu.setItemVisibleFlag(item, (bool)ws.profileNode);
 		}
 	}
 
@@ -191,20 +189,18 @@ struct ProfileLoadedBehavior : ItemBehavior
 	{
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
 		if (ws.profileNode)
 		{
-			item.value = getBasename(getLeaf(ws.profileNode.fullPath()));
-			item.visible = true;
+			menu.setItemValue(item, getBasename(getLeaf(ws.profileNode.fullPath())));
+			menu.setItemVisibleFlag(item, true);
 		}
 		else
 		{
-			item.value.clear();
-			item.visible = false;
+			menu.setItemValue(item, "");
+			menu.setItemVisibleFlag(item, false);
 		}
-
-		item.hasValue = true;
 	}
 
 	Common& common;
@@ -214,17 +210,16 @@ struct ProfileLoadedBehavior : ItemBehavior
 struct WeaponEnumBehavior : EnumBehavior
 {
 	WeaponEnumBehavior(Common& common, uint32_t& v)
-	: EnumBehavior(common, v, 1, (uint32_t)common.weapons.size(), false)
+	: EnumBehavior(common, v, 1, (uint32_t)common.weapons.size())
 	{
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.value = common.weapons[common.weapOrder[v - 1]].name;
-		item.hasValue = true;
+		menu.setItemValue(item, common.weapons[common.weapOrder[v - 1]].name);
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 
@@ -904,7 +899,7 @@ struct ProfileLoadBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
@@ -931,7 +926,7 @@ struct PlayerSettingsBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		gfx.playerSettings(player);
@@ -949,11 +944,11 @@ struct LevelSelectBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
-		gfx.open(selectLevelScreen(), [&common, &menu, &item](int)
+		gfx.open(selectLevelScreen(), [&common, &menu, item](int)
 		{
 			sfx.play(common, 27);
 			LevelSelectBehavior(common).onUpdate(menu, item);
@@ -962,18 +957,17 @@ struct LevelSelectBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.hasValue = true;
 		if(!gfx.settings->randomLevel)
 		{
-			item.value = '"' + getBasename(getLeaf(gfx.settings->levelFile.str())) + '"';
-			menu.itemFromId(SettingsMenu::SiRegenerateLevel)->string = LS(ReloadLevel); // Not string?
+			menu.setItemValue(item, '"' + getBasename(getLeaf(gfx.settings->levelFile.str())) + '"');
+			menu.setItemString(menu.indexFromId(SettingsMenu::SiRegenerateLevel), LS(ReloadLevel)); // Not string?
 		}
 		else
 		{
-			item.value = LS(Random2);
-			menu.itemFromId(SettingsMenu::SiRegenerateLevel)->string = LS(RegenLevel);
+			menu.setItemValue(item, LS(Random2));
+			menu.setItemString(menu.indexFromId(SettingsMenu::SiRegenerateLevel), LS(RegenLevel));
 		}
 	}
 
@@ -987,7 +981,7 @@ struct WeaponOptionsBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
@@ -1009,7 +1003,7 @@ struct OptionsSaveBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 
@@ -1021,7 +1015,7 @@ struct OptionsSaveBehavior : ItemBehavior
 
 		std::string name = getBasename(getLeaf(gfx.settingsNode.fullPath()));
 		OptionsSaveBehavior self = *this;
-		gfx.openInputString(name, 30, x, y, [self, &menu, &item](bool ok, std::string const& name) mutable
+		gfx.openInputString(name, 30, x, y, [self, &menu, item](bool ok, std::string const& name) mutable
 		{
 			if(ok && !name.empty())
 			{
@@ -1037,10 +1031,9 @@ struct OptionsSaveBehavior : ItemBehavior
 		return -1;
 	}
 
-	void onUpdate(Menu& menu, MenuItem& item)
+	void onUpdate(Menu& menu, int item)
 	{
-		item.value = getBasename(getLeaf(gfx.settingsNode.fullPath()));
-		item.hasValue = true;
+		menu.setItemValue(item, getBasename(getLeaf(gfx.settingsNode.fullPath())));
 	}
 
 	Common& common;
@@ -1053,7 +1046,7 @@ struct OptionsSelectBehavior : ItemBehavior
 	{
 	}
 
-	int onEnter(Menu& menu, MenuItem& item)
+	int onEnter(Menu& menu, int item)
 	{
 		sfx.play(common, 27);
 		Common& common = this->common;
@@ -1069,9 +1062,9 @@ struct OptionsSelectBehavior : ItemBehavior
 	Common& common;
 };
 
-ItemBehavior* SettingsMenu::getItemBehavior(Common& common, MenuItem& item)
+ItemBehavior* SettingsMenu::getItemBehavior(Common& common, int item)
 {
-	switch(item.id)
+	switch(itemId(item))
 	{
 		case SiNamesOnBonuses:
 			return new BooleanSwitchBehavior(common, gfx.settings->namesOnBonuses);
@@ -1086,7 +1079,7 @@ ItemBehavior* SettingsMenu::getItemBehavior(Common& common, MenuItem& item)
 		case SiAmountOfBlood:
 		{
 			IntegerBehavior* ret = new IntegerBehavior(common, gfx.settings->blood, 0, LC(BloodLimit), LC(BloodStepUp), true);
-			ret->allowEntry = false;
+			ret->data.allow_entry = false;
 			return ret;
 		}
 
@@ -1357,136 +1350,6 @@ std::unique_ptr<Screen> configSelector(SelectorContext::Kind kind, std::string c
 	return selectorScreen(ctx, s, hasSelect, false, false);
 }
 
-struct WeaponMenu : Menu
-{
-	WeaponMenu(int x, int y)
-	: Menu(x, y)
-	{
-	}
-
-	ItemBehavior* getItemBehavior(Common& common, MenuItem& item)
-	{
-		int index = common.weapOrder[item.id];
-		return new ArrayEnumBehavior(common, gfx.settings->weapTable[index], common.texts.weapStates);
-	}
-};
-
-// Which weapons a game has. Escape closes it while one weapon or more is on.
-struct WeaponOptionsScreen : Screen
-{
-	WeaponMenu weaponMenu;
-	bool shown = false;
-	bool resumed = false;
-
-	void resume(int) override
-	{
-		resumed = true;
-	}
-
-	WeaponOptionsScreen()
-	: weaponMenu(179, 28)
-	{
-		Common& common = *gfx.common;
-
-		weaponMenu.setHeight(14);
-		weaponMenu.valueOffsetX = 89;
-
-		for(int i = 0; i < (int)common.weapons.size(); ++i)
-		{
-			int index = common.weapOrder[i];
-			weaponMenu.addItem(MenuItem(48, 7, common.weapons[index].name, i));
-		}
-
-		weaponMenu.moveToFirstVisible();
-		weaponMenu.updateItems(common);
-	}
-
-	Tick tick() override
-	{
-		Gfx& g = gfx;
-		Common& common = *g.common;
-
-		// Back from the message: it read the events.
-		if (shown && !resumed)
-		{
-			g.process();
-
-			if(g.testSDLKeyOnce(SDL_SCANCODE_ESCAPE))
-			{
-				int count = 0;
-
-				for(int i = 0; i < 40; ++i)
-				{
-					if(g.settings->weapTable[i] == 0)
-						++count;
-				}
-
-				if(count > 0)
-					return Tick::close(); // Enough weapons available
-
-				return Tick::push(infoBoxScreen(LS(NoWeaps), 223, 68, false));
-			}
-		}
-		resumed = false;
-
-		g.playRenderer.bmp.copy(g.frozenScreen);
-
-		g.drawBasicMenu();
-
-		drawRoundedBox(g.playRenderer.bmp, 179, 20, 0, 7, common.font.getDims(LS(Weapon)));
-		drawRoundedBox(g.playRenderer.bmp, 249, 20, 0, 7, common.font.getDims(LS(Availability)));
-
-		common.font.drawText(g.playRenderer.bmp, LS(Weapon), 181, 21, 50);
-		common.font.drawText(g.playRenderer.bmp, LS(Availability), 251, 21, 50);
-
-		weaponMenu.draw(common, g.playRenderer, false);
-
-		if(g.testSDLKeyOnce(SDL_SCANCODE_UP))
-		{
-			sfx.play(common, 26);
-			weaponMenu.movement(-1);
-		}
-
-		if(g.testSDLKeyOnce(SDL_SCANCODE_DOWN))
-		{
-			sfx.play(common, 25);
-			weaponMenu.movement(1);
-		}
-
-		if(g.testSDLKeyOnce(SDL_SCANCODE_LEFT))
-		{
-			weaponMenu.onLeftRight(common, -1);
-		}
-		if(g.testSDLKeyOnce(SDL_SCANCODE_RIGHT))
-		{
-			weaponMenu.onLeftRight(common, 1);
-		}
-
-		if(g.settings->extensions)
-		{
-			if(g.testSDLKeyOnce(SDL_SCANCODE_PAGEUP))
-			{
-				sfx.play(common, 26);
-
-				weaponMenu.movementPage(-1);
-			}
-
-			if(g.testSDLKeyOnce(SDL_SCANCODE_PAGEDOWN))
-			{
-				sfx.play(common, 25);
-
-				weaponMenu.movementPage(1);
-			}
-		}
-
-		weaponMenu.onKeys(g.keyBuf, g.keyBufPtr);
-
-		g.menuFade();
-		shown = true;
-		return Tick::stay(true);
-	}
-};
-
 }
 
 std::unique_ptr<Screen> selectLevelScreen()
@@ -1531,15 +1394,38 @@ std::unique_ptr<Screen> selectTcScreen(std::shared_ptr<std::unique_ptr<Common>> 
 	return selectorScreen(ctx, s, false, true, false);
 }
 
-std::unique_ptr<Screen> weaponOptionsScreen()
-{
-	return std::unique_ptr<Screen>(new WeaponOptionsScreen);
-}
-
 static LieroStr str(std::string const& s)
 {
 	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
 	return r;
+}
+
+std::unique_ptr<Screen> weaponOptionsScreen()
+{
+	Common& common = *gfx.common;
+	std::vector<LieroStr> names;
+	std::vector<int32_t> order;
+	for (int i = 0; i < (int)common.weapons.size(); ++i)
+	{
+		names.push_back(str(common.weapons[common.weapOrder[i]].name));
+		order.push_back(common.weapOrder[i]);
+	}
+	std::vector<LieroStr> states;
+	for (auto const& s : common.texts.weapStates)
+		states.push_back(str(s));
+
+	LieroWeaponOptionsSpec spec;
+	spec.names = names.data();
+	spec.order = order.data();
+	spec.count = names.size();
+	static_assert(sizeof(gfx.settings->weapTable[0]) == sizeof(uint32_t), "the table is read as uint32_t");
+	spec.weap_table = reinterpret_cast<uint32_t*>(gfx.settings->weapTable);
+	spec.states = states.data();
+	spec.state_count = states.size();
+	spec.weapon_title = str(LS(Weapon));
+	spec.availability_title = str(LS(Availability));
+	spec.no_weapons = str(LS(NoWeaps));
+	return fromFfi(liero_weapon_options_screen(&spec));
 }
 
 // The boxes are drawn in Rust (rust/liero-game/src/menu.rs).
@@ -1618,29 +1504,29 @@ void Gfx::openInputInteger(int& dest, int min, int max, std::size_t maxLen, int 
 	}, true);
 }
 
-void PlayerMenu::drawItemOverlay(Common& common, MenuItem& item, int x, int y, bool selected, bool disabled)
+void PlayerMenu::drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled)
 {
-	if(item.id >= PlayerMenu::PlRed && item.id <= PlayerMenu::PlBlue) //Color settings
+	if(itemId(item) >= PlayerMenu::PlRed && itemId(item) <= PlayerMenu::PlBlue) //Color settings
 	{
-		int rgbcol = item.id - PlayerMenu::PlRed;
+		int rgbcol = itemId(item) - PlayerMenu::PlRed;
 		LieroBitmap scr = gfx.playRenderer.bmp.view();
 		liero_menu_draw_rgb_overlay(&scr, x, y, selected, ws->rgb[rgbcol], ws->color);
 	} // CED9
 }
 
-ItemBehavior* PlayerMenu::getItemBehavior(Common& common, MenuItem& item)
+ItemBehavior* PlayerMenu::getItemBehavior(Common& common, int item)
 {
-	if (item.id >= PlWeap0 && item.id < PlWeap0 + 5)
-		return new WeaponEnumBehavior(common, ws->weapons[item.id - PlWeap0]);
+	if (itemId(item) >= PlWeap0 && itemId(item) < PlWeap0 + 5)
+		return new WeaponEnumBehavior(common, ws->weapons[itemId(item) - PlWeap0]);
 
-	switch(item.id)
+	switch(itemId(item))
 	{
 		case PlName:
 			return new WormNameBehavior(common, *ws);
 		case PlHealth:
 		{
 			auto* b = new IntegerBehavior(common, ws->health, 1, 10000, 1, true);
-			b->scrollInterval = 4;
+			b->data.scroll_interval = 4;
 			return b;
 		}
 
@@ -1648,8 +1534,8 @@ ItemBehavior* PlayerMenu::getItemBehavior(Common& common, MenuItem& item)
 		case PlGreen:
 		case PlBlue:
 		{
-			auto* b = new IntegerBehavior(common, ws->rgb[item.id - PlRed], 0, 63, 1, false);
-			b->scrollInterval = 4;
+			auto* b = new IntegerBehavior(common, ws->rgb[itemId(item) - PlRed], 0, 63, 1, false);
+			b->data.scroll_interval = 4;
 			return b;
 		}
 
@@ -1660,10 +1546,10 @@ ItemBehavior* PlayerMenu::getItemBehavior(Common& common, MenuItem& item)
 		case PlFire:
 		case PlChange:
 		case PlJump:
-			return new KeyBehavior(common, ws->controls[item.id - PlUp], ws->controlsEx[item.id - PlUp], gfx.settings->extensions);
+			return new KeyBehavior(common, ws->controls[itemId(item) - PlUp], ws->controlsEx[itemId(item) - PlUp], gfx.settings->extensions);
 
 		case PlDig: // Controls Extension
-			return new KeyBehavior(common, ws->controlsEx[item.id - PlUp], ws->controlsEx[item.id - PlUp], gfx.settings->extensions);
+			return new KeyBehavior(common, ws->controlsEx[itemId(item) - PlUp], ws->controlsEx[itemId(item) - PlUp], gfx.settings->extensions);
 
 
 		case PlController: // Controller
@@ -1702,205 +1588,173 @@ namespace
 
 std::unique_ptr<Screen> menuScreen();
 
-// A game, until the controller stops it. What the controller opens while it
-// runs (the stats screen, a message) goes on top once its call returns.
-struct GameScreen : Screen
+// C++ called from Rust: an exception waits until the tick returns.
+template<typename F>
+auto guarded(F f, decltype(f()) fallback) -> decltype(f())
 {
-	enum { Focus, Process, Draw, Finish } next = Focus;
-	bool shown = false;
-	bool resumed = false;
-	std::function<int(int)> then;
-
-	Tick tick() override
+	try
 	{
-		Gfx& g = gfx;
-
-		// Each tick reads the events that came with the frame before it,
-		// unless a screen the controller opened just closed: it read them.
-		if (resumed)
-			resumed = false;
-		else if (shown)
-			g.process(g.controller.get());
-
-		if (next == Focus)
-		{
-			g.controller->focus();
-			next = Process;
-			if (g.opening)
-				return openPending();
-		}
-
-		if (next == Process)
-		{
-			next = g.controller->process() ? Draw : Finish;
-			if (g.opening)
-				return openPending();
-		}
-
-		if (next == Finish)
-		{
-			g.primaryRenderer = &g.playRenderer;
-
-			g.controller->unfocus();
-
-			g.clearKeys();
-			return Tick::close();
-		}
-
-		g.playRenderer.clear();
-		g.controller->draw(g.playRenderer, false);
-
-		g.singleScreenRenderer.clear();
-		g.controller->draw(g.singleScreenRenderer, true);
-
-		++g.menuCycles;
-
-		next = Process;
-		shown = true;
-		return Tick::stay(true);
+		return f();
 	}
-
-	Tick openPending()
+	catch (...)
 	{
-		Gfx& g = gfx;
-		then = std::move(g.openingThen);
-		g.openingThen = nullptr;
-		return Tick::push(std::move(g.opening));
+		deferException();
+		return fallback;
 	}
+}
 
-	void resume(int result) override
-	{
-		if (then)
-			then(result);
-		then = nullptr;
-		resumed = true;
-	}
-};
+// The app's screens are in Rust (rust/liero-game/src/app_screens.rs); these
+// are the controller and the menu's choices they call.
 
-// The app: a level behind the main menu, then whatever the menu chose.
-struct MainScreen : Screen
+// A new controller with a new level behind the menu.
+void restartApp()
 {
-	// What's open on top of it.
-	enum { Nothing, InMenu, InGame } open = Nothing;
-	int selection = -1;
+	Gfx& g = gfx;
+	g.controller.reset(new LocalController(g.common, g.settings));
 
-	Tick tick() override
 	{
-		if (open == Nothing)
-			restart();
-		else if (open == InMenu)
+		Level newLevel;
+		newLevel.generateFromSettings(*g.common, *g.settings, g.rand);
+		g.controller->swapLevel(newLevel);
+	}
+
+	g.controller->currentGame()->focus(g.playRenderer);
+	g.controller->currentGame()->focus(g.singleScreenRenderer);
+
+	// TODO: Unfocus game when necessary
+}
+
+// Does what the menu chose: quits, starts over with a new TC, or plays.
+int afterMenu(int selection)
+{
+	Gfx& g = gfx;
+	auto& settings = g.settings;
+	auto& controller = g.controller;
+
+	if(selection == MainMenu::MaNewGame)
+	{
+		std::unique_ptr<Controller> newController(new LocalController(g.common, settings));
+
+		Level* oldLevel = controller->currentLevel();
+
+		if(oldLevel
+		&& !settings->regenerateLevel
+		&& settings->randomLevel == oldLevel->oldRandomLevel
+		&& settings->levelFile == oldLevel->oldLevelFile)
 		{
-			switch (afterMenu())
-			{
-			case Quit:
-				gfx.controller.reset();
-				return Tick::close();
-			case Play:
-				open = InGame;
-				return Tick::push(std::unique_ptr<Screen>(new GameScreen));
-			default:
-				break;
-			}
+			// Take level and palette from old game
+			newController->swapLevel(*oldLevel);
 		}
-
-		// The level, or the game left off, behind the menu.
-		gfx.playRenderer.clear();
-		gfx.controller->draw(gfx.playRenderer, false);
-
-		gfx.singleScreenRenderer.clear();
-		gfx.controller->draw(gfx.singleScreenRenderer, true);
-
-		open = InMenu;
-		return Tick::push(menuScreen());
-	}
-
-	void resume(int result) override
-	{
-		selection = result;
-	}
-
-	void restart()
-	{
-		Gfx& g = gfx;
-		g.controller.reset(new LocalController(g.common, g.settings));
-
+		else
 		{
 			Level newLevel;
-			newLevel.generateFromSettings(*g.common, *g.settings, g.rand);
-			g.controller->swapLevel(newLevel);
+			newLevel.generateFromSettings(*g.common, *settings, g.rand);
+			newController->swapLevel(newLevel);
 		}
 
-		g.controller->currentGame()->focus(g.playRenderer);
-		g.controller->currentGame()->focus(g.singleScreenRenderer);
-
-		// TODO: Unfocus game when necessary
+		controller = std::move(newController);
+	}
+	else if(selection == MainMenu::MaResumeGame)
+	{
+		if (controller->isReplay())
+		{
+			g.primaryRenderer = &g.singleScreenRenderer;
+		}
+	}
+	else if(selection == MainMenu::MaQuit) // QUIT TO OS
+	{
+		return LIERO_AFTER_MENU_QUIT;
+	}
+	else if(selection == MainMenu::MaReplay)
+	{
+		if (settings->singleScreenReplay)
+		{
+			g.primaryRenderer = &g.singleScreenRenderer;
+		}
+	}
+	else if (selection == MainMenu::MaTc)
+	{
+		restartApp();
+		return LIERO_AFTER_MENU_RESTART;
 	}
 
-	enum { Quit, Restart, Play };
+	return LIERO_AFTER_MENU_PLAY;
+}
 
-	// Does what the menu chose: quits, starts over with a new TC, or plays.
-	int afterMenu()
+// What the controller does with the result of the screen it opened.
+std::function<int(int)> gameThen;
+
+void appProcess() { guarded([] { gfx.process(gfx.controller.get()); return 0; }, 0); }
+void appFocus() { guarded([] { gfx.controller->focus(); return 0; }, 0); }
+bool appRun() { return guarded([] { return gfx.controller->process(); }, false); }
+
+void appFinish()
+{
+	guarded([]
 	{
 		Gfx& g = gfx;
-		auto& settings = g.settings;
-		auto& controller = g.controller;
+		g.primaryRenderer = &g.playRenderer;
+		g.controller->unfocus();
+		g.clearKeys();
+		return 0;
+	}, 0);
+}
 
-		if(selection == MainMenu::MaNewGame)
-		{
-			std::unique_ptr<Controller> newController(new LocalController(g.common, settings));
+void appDraw(bool count)
+{
+	guarded([count]
+	{
+		Gfx& g = gfx;
+		g.playRenderer.clear();
+		g.controller->draw(g.playRenderer, false);
+		g.singleScreenRenderer.clear();
+		g.controller->draw(g.singleScreenRenderer, true);
+		if (count)
+			++g.menuCycles;
+		return 0;
+	}, 0);
+}
 
-			Level* oldLevel = controller->currentLevel();
+bool appTakeOpened(LieroScreen* out)
+{
+	if (!gfx.opening)
+		return false;
+	gameThen = std::move(gfx.openingThen);
+	gfx.openingThen = nullptr;
+	*out = screenToFfi(std::move(gfx.opening));
+	return true;
+}
 
-			if(oldLevel
-			&& !settings->regenerateLevel
-			&& settings->randomLevel == oldLevel->oldRandomLevel
-			&& settings->levelFile == oldLevel->oldLevelFile)
-			{
-				// Take level and palette from old game
-				newController->swapLevel(*oldLevel);
-			}
-			else
-			{
-				Level newLevel;
-				newLevel.generateFromSettings(*g.common, *settings, g.rand);
-				newController->swapLevel(newLevel);
-			}
+void appThen(int32_t result)
+{
+	std::function<int(int)> then = std::move(gameThen);
+	gameThen = nullptr;
+	if (then)
+		guarded([&] { return then(result); }, 0);
+}
 
-			controller = std::move(newController);
-		}
-		else if(selection == MainMenu::MaResumeGame)
-		{
-			if (controller->isReplay())
-			{
-				g.primaryRenderer = &g.singleScreenRenderer;
-			}
-		}
-		else if(selection == MainMenu::MaQuit) // QUIT TO OS
-		{
-			return Quit;
-		}
-		else if(selection == MainMenu::MaReplay)
-		{
-			if (settings->singleScreenReplay)
-			{
-				g.primaryRenderer = &g.singleScreenRenderer;
-			}
-		}
-		else if (selection == MainMenu::MaTc)
-		{
-			restart();
-			return Restart;
-		}
-
-		return Play;
-	}
-};
+void appRestart() { guarded([] { restartApp(); return 0; }, 0); }
+int32_t appAfterMenu(int32_t selection) { return guarded([selection] { return afterMenu(selection); }, LIERO_AFTER_MENU_QUIT); }
+void appQuit() { gfx.controller.reset(); }
+LieroScreen appMenuScreen() { return screenToFfi(menuScreen()); }
 
 }
 
 std::unique_ptr<Screen> mainScreen()
 {
-	return std::unique_ptr<Screen>(new MainScreen);
+	LieroAppHooks h;
+	h.process = appProcess;
+	h.focus = appFocus;
+	h.run = appRun;
+	h.finish = appFinish;
+	h.draw = appDraw;
+	h.take_opened = appTakeOpened;
+	h.then = appThen;
+	h.restart = appRestart;
+	h.after_menu = appAfterMenu;
+	h.quit = appQuit;
+	h.menu_screen = appMenuScreen;
+	return fromFfi(liero_main_screen(h));
 }
 
 void Gfx::saveSettings(FsNode node)
@@ -2012,14 +1866,14 @@ int Gfx::menuStart()
 	if (controller->running())
 	{
 		mainMenu.setVisibility(MainMenu::MaResumeGame, true);
-		mainMenu.itemFromId(MainMenu::MaResumeGame)->string = "RESUME GAME (F1)";
-		mainMenu.itemFromId(MainMenu::MaNewGame)->string = "NEW GAME";
+		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaResumeGame), "RESUME GAME (F1)");
+		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaNewGame), "NEW GAME");
 		startItemId = MainMenu::MaResumeGame;
 	}
 	else
 	{
 		mainMenu.setVisibility(MainMenu::MaResumeGame, false);
-		mainMenu.itemFromId(MainMenu::MaNewGame)->string = "NEW GAME (F1)";
+		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaNewGame), "NEW GAME (F1)");
 		startItemId = MainMenu::MaNewGame;
 	}
 
@@ -2043,432 +1897,242 @@ int Gfx::menuStart()
 	return startItemId;
 }
 
-int Gfx::menuStep(int startItemId, int& selected, MenuPass& pass, int entered)
+// F8 on the menu: the developers' random TC.
+void Gfx::randomizeTc()
 {
+	uint32_t s = 14;
+
+	Rand r;
+	r.seed(s);
+
 	Common& common = *this->common;
-	bool closeNow = false;
 
-	// What an item's onEnter returned, put to `how`.
-	auto use = [&](MenuPass::Use how, int r)
-	{
-		if (how == MenuPass::Select)
-			selected = r;
-		else if (how == MenuPass::Tc && r == MainMenu::MaTc)
-		{
-			// A new TC: no fade-out.
-			selected = MainMenu::MaTc;
-			closeNow = true;
-		}
-	};
+	vector<std::size_t> nobjMap;
 
-	// True if the item opened a screen: the pass stops, and goes on when the
-	// screen closes.
-	auto enter = [&](Menu& menu, MenuPass::Use how)
+	for (std::size_t i = 0; i < common.nobjectTypes.size(); ++i)
 	{
-		int r = menu.onEnter(common);
-		if (opening)
-		{
-			pass.use = how;
-			return true;
-		}
-		use(how, r);
-		return false;
-	};
+		nobjMap.push_back(i);
+	}
+	std::random_device rd;
+	std::mt19937 g(rd());
+	std::shuffle(nobjMap.begin(), nobjMap.end(), g);
 
-	// Stops the pass at `part` while the screen an item opened is up.
-	auto stop = [&](MenuPass::Part part)
+	for (auto& w : common.weapons)
 	{
-		pass.part = part;
-		return int(MenuOpened);
-	};
-
-	if (pass.part != MenuPass::Top)
-	{
-		use(pass.use, entered);
-		if (closeNow)
-			return MenuClose;
+		w.addSpeed = r(30) - 5;
+		w.affectByExplosions = r(2) == 0;
+		w.affectByWorm = r(3) == 0;
+		w.ammo = r(20) + 1;
+		w.bloodOnHit = r(50);
+		w.blowAway = r(10);
+		w.bounce = r(90);
+		w.collideWithObjects = r(10) == 0;
+		w.colorBullets = 3 + r(250);
+		w.createOnExp = r(common.sobjectTypes.size());
+		w.delay = r(70);
+		w.detectDistance = r(20);
+		w.dirtEffect = r(9);
+		w.distribution = r(5000) - 2500;
+		w.explGround = r(2) == 0;
+		w.exploSound = r(common.sounds.size());
+		w.fireCone = r(10);
+		w.gravity = r(2000) - 1000;
+		w.hitDamage = r(20);
+		w.laserSight = r(5) == 0;
+		w.launchSound = r(common.sounds.size());
+		w.leaveShellDelay = r(30);
+		w.leaveShells = r(1) == 0;
+		w.loadingTime = r(70 * 3);
+		w.loopAnim = r(10) == 0;
+		w.loopSound = false;
+		w.multSpeed = r(2) ? 100 : 99 + r(5);
+		w.objTrailDelay = 10 + r(70);
+		w.objTrailType = r(4) == 0 ? r(common.sobjectTypes.size()) : -1;
+		w.parts = r(2) == 0 ? r(10) : 1;
+		w.partTrailDelay = 10 + r(70);
+		w.partTrailObj = r(4) == 0 ? r(common.nobjectTypes.size()) : -1;
+		w.partTrailType = r(2);
+		w.playReloadSound = r(2) == 0;
+		w.recoil = r(20);
+		w.shadow = r(2) == 0;
+		w.shotType = r(5);
+		w.speed = r(200);
+		w.splinterAmount = r(5) == 0 ? r(10) : 0;
+		w.splinterColour = r(256);
+		w.splinterScatter = r(2);
+		w.splinterType = r(common.nobjectTypes.size());
+		w.startFrame = r((uint32_t)common.smallSprites.count - 13);
+		w.numFrames = r(5);
+		w.timeToExplo = 50 + r(200);
+		w.timeToExploV = 10 + r(50);
+		w.wormCollide = r(3) > 0;
+		w.wormExplode = r(3) > 0;
 	}
 
-	if (pass.part == MenuPass::Top)
+	//for (auto& n : common.nobjectTypes)
+	for (std::size_t idx = 0; idx < common.nobjectTypes.size(); ++idx)
 	{
-#ifdef __EMSCRIPTEN__
-		saveSettingsIfChanged();
-#endif
-		drawBasicMenu();
-		drawSpectatorInfo();
-
-		if(curMenu == &mainMenu)
-			settingsMenu.draw(common, playRenderer, true);
-		else
-			curMenu->draw(common, playRenderer, false);
-
-		if(testSDLKeyOnce(SDL_SCANCODE_ESCAPE))
-		{
-			if(curMenu == &mainMenu)
-				mainMenu.moveToId(MainMenu::MaQuit);
-			else
-				curMenu = &mainMenu;
-		}
-
-		if(testSDLKeyOnce(SDL_SCANCODE_UP))
-		{
-			sfx.play(common, 26);
-			curMenu->movement(-1);
-		}
-
-		if(testSDLKeyOnce(SDL_SCANCODE_DOWN))
-		{
-			sfx.play(common, 25);
-			curMenu->movement(1);
-		}
-
-		if(testSDLKeyOnce(SDL_SCANCODE_RETURN)
-		|| testSDLKeyOnce(SDL_SCANCODE_KP_ENTER))
-		{
-			if(curMenu == &mainMenu)
-			{
-				sfx.play(common, 27);
-
-				int s = mainMenu.selectedId();
-				switch (s)
-				{
-					case MainMenu::MaSettings:
-					{
-						curMenu = &settingsMenu; // Go into settings menu
-						break;
-					}
-
-					case MainMenu::MaPlayer1Settings:
-					case MainMenu::MaPlayer2Settings:
-					{
-						playerSettings(s - MainMenu::MaPlayer1Settings);
-						break;
-					}
-
-					case MainMenu::MaAdvanced:
-					{
-						openHiddenMenu();
-						break;
-					}
-
-					case MainMenu::MaReplays:
-					{
-						if (enter(*curMenu, MenuPass::Select))
-							return stop(MenuPass::AfterEnter);
-						break;
-					}
-
-					case MainMenu::MaTc:
-					{
-						if (enter(*curMenu, MenuPass::Tc))
-							return stop(MenuPass::AfterEnter);
-						if (closeNow)
-							return MenuClose;
-						break;
-					}
-
-					default:
-					{
-						curMenu = &mainMenu;
-						selected = s;
-					}
-				}
-			}
-			else if(curMenu == &settingsMenu)
-			{
-				if (enter(settingsMenu, MenuPass::Ignore))
-					return stop(MenuPass::AfterEnter);
-			}
-			else
-			{
-				if (enter(*curMenu, MenuPass::Select))
-					return stop(MenuPass::AfterEnter);
-			}
-		}
+		auto& n = common.nobjectTypes[nobjMap[idx]];
+		n.affectByExplosions = r(5) == 0;
+		n.bloodOnHit = r(5);
+		n.bloodTrail = r(10) == 0;
+		n.bloodTrailDelay = r(20) + 3;
+		n.blowAway = r(10);
+		n.bounce = r(90);
+		n.colorBullets = 3 + r(250);
+		n.createOnExp = r(3) == 0 ? r(common.sobjectTypes.size()) : -1;
+		n.detectDistance = r(20);
+		n.dirtEffect = r(9);
+		n.distribution = r(5000) - 2500;
+		n.drawOnMap = r(20) == 0;
+		n.explGround = r(4) > 0;
+		n.gravity = r(2000) - 1000;
+		n.hitDamage = r(10);
+		n.leaveObj = r(5) == 0 ? r(common.sobjectTypes.size()) : -1;
+		n.leaveObjDelay = 10 + r(80);
+		n.startFrame = r((uint32_t)common.smallSprites.count - 13);
+		n.numFrames = r(5);
+		n.speed = r(150);
+		n.splinterAmount = idx > 0 && r(5) == 0 ? r(10) : 0;
+		n.splinterColour = r(256);
+		n.splinterType = idx > 0 ? nobjMap[r(idx)] : 0;
+		n.timeToExplo = 50 + r(70 * 3);
+		n.timeToExploV = r(30);
+		n.wormDestroy = r(3) == 0;
+		n.wormExplode = r(2) == 0;
 	}
 
-	if (pass.part != MenuPass::AfterF3)
+	for (auto& s : common.sobjectTypes)
 	{
-		if(testSDLKeyOnce(SDL_SCANCODE_F1))
-		{
-			curMenu = &mainMenu;
-			mainMenu.moveToId(startItemId);
-			selected = startItemId;
-		}
-		if(testSDLKeyOnce(SDL_SCANCODE_F2))
-		{
-			mainMenu.moveToId(MainMenu::MaAdvanced);
-			openHiddenMenu();
-		}
-		if(testSDLKeyOnce(SDL_SCANCODE_F3))
-		{
-			curMenu = &mainMenu;
-			mainMenu.moveToId(MainMenu::MaReplays);
-			if (enter(*curMenu, MenuPass::Select))
-				return stop(MenuPass::AfterF3);
-		}
+		s.animDelay = 1 + r(10);
+		s.blowAway = r(2) == 0 ? r(10000) : 0;
+		s.damage = r(30);
+		s.detectRange = r(20);
+		s.dirtEffect = r(9);
+		s.flash = r(5);
+		s.startFrame = r((uint32_t)common.largeSprites.count - 7);
+		s.numFrames = r(7);
+		s.startSound = r(common.sounds.size());
+		s.shake = r(10);
+		s.shadow = r(2);
+		s.numSounds = 1;
 	}
-
-	if (testSDLKeyOnce(SDL_SCANCODE_F5))
-	{
-		mainMenu.moveToId(MainMenu::MaPlayer1Settings);
-		playerSettings(0);
-	}
-	if (testSDLKeyOnce(SDL_SCANCODE_F6))
-	{
-		mainMenu.moveToId(MainMenu::MaPlayer2Settings);
-		playerSettings(1);
-	}
-	if (testSDLKeyOnce(SDL_SCANCODE_F7))
-	{
-		mainMenu.moveToId(MainMenu::MaSettings);
-		curMenu = &settingsMenu; // Go into settings menu
-	}
-
-#if 1
-	if (testSDLKeyOnce(SDL_SCANCODE_F8))
-	{
-		uint32_t s = 14;
-
-		Rand r;
-		r.seed(s);
-
-		Common& common = *this->common;
-
-		vector<std::size_t> nobjMap;
-
-		for (std::size_t i = 0; i < common.nobjectTypes.size(); ++i)
-		{
-			nobjMap.push_back(i);
-		}
-		std::random_device rd;
-		std::mt19937 g(rd());
-		std::shuffle(nobjMap.begin(), nobjMap.end(), g);
-
-		for (auto& w : common.weapons)
-		{
-			w.addSpeed = r(30) - 5;
-			w.affectByExplosions = r(2) == 0;
-			w.affectByWorm = r(3) == 0;
-			w.ammo = r(20) + 1;
-			w.bloodOnHit = r(50);
-			w.blowAway = r(10);
-			w.bounce = r(90);
-			w.collideWithObjects = r(10) == 0;
-			w.colorBullets = 3 + r(250);
-			w.createOnExp = r(common.sobjectTypes.size());
-			w.delay = r(70);
-			w.detectDistance = r(20);
-			w.dirtEffect = r(9);
-			w.distribution = r(5000) - 2500;
-			w.explGround = r(2) == 0;
-			w.exploSound = r(common.sounds.size());
-			w.fireCone = r(10);
-			w.gravity = r(2000) - 1000;
-			w.hitDamage = r(20);
-			w.laserSight = r(5) == 0;
-			w.launchSound = r(common.sounds.size());
-			w.leaveShellDelay = r(30);
-			w.leaveShells = r(1) == 0;
-			w.loadingTime = r(70 * 3);
-			w.loopAnim = r(10) == 0;
-			w.loopSound = false;
-			w.multSpeed = r(2) ? 100 : 99 + r(5);
-			w.objTrailDelay = 10 + r(70);
-			w.objTrailType = r(4) == 0 ? r(common.sobjectTypes.size()) : -1;
-			w.parts = r(2) == 0 ? r(10) : 1;
-			w.partTrailDelay = 10 + r(70);
-			w.partTrailObj = r(4) == 0 ? r(common.nobjectTypes.size()) : -1;
-			w.partTrailType = r(2);
-			w.playReloadSound = r(2) == 0;
-			w.recoil = r(20);
-			w.shadow = r(2) == 0;
-			w.shotType = r(5);
-			w.speed = r(200);
-			w.splinterAmount = r(5) == 0 ? r(10) : 0;
-			w.splinterColour = r(256);
-			w.splinterScatter = r(2);
-			w.splinterType = r(common.nobjectTypes.size());
-			w.startFrame = r((uint32_t)common.smallSprites.count - 13);
-			w.numFrames = r(5);
-			w.timeToExplo = 50 + r(200);
-			w.timeToExploV = 10 + r(50);
-			w.wormCollide = r(3) > 0;
-			w.wormExplode = r(3) > 0;
-		}
-
-		//for (auto& n : common.nobjectTypes)
-		for (std::size_t idx = 0; idx < common.nobjectTypes.size(); ++idx)
-		{
-			auto& n = common.nobjectTypes[nobjMap[idx]];
-			n.affectByExplosions = r(5) == 0;
-			n.bloodOnHit = r(5);
-			n.bloodTrail = r(10) == 0;
-			n.bloodTrailDelay = r(20) + 3;
-			n.blowAway = r(10);
-			n.bounce = r(90);
-			n.colorBullets = 3 + r(250);
-			n.createOnExp = r(3) == 0 ? r(common.sobjectTypes.size()) : -1;
-			n.detectDistance = r(20);
-			n.dirtEffect = r(9);
-			n.distribution = r(5000) - 2500;
-			n.drawOnMap = r(20) == 0;
-			n.explGround = r(4) > 0;
-			n.gravity = r(2000) - 1000;
-			n.hitDamage = r(10);
-			n.leaveObj = r(5) == 0 ? r(common.sobjectTypes.size()) : -1;
-			n.leaveObjDelay = 10 + r(80);
-			n.startFrame = r((uint32_t)common.smallSprites.count - 13);
-			n.numFrames = r(5);
-			n.speed = r(150);
-			n.splinterAmount = idx > 0 && r(5) == 0 ? r(10) : 0;
-			n.splinterColour = r(256);
-			n.splinterType = idx > 0 ? nobjMap[r(idx)] : 0;
-			n.timeToExplo = 50 + r(70 * 3);
-			n.timeToExploV = r(30);
-			n.wormDestroy = r(3) == 0;
-			n.wormExplode = r(2) == 0;
-		}
-
-		for (auto& s : common.sobjectTypes)
-		{
-			s.animDelay = 1 + r(10);
-			s.blowAway = r(2) == 0 ? r(10000) : 0;
-			s.damage = r(30);
-			s.detectRange = r(20);
-			s.dirtEffect = r(9);
-			s.flash = r(5);
-			s.startFrame = r((uint32_t)common.largeSprites.count - 7);
-			s.numFrames = r(7);
-			s.startSound = r(common.sounds.size());
-			s.shake = r(10);
-			s.shadow = r(2);
-			s.numSounds = 1;
-		}
-	}
-#endif
-
-	if(testSDLKey(SDL_SCANCODE_LEFT))
-	{
-		if(!curMenu->onLeftRight(common, -1))
-			resetLeftRight();
-	}
-	if(testSDLKey(SDL_SCANCODE_RIGHT))
-	{
-		if(!curMenu->onLeftRight(common, 1))
-			resetLeftRight();
-	}
-
-	if(testSDLKeyOnce(SDL_SCANCODE_PAGEUP))
-	{
-		sfx.play(common, 26);
-
-		curMenu->movementPage(-1);
-	}
-
-	if(testSDLKeyOnce(SDL_SCANCODE_PAGEDOWN))
-	{
-		sfx.play(common, 25);
-
-		curMenu->movementPage(1);
-	}
-
-	pass.part = MenuPass::Top;
-	return MenuDone;
 }
 
 namespace
 {
 
-// The main menu, then its fade-out. It closes with the item chosen.
-struct MenuScreen : Screen
+Menu& menuOf(int kind)
 {
-	enum { Start, Setup, Menu, FadeOut } phase = Start;
-	int startItemId = 0;
-	int selected = -1;
-	MenuPass pass;
-	// What the item that opened a screen does when it closes.
-	std::function<int(int)> then;
-	int entered = -1;
-	bool resumed = false;
+	switch (kind)
+	{
+	case LIERO_MENU_SETTINGS: return gfx.settingsMenu;
+	case LIERO_MENU_PLAYER: return gfx.playerMenu;
+	case LIERO_MENU_HIDDEN: return gfx.hiddenMenu;
+	default: return gfx.mainMenu;
+	}
+}
 
-	Tick tick() override
+int kindOf(Menu* m)
+{
+	if (m == &gfx.settingsMenu) return LIERO_MENU_SETTINGS;
+	if (m == &gfx.playerMenu) return LIERO_MENU_PLAYER;
+	if (m == &gfx.hiddenMenu) return LIERO_MENU_HIDDEN;
+	return LIERO_MENU_MAIN;
+}
+
+// What the item that opened a screen does when it closes.
+std::function<int(int)> menuThen;
+
+
+LieroMenuBox* hookMenu(int32_t kind) { return menuOf(kind).box; }
+int32_t hookCur() { return kindOf(gfx.curMenu); }
+void hookSetCur(int32_t kind) { gfx.curMenu = &menuOf(kind); }
+
+void hookClearPalettes()
+{
+	std::memset(gfx.playRenderer.pal.entries, 0, sizeof(gfx.playRenderer.pal.entries));
+	std::memset(gfx.singleScreenRenderer.pal.entries, 0, sizeof(gfx.singleScreenRenderer.pal.entries));
+}
+
+int32_t hookStart() { return guarded([] { return gfx.menuStart(); }, 0); }
+void hookFadeOut() { gfx.menuFade(true); }
+int32_t hookFadeValue() { return gfx.playRenderer.fadeValue; }
+void hookSetFadeValue(int32_t v) { gfx.playRenderer.fadeValue = v; }
+
+void hookSaveSettingsIfChanged()
+{
+#ifdef __EMSCRIPTEN__
+	guarded([] { gfx.saveSettingsIfChanged(); return 0; }, 0);
+#endif
+}
+
+void hookDraw()
+{
+	guarded([]
 	{
 		Gfx& g = gfx;
+		g.drawBasicMenu();
+		g.drawSpectatorInfo();
+		if (g.curMenu == &g.mainMenu)
+			g.settingsMenu.draw(*g.common, g.playRenderer, true);
+		else
+			g.curMenu->draw(*g.common, g.playRenderer, false);
+		return 0;
+	}, 0);
+}
 
-		// The pass an item stopped goes on; the screen that closed read the
-		// events.
-		if (resumed)
-		{
-			resumed = false;
-			return step();
-		}
+int32_t hookEnter(int32_t kind) { return guarded([kind] { return menuOf(kind).onEnter(*gfx.common); }, -1); }
 
-		// Each tick reads the events that came with the frame before it.
-		if (phase != Start)
-			g.process();
+bool hookLeftRight(int32_t kind, int32_t dir)
+{
+	return guarded([kind, dir] { return menuOf(kind).onLeftRight(*gfx.common, dir); }, true);
+}
 
-		switch (phase)
-		{
-		case Start:
-			std::memset(g.playRenderer.pal.entries, 0, sizeof(g.playRenderer.pal.entries));
-			std::memset(g.singleScreenRenderer.pal.entries, 0, sizeof(g.singleScreenRenderer.pal.entries));
-			phase = Setup;
-			return Tick::stay(true);
+bool hookTakeOpened(LieroScreen* out)
+{
+	if (!gfx.opening)
+		return false;
+	menuThen = std::move(gfx.openingThen);
+	gfx.openingThen = nullptr;
+	*out = screenToFfi(std::move(gfx.opening));
+	return true;
+}
 
-		case Setup:
-			startItemId = g.menuStart();
-			selected = -1;
-			phase = Menu;
-			return step();
+int32_t hookThen(int32_t result)
+{
+	std::function<int(int)> then = std::move(menuThen);
+	menuThen = nullptr;
+	return guarded([&] { return then ? then(result) : -1; }, -1);
+}
 
-		case Menu:
-			if (selected < 0)
-				return step();
-			phase = FadeOut;
-			g.playRenderer.fadeValue = 32;
-			g.menuFade(true);
-			return Tick::stay(true);
-
-		case FadeOut:
-		default:
-			if (--g.playRenderer.fadeValue > 0)
-			{
-				g.menuFade(true);
-				return Tick::stay(true);
-			}
-			return Tick::close(selected);
-		}
-	}
-
-	void resume(int result) override
-	{
-		entered = then(result);
-		then = nullptr;
-		resumed = true;
-	}
-
-	Tick step()
-	{
-		Gfx& g = gfx;
-		switch (g.menuStep(startItemId, selected, pass, entered))
-		{
-		case Gfx::MenuClose:
-			return Tick::close(selected);
-		case Gfx::MenuOpened:
-			then = std::move(g.openingThen);
-			g.openingThen = nullptr;
-			return Tick::push(std::move(g.opening));
-		default:
-			g.menuFade();
-			return Tick::stay(true);
-		}
-	}
-};
+void hookPlayerSettings(int32_t player) { guarded([player] { gfx.playerSettings(player); return 0; }, 0); }
+void hookOpenHiddenMenu() { gfx.openHiddenMenu(); }
+void hookRandomizeTc() { guarded([] { gfx.randomizeTc(); return 0; }, 0); }
+void hookReleaseLeftRight() { resetLeftRight(); }
 
 std::unique_ptr<Screen> menuScreen()
 {
-	return std::unique_ptr<Screen>(new MenuScreen);
+	LieroMenuScreenHooks h;
+	h.menu = hookMenu;
+	h.cur = hookCur;
+	h.set_cur = hookSetCur;
+	h.clear_palettes = hookClearPalettes;
+	h.start = hookStart;
+	h.fade_out = hookFadeOut;
+	h.fade_value = hookFadeValue;
+	h.set_fade_value = hookSetFadeValue;
+	h.save_settings_if_changed = hookSaveSettingsIfChanged;
+	h.draw = hookDraw;
+	h.enter = hookEnter;
+	h.left_right = hookLeftRight;
+	h.take_opened = hookTakeOpened;
+	h.then = hookThen;
+	h.player_settings = hookPlayerSettings;
+	h.open_hidden_menu = hookOpenHiddenMenu;
+	h.randomize_tc = hookRandomizeTc;
+	h.release_left_right = hookReleaseLeftRight;
+	return fromFfi(liero_menu_screen(h));
 }
 
 }

@@ -13,6 +13,7 @@
 
 use crate::cpp_sort;
 use crate::gfx::{liero_gfx_blit_image, liero_gfx_draw_graph, liero_gfx_draw_heatmap, liero_gfx_draw_rounded_box, LieroBitmap};
+use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
 use crate::text::{time_to_string, time_to_string_ex, LieroFont, LieroStr};
 
 const WEAPON_COUNT: usize = 40;
@@ -954,6 +955,133 @@ pub unsafe extern "C" fn liero_stats_screen_draw(
     offset: f64,
 ) {
     screen.draw(s, scene, scr, pane, offset);
+}
+
+const SCANCODE_RETURN: u32 = 40;
+const SCANCODE_ESCAPE: u32 = 41;
+const SCANCODE_RIGHT: u32 = 79;
+const SCANCODE_LEFT: u32 = 80;
+const SCANCODE_DOWN: u32 = 81;
+const SCANCODE_UP: u32 = 82;
+
+/// The stats screen after a game, over its last frame: Up and Down scroll,
+/// Left and Right move between the panes, Enter or Escape closes it.
+struct StatsPresenter {
+    stats: *const LieroStats,
+    screen: LieroStatsScreen,
+    /// The scene's texts are copied, so the game's can change.
+    names: [Vec<u8>; 2],
+    game_mode_name: Vec<u8>,
+    weapon_names: Vec<Vec<u8>>,
+    scene: LieroStatsScene,
+    /// The last frame of the game, row by row.
+    bg: Vec<u8>,
+    offset: f64,
+    dest_offset: f64,
+    pane: f64,
+    dest_pane: f64,
+    shown: bool,
+}
+
+fn text(s: &[u8]) -> LieroStr {
+    LieroStr { ptr: s.as_ptr(), len: s.len() }
+}
+
+impl StatsPresenter {
+    fn draw(&mut self, scr: &LieroBitmap) {
+        let weapon_names: Vec<LieroStr> = self.weapon_names.iter().map(|n| text(n)).collect();
+        let scene = LieroStatsScene {
+            names: [text(&self.names[0]), text(&self.names[1])],
+            game_mode_name: text(&self.game_mode_name),
+            weapon_names: weapon_names.as_ptr(),
+            weapon_count: weapon_names.len(),
+            ..self.scene
+        };
+        // SAFETY: the stats and the scene's font and sprites outlive the
+        // screen, and the texts are ours.
+        unsafe { self.screen.draw(&*self.stats, &scene, scr, self.pane, self.offset) };
+    }
+}
+
+/// Copies a bitmap's `w` x `h` pixels into or out of `buf`.
+fn copy_rows(scr: &LieroBitmap, buf: &mut Vec<u8>, save: bool) {
+    let (w, h) = (scr.w.max(0) as usize, scr.h.max(0) as usize);
+    buf.resize(w * h, 0);
+    for y in 0..h {
+        // SAFETY: the bitmap holds h rows of pitch bytes, w of them pixels.
+        let row = unsafe { std::slice::from_raw_parts_mut(scr.pixels.add(y * scr.pitch as usize), w) };
+        if save {
+            buf[y * w..(y + 1) * w].copy_from_slice(row);
+        } else {
+            row.copy_from_slice(&buf[y * w..(y + 1) * w]);
+        }
+    }
+}
+
+impl Screen for StatsPresenter {
+    fn tick(&mut self, host: &Host) -> Tick {
+        if self.shown {
+            host.process();
+            if host.test_key(SCANCODE_DOWN) {
+                self.dest_offset -= 10.0;
+            } else if host.test_key(SCANCODE_UP) {
+                self.dest_offset = (self.dest_offset + 10.0).min(0.0);
+            } else if host.test_key_once(SCANCODE_RIGHT) {
+                self.dest_pane = (self.dest_pane + 1.0).min(1.0);
+            } else if host.test_key_once(SCANCODE_LEFT) {
+                self.dest_pane = (self.dest_pane - 1.0).max(-1.0);
+            } else if host.test_key(SCANCODE_RETURN) || host.test_key(SCANCODE_ESCAPE) {
+                host.fill_screen(0);
+                host.clear_keys();
+                return Tick::close(0);
+            }
+
+            self.pane = self.pane * 0.89 + self.dest_pane * 0.11;
+            self.offset = self.offset * 0.89 + self.dest_offset * 0.11;
+            if self.offset > 0.0 {
+                self.offset = 0.0;
+            }
+        }
+
+        if let Some(scr) = host.screen() {
+            copy_rows(&scr, &mut self.bg, false);
+            self.draw(&scr);
+        }
+        // We don't use the level's palette, as its colours are unpredictable.
+        host.menu_palette();
+        self.shown = true;
+        Tick::stay(true)
+    }
+}
+
+/// The stats screen for `stats` over what the screen shows now. `scene`'s
+/// texts are copied; the rest of it, and `stats`, must outlive the screen.
+///
+/// # Safety
+/// `stats` and `scene` are valid, as in `liero_stats_screen_draw`.
+#[no_mangle]
+pub unsafe extern "C" fn liero_stats_presenter_screen(stats: &LieroStats, scene: &LieroStatsScene) -> LieroScreen {
+    let host = crate::screen::current_host();
+    host.clear_keys();
+    let mut bg = Vec::new();
+    if let Some(scr) = host.screen() {
+        copy_rows(&scr, &mut bg, true);
+    }
+    let weapon_names = (0..scene.weapon_count).map(|i| (*scene.weapon_names.add(i)).bytes().to_vec()).collect();
+    into_ffi(Box::new(StatsPresenter {
+        stats,
+        screen: LieroStatsScreen::new(stats, scene.render_res_x),
+        names: [scene.names[0].bytes().to_vec(), scene.names[1].bytes().to_vec()],
+        game_mode_name: scene.game_mode_name.bytes().to_vec(),
+        weapon_names,
+        scene: *scene,
+        bg,
+        offset: 0.0,
+        dest_offset: 0.0,
+        pane: 0.0,
+        dest_pane: 0.0,
+        shown: false,
+    }))
 }
 
 #[cfg(test)]

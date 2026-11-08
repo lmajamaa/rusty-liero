@@ -4,6 +4,7 @@
 #include <gvl/system/system.hpp>
 #include "game/game.hpp"
 #include "game/gfx.hpp"
+#include "game/screen.hpp"
 
 StatsScreen::StatsScreen(NormalStatsRecorder& recorder, Game& game, Renderer& renderer)
 : recorder(recorder)
@@ -34,7 +35,7 @@ LieroStr str(std::string const& s)
 
 } // namespace
 
-void StatsScreen::draw(double pane, double offset)
+LieroStatsScene statsScene(Game& game, Renderer& renderer, std::vector<LieroStr> const& weaponNames)
 {
 	Common& common = *game.common;
 
@@ -56,83 +57,25 @@ void StatsScreen::draw(double pane, double offset)
 	scene.render_res_x = renderer.renderResX;
 	scene.render_res_y = renderer.renderResY;
 	scene.ticks_per_sec = gvl::hires_ticks_per_sec();
+	return scene;
+}
 
+void StatsScreen::draw(double pane, double offset)
+{
+	LieroStatsScene scene = statsScene(game, renderer, weaponNames);
 	LieroBitmap v = renderer.bmp.view();
 	liero_stats_screen_draw(screen, recorder.s, &scene, &v, pane, offset);
 
-	renderer.pal = common.exepal; // We don't use gfx.origpal because the colors are unpredictable
-}
-
-namespace
-{
-
-// The stats screen over the last frame of the game, until Enter or Escape.
-struct StatsPresenter : Screen
-{
-	Bitmap bg;
-	std::unique_ptr<StatsScreen> screen;
-	double offset = 0, destOffset = 0;
-	double pane = 0;
-	double destPane = 0;
-	bool shown = false;
-
-	StatsPresenter(NormalStatsRecorder& recorder, Game& game)
-	{
-		gfx.clearKeys();
-		bg.copy(gfx.playRenderer.bmp);
-		screen.reset(new StatsScreen(recorder, game, gfx.playRenderer));
-	}
-
-	Tick tick() override
-	{
-		if (shown)
-		{
-			gfx.process();
-
-			if (gfx.testSDLKey(SDL_SCANCODE_DOWN))
-			{
-				destOffset = destOffset - 10;
-			}
-			else if (gfx.testSDLKey(SDL_SCANCODE_UP))
-			{
-				destOffset = std::min(destOffset + 10.0, 0.0);
-			}
-			else if (gfx.testSDLKeyOnce(SDL_SCANCODE_RIGHT))
-			{
-				destPane = std::min(destPane + 1.0, 1.0);
-			}
-			else if (gfx.testSDLKeyOnce(SDL_SCANCODE_LEFT))
-			{
-				destPane = std::max(destPane - 1.0, -1.0);
-			}
-			else if (gfx.testSDLKey(SDL_SCANCODE_RETURN) ||
-			         gfx.testSDLKey(SDL_SCANCODE_ESCAPE))
-			{
-				fill(gfx.playRenderer.bmp, 0);
-
-				gfx.clearKeys();
-				return Tick::close();
-			}
-
-			pane = (pane * 0.89 + destPane * 0.11);
-			offset = (offset * 0.89 + destOffset * 0.11);
-
-			if (offset > 0)
-			{
-				offset = 0;
-			}
-		}
-
-		gfx.playRenderer.bmp.copy(bg);
-		screen->draw(pane, offset);
-		shown = true;
-		return Tick::stay(true);
-	}
-};
-
+	renderer.pal = game.common->exepal; // We don't use gfx.origpal because the colors are unpredictable
 }
 
 void presentStats(NormalStatsRecorder& recorder, Game& game)
 {
-	gfx.open(std::unique_ptr<Screen>(new StatsPresenter(recorder, game)), [](int) { return -1; });
+	// The screen copies the scene's texts; the stats, font and sprites
+	// outlive it.
+	std::vector<LieroStr> weaponNames;
+	for (auto const& w : game.common->weapons)
+		weaponNames.push_back(str(w.name));
+	LieroStatsScene scene = statsScene(game, gfx.playRenderer, weaponNames);
+	gfx.open(fromFfi(liero_stats_presenter_screen(recorder.s, &scene)), [](int) { return -1; });
 }

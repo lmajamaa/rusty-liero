@@ -5,28 +5,21 @@
 
 #include <gvl/support/cstdint.hpp>
 
-struct Common;
-struct Menu;
-
-struct EnumBehavior : ItemBehavior
+// One of `min` to `max`, wrapping round; Enter moves to the next.
+struct EnumBehavior : RustItemBehavior
 {
-	EnumBehavior(Common& common, uint32_t& v, uint32_t min, uint32_t max, bool brokenLeftRight = false)
-	: common(common), v(v)
-	, min(min), max(max)
-	, brokenLeftRight(brokenLeftRight)
+	EnumBehavior(Common& common, uint32_t& v, uint32_t min, uint32_t max)
+	: RustItemBehavior(common, LieroItemKind_Enum)
+	, v(v), min(min), max(max)
 	{
+		static_assert(sizeof(uint32_t) == sizeof(int32_t), "enums are read as int32_t");
+		data.value = reinterpret_cast<int32_t*>(&v);
+		data.min = int32_t(min);
+		data.max = int32_t(max);
 	}
 
-	bool onLeftRight(Menu& menu, MenuItem& item, int dir);
-	int onEnter(Menu& menu, MenuItem& item);
-	void onUpdate(Menu& menu, MenuItem& item);
-
-	void change(Menu& menu, MenuItem& item, int dir);
-
-	Common& common;
 	uint32_t& v;
 	uint32_t min, max;
-	bool brokenLeftRight;
 };
 
 #endif // UUID_171F520E38DF4A036E1AA3901EEA4801
