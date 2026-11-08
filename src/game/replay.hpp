@@ -11,6 +11,7 @@
 #include "worm.hpp"
 #include "common.hpp"
 #include "version.hpp"
+#include "filesystem.hpp"
 
 struct Game;
 
@@ -57,7 +58,8 @@ struct Replay
 
 struct ReplayWriter : Replay
 {
-	ReplayWriter(gvl::sink str_init);
+	// Starts a replay file at `node`, or throws if it can't be written.
+	ReplayWriter(FsNode const& node);
 	~ReplayWriter();
 
 	void unfocus();
@@ -79,7 +81,8 @@ struct Renderer;
 
 struct ReplayReader : Replay
 {
-	ReplayReader(gvl::source str_init);
+	// Reads the replay file at `node`, or throws if it can't be read.
+	ReplayReader(FsNode const& node);
 
 	void unfocus()
 	{

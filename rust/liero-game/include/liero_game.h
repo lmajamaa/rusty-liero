@@ -403,6 +403,11 @@ typedef enum LieroTickKind {
 typedef struct LieroApp LieroApp;
 
 /**
+ * A replay file being written.
+ */
+typedef struct LieroDeflateOut LieroDeflateOut;
+
+/**
  * A predictive AI for C++'s `FollowAI` to own.
  */
 typedef struct LieroFollowAi LieroFollowAi;
@@ -3398,6 +3403,37 @@ bool liero_controller_in_game(const struct LieroControllerData *c);
  * inverted, and the frame is counted.
  */
 void liero_controller_process(struct LieroControllerData *c, struct LieroKeys *keys);
+
+/**
+ * Starts writing a compressed file at `node`. Null if it can't be created.
+ */
+struct LieroDeflateOut *liero_deflate_out_new(const struct LieroFsNode *node);
+
+/**
+ * # Safety
+ * `data` must be valid.
+ */
+void liero_deflate_out_write(struct LieroDeflateOut *out, struct LieroStr data);
+
+/**
+ * Finishes the file.
+ *
+ * # Safety
+ * `out` must come from `liero_deflate_out_new`, or be null.
+ */
+void liero_deflate_out_free(struct LieroDeflateOut *out);
+
+/**
+ * Inflates the file at `node`: `got(ctx, data, error)` with what a reader
+ * gets of it, and whether reading on fails. False, without calling it, if
+ * the file can't be read.
+ *
+ * # Safety
+ * `got` must take `ctx`.
+ */
+bool liero_inflate_node(const struct LieroFsNode *node, void *ctx, void (*got)(void *ctx,
+                                                                               struct LieroStr data,
+                                                                               bool error));
 
 /**
  * # Safety

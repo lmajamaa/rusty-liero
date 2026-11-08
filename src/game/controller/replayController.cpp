@@ -7,8 +7,8 @@
 #include "../sfx.hpp"
 
 ReplayController::ReplayController(
-	gvl::shared_ptr<Common> common, gvl::source source)
-: replay(new ReplayReader(source))
+	gvl::shared_ptr<Common> common, FsNode const& node)
+: replay(new ReplayReader(node))
 , common(common)
 {
 }

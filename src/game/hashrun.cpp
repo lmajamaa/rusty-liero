@@ -296,7 +296,7 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 	// Records a replay of the game, as LocalController does when replays
 	// are on, to play it back afterwards.
 	FsNode replayNode(std::string("/tmp/") + config.name + ".lrp");
-	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(replayNode.toSink()));
+	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(replayNode));
 	replay->beginRecord(game);
 
 	game.startGame();

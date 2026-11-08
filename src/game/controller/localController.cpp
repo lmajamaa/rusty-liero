@@ -280,7 +280,7 @@ void LocalController::changeState(GameState newState)
 
 				auto node = gfx.getConfigNode() / "Replays" / (buf + playerNames + ".lrp");
 
-				replay.reset(new ReplayWriter(node.toSink()));
+				replay.reset(new ReplayWriter(node));
 
 				//replay.reset(new ReplayWriter(gvl::sink(new gvl::file_bucket_pipe(path.c_str(), "wb"))));
 				replay->beginRecord(game);

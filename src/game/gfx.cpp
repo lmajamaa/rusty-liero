@@ -1274,7 +1274,7 @@ int32_t selectorChoose(void* ctx, LieroStr rel, LieroStr fullPath, LieroStr name
 			// Reset controller before opening the replay, since we may be recording it
 			gfx.controller.reset();
 
-			gfx.controller.reset(new ReplayController(gfx.common, c.node(rel).toSource()));
+			gfx.controller.reset(new ReplayController(gfx.common, c.node(rel)));
 			return MainMenu::MaReplay;
 
 		case SelectorContext::Options:

@@ -21,7 +21,7 @@ struct Game;
 
 struct ReplayController : CommonController
 {
-	ReplayController(gvl::shared_ptr<Common> common, gvl::source source);
+	ReplayController(gvl::shared_ptr<Common> common, FsNode const& node);
 
 	bool isReplay() { return true; };
 	void onKey(int key, bool keyState);

@@ -5,7 +5,6 @@
 #include "viewport.hpp"
 #include "settingsffi.hpp"
 #include <gvl/serialization/except.hpp>
-#include <gvl/io2/deflate_filter.hpp>
 
 #include <algorithm>
 #include <stdexcept>
@@ -268,14 +267,66 @@ uint32_t fastGameChecksum(Game& game)
 	return liero_replay_checksum(game.rand.x, reinterpret_cast<int32_t const (*)[4]>(worms.data()), game.worms.size());
 }
 
-ReplayWriter::ReplayWriter(gvl::sink str_init)
+namespace
+{
+
+// Compresses what the writer puts into the file, in Rust
+// (rust/liero-game/src/deflate.rs). Freeing it finishes the file.
+struct DeflateSink : gvl::bucket_pipe
+{
+	explicit DeflateSink(LieroDeflateOut* out)
+	: out(out)
+	{
+	}
+
+	~DeflateSink()
+	{
+		liero_deflate_out_free(out);
+	}
+
+	gvl::sink_result write(gvl::unique_ptr<gvl::bucket_data_mem>&& data) override
+	{
+		LieroStr s = { data->begin(), data->size() };
+		liero_deflate_out_write(out, s);
+		data.reset();
+		return gvl::sink_result(gvl::sink_result::ok);
+	}
+
+	LieroDeflateOut* out;
+};
+
+// A replay file, inflated in Rust: its bytes, then the end, or the error
+// gvl's inflating reader threw.
+struct InflatedSource : gvl::bucket_pipe
+{
+	gvl::source_result read_next(std::size_t) override
+	{
+		if (!given && !data.empty())
+		{
+			given = true;
+			uint8_t const* p = data.data();
+			return gvl::source_result(gvl::unique_ptr<gvl::bucket_data_mem>(
+				gvl::bucket_data_mem::create_from(p, p + data.size(), data.size())));
+		}
+		if (error)
+			throw std::runtime_error("Error while deflating");
+		return gvl::source_result(gvl::source_result::eos);
+	}
+
+	std::vector<uint8_t> data;
+	bool error = false;
+	bool given = false;
+};
+
+}
+
+ReplayWriter::ReplayWriter(FsNode const& node)
 : settingsExpired(true)
 {
-	gvl::deflate_source* ds(new gvl::deflate_source(gvl::source(), true, false));
-
-	ds->sink = str_init;
-
-	writer.attach(gvl::sink(ds));
+	LieroDeflateOut* out = node.rust() ? liero_deflate_out_new(node.rust()) : nullptr;
+	if (!out)
+		throw std::runtime_error("Could not write " + node.fullPath());
+	writer.attach(gvl::sink(new DeflateSink(out)));
 }
 
 ReplayWriter::~ReplayWriter()
@@ -283,9 +334,19 @@ ReplayWriter::~ReplayWriter()
 	endRecord();
 }
 
-ReplayReader::ReplayReader(gvl::source str_init)
+ReplayReader::ReplayReader(FsNode const& node)
 {
-	reader.attach(gvl::to_source(new gvl::deflate_source(str_init, false)));
+	InflatedSource* src = new InflatedSource;
+	gvl::source s(gvl::to_source(src));
+	bool read = node.rust() && liero_inflate_node(node.rust(), src, [](void* ctx, LieroStr d, bool error)
+	{
+		InflatedSource& self = *static_cast<InflatedSource*>(ctx);
+		self.data.assign(d.ptr, d.ptr + d.len);
+		self.error = error;
+	});
+	if (!read)
+		throw std::runtime_error("Could not read " + node.fullPath());
+	reader.attach(s);
 }
 
 std::unique_ptr<Game> ReplayReader::beginPlayback(gvl::shared_ptr<Common> common, gvl::shared_ptr<SoundPlayer> soundPlayer)

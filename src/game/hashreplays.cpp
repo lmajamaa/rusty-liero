@@ -13,7 +13,6 @@
 #include "filesystem.hpp"
 #include "mixer/player.hpp"
 #include "gfx/renderer.hpp"
-#include <gvl/io2/deflate_filter.hpp>
 #include <gvl/serialization/archive.hpp>
 
 #include <cstdio>
@@ -40,20 +39,44 @@ Bytes readAll(gvl::octet_reader r)
 	return data;
 }
 
+// What a replay file inflates to, and whether reading on failed.
+struct Inflated
+{
+	Bytes data;
+	bool error = false;
+};
+
+Inflated inflatedFile(FsNode const& node)
+{
+	Inflated r;
+	if (!liero_inflate_node(node.rust(), &r, [](void* ctx, LieroStr d, bool e)
+	{
+		Inflated& o = *static_cast<Inflated*>(ctx);
+		o.data.assign(d.ptr, d.ptr + d.len);
+		o.error = e;
+	}))
+		throw std::runtime_error("Could not read " + node.fullPath());
+	return r;
+}
+
 // A replay file's bytes before compression.
 Bytes readReplay(FsNode const& node)
 {
-	return readAll(gvl::octet_reader(gvl::to_source(new gvl::deflate_source(node.toSource(), false))));
+	Inflated r = inflatedFile(node);
+	if (r.error)
+		throw std::runtime_error("Error while deflating");
+	return r.data;
 }
 
 // Compresses `data` into a replay file, as ReplayWriter does.
 void writeReplay(FsNode const& node, Bytes const& data)
 {
-	gvl::deflate_source* ds = new gvl::deflate_source(gvl::source(), true, false);
-	ds->sink = node.toSink();
-	gvl::octet_writer w;
-	w.attach(gvl::sink(ds));
-	w.put(data.data(), data.size());
+	LieroDeflateOut* out = liero_deflate_out_new(node.rust());
+	if (!out)
+		throw std::runtime_error("Could not write " + node.fullPath());
+	LieroStr s = { data.data(), data.size() };
+	liero_deflate_out_write(out, s);
+	liero_deflate_out_free(out);
 }
 
 void addHash(Fnv& f, gvl::gash::value_type const& h)
@@ -131,7 +154,7 @@ void recordGame(gvl::shared_ptr<Common> common, FsNode const& node, uint32_t see
 	std::vector<SettingsChange> const& changes = std::vector<SettingsChange>())
 {
 	std::unique_ptr<Game> game;
-	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(node.toSink()));
+	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(node));
 	replay->context.replayVersion = version;
 	if (startTick == 0)
 	{
@@ -235,10 +258,13 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 	int rewindAt)
 {
 	{
+		// What the file inflates to, not its compressed bytes, which
+		// depend on the compressor.
 		Fnv f;
-		Bytes file = readAll(node.toOctetReader());
-		f.add(uint32_t(file.size()));
-		f.bytes(file.data(), file.size());
+		Inflated file = inflatedFile(node);
+		f.add(uint32_t(file.data.size()));
+		f.bytes(file.data.data(), file.data.size());
+		f.add(file.error);
 		std::printf("%s-replay-file 0 %016llx\n", name, (unsigned long long)f.h);
 	}
 
@@ -246,7 +272,7 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 	renderer.init(320, 200);
 	renderer.loadPalette(*common);
 
-	ReplayReader reader(node.toSource());
+	ReplayReader reader(node);
 	std::unique_ptr<Game> game;
 	std::string outcome = "replay ended";
 	int ticks = 0;
