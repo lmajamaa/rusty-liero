@@ -1,7 +1,7 @@
 #ifndef LIERO_MATERIAL_HPP
 #define LIERO_MATERIAL_HPP
 
-#include <gvl/cstdint.hpp>
+#include <cstdint>
 #include <liero_game.h>
 
 // Material flags of a palette index or level pixel. The flags and the struct

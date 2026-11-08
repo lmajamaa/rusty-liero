@@ -2,13 +2,11 @@
 #define UUID_8615289728154E2FB9B179C2745D5FA9
 
 #include "game/sys.hpp"
-#include "game/reader.hpp"
 #include "game/filesystem.hpp"
 #include "game/text.hpp"
 #include "game/constants.hpp"
 #include "game/math.hpp"
 #include "game/console.hpp"
-#include <gvl/support/platform.hpp>
 
 #include <ctime>
 #include <exception>
@@ -71,7 +69,7 @@ try
 	precomputeTables();
 
 	// TODO: Fix loading
-	gvl::shared_ptr<Common> common(new Common());
+	std::shared_ptr<Common> common(new Common());
 	FsNode configNode(""); // current dir
 	FsNode lieroRoot(configNode / "TC" / tcName);
 	common->load(std::move(lieroRoot));

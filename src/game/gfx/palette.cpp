@@ -1,7 +1,7 @@
 #include "palette.hpp"
 
 #include "../settings.hpp"
-#include "../reader.hpp"
+#include "../bytes.hpp"
 #include "../gfx.hpp"
 
 // The palette effects are implemented in Rust (rust/liero-game/src/gfx.rs).
@@ -43,7 +43,7 @@ void Palette::clear()
 	std::memset(entries, 0, sizeof(entries));
 }
 
-void Palette::read(gvl::octet_reader& r)
+void Palette::read(ByteReader& r)
 {
 	for(int i = 0; i < 256; ++i)
 	{

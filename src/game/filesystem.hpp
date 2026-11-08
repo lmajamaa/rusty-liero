@@ -2,26 +2,13 @@
 #define LIERO_FILESYSTEM_HPP
 
 #include <string>
-#include <cstdio>
-#include <memory>
-#include <map>
-#include <gvl/support/platform.hpp>
-#include <gvl/io2/stream.hpp>
-#include <gvl/zlib/zlib2.h>
-#include <gvl/resman/shared_ptr.hpp>
+#include <vector>
+#include <stdexcept>
+#include <liero_game.h>
 
-std::string changeLeaf(std::string const& path, std::string const& newLeaf);
-std::string getRoot(std::string const& path);
 std::string getLeaf(std::string const& path);
 std::string getBasename(std::string const& path);
-std::string getExtension(std::string const& path);
-std::string toUpperCase(std::string str);
 std::string joinPath(std::string const& root, std::string const& leaf);
-
-FILE* tolerantFOpen(std::string const& name, char const* mode);
-
-std::size_t fileLength(FILE* f);
-bool create_directories(std::string const& dir);
 
 struct NodeName
 {
@@ -35,128 +22,82 @@ struct NodeName
 	bool isDir;
 };
 
+// A folder's entries, sorted, with .zip files as folders.
 struct DirectoryListing
 {
 	std::vector<NodeName> subs;
 
-	DirectoryListing(DirectoryListing&& other)
-	: subs(std::move(other.subs))
-	{
-	}
-
-	DirectoryListing& operator=(DirectoryListing&& other)
-	{
-		subs = std::move(other.subs);
-		return *this;
-	}
-
-	DirectoryListing(std::string const& dir);
-	DirectoryListing(std::vector<NodeName>&& subsInit);
-	~DirectoryListing();
-
-	DirectoryListing operator|(DirectoryListing const& other)
-	{
-		DirectoryListing ret(std::move(subs));
-
-		ret.subs.insert(ret.subs.end(), other.subs.begin(), other.subs.end());
-		ret.sort();
-		return ret;
-	}
-
-	std::vector<NodeName>::iterator begin()
-	{
-		return subs.begin();
-	}
-
-	std::vector<NodeName>::iterator end()
-	{
-		return subs.end();
-	}
-
-	void sort();
+	std::vector<NodeName>::iterator begin() { return subs.begin(); }
+	std::vector<NodeName>::iterator end() { return subs.end(); }
 };
 
-struct FsNodeImp : gvl::shared
-{
-	virtual std::string const& fullPath() = 0;
-	virtual DirectoryListing iter() = 0;
-	virtual gvl::shared_ptr<FsNodeImp> go(std::string const& name) = 0;
-	virtual gvl::source tryToSource() = 0;
-	virtual gvl::sink tryToSink() = 0;
-	virtual bool exists() const = 0;
-};
-
+// A path to list, read or write, where a .zip file reads as a folder. Rust
+// owns it (LieroFsNode in rust/liero-game/src/fs.rs).
 struct FsNode
 {
-	gvl::shared_ptr<FsNodeImp> imp;
-
 	FsNode()
+	: node(nullptr)
 	{
 	}
 
 	explicit FsNode(std::string const& path);
 
-	FsNode(FsNode const& other) = default;
-	FsNode& operator=(FsNode const& other) = default;
+	FsNode(FsNode const& other)
+	: node(other.node ? liero_fs_node_clone(other.node) : nullptr)
+	, path(other.path)
+	{
+	}
 
 	FsNode(FsNode&& other)
-	: imp(std::move(other.imp))
+	: node(other.node)
+	, path(std::move(other.path))
 	{
+		other.node = nullptr;
 	}
 
-	FsNode(gvl::shared_ptr<FsNodeImp> imp)
-	: imp(std::move(imp))
+	FsNode& operator=(FsNode other)
 	{
-	}
-
-	FsNode& operator=(FsNode&& other)
-	{
-		imp = std::move(other.imp);
+		std::swap(node, other.node);
+		std::swap(path, other.path);
 		return *this;
 	}
 
+	~FsNode()
+	{
+		liero_fs_node_free(node);
+	}
+
+	// Whether there's a node, not whether it exists.
 	operator void*() const
 	{
-		return imp.get();
+		return node && !liero_fs_node_is_null(node) ? node : nullptr;
 	}
 
 	std::string const& fullPath() const
-	{ return imp->fullPath(); }
+	{ return path; }
 
-	DirectoryListing iter() const
-	{ return imp->iter(); }
+	DirectoryListing iter() const;
 
-	FsNode operator/(std::string const& name) const
-	{ return FsNode(imp->go(name)); }
+	FsNode operator/(std::string const& name) const;
 
 	bool exists() const
-	{ return imp && imp->exists(); }
+	{ return node && liero_fs_node_exists(node); }
 
-	gvl::octet_reader toOctetReader() const
-	{
-		return gvl::octet_reader(toSource());
-	}
+	// The whole file, or an exception if it can't be read.
+	std::vector<uint8_t> read() const;
 
-	gvl::source toSource() const
-	{
-		auto s = imp->tryToSource();
-		if (!s)
-			throw std::runtime_error("Could not read " + fullPath());
-		return s;
-	}
+	// The Rust node, or null.
+	LieroFsNode* rust() const
+	{ return node; }
 
-	gvl::octet_writer toOctetWriter() const
-	{
-		return gvl::octet_writer(toSink());
-	}
+	// Writes the whole file, or throws if it can't.
+	void write(std::string const& data) const;
 
-	gvl::sink toSink() const
-	{
-		auto s = imp->tryToSink();
-		if (!s)
-			throw std::runtime_error("Could not write " + fullPath());
-		return s;
-	}
+private:
+	explicit FsNode(LieroFsNode* node);
+
+	LieroFsNode* node;
+	std::string path;
 };
 
 #endif // LIERO_FILESYSTEM_HPP

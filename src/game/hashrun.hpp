@@ -5,7 +5,7 @@
 // See hashrun.cpp.
 int hashRun(int argc, char* argv[]);
 
-#include <gvl/resman/shared_ptr.hpp>
+#include <memory>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -20,13 +20,13 @@ struct Renderer;
 uint64_t hashGame(Game& game);
 // A bot-vs-bot game as the hash run sets it up, before startGame, with
 // random weapons when `weapons` is null.
-std::unique_ptr<Game> setUpGame(gvl::shared_ptr<Common> common, uint32_t seed, int gameMode, char const* const* weapons);
+std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, int gameMode, char const* const* weapons);
 // The bots' controls for the next tick.
 void botTick(Game& game);
 
 // Drives the menus and weapon selection with scripted keys and prints hashes
 // of what they show. See hashmenus.cpp.
-void hashMenus(gvl::shared_ptr<Common> common);
+void hashMenus(std::shared_ptr<Common> common);
 void hashTc(Common& common);
 // Hashes settings written, read and broken in every format. See
 // hashsettings.cpp.
@@ -36,17 +36,17 @@ uint64_t hashStats(Game& game);
 void hashStatsScreen(char const* name, Game& game, Renderer& renderer);
 // Plays back and hashes a replay file, and replays recorded, changed and
 // broken in other ways. See hashreplays.cpp.
-void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks,
+void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks,
 	int rewindAt = 0);
-void hashReplays(gvl::shared_ptr<Common> common);
+void hashReplays(std::shared_ptr<Common> common);
 // Games between the predictive bots, hashing their state too. See
 // hashai.cpp.
-void hashAiGames(gvl::shared_ptr<Common> common);
+void hashAiGames(std::shared_ptr<Common> common);
 // The sound mixer and the key handling. See hashsfx.cpp.
-void hashSfxAndInput(gvl::shared_ptr<Common> common);
+void hashSfxAndInput(std::shared_ptr<Common> common);
 // The whole app, from the main menu through a game and back, driven by
 // scripted keys. See hashapp.cpp.
-void hashApp(gvl::shared_ptr<Common> common);
+void hashApp(std::shared_ptr<Common> common);
 
 // 64-bit FNV-1a over 32-bit words, the same as the Rust tests use.
 struct Fnv

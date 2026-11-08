@@ -1,8 +1,8 @@
 #ifndef UUID_C1DCDBE1BD8541A14AEC91A1BDF3B9F4
 #define UUID_C1DCDBE1BD8541A14AEC91A1BDF3B9F4
 
-#include <gvl/support/cstdint.hpp>
-#include <gvl/support/debug.hpp>
+#include <cstdint>
+#include <cassert>
 #include <liero_game.h>
 
 // The game's random number generator, implemented in Rust
@@ -35,7 +35,7 @@ struct Rand : LieroRand
 	// Number in [min, max).
 	uint32_t operator()(uint32_t min, uint32_t max)
 	{
-		sassert(min <= max);
+		assert(min <= max);
 		return liero_rand_range(this, min, max);
 	}
 
@@ -55,13 +55,5 @@ struct Rand : LieroRand
 		return !operator==(b);
 	}
 };
-
-// Replays store the state in this order, as gvl::mwc's archive did.
-template<typename Archive>
-void archive(Archive ar, Rand& x)
-{
-	ar.ui32(x.c);
-	ar.ui32(x.x);
-}
 
 #endif // UUID_C1DCDBE1BD8541A14AEC91A1BDF3B9F4

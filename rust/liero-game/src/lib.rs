@@ -10,6 +10,8 @@ pub mod app_screens;
 pub mod boxes;
 pub mod controller;
 pub mod cpp_sort;
+pub mod deflate;
+pub mod fs;
 pub mod game;
 pub mod gfx;
 pub mod item;

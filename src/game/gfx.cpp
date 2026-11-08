@@ -14,15 +14,13 @@
 
 #include "gfx.hpp"
 #include "screen.hpp"
-#include "reader.hpp"
 #include "game.hpp"
 #include "sfx.hpp"
 #include "text.hpp"
 #include "keys.hpp"
 #include "filesystem.hpp"
 
-#include <gvl/io2/fstream.hpp>
-#include <gvl/system/system.hpp>
+#include "ticks.hpp"
 
 #include "controller/replayController.hpp"
 #include "controller/localController.hpp"
@@ -725,7 +723,7 @@ uint32_t appTicks()
 
 uint64_t appHiresTicks()
 {
-	return gfx.driver ? uint64_t(gfx.driver->ticks()) * 1000000 : gvl::get_hires_ticks();
+	return gfx.driver ? uint64_t(gfx.driver->ticks()) * 1000000 : hiresTicks();
 }
 
 std::time_t appTime()
@@ -810,14 +808,14 @@ void Gfx::menuFade(bool quitting)
 
 void Gfx::draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer)
 {
-	gvl::rect updateRect;
+	Rect updateRect;
 	Color realPal[256];
 	renderer.pal.activate(realPal);
 	int offsetX, offsetY;
 	int mag = fitScreen(surface.w, surface.h,
 						renderer.renderResX, renderer.renderResY, offsetX, offsetY);
 
-	gvl::rect newRect(offsetX, offsetY, renderer.renderResX * mag, renderer.renderResY * mag);
+	Rect newRect(offsetX, offsetY, renderer.renderResX * mag, renderer.renderResY * mag);
 
 	if(mag != prevMag)
 	{
@@ -1140,7 +1138,7 @@ void SettingsMenu::onUpdate()
 using std::string;
 using std::vector;
 using std::pair;
-using gvl::shared_ptr;
+using std::shared_ptr;
 
 namespace
 {
@@ -1226,7 +1224,7 @@ void selectorPreview(void* ctx, LieroStr rel)
 
 	try
 	{
-		if (level.load(common, *gfx.settings, static_cast<SelectorContext*>(ctx)->node(rel).toOctetReader()))
+		if (level.load(common, *gfx.settings, ByteReader(static_cast<SelectorContext*>(ctx)->node(rel).read())))
 		{
 			int centerX = gfx.singleScreenRenderer.renderResX / 2;
 
@@ -1274,7 +1272,7 @@ int32_t selectorChoose(void* ctx, LieroStr rel, LieroStr fullPath, LieroStr name
 			// Reset controller before opening the replay, since we may be recording it
 			gfx.controller.reset();
 
-			gfx.controller.reset(new ReplayController(gfx.common, c.node(rel).toSource()));
+			gfx.controller.reset(new ReplayController(gfx.common, c.node(rel)));
 			return MainMenu::MaReplay;
 
 		case SelectorContext::Options:
@@ -1771,9 +1769,7 @@ void Gfx::saveSettingsIfChanged()
 	savedSettingsText = text;
 	try
 	{
-		auto writer = (configNode / "liero.cfg").toOctetWriter();
-		for (char c : text)
-			writer.put(uint8_t(c));
+		(configNode / "liero.cfg").write(text);
 	}
 	catch (std::runtime_error&)
 	{

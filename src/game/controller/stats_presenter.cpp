@@ -1,7 +1,7 @@
 #include "stats_presenter.hpp"
 
 #include <algorithm>
-#include <gvl/system/system.hpp>
+#include "ticks.hpp"
 #include "game/game.hpp"
 #include "game/gfx.hpp"
 #include "game/screen.hpp"
@@ -56,7 +56,7 @@ LieroStatsScene statsScene(Game& game, Renderer& renderer, std::vector<LieroStr>
 	scene.weapon_count = weaponNames.size();
 	scene.render_res_x = renderer.renderResX;
 	scene.render_res_y = renderer.renderResY;
-	scene.ticks_per_sec = gvl::hires_ticks_per_sec();
+	scene.ticks_per_sec = hiresTicksPerSec();
 	return scene;
 }
 

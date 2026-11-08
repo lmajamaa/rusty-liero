@@ -4,7 +4,6 @@
 #include <vector>
 #include <string>
 
-#include <gvl/io2/convert.hpp>
 #include <liero_game.h>
 
 struct Bitmap;
@@ -58,26 +57,6 @@ struct Font
 	void drawText(Bitmap& scr, std::string const& str, int x, int y, int color)
 	{
 		drawText(scr, str.data(), str.size(), x, y, color, 1);
-	}
-
-	void drawText(Bitmap& scr, gvl::cell const& str, int x, int y, int color)
-	{
-		if (str.buffer.empty())
-			return;
-
-		if (str.text_placement != gvl::cell::left)
-		{
-			int w = getDims(
-				reinterpret_cast<char const*>(&str.buffer[0]),
-				str.buffer.size());
-
-			if (str.text_placement == gvl::cell::center)
-				x -= w / 2;
-			else if (str.text_placement == gvl::cell::right)
-				x -= w;
-		}
-
-		drawText(scr, reinterpret_cast<char const*>(&str.buffer[0]), str.buffer.size(), x, y, color, 1);
 	}
 
 	int getDims(std::string const& str, int* height = 0)

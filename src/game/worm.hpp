@@ -8,10 +8,8 @@
 #include <memory>
 #include <numeric>
 #include <functional>
-#include <gvl/resman/shared_ptr.hpp>
+#include <memory>
 #include "version.hpp"
-#include <gvl/serialization/archive.hpp> // For gvl::enable_when
-#include <gvl/crypt/gash.hpp>
 #include "filesystem.hpp"
 #include "settingsffi.hpp"
 
@@ -83,7 +81,7 @@ struct WormSettingsExtensions
 // A worm's settings. Rust owns them (LieroWormSettingsBox in
 // rust/liero-game/src/settings.rs); the fields here refer to its. The fields
 // and their defaults match liero_data::settings::WormSettings.
-struct WormSettings : gvl::shared, WormSettingsExtensions
+struct WormSettings : WormSettingsExtensions
 {
 	WormSettings()
 	: WormSettings(liero_worm_settings_box_new())
@@ -107,7 +105,7 @@ struct WormSettings : gvl::shared, WormSettingsExtensions
 		liero_worm_settings_box_free(box);
 	}
 
-	gvl::gash::value_type& updateHash();
+	SettingsHash& updateHash();
 
 	void saveProfile(FsNode node);
 	void loadProfile(FsNode node);
@@ -151,34 +149,33 @@ public:
 
 	FsNode profileNode;
 
-	gvl::gash::value_type hash;
+	SettingsHash hash;
 };
 
-// A worm's settings in a replay of context.replayVersion, or in a profile.
+// A worm's settings in a replay of `replayVersion`, or in a profile.
 // The format is in liero_data::settings::read_worm and write_worm.
-template<typename Reader, typename Context>
-void archive(gvl::in_archive<Reader, Context> ar, WormSettings& ws)
+template<typename Reader>
+void readWormArchive(Reader& reader, WormSettings& ws, int replayVersion)
 {
-	ArchiveByteSource<Reader> source(ar.reader);
+	ArchiveByteSource<Reader> source(reader);
 	LieroWormSettings view = wormSettingsView(ws);
-	SettingsResult r(liero_worm_settings_read_archive(&view, ar.context.replayVersion, &source.hooks));
+	SettingsResult r(liero_worm_settings_read_archive(&view, replayVersion, &source.hooks));
 	setWormSettings(ws, r.worm());
 	source.rethrow(r.status());
 }
 
-template<typename Writer, typename Context, bool Reread>
-void archive(gvl::out_archive<Writer, Context, Reread> ar, WormSettings& ws)
+inline std::vector<uint8_t> writeWormArchive(WormSettings& ws, int replayVersion)
 {
 	LieroWormSettings view = wormSettingsView(ws);
-	SettingsResult r(liero_worm_settings_write_archive(&view, ar.context.replayVersion));
+	SettingsResult r(liero_worm_settings_write_archive(&view, replayVersion));
 	setWormSettings(ws, r.worm());
-	r.writeTo(ar.writer);
+	return r.bytes();
 }
 
 struct Viewport;
 struct Renderer;
 
-struct WormAI : gvl::shared
+struct WormAI
 {
 	virtual void process(Game& game, Worm& worm) = 0;
 
@@ -194,7 +191,7 @@ struct DumbLieroAI : WormAI
 	Rand rand;
 };
 
-struct Worm : gvl::shared
+struct Worm
 {
 	enum
 	{
@@ -342,7 +339,7 @@ public:
 	fixedvec& pos;
 	fixedvec& vel;
 
-	gvl::ivec2& logicRespawn;
+	IVec2& logicRespawn;
 
 	int& hotspotX;               //Hotspots for laser, laser sight, etc.
 	int& hotspotY;
@@ -395,9 +392,9 @@ public:
 	// Data for LocalController
 	ControlState& cleanControlStates; // This contains the real state of real and extended controls
 
-	gvl::shared_ptr<WormSettings> settings; // !CLONING
+	std::shared_ptr<WormSettings> settings; // !CLONING
 
-	gvl::shared_ptr<WormAI> ai;
+	std::shared_ptr<WormAI> ai;
 };
 
 bool checkForWormHit(Game& game, int x, int y, int dist, Worm* ownWorm);

@@ -6,23 +6,19 @@
 #include "gfx.hpp"
 #include "screen.hpp"
 #include "sfx.hpp"
-#include "sys.hpp"
 #include "game.hpp"
 #include "viewport.hpp"
 #include "worm.hpp"
-#include "reader.hpp"
 #include "filesystem.hpp"
 #include "text.hpp"
 #include "keys.hpp"
 #include "constants.hpp"
 #include "math.hpp"
 #include "console.hpp"
-#include <gvl/support/platform.hpp>
 
 #include <cstdio>
 #include <ctime>
 #include <exception>
-#include <gvl/math/cmwc.hpp>
 #include <liero_game.h>
 #include "hashrun.hpp"
 
@@ -36,50 +32,6 @@ try
 
 	// TODO: Better PRNG seeding
 	gfx.rand.seed(Uint32(std::time(0)));
-
-#if 0
-	std::string const& path = "D:\\cpp\\liero\\tc";
-	FsNode node(path);
-
-	for (DirectoryListing dir = node.iter(); dir; ++dir)
-	{
-		auto d = *dir;
-
-		try
-		{
-			auto zipNode = node / d;
-
-			bool found = false;
-
-			for (DirectoryListing zipDir = zipNode.iter(); zipDir; ++zipDir)
-			{
-				auto e = *zipDir;
-				auto upper = e;
-				toUpperCase(upper);
-
-				if (upper.find(".EXE") != std::string::npos && upper != "LEVEDIT.EXE")
-				{
-					found = true;
-					Common common(zipNode, e);
-
-					printf("N: %s\n", common.guessName().c_str());
-					//printf("N: %s ||| %s\n", common.S[SCopyright2].c_str(), common.S[SCopyright].c_str() + 4);
-					break;
-				}
-			}
-
-			if (!found)
-				printf("** No exe found for %s\n", d.c_str());
-		}
-		catch (std::runtime_error& e)
-		{
-			//printf("Failed to load: %s\n", d.c_str());
-			//printf("%s\n", e.what());
-		}
-	}
-
-	return 0;
-#endif
 
 	bool tcSet = false;
 
@@ -154,7 +106,7 @@ try
 
 	// TC loading
 	FsNode lieroRoot(gfx.getTcNode() / gfx.settings->tc.str());
-	gvl::shared_ptr<Common> common(new Common());
+	std::shared_ptr<Common> common(new Common());
 	common->load(std::move(lieroRoot));
 	gfx.common = common;
 	gfx.playRenderer.loadPalette(*common); // This gets the palette from common
@@ -169,7 +121,6 @@ try
 		SDL_Quit();
 	});
 
-	//gvl::present_profile(std::cout);
 
 	return 0;
 }

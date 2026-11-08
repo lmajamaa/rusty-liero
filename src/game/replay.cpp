@@ -4,8 +4,6 @@
 #include "worm.hpp"
 #include "viewport.hpp"
 #include "settingsffi.hpp"
-#include <gvl/serialization/except.hpp>
-#include <gvl/io2/deflate_filter.hpp>
 
 #include <algorithm>
 #include <stdexcept>
@@ -41,7 +39,8 @@ struct ReplayResult
 	LieroWormSettings const& worm(std::size_t i) const { return *liero_replay_result_worm_settings(r, i); }
 	bool touched(std::size_t i) const { return liero_replay_result_touched(r, i); }
 
-	void writeTo(gvl::octet_writer& writer) const
+	template<typename Writer>
+	void writeTo(Writer& writer) const
 	{
 		LieroStr b = liero_replay_result_bytes(r);
 		if (b.len)
@@ -60,7 +59,7 @@ struct ReplayResult
 		case LieroReplayStatus_CheckError:
 		{
 			LieroStr m = liero_replay_result_message(r);
-			throw gvl::archive_check_error(std::string(reinterpret_cast<char const*>(m.ptr), m.len));
+			throw ArchiveCheckError(std::string(reinterpret_cast<char const*>(m.ptr), m.len));
 		}
 		case LieroReplayStatus_OutOfRange:
 			// What std::vector::at throws in libc++.
@@ -73,7 +72,7 @@ struct ReplayResult
 	LieroReplayResult* r;
 };
 
-typedef ArchiveByteSource<gvl::octet_reader> ReplaySource;
+typedef ArchiveByteSource<ByteReader> ReplaySource;
 
 LieroReplayWorm wormFields(Worm const& worm, Game& game)
 {
@@ -268,27 +267,45 @@ uint32_t fastGameChecksum(Game& game)
 	return liero_replay_checksum(game.rand.x, reinterpret_cast<int32_t const (*)[4]>(worms.data()), game.worms.size());
 }
 
-ReplayWriter::ReplayWriter(gvl::sink str_init)
+void ReplayWriter::Writer::put(uint8_t const* p, std::size_t n)
+{
+	LieroStr s = { p, n };
+	liero_deflate_out_write(out, s);
+}
+
+ReplayWriter::ReplayWriter(FsNode const& node)
 : settingsExpired(true)
 {
-	gvl::deflate_source* ds(new gvl::deflate_source(gvl::source(), true, false));
-
-	ds->sink = str_init;
-
-	writer.attach(gvl::sink(ds));
+	writer.out = node.rust() ? liero_deflate_out_new(node.rust()) : nullptr;
+	if (!writer.out)
+		throw std::runtime_error("Could not write " + node.fullPath());
 }
 
 ReplayWriter::~ReplayWriter()
 {
 	endRecord();
+	// Finishes the file.
+	liero_deflate_out_free(writer.out);
 }
 
-ReplayReader::ReplayReader(gvl::source str_init)
+ReplayReader::ReplayReader(FsNode const& node)
 {
-	reader.attach(gvl::to_source(new gvl::deflate_source(str_init, false)));
+	std::vector<uint8_t> data;
+	bool error = false;
+	std::pair<std::vector<uint8_t>*, bool*> out(&data, &error);
+	bool read = node.rust() && liero_inflate_node(node.rust(), &out, [](void* ctx, LieroStr d, bool e)
+	{
+		auto& o = *static_cast<std::pair<std::vector<uint8_t>*, bool*>*>(ctx);
+		o.first->assign(d.ptr, d.ptr + d.len);
+		*o.second = e;
+	});
+	if (!read)
+		throw std::runtime_error("Could not read " + node.fullPath());
+	// Past what inflated, gvl's reader threw what inflating it had.
+	reader = ByteReader(std::move(data), error ? "Error while deflating" : "Read error in get()");
 }
 
-std::unique_ptr<Game> ReplayReader::beginPlayback(gvl::shared_ptr<Common> common, gvl::shared_ptr<SoundPlayer> soundPlayer)
+std::unique_ptr<Game> ReplayReader::beginPlayback(std::shared_ptr<Common> common, std::shared_ptr<SoundPlayer> soundPlayer)
 {
 	ReplaySource source(reader);
 	ReplayResult r(liero_replay_read_start(&source.hooks));
@@ -296,7 +313,7 @@ std::unique_ptr<Game> ReplayReader::beginPlayback(gvl::shared_ptr<Common> common
 	LieroReplayGameOut const& g = *liero_replay_result_game(r.r);
 	context.replayVersion = g.version;
 
-	gvl::shared_ptr<Settings> settings(new Settings);
+	std::shared_ptr<Settings> settings(new Settings);
 	setSettings(*settings, g.settings);
 
 	std::unique_ptr<Game> game(new Game(common, settings, soundPlayer));

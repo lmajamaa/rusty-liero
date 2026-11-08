@@ -7,7 +7,7 @@
 struct Common;
 struct Renderer;
 
-struct StatsRecorder : gvl::shared
+struct StatsRecorder
 {
 	virtual void damagePotential(Worm* byWorm, WormWeapon* weapon, int hp);
 	virtual void damageDealt(Worm* byWorm, WormWeapon* weapon, Worm* toWorm, int hp, bool hasHit);
@@ -23,7 +23,6 @@ struct StatsRecorder : gvl::shared
 
 	virtual void aiProcessTime(Worm* worm, uint64_t time);
 
-	//virtual void write(Common& common, gvl::stream_ptr sink);
 };
 
 // Records stats in Rust (rust/liero-game/src/stats.rs), which owns them.

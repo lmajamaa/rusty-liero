@@ -3,7 +3,7 @@
 
 #include "itemBehavior.hpp"
 
-#include <gvl/support/cstdint.hpp>
+#include <cstdint>
 
 // One of `min` to `max`, wrapping round; Enter moves to the next.
 struct EnumBehavior : RustItemBehavior

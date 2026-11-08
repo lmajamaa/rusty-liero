@@ -11,8 +11,8 @@
 #include "../gfx/color.hpp"
 #include "../gfx/renderer.hpp"
 
-#include <gvl/resman/shared_ptr.hpp>
-#include <gvl/support/cstdint.hpp>
+#include <memory>
+#include <cstdint>
 
 #include "menuItem.hpp"
 #include "itemBehavior.hpp"

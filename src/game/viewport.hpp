@@ -4,7 +4,7 @@
 #include "game.hpp"
 #include "worm.hpp"
 #include "rand.hpp"
-#include <gvl/math/rect.hpp>
+#include "geom.hpp"
 #include <ctime>
 
 struct Renderer;
@@ -13,14 +13,14 @@ struct Renderer;
 // rust/liero-game/src/viewport.rs); the fields here refer to it.
 struct Viewport
 {
-	Viewport(gvl::rect rect, int wormIdx, int levwidth, int levheight)
+	Viewport(Rect rect, int wormIdx, int levwidth, int levheight)
 	: Viewport(liero_viewport_new(LieroRect{ rect.x1, rect.y1, rect.x2, rect.y2 }, wormIdx, levwidth, levheight))
 	{
 	}
 
 	// Its fields are set after.
 	Viewport()
-	: Viewport(gvl::rect(0, 0, 0, 0), 0, 0, 0)
+	: Viewport(Rect(0, 0, 0, 0), 0, 0, 0)
 	{
 	}
 
@@ -49,7 +49,7 @@ private:
 	, centerX(d->center_x), centerY(d->center_y)
 	, wormIdx(d->worm_idx)
 	, bannerY(d->banner_y)
-	, rect(reinterpret_cast<gvl::rect&>(d->rect))
+	, rect(reinterpret_cast<Rect&>(d->rect))
 	, rand(static_cast<Rand&>(d->rand))
 	{
 	}
@@ -66,7 +66,7 @@ public:
 	int& centerY;
 	int& wormIdx;
 	int& bannerY;
-	gvl::rect& rect;
+	Rect& rect;
 	Rand& rand;
 
 

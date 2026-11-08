@@ -1,10 +1,10 @@
 #ifndef LIERO_MATH_HPP
 #define LIERO_MATH_HPP
 
-#include <gvl/math/vec.hpp>
+#include "geom.hpp"
 #include <liero_game.h>
 
-using fixedvec = gvl::ivec2;
+using fixedvec = IVec2;
 
 typedef int fixed;
 
@@ -18,14 +18,14 @@ inline int ftoi(fixed v)
 	return v >> 16;
 }
 
-inline fixedvec itof(gvl::ivec2 v)
+inline fixedvec itof(IVec2 v)
 {
 	return fixedvec(itof(v.x), itof(v.y));
 }
 
-inline gvl::ivec2 ftoi(fixedvec v)
+inline IVec2 ftoi(fixedvec v)
 {
-	return gvl::ivec2(ftoi(v.x), ftoi(v.y));
+	return IVec2(ftoi(v.x), ftoi(v.y));
 }
 
 // fixedvec and Rust's LieroIVec2 are both two ints, so Rust can work on

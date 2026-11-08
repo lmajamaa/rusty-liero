@@ -16,10 +16,6 @@
 #include "rand.hpp"
 #include "filesystem.hpp"
 
-#include <gvl/io2/stream.hpp>
-#include <gvl/serialization/archive.hpp>
-#include <gvl/serialization/context.hpp>
-#include <gvl/serialization/except.hpp>
 
 #include <cstdio>
 #include <stdexcept>
@@ -90,18 +86,12 @@ FsNode tmpNode(char const* name)
 
 Bytes readAll(FsNode const& node)
 {
-	gvl::octet_reader r(node.toOctetReader());
-	Bytes data;
-	uint8_t b;
-	while (r.try_get(b))
-		data.push_back(b);
-	return data;
+	return node.read();
 }
 
 void writeAll(FsNode const& node, Bytes const& data)
 {
-	gvl::octet_writer w(node.toOctetWriter());
-	w.put(data.data(), data.size());
+	node.write(std::string(data.begin(), data.end()));
 }
 
 void addStr(Fnv& f, std::string const& s)
@@ -116,7 +106,7 @@ void addBytes(Fnv& f, Bytes const& b)
 	f.bytes(b.data(), b.size());
 }
 
-void addHash(Fnv& f, gvl::gash::value_type const& h)
+void addHash(Fnv& f, SettingsHash const& h)
 {
 	for (uint64_t v : h.value)
 	{
@@ -186,8 +176,7 @@ void attempt(Fnv& h, F f)
 	{
 		f();
 	}
-	catch (gvl::archive_check_error& e) { kind = 1; what = e.what(); }
-	catch (gvl::stream_error& e) { kind = 2; what = e.what(); }
+	catch (ArchiveCheckError& e) { kind = 1; what = e.what(); }
 	catch (std::runtime_error& e) { kind = 3; what = e.what(); }
 	catch (std::out_of_range&) { kind = 4; }
 	catch (std::exception& e) { kind = 5; what = e.what(); }
@@ -521,32 +510,18 @@ Bytes binaryWorm(Xorshift& r)
 	return w.b;
 }
 
-typedef gvl::in_archive<gvl::octet_reader> settings_in;
-typedef gvl::out_archive<gvl::octet_writer> settings_out;
-typedef gvl::in_archive<gvl::octet_reader, GameSerializationContext> worm_in;
-typedef gvl::out_archive<gvl::octet_writer, GameSerializationContext> worm_out;
-
 void readSettings(Fnv& h, Bytes const& data, Settings& s)
 {
-	FsNode node = tmpNode("settings.bin");
-	writeAll(node, data);
 	attempt(h, [&] {
-		gvl::octet_reader reader(node.toOctetReader());
-		gvl::default_serialization_context context;
-		archive(settings_in(reader, context), s);
+		ByteReader reader(data);
+		readSettingsArchive(reader, s);
 	});
 	addSettings(h, s);
 }
 
 Bytes writeSettings(Fnv& h, Settings& s)
 {
-	FsNode node = tmpNode("settings.bin");
-	{
-		gvl::octet_writer writer(node.toOctetWriter());
-		gvl::default_serialization_context context;
-		archive(settings_out(writer, context), s);
-	}
-	Bytes b = readAll(node);
+	Bytes b = writeSettingsArchive(s);
 	addBytes(h, b);
 	addSettings(h, s);
 	return b;
@@ -554,27 +529,16 @@ Bytes writeSettings(Fnv& h, Settings& s)
 
 void readWorm(Fnv& h, Bytes const& data, WormSettings& ws, int replayVersion)
 {
-	FsNode node = tmpNode("worm.bin");
-	writeAll(node, data);
 	attempt(h, [&] {
-		gvl::octet_reader reader(node.toOctetReader());
-		GameSerializationContext context;
-		context.replayVersion = replayVersion;
-		archive(worm_in(reader, context), ws);
+		ByteReader reader(data);
+		readWormArchive(reader, ws, replayVersion);
 	});
 	addWorm(h, ws);
 }
 
 Bytes writeWorm(Fnv& h, WormSettings& ws, int replayVersion)
 {
-	FsNode node = tmpNode("worm.bin");
-	{
-		gvl::octet_writer writer(node.toOctetWriter());
-		GameSerializationContext context;
-		context.replayVersion = replayVersion;
-		archive(worm_out(writer, context), ws);
-	}
-	Bytes b = readAll(node);
+	Bytes b = writeWormArchive(ws, replayVersion);
 	addBytes(h, b);
 	addWorm(h, ws);
 	return b;

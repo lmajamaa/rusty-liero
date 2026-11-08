@@ -13,8 +13,6 @@
 #include "filesystem.hpp"
 #include "mixer/player.hpp"
 #include "gfx/renderer.hpp"
-#include <gvl/io2/deflate_filter.hpp>
-#include <gvl/serialization/archive.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -31,34 +29,49 @@ FsNode tmpNode(std::string const& name)
 	return FsNode("/tmp/" + name);
 }
 
-Bytes readAll(gvl::octet_reader r)
+// What a replay file inflates to, and whether reading on failed.
+struct Inflated
 {
 	Bytes data;
-	uint8_t b;
-	while (r.try_get(b))
-		data.push_back(b);
-	return data;
+	bool error = false;
+};
+
+Inflated inflatedFile(FsNode const& node)
+{
+	Inflated r;
+	if (!liero_inflate_node(node.rust(), &r, [](void* ctx, LieroStr d, bool e)
+	{
+		Inflated& o = *static_cast<Inflated*>(ctx);
+		o.data.assign(d.ptr, d.ptr + d.len);
+		o.error = e;
+	}))
+		throw std::runtime_error("Could not read " + node.fullPath());
+	return r;
 }
 
 // A replay file's bytes before compression.
 Bytes readReplay(FsNode const& node)
 {
-	return readAll(gvl::octet_reader(gvl::to_source(new gvl::deflate_source(node.toSource(), false))));
+	Inflated r = inflatedFile(node);
+	if (r.error)
+		throw std::runtime_error("Error while deflating");
+	return r.data;
 }
 
 // Compresses `data` into a replay file, as ReplayWriter does.
 void writeReplay(FsNode const& node, Bytes const& data)
 {
-	gvl::deflate_source* ds = new gvl::deflate_source(gvl::source(), true, false);
-	ds->sink = node.toSink();
-	gvl::octet_writer w;
-	w.attach(gvl::sink(ds));
-	w.put(data.data(), data.size());
+	LieroDeflateOut* out = liero_deflate_out_new(node.rust());
+	if (!out)
+		throw std::runtime_error("Could not write " + node.fullPath());
+	LieroStr s = { data.data(), data.size() };
+	liero_deflate_out_write(out, s);
+	liero_deflate_out_free(out);
 }
 
-void addHash(Fnv& f, gvl::gash::value_type const& h)
+void addHash(Fnv& f, SettingsHash const& h)
 {
-	for (int i = 0; i < gvl::gash::value_type::size; ++i)
+	for (int i = 0; i < SettingsHash::size; ++i)
 	{
 		f.add(uint32_t(h.value[i]));
 		f.add(uint32_t(h.value[i] >> 32));
@@ -103,7 +116,7 @@ void hashLoaded(Fnv& f, Game& game)
 }
 
 // Starts a bot game as hashrun.cpp does and runs it `ticks` ticks.
-std::unique_ptr<Game> botGame(gvl::shared_ptr<Common> common, uint32_t seed, int gameMode, int ticks)
+std::unique_ptr<Game> botGame(std::shared_ptr<Common> common, uint32_t seed, int gameMode, int ticks)
 {
 	std::unique_ptr<Game> game = setUpGame(common, seed, gameMode, nullptr);
 	game->startGame();
@@ -126,12 +139,12 @@ struct SettingsChange
 // Records `ticks` ticks of a bot game into `node`. With `startTick` 0 the
 // recording starts as LocalController starts it, before startGame;
 // otherwise after that many ticks.
-void recordGame(gvl::shared_ptr<Common> common, FsNode const& node, uint32_t seed, int gameMode,
+void recordGame(std::shared_ptr<Common> common, FsNode const& node, uint32_t seed, int gameMode,
 	int startTick, int ticks, int version,
 	std::vector<SettingsChange> const& changes = std::vector<SettingsChange>())
 {
 	std::unique_ptr<Game> game;
-	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(node.toSink()));
+	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(node));
 	replay->context.replayVersion = version;
 	if (startTick == 0)
 	{
@@ -167,30 +180,17 @@ void recordGame(gvl::shared_ptr<Common> common, FsNode const& node, uint32_t see
 	}
 }
 
+// Writing sets the settings too, so a copy is written.
 Bytes settingsArchive(Settings const& settings)
 {
-	FsNode node = tmpNode("settings.bin");
-	{
-		gvl::octet_writer w(node.toOctetWriter());
-		GameSerializationContext context;
-		// Writing sets the settings too, so a copy is written.
-		std::unique_ptr<Settings> copy(settings.clone());
-		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(w, context), *copy);
-	}
-	return readAll(node.toOctetReader());
+	std::unique_ptr<Settings> copy(settings.clone());
+	return writeSettingsArchive(*copy);
 }
 
 Bytes wormSettingsArchive(WormSettings const& ws)
 {
-	FsNode node = tmpNode("worm.bin");
-	{
-		gvl::octet_writer w(node.toOctetWriter());
-		GameSerializationContext context;
-		// Writing sets the settings too, so a copy is written.
-		std::unique_ptr<WormSettings> copy(ws.clone());
-		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(w, context), *copy);
-	}
-	return readAll(node.toOctetReader());
+	std::unique_ptr<WormSettings> copy(ws.clone());
+	return writeWormArchive(*copy, GameSerializationContext().replayVersion);
 }
 
 void putU32(Bytes& b, uint32_t v)
@@ -231,14 +231,17 @@ std::size_t frameOffset(std::size_t firstFrame, int k)
 // every `interval` ticks and how it ended: the end of the replay, or the
 // error that stopped it, with the game and settings then.
 // With rewindAt, the replay is also rewound there, as R does in a replay.
-void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks,
+void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks,
 	int rewindAt)
 {
 	{
+		// What the file inflates to, not its compressed bytes, which
+		// depend on the compressor.
 		Fnv f;
-		Bytes file = readAll(node.toOctetReader());
-		f.add(uint32_t(file.size()));
-		f.bytes(file.data(), file.size());
+		Inflated file = inflatedFile(node);
+		f.add(uint32_t(file.data.size()));
+		f.bytes(file.data.data(), file.data.size());
+		f.add(file.error);
 		std::printf("%s-replay-file 0 %016llx\n", name, (unsigned long long)f.h);
 	}
 
@@ -246,13 +249,13 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 	renderer.init(320, 200);
 	renderer.loadPalette(*common);
 
-	ReplayReader reader(node.toSource());
+	ReplayReader reader(node);
 	std::unique_ptr<Game> game;
 	std::string outcome = "replay ended";
 	int ticks = 0;
 	try
 	{
-		game = reader.beginPlayback(common, gvl::shared_ptr<SoundPlayer>(new NullSoundPlayer));
+		game = reader.beginPlayback(common, std::shared_ptr<SoundPlayer>(new NullSoundPlayer));
 		{
 			Fnv f;
 			hashLoaded(f, *game);
@@ -265,15 +268,15 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 		game->clearViewports();
 		game->worms[0]->statsX = 0;
 		game->worms[1]->statsX = 218;
-		game->addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
-		game->addViewport(new Viewport(gvl::rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
-		game->addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
+		game->addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
+		game->addViewport(new Viewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
+		game->addViewport(new Viewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
 		game->startGame();
 		game->focus(renderer);
 
 		// What R rewinds to in ReplayController.
 		std::unique_ptr<Game> initialGame;
-		gvl::octet_reader initialReader = reader.reader;
+		ByteReader initialReader = reader.reader;
 		if (rewindAt > 0)
 		{
 			initialGame.reset(new Game(*game));
@@ -310,11 +313,7 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 		if (ticks == maxTicks)
 			outcome = "stopped";
 	}
-	catch (gvl::stream_error& e)
-	{
-		outcome = std::string("stream error: ") + e.what();
-	}
-	catch (gvl::archive_check_error& e)
+	catch (ArchiveCheckError& e)
 	{
 		outcome = std::string("archive error: ") + e.what();
 	}
@@ -341,7 +340,7 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 	std::remove(node.fullPath().c_str());
 }
 
-void hashReplays(gvl::shared_ptr<Common> common)
+void hashReplays(std::shared_ptr<Common> common)
 {
 	char name[64];
 

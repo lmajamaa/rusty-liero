@@ -4,8 +4,6 @@
 #include "gfx.hpp"
 #include "filesystem.hpp"
 
-#include <gvl/io2/stream.hpp>
-#include <gvl/serialization/except.hpp>
 
 #include <stdexcept>
 #include <vector>
@@ -97,16 +95,6 @@ void copyArray(T (&dest)[N], U const (&src)[N])
 		dest[i] = src[i];
 }
 
-// The whole file, or a std::runtime_error if it can't be opened.
-std::vector<uint8_t> readAll(FsNode const& node)
-{
-	gvl::octet_reader reader(node.toOctetReader());
-	std::vector<uint8_t> data;
-	uint8_t b;
-	while (reader.try_get(b))
-		data.push_back(b);
-	return data;
-}
 
 }
 
@@ -225,7 +213,7 @@ void throwArchiveError(LieroSettingsStatus status, std::exception_ptr const& rea
 			std::rethrow_exception(readerError);
 		throw std::runtime_error("Read error in get()");
 	case LieroSettingsStatus_CheckError:
-		throw gvl::archive_check_error("Expected checkpoint here");
+		throw ArchiveCheckError("Expected checkpoint here");
 	default:
 		return;
 	}
@@ -235,9 +223,11 @@ bool Settings::load(FsNode node, Rand& rand)
 {
 	try
 	{
-		std::vector<uint8_t> data = readAll(node);
 		LieroSettings view = settingsView(*this);
-		SettingsResult r(liero_settings_read_text(&view, data.data(), data.size()));
+		LieroSettingsResult* read = node.rust() ? liero_settings_load(&view, node.rust(), false) : nullptr;
+		if (!read)
+			return false;
+		SettingsResult r(read);
 		setSettings(*this, r.settings());
 
 		switch (r.status())
@@ -261,9 +251,11 @@ bool Settings::loadLegacy(FsNode node, Rand& rand)
 {
 	try
 	{
-		std::vector<uint8_t> data = readAll(node);
 		LieroSettings view = settingsView(*this);
-		SettingsResult r(liero_settings_read_legacy(&view, data.data(), data.size()));
+		LieroSettingsResult* read = node.rust() ? liero_settings_load(&view, node.rust(), true) : nullptr;
+		if (!read)
+			return false;
+		SettingsResult r(read);
 		setSettings(*this, r.settings());
 		return r.status() == LieroSettingsStatus_Ok;
 	}
@@ -273,7 +265,7 @@ bool Settings::loadLegacy(FsNode node, Rand& rand)
 	}
 }
 
-gvl::gash::value_type& Settings::updateHash()
+SettingsHash& Settings::updateHash()
 {
 	LieroSettings view = settingsView(*this);
 	SettingsResult r(liero_settings_hash(&view));
@@ -284,11 +276,9 @@ gvl::gash::value_type& Settings::updateHash()
 
 void Settings::save(FsNode node, Rand& rand)
 {
-	auto writer = node.toOctetWriter();
-
 	LieroSettings view = settingsView(*this);
-	SettingsResult r(liero_settings_write_text(&view));
-	r.writeTo(writer);
+	if (!node.rust() || !liero_settings_save(&view, node.rust()))
+		throw std::runtime_error("Could not write " + node.fullPath());
 }
 
 std::string Settings::text()
@@ -301,44 +291,4 @@ std::string Settings::text()
 
 void Settings::generateName(WormSettings& ws, Rand& rand)
 {
-#if 0 // TODO
-	try
-	{
-		ReaderFile f(FsNode(joinPath(configRoot, "NAMES.DAT")).read());
-
-		std::vector<std::string> names;
-
-		std::size_t len = f.len;
-
-		// TODO: This is a bit silly since we switched to ReaderFile
-		std::vector<char> chars(len);
-
-		f.get(reinterpret_cast<uint8_t*>(&chars[0]), len);
-
-		std::size_t begin = 0;
-		for(std::size_t i = 0; i < len; ++i)
-		{
-			if(chars[i] == '\r'
-			|| chars[i] == '\n')
-			{
-				if(i > begin)
-				{
-					names.push_back(std::string(chars.begin() + begin, chars.begin() + i));
-				}
-
-				begin = i + 1;
-			}
-		}
-
-		if(!names.empty())
-		{
-			ws.name = names[rand(uint32_t(names.size()))];
-			ws.randomName = true;
-		}
-	}
-	catch (std::runtime_error)
-	{
-		return;
-	}
-#endif
 }

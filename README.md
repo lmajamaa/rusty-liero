@@ -161,7 +161,8 @@ of this project.
 
 Some bundled parts keep their own licenses:
 * `TC/openliero/sounds`: WTFPL, see `TC/openliero/sounds/sounds.txt`
-* `src/gvl/zlib/miniz.c`: public domain, see the unlicense statement at the end of the file
-* `src/gvl/support/type_info.hpp`: Boost Software License 1.0
+
+The game also compiles in two Rust crates, under licenses of their choosing:
+`miniz_oxide` (MIT, Zlib or Apache-2.0) and `adler2` (0BSD, MIT or Apache-2.0).
 
 The original Liero game data is not included. Convert your own copy with tctool.

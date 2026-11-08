@@ -7,7 +7,7 @@
 #include "../settings.hpp"
 #include "bitmap.hpp"
 #include "macros.hpp"
-#include <gvl/math/rect.hpp>
+#include "../geom.hpp"
 #include <cstring>
 #include <cassert>
 #include <cstdlib>
@@ -124,7 +124,7 @@ void drawDirtEffect(Common& common, Rand& rand, Level& level, int dirtEffect, in
 	liero_level_draw_dirt_effect(&v, &c, &rand, dirtEffect, x, y);
 }
 
-void correctShadow(Common& common, Level& level, gvl::rect rect)
+void correctShadow(Common& common, Level& level, Rect rect)
 {
 	LieroLevel v = level.view();
 	LieroLevelCommon c = common.levelCommon();

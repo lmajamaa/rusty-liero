@@ -1,10 +1,9 @@
-#include <gvl/support/platform.hpp>
 #include <exception>
 #include <string>
 
 int gameEntry(int argc, char *argv[]);
 
-#if GVL_WINDOWS
+#ifdef _WIN32
 #include <windows.h>
 
 INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, INT nCmdShow) 

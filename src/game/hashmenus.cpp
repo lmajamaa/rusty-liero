@@ -156,7 +156,7 @@ void runMenu(Common& common, char const* name, Menu& menu, std::set<int> const& 
 	}
 }
 
-void runMenus(gvl::shared_ptr<Common> common)
+void runMenus(std::shared_ptr<Common> common)
 {
 	Common& c = *common;
 	gfx.settings.reset(new Settings);
@@ -207,10 +207,10 @@ void runMenus(gvl::shared_ptr<Common> common)
 }
 
 // The weapon selection screen with both worms' controls pressed at random.
-void runWeaponSelection(gvl::shared_ptr<Common> common, char const* name, uint32_t seed,
+void runWeaponSelection(std::shared_ptr<Common> common, char const* name, uint32_t seed,
 	uint32_t controller1, uint32_t selectBotWeapons, int steps)
 {
-	gvl::shared_ptr<Settings> settings(new Settings);
+	std::shared_ptr<Settings> settings(new Settings);
 	gfx.settings = settings;
 	settings->selectBotWeapons = selectBotWeapons;
 	Rand r(seed);
@@ -230,7 +230,7 @@ void runWeaponSelection(gvl::shared_ptr<Common> common, char const* name, uint32
 
 	gfx.rand.seed(seed);
 
-	std::unique_ptr<Game> gamePtr(new Game(common, settings, gvl::shared_ptr<SoundPlayer>(new NullSoundPlayer)));
+	std::unique_ptr<Game> gamePtr(new Game(common, settings, std::shared_ptr<SoundPlayer>(new NullSoundPlayer)));
 	Game& game = *gamePtr;
 	for (int i = 0; i < 2; ++i)
 	{
@@ -241,9 +241,9 @@ void runWeaponSelection(gvl::shared_ptr<Common> common, char const* name, uint32
 		worm->statsX = i == 0 ? 0 : 218;
 		game.addWorm(worm);
 	}
-	game.addViewport(new Viewport(gvl::rect(0, 0, 158, 158), 0, 504, 350));
-	game.addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), 1, 504, 350));
-	game.addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
+	game.addViewport(new Viewport(Rect(0, 0, 158, 158), 0, 504, 350));
+	game.addViewport(new Viewport(Rect(160, 0, 158+160, 158), 1, 504, 350));
+	game.addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
 	{
 		Level newLevel;
 		newLevel.generateFromSettings(*common, *settings, gfx.rand);
@@ -349,7 +349,7 @@ void runBoxes(Common& c)
 
 }
 
-void hashMenus(gvl::shared_ptr<Common> common)
+void hashMenus(std::shared_ptr<Common> common)
 {
 	gfx.common = common;
 	gfx.playRenderer.init(320, 200);

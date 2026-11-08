@@ -403,9 +403,19 @@ typedef enum LieroTickKind {
 typedef struct LieroApp LieroApp;
 
 /**
+ * A replay file being written.
+ */
+typedef struct LieroDeflateOut LieroDeflateOut;
+
+/**
  * A predictive AI for C++'s `FollowAI` to own.
  */
 typedef struct LieroFollowAi LieroFollowAi;
+
+/**
+ * A file node for C++'s `FsNode` to own.
+ */
+typedef struct LieroFsNode LieroFsNode;
 
 /**
  * A level. C++ holds a pointer to it, and its fields refer to `data`.
@@ -450,12 +460,6 @@ typedef struct LieroStatsScreen LieroStatsScreen;
  * A loaded TC, or the error that stopped loading it.
  */
 typedef struct LieroTc LieroTc;
-
-/**
- * A file's contents, filled in by the C++ read hook with
- * `liero_tc_file_set`.
- */
-typedef struct LieroTcFile LieroTcFile;
 
 /**
  * Weapon selection: each viewport's worm's menu (`WeaponSelection`).
@@ -2257,15 +2261,6 @@ typedef struct LieroStatsScene {
   uint64_t ticks_per_sec;
 } LieroStatsScene;
 
-typedef struct LieroTcHooks {
-  void *ctx;
-  /**
-   * Reads `path` (inside the TC, with `/` between folders) into `out`.
-   * Returns false if the file can't be read.
-   */
-  bool (*read)(void *ctx, struct LieroStr path, struct LieroTcFile *out);
-} LieroTcHooks;
-
 typedef struct LieroTcWeapon {
   struct LieroStr name;
   struct LieroStr id_str;
@@ -3408,6 +3403,103 @@ bool liero_controller_in_game(const struct LieroControllerData *c);
  * inverted, and the frame is counted.
  */
 void liero_controller_process(struct LieroControllerData *c, struct LieroKeys *keys);
+
+/**
+ * Starts writing a compressed file at `node`. Null if it can't be created.
+ */
+struct LieroDeflateOut *liero_deflate_out_new(const struct LieroFsNode *node);
+
+/**
+ * # Safety
+ * `data` must be valid.
+ */
+void liero_deflate_out_write(struct LieroDeflateOut *out, struct LieroStr data);
+
+/**
+ * Finishes the file.
+ *
+ * # Safety
+ * `out` must come from `liero_deflate_out_new`, or be null.
+ */
+void liero_deflate_out_free(struct LieroDeflateOut *out);
+
+/**
+ * Inflates the file at `node`: `got(ctx, data, error)` with what a reader
+ * gets of it, and whether reading on fails. False, without calling it, if
+ * the file can't be read.
+ *
+ * # Safety
+ * `got` must take `ctx`.
+ */
+bool liero_inflate_node(const struct LieroFsNode *node, void *ctx, void (*got)(void *ctx,
+                                                                               struct LieroStr data,
+                                                                               bool error));
+
+/**
+ * # Safety
+ * `path` must be valid.
+ */
+struct LieroFsNode *liero_fs_node_new(struct LieroStr path);
+
+struct LieroFsNode *liero_fs_node_clone(const struct LieroFsNode *n);
+
+/**
+ * # Safety
+ * `n` must come from a `liero_fs_node_*` function, or be null.
+ */
+void liero_fs_node_free(struct LieroFsNode *n);
+
+/**
+ * `n / name`.
+ *
+ * # Safety
+ * `name` must be valid.
+ */
+struct LieroFsNode *liero_fs_node_go(const struct LieroFsNode *n, struct LieroStr name);
+
+bool liero_fs_node_is_null(const struct LieroFsNode *n);
+
+/**
+ * The node's path, valid while it lives.
+ */
+struct LieroStr liero_fs_node_full_path(const struct LieroFsNode *n);
+
+bool liero_fs_node_exists(const struct LieroFsNode *n);
+
+/**
+ * Calls `add(ctx, name, is_dir)` for each entry, sorted.
+ *
+ * # Safety
+ * `add` must take `ctx`.
+ */
+void liero_fs_node_list(const struct LieroFsNode *n, void *ctx, void (*add)(void *ctx,
+                                                                            struct LieroStr name,
+                                                                            bool is_dir));
+
+/**
+ * Reads the node: `got(ctx, bytes)` with its contents, which are valid
+ * during the call. False, without calling it, if it can't be read.
+ *
+ * # Safety
+ * `got` must take `ctx`.
+ */
+bool liero_fs_node_read(const struct LieroFsNode *n, void *ctx, void (*got)(void *ctx,
+                                                                            struct LieroStr data));
+
+/**
+ * Writes `data` as the whole file. False if it can't be.
+ *
+ * # Safety
+ * `data` must be valid.
+ */
+bool liero_fs_node_write(const struct LieroFsNode *n, struct LieroStr data);
+
+/**
+ * Makes the node writable, creating its folders if needed, and gives the
+ * path to write it at (valid while the node lives), or an empty one if it
+ * can't be.
+ */
+struct LieroStr liero_fs_node_prepare_write(const struct LieroFsNode *n);
 
 struct LieroGameData *liero_game_data_new(void);
 
@@ -4870,6 +4962,49 @@ struct LieroSettingsResult *liero_settings_read_legacy(const struct LieroSetting
                                                        uintptr_t len);
 
 /**
+ * Reads liero.cfg (or LIERO.DAT, if `legacy`) from `node` over `s`, as
+ * `liero_settings_read_text` or `liero_settings_read_legacy` would. Null if
+ * the file can't be read.
+ *
+ * # Safety
+ * `s`'s strings must be valid.
+ */
+struct LieroSettingsResult *liero_settings_load(const struct LieroSettings *s,
+                                                const struct LieroFsNode *node,
+                                                bool legacy);
+
+/**
+ * Writes `s` to `node` as liero.cfg. False if the file can't be written.
+ *
+ * # Safety
+ * `s`'s strings must be valid.
+ */
+bool liero_settings_save(const struct LieroSettings *s, const struct LieroFsNode *node);
+
+/**
+ * Reads a profile from `node` over `ws`: Ok, or ReadError if it ends
+ * early, with the worm settings as far as they were read. Null if the
+ * file can't be read.
+ *
+ * # Safety
+ * `ws`'s name must be valid.
+ */
+struct LieroSettingsResult *liero_worm_settings_load_profile(const struct LieroWormSettings *ws,
+                                                             int32_t replay_version,
+                                                             const struct LieroFsNode *node);
+
+/**
+ * Writes `ws` to `node` as a profile, with the worm settings after writing
+ * it. Null, with nothing changed, if the file can't be written.
+ *
+ * # Safety
+ * `ws`'s name must be valid.
+ */
+struct LieroSettingsResult *liero_worm_settings_save_profile(const struct LieroWormSettings *ws,
+                                                             int32_t replay_version,
+                                                             const struct LieroFsNode *node);
+
+/**
  * Reads the settings archive over `s`: Ok, ReadError or CheckError.
  *
  * # Safety
@@ -5191,21 +5326,10 @@ struct LieroScreen liero_stats_presenter_screen(const struct LieroStats *stats,
                                                 const struct LieroStatsScene *scene);
 
 /**
- * Copies `len` bytes from `data` into `out`.
- *
- * # Safety
- * `out` must come from the read hook and `data` must be valid for `len` bytes.
+ * Loads the TC in `node` (`Common::load`). Always returns a TC to free with
+ * `liero_tc_free`; `liero_tc_error` says whether loading failed.
  */
-void liero_tc_file_set(struct LieroTcFile *out, const uint8_t *data, uintptr_t len);
-
-/**
- * Loads a TC, reading its files through `hooks`. Always returns a TC to free
- * with `liero_tc_free`; `liero_tc_error` says whether loading failed.
- *
- * # Safety
- * `hooks` must be valid for the call.
- */
-struct LieroTc *liero_tc_load(const struct LieroTcHooks *hooks);
+struct LieroTc *liero_tc_load(const struct LieroFsNode *node);
 
 /**
  * Why loading failed, or an empty string.

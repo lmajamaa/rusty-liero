@@ -1,9 +1,6 @@
 #ifndef UUID_4CF92C398C724F883A02E8A68FE1584F
 #define UUID_4CF92C398C724F883A02E8A68FE1584F
 
-#include <gvl/io2/stream.hpp>
-#include <gvl/serialization/context.hpp>
-#include <gvl/crypt/gash.hpp>
 #include "mixer/player.hpp"
 #include <cstring>
 #include <map>
@@ -11,10 +8,12 @@
 #include "worm.hpp"
 #include "common.hpp"
 #include "version.hpp"
+#include "filesystem.hpp"
+#include "bytes.hpp"
 
 struct Game;
 
-struct GameSerializationContext : gvl::serialization_context<GameSerializationContext>
+struct GameSerializationContext
 {
 	GameSerializationContext()
 	: game(0)
@@ -29,7 +28,7 @@ struct GameSerializationContext : gvl::serialization_context<GameSerializationCo
 		{
 		}
 
-		gvl::gash::value_type lastSettingsHash;
+		SettingsHash lastSettingsHash;
 		bool settingsExpired;
 	};
 
@@ -57,16 +56,20 @@ struct Replay
 
 struct ReplayWriter : Replay
 {
-	ReplayWriter(gvl::sink str_init);
+	// Starts a replay file at `node`, or throws if it can't be written.
+	ReplayWriter(FsNode const& node);
 	~ReplayWriter();
 
 	void unfocus();
 	void focus();
 
-	//gvl::filter_ptr str;
-	//gvl::octet_stream_writer writer;
-	gvl::octet_writer writer;
-	gvl::gash::value_type lastSettingsHash;
+	// The file being written, compressed in Rust.
+	struct Writer
+	{
+		void put(uint8_t const* p, std::size_t n);
+		LieroDeflateOut* out;
+	} writer;
+	SettingsHash lastSettingsHash;
 	bool settingsExpired;
 
 	void beginRecord(Game& game);
@@ -79,7 +82,8 @@ struct Renderer;
 
 struct ReplayReader : Replay
 {
-	ReplayReader(gvl::source str_init);
+	// Reads the replay file at `node`, or throws if it can't be read.
+	ReplayReader(FsNode const& node);
 
 	void unfocus()
 	{
@@ -91,10 +95,11 @@ struct ReplayReader : Replay
 		// Nothing
 	}
 
-	std::unique_ptr<Game> beginPlayback(gvl::shared_ptr<Common> common, gvl::shared_ptr<SoundPlayer> soundPlayer);
+	std::unique_ptr<Game> beginPlayback(std::shared_ptr<Common> common, std::shared_ptr<SoundPlayer> soundPlayer);
 	bool playbackFrame(Renderer& renderer);
 
-	gvl::octet_reader reader;
+	// The inflated file, and how far playback has read it.
+	ByteReader reader;
 };
 
 #endif // UUID_4CF92C398C724F883A02E8A68FE1584F

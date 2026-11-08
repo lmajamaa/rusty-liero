@@ -4,7 +4,6 @@
 #include "gfx/blit.hpp"
 #include "filesystem.hpp"
 #include "worm.hpp"
-#include <gvl/io2/stream.hpp>
 #include <map>
 #include <string>
 #include <algorithm>
@@ -237,38 +236,6 @@ void Common::drawTextSmall(Bitmap& scr, char const* str, int x, int y)
 namespace
 {
 
-// Reads `path` (folders separated by '/') under the FsNode in `ctx`, which
-// may be a folder, a zip file or joined folders.
-bool readTcFile(void* ctx, LieroStr path, LieroTcFile* out)
-{
-	try
-	{
-		FsNode node = *static_cast<FsNode*>(ctx);
-		std::string p(reinterpret_cast<char const*>(path.ptr), path.len);
-		std::size_t start = 0;
-		for (;;)
-		{
-			std::size_t slash = p.find('/', start);
-			node = node / p.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
-			if (slash == std::string::npos)
-				break;
-			start = slash + 1;
-		}
-
-		gvl::octet_reader r(node.toOctetReader());
-		std::vector<uint8_t> data;
-		uint8_t b;
-		while (r.try_get(b))
-			data.push_back(b);
-		liero_tc_file_set(out, data.data(), data.size());
-		return true;
-	}
-	catch (std::exception&)
-	{
-		return false;
-	}
-}
-
 std::string str(LieroStr s)
 {
 	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
@@ -291,8 +258,9 @@ struct TcHandle
 // The TC is read in Rust (liero_data::load); this copies the result in.
 void Common::load(FsNode node)
 {
-	LieroTcHooks hooks = { &node, readTcFile };
-	TcHandle handle = { liero_tc_load(&hooks) };
+	if (!node.rust())
+		throw std::runtime_error("Could not load the TC: Could not read tc.cfg");
+	TcHandle handle = { liero_tc_load(node.rust()) };
 	LieroTcData const* d = liero_tc_data(handle.tc);
 	if (!d)
 		throw std::runtime_error("Could not load the TC: " + str(liero_tc_error(handle.tc)));
@@ -505,39 +473,3 @@ void SfxSample::createSound()
 }
 
 
-#if ENABLE_TRACING
-void Common::ltrace(char const* category, uint32 object, char const* attribute, uint32 value)
-{
-	uint32 cat = *(uint32*)(category);
-	uint32 attr = *(uint32*)(attribute);
-
-	if (writeTrace)
-	{
-		gvl::write_uint32_le(trace_writer, cat);
-		gvl::write_uint32_le(trace_writer, object);
-		gvl::write_uint32_le(trace_writer, attr);
-		gvl::write_uint32_le(trace_writer, value);
-	}
-	else
-	{
-		uint32 fcat = gvl::read_uint32_le(trace_reader);
-		uint32 fobject = gvl::read_uint32_le(trace_reader);
-		uint32 fattr = gvl::read_uint32_le(trace_reader);
-		uint32 fvalue = gvl::read_uint32_le(trace_reader);
-
-		if (fcat != cat) {
-			throw std::exception();
-		}
-		if (fobject != object) {
-			throw std::exception();
-		}
-		if (fattr != attr) {
-			throw std::exception();
-		}
-		if (fvalue != value) {
-			throw std::exception();
-		}
-
-	}
-}
-#endif

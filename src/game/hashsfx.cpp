@@ -121,7 +121,7 @@ void mixerScript(Common& common, uint32_t seed, int steps)
 	liero_mixer_free(m);
 }
 
-void soundGame(gvl::shared_ptr<Common> common, char const* name, uint32_t seed, int gameMode, char const* const* weapons, int ticks)
+void soundGame(std::shared_ptr<Common> common, char const* name, uint32_t seed, int gameMode, char const* const* weapons, int ticks)
 {
 	std::unique_ptr<Game> gamePtr = setUpGame(common, seed, gameMode, weapons);
 	Game& game = *gamePtr;
@@ -158,7 +158,7 @@ void soundGame(gvl::shared_ptr<Common> common, char const* name, uint32_t seed, 
 char const* const throwers[] = { "FLAMER", "FAN", "DART", "DIRTBALL", "GREENBALL" };
 char const* const loud[] = { "BIG NUKE", "MINIGUN", "CHAINGUN", "LASER", "HELLRAIDER" };
 
-void hashSound(gvl::shared_ptr<Common> common)
+void hashSound(std::shared_ptr<Common> common)
 {
 	hashSamples(*common);
 	for (uint32_t seed = 1; seed <= 4; ++seed)
@@ -354,9 +354,9 @@ void hashKeyNames()
 	print("keys-names", 0, f.h);
 }
 
-void hashControls(gvl::shared_ptr<Common> common, uint32_t seed, int steps)
+void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 {
-	gvl::shared_ptr<Settings> settings(new Settings);
+	std::shared_ptr<Settings> settings(new Settings);
 	Rand r(seed);
 	// A small pool of keys, so the two worms and their controls share some.
 	uint32_t pool[12];
@@ -425,7 +425,7 @@ void hashControls(gvl::shared_ptr<Common> common, uint32_t seed, int steps)
 	gfx.clearKeys();
 }
 
-void hashInput(gvl::shared_ptr<Common> common)
+void hashInput(std::shared_ptr<Common> common)
 {
 	gfx.common = common;
 	hashKeyMap();
@@ -438,7 +438,7 @@ void hashInput(gvl::shared_ptr<Common> common)
 
 } // namespace
 
-void hashSfxAndInput(gvl::shared_ptr<Common> common)
+void hashSfxAndInput(std::shared_ptr<Common> common)
 {
 	hashSound(common);
 	hashInput(common);

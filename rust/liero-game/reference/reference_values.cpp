@@ -6,9 +6,12 @@
 // apart from the minimal Level and Common they work on).
 //
 // Build it with em++ and run it with Bun, so it goes through the same compiler
-// as the game. From the repo root:
+// as the game. src/gvl is gone since the files moved to Rust, so build it
+// with src/gvl from 9bef46d, the last commit that has it. From the repo root:
 //
-//   docker compose run --rm web sh -c "em++ -std=c++11 -O2 -I src rust/liero-game/reference/reference_values.cpp src/gvl/support/debug.cpp -o /tmp/reference_values.js && bun /tmp/reference_values.js"
+//   mkdir -p /tmp/gvl && git archive 9bef46d src/gvl | tar -x -C /tmp/gvl
+//   docker compose run --rm -v /tmp/gvl/src/gvl:/src/src/gvl web sh -c "em++ -std=c++11 -O2 -I src rust/liero-game/reference/reference_values.cpp src/gvl/support/debug.cpp -o /tmp/reference_values.js && bun /tmp/reference_values.js"
+//   rmdir src/gvl   # the mount leaves it behind, empty
 //
 // A native g++ gives the same values only with -fwrapv (the C++ code relies on
 // signed overflow wrapping around, as clang's wasm output does) and

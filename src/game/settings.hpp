@@ -5,10 +5,8 @@
 #include <memory>
 #include <string>
 #include <cstring>
-#include <gvl/resman/shared_ptr.hpp>
-#include <gvl/support/cstdint.hpp>
-#include <gvl/crypt/gash.hpp>
-#include <gvl/serialization/archive.hpp>
+#include <memory>
+#include <cstdint>
 #include <stdexcept>
 #include "settingsffi.hpp"
 
@@ -18,7 +16,7 @@ struct Rand;
 // rust/liero-game/src/settings.rs); the fields here refer to its. The fields
 // and their defaults match liero_data::settings::Settings. The worms'
 // settings are apart, since each worm holds on to its own.
-struct Settings : gvl::shared
+struct Settings
 {
 	static bool const extensions = true;
 
@@ -57,7 +55,7 @@ struct Settings : gvl::shared
 	std::string text();
 	// The gash of the settings archive (see archive below). Writing the archive
 	// sets the TC name to the default, since the archive has none.
-	gvl::gash::value_type& updateHash();
+	SettingsHash& updateHash();
 
 	static void generateName(WormSettings& ws, Rand& rand);
 
@@ -110,33 +108,31 @@ public:
 	bool& map;
 	bool& screenSync;
 
-	gvl::shared_ptr<WormSettings> wormSettings[2];
+	std::shared_ptr<WormSettings> wormSettings[2];
 
-	gvl::gash::value_type hash;
+	SettingsHash hash;
 };
 
 // The settings in a replay, without the worms, which replays store with each
 // worm. The format is in liero_data::settings::read_archive and
 // write_archive.
-template<typename Reader, typename Context>
-void archive(gvl::in_archive<Reader, Context> ar, Settings& settings)
+template<typename Reader>
+void readSettingsArchive(Reader& reader, Settings& settings)
 {
-	ArchiveByteSource<Reader> source(ar.reader);
+	ArchiveByteSource<Reader> source(reader);
 	LieroSettings view = settingsView(settings);
 	SettingsResult r(liero_settings_read_archive(&view, &source.hooks));
 	setSettings(settings, r.settings());
 	source.rethrow(r.status());
 }
 
-template<typename Writer, typename Context, bool Reread>
-void archive(gvl::out_archive<Writer, Context, Reread> ar, Settings& settings)
+// Writing resets the TC name, as a reread of the archive would.
+inline std::vector<uint8_t> writeSettingsArchive(Settings& settings)
 {
-	// Writing resets the TC name as a reread of the archive would.
-	static_assert(Reread, "Settings are only written by rereading archives");
 	LieroSettings view = settingsView(settings);
 	SettingsResult r(liero_settings_write_archive(&view));
 	setSettings(settings, r.settings());
-	r.writeTo(ar.writer);
+	return r.bytes();
 }
 
 #endif // LIERO_SETTINGS_HPP

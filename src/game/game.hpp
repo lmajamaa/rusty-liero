@@ -14,7 +14,7 @@
 #include "bonus.hpp"
 #include "constants.hpp"
 #include <string>
-#include <gvl/resman/shared_ptr.hpp>
+#include <memory>
 #include "common.hpp"
 #include "stats_recorder.hpp"
 
@@ -41,7 +41,7 @@ struct Holdazone
 	{
 	}
 
-	gvl::rect rect;
+	Rect rect;
 	int holderIdx;
 
 	int contenderIdx, contenderFrames;
@@ -54,12 +54,12 @@ struct Holdazone
 // What C++ owns of a Game; copying a Game copies these.
 struct GameMembers
 {
-	GameMembers(gvl::shared_ptr<Common> common, gvl::shared_ptr<Settings> settings, gvl::shared_ptr<SoundPlayer> soundPlayer);
+	GameMembers(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings, std::shared_ptr<SoundPlayer> soundPlayer);
 
-	gvl::shared_ptr<Common> common;
-	gvl::shared_ptr<SoundPlayer> soundPlayer;
-	gvl::shared_ptr<Settings> settings;
-	gvl::shared_ptr<StatsRecorder> statsRecorder;
+	std::shared_ptr<Common> common;
+	std::shared_ptr<SoundPlayer> soundPlayer;
+	std::shared_ptr<Settings> settings;
+	std::shared_ptr<StatsRecorder> statsRecorder;
 
 	Level level;
 
@@ -70,7 +70,7 @@ struct GameMembers
 
 struct Game : GameMembers
 {
-	Game(gvl::shared_ptr<Common> common, gvl::shared_ptr<Settings> settings, gvl::shared_ptr<SoundPlayer> soundPlayer);
+	Game(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings, std::shared_ptr<SoundPlayer> soundPlayer);
 	// A copy with state of its own. It shares the worms and viewports until
 	// postClone.
 	Game(Game const& other);

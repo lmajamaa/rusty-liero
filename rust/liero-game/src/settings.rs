@@ -9,7 +9,8 @@
 //! of the result and frees it.
 
 use crate::text::LieroStr;
-use liero_data::settings::{self as data, ArchiveError, Extensions, ReadError, Settings, Source, TextError, WormSettings};
+use crate::fs::LieroFsNode;
+use liero_data::settings::{self as data, ArchiveError, Bytes, Extensions, ReadError, Settings, Source, TextError, WormSettings};
 use std::ffi::c_void;
 
 /// Up, down, left, right, fire, change and jump.
@@ -347,6 +348,71 @@ pub unsafe extern "C" fn liero_settings_read_legacy(s: &LieroSettings, data: *co
         LieroSettingsStatus::Failed
     };
     LieroSettingsResult::new(status).settings(settings).finish()
+}
+
+/// Reads liero.cfg (or LIERO.DAT, if `legacy`) from `node` over `s`, as
+/// `liero_settings_read_text` or `liero_settings_read_legacy` would. Null if
+/// the file can't be read.
+///
+/// # Safety
+/// `s`'s strings must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_settings_load(s: &LieroSettings, node: &LieroFsNode, legacy: bool) -> *mut LieroSettingsResult {
+    match node.0.read() {
+        Some(d) if legacy => liero_settings_read_legacy(s, d.as_ptr(), d.len()),
+        Some(d) => liero_settings_read_text(s, d.as_ptr(), d.len()),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Writes `s` to `node` as liero.cfg. False if the file can't be written.
+///
+/// # Safety
+/// `s`'s strings must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_settings_save(s: &LieroSettings, node: &LieroFsNode) -> bool {
+    node.0.write(&data::write_text(&settings_from(s)))
+}
+
+/// Reads a profile from `node` over `ws`: Ok, or ReadError if it ends
+/// early, with the worm settings as far as they were read. Null if the
+/// file can't be read.
+///
+/// # Safety
+/// `ws`'s name must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_worm_settings_load_profile(
+    ws: &LieroWormSettings,
+    replay_version: i32,
+    node: &LieroFsNode,
+) -> *mut LieroSettingsResult {
+    let Some(d) = node.0.read() else { return std::ptr::null_mut() };
+    let mut worm = worm_from(ws);
+    let status = archive_status(data::read_worm(&mut worm, replay_version, &mut Bytes::new(&d)));
+    LieroSettingsResult::new(status).worm(worm).finish()
+}
+
+/// Writes `ws` to `node` as a profile, with the worm settings after writing
+/// it. Null, with nothing changed, if the file can't be written.
+///
+/// # Safety
+/// `ws`'s name must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn liero_worm_settings_save_profile(
+    ws: &LieroWormSettings,
+    replay_version: i32,
+    node: &LieroFsNode,
+) -> *mut LieroSettingsResult {
+    // Opened before the archive is made, as `toOctetWriter` was.
+    if node.0.prepare_write().is_none() {
+        return std::ptr::null_mut();
+    }
+    let mut worm = worm_from(ws);
+    let bytes = data::write_worm(&mut worm, replay_version);
+    if !node.0.write(&bytes) {
+        return std::ptr::null_mut();
+    }
+    LieroSettingsResult::new(LieroSettingsStatus::Ok).worm(worm).finish()
 }
 
 /// Reads the settings archive over `s`: Ok, ReadError or CheckError.
