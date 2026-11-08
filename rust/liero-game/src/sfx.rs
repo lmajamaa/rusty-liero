@@ -204,6 +204,50 @@ pub unsafe extern "C" fn liero_sound_from_tc(data: *const u8, len: usize, out: *
 }
 
 /// A mixer with every channel free. Free it with `liero_mixer_free`.
+/// Where a game's sounds go: a mixer, or none (`SoundPlayer`), and a
+/// function told of each sound started (the hash run's app driver).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LieroSoundOut {
+    pub mixer: *mut LieroMixer,
+    pub report: Option<unsafe extern "C" fn(sound: i32)>,
+}
+
+impl LieroSoundOut {
+    pub const NONE: LieroSoundOut = LieroSoundOut { mixer: std::ptr::null_mut(), report: None };
+
+    /// Plays the TC's `sound` as `id`'s, at the mixer's time, looping when
+    /// `loops` isn't 0 (`playOnMixer`).
+    ///
+    /// # Safety
+    /// The mixer, if any, is valid, and `sound` is one of `tc`'s.
+    pub unsafe fn play(&self, tc: &crate::tc::LieroTcData, sound: i32, id: *mut c_void, loops: i32) {
+        if let Some(report) = self.report {
+            report(sound);
+        }
+        if let Some(m) = self.mixer.as_mut() {
+            assert!((sound as usize) < tc.sound_count);
+            let s = &*tc.sounds.add(sound as usize);
+            let now = liero_mixer_now(m) as u32;
+            liero_mixer_add(m, s.samples, s.sample_count, now, id, if loops != 0 { LIERO_SOUND_LOOP } else { LIERO_SOUND_NORMAL });
+        }
+    }
+
+    /// # Safety
+    /// The mixer, if any, is valid.
+    pub unsafe fn playing(&self, id: *mut c_void) -> bool {
+        self.mixer.as_ref().is_some_and(|m| liero_mixer_is_playing(m, id))
+    }
+
+    /// # Safety
+    /// The mixer, if any, is valid.
+    pub unsafe fn stop(&self, id: *mut c_void) {
+        if let Some(m) = self.mixer.as_mut() {
+            liero_mixer_stop(m, id);
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn liero_mixer_new() -> *mut LieroMixer {
     Box::into_raw(Box::default())
@@ -341,6 +385,21 @@ mod tests {
         assert_eq!(mix(&mut m, 2), vec![2, 3]);
         m.stop(1);
         assert_eq!(mix(&mut m, 2), vec![0, 0]);
+    }
+
+    #[test]
+    fn sound_out_stops_a_loop() {
+        let s = sound(&[1, 2, 3]);
+        let mut m = LieroMixer::default();
+        add(&mut m, &s, 0, 1, LIERO_SOUND_LOOP);
+        let out = LieroSoundOut { mixer: &mut m, report: None };
+        unsafe {
+            assert!(out.playing(1 as *mut c_void));
+            out.stop(1 as *mut c_void);
+        }
+        assert_eq!(mix(&mut m, 2), vec![0, 0]);
+        unsafe { LieroSoundOut::NONE.stop(1 as *mut c_void) };
+        assert!(unsafe { !LieroSoundOut::NONE.playing(1 as *mut c_void) });
     }
 
     #[test]

@@ -47,11 +47,6 @@ unsafe extern "C" fn no_tick(_: *mut c_void) {}
 unsafe extern "C" fn no_ticks(_: *mut c_void) -> u64 {
     0
 }
-unsafe extern "C" fn no_play(_: *mut c_void, _: i32, _: *mut c_void, _: i32) {}
-unsafe extern "C" fn not_playing(_: *mut c_void, _: *mut c_void) -> bool {
-    false
-}
-unsafe extern "C" fn no_stop(_: *mut c_void, _: *mut c_void) {}
 
 /// `NullSoundPlayer` and the base `StatsRecorder`, and no viewports to
 /// process.
@@ -59,9 +54,6 @@ const NO_HOOKS: LieroGameHooks = LieroGameHooks {
     ctx: null_mut(),
     hires_ticks: no_ticks,
     end_tick: no_tick,
-    play_sound: no_play,
-    sound_playing: not_playing,
-    stop_sound: no_stop,
 };
 
 impl SimGame {
@@ -117,6 +109,7 @@ impl SimGame {
         fields.viewports = std::ptr::null();
         fields.viewport_count = 0;
         fields.stats = std::ptr::null_mut();
+        fields.sound = crate::sfx::LieroSoundOut::NONE;
 
         let mut g = Box::new(SimGame {
             fields,

@@ -1125,6 +1125,16 @@ typedef struct LieroViewport {
 } LieroViewport;
 
 /**
+ * A mixer with every channel free. Free it with `liero_mixer_free`.
+ * Where a game's sounds go: a mixer, or none (`SoundPlayer`), and a
+ * function told of each sound started (the hash run's app driver).
+ */
+typedef struct LieroSoundOut {
+  struct LieroMixer *mixer;
+  void (*report)(int32_t sound);
+} LieroSoundOut;
+
+/**
  * The game state the rules read and change. `worms` has `worm_count`
  * entries in the order of C++'s `Game::worms`; worm numbers (killers,
  * holders, 'it') are positions in it.
@@ -1149,6 +1159,10 @@ typedef struct LieroGameFields {
    * The stats the tick records, or null for none.
    */
   struct LieroStats *stats;
+  /**
+   * Where its sounds go.
+   */
+  struct LieroSoundOut sound;
 } LieroGameFields;
 
 /**
@@ -1343,8 +1357,8 @@ typedef struct LieroKeys {
 } LieroKeys;
 
 /**
- * What C++ does during a tick: sounds and the viewports. `ctx` is passed
- * back to each function.
+ * What C++ does during a tick: the clock and the viewports. `ctx` is
+ * passed back to each function.
  */
 typedef struct LieroGameHooks {
   void *ctx;
@@ -1356,12 +1370,6 @@ typedef struct LieroGameHooks {
    * The viewports at the end of the tick.
    */
   void (*end_tick)(void *ctx);
-  /**
-   * Plays `sound` as `id`'s (null for none), looping when `loops` isn't 0.
-   */
-  void (*play_sound)(void *ctx, int32_t sound, void *id, int32_t loops);
-  bool (*sound_playing)(void *ctx, void *id);
-  void (*stop_sound)(void *ctx, void *id);
 } LieroGameHooks;
 
 /**
@@ -4465,9 +4473,6 @@ void liero_worm_settings_box_set_name(struct LieroWormSettingsBox *s, struct Lie
  */
 void liero_sound_from_tc(const uint8_t *data, uintptr_t len, int16_t *out);
 
-/**
- * A mixer with every channel free. Free it with `liero_mixer_free`.
- */
 struct LieroMixer *liero_mixer_new(void);
 
 /**

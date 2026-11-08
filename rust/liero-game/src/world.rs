@@ -357,18 +357,18 @@ impl<'a> World<'a> {
         unsafe { addr_of_mut!((*self.data()).bobjects) }
     }
 
-    // Sounds, in C++, and stats.
+    // Sounds and stats.
 
     fn play(&self, sound: i32, id: *mut c_void, loops: i32) {
-        unsafe { (self.h.play_sound)(self.h.ctx, sound, id, loops) }
+        unsafe { self.g.f.sound.play(self.tc(), sound, id, loops) }
     }
 
     fn playing(&self, id: *mut c_void) -> bool {
-        unsafe { (self.h.sound_playing)(self.h.ctx, id) }
+        unsafe { self.g.f.sound.playing(id) }
     }
 
     fn stop(&self, id: *mut c_void) {
-        unsafe { (self.h.stop_sound)(self.h.ctx, id) }
+        unsafe { self.g.f.sound.stop(id) }
     }
 
     /// The stats the game records, if any.

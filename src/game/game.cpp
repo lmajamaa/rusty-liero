@@ -242,6 +242,7 @@ GameView::GameView(Game& game)
 	fields.spectator_viewports = spectatorViewports.data();
 	fields.spectator_viewport_count = int32_t(spectatorViewports.size());
 	fields.stats = game.statsRecorder ? game.statsRecorder->s : nullptr;
+	fields.sound = game.soundPlayer->out();
 
 	settings.game_mode = int32_t(s.gameMode);
 	settings.max_bonuses = s.maxBonuses;
@@ -311,21 +312,6 @@ void hookEndTick(void* ctx)
 	game.processViewports();
 }
 
-void hookPlaySound(void* ctx, int32_t sound, void* id, int32_t loops)
-{
-	gameOf(ctx).soundPlayer->play(sound, id, loops);
-}
-
-bool hookSoundPlaying(void* ctx, void* id)
-{
-	return gameOf(ctx).soundPlayer->isPlaying(id);
-}
-
-void hookStopSound(void* ctx, void* id)
-{
-	gameOf(ctx).soundPlayer->stop(id);
-}
-
 } // namespace
 
 void Game::processFrame()
@@ -333,7 +319,6 @@ void Game::processFrame()
 	GameView view(*this);
 	LieroGameHooks hooks = {
 		this, hookHiresTicks, hookEndTick,
-		hookPlaySound, hookSoundPlaying, hookStopSound,
 	};
 	liero_game_process_frame(&view.fields, &view.settings, &hooks);
 }

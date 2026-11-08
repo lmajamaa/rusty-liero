@@ -15,6 +15,7 @@ use crate::objects::{zeroed_box, LieroBObjectList, LieroBonusList, LieroNObjectL
 use crate::math::ftoi;
 use crate::rand::LieroRand;
 use crate::tc::LieroTcData;
+use crate::sfx::LieroSoundOut;
 use crate::stats::{LieroStats, LieroStatsWorm};
 use crate::viewport::LieroViewport;
 use crate::world::World;
@@ -205,6 +206,8 @@ pub struct LieroGameFields {
     pub spectator_viewport_count: i32,
     /// The stats the tick records, or null for none.
     pub stats: *mut LieroStats,
+    /// Where its sounds go.
+    pub sound: LieroSoundOut,
 }
 
 /// Game settings, and TC constants and hacks, for the rules.
@@ -245,8 +248,8 @@ pub struct LieroGameSettings {
     pub load_change: bool,
 }
 
-/// What C++ does during a tick: sounds and the viewports. `ctx` is passed
-/// back to each function.
+/// What C++ does during a tick: the clock and the viewports. `ctx` is
+/// passed back to each function.
 #[repr(C)]
 pub struct LieroGameHooks {
     pub ctx: *mut c_void,
@@ -254,10 +257,6 @@ pub struct LieroGameHooks {
     pub hires_ticks: unsafe extern "C" fn(ctx: *mut c_void) -> u64,
     /// The viewports at the end of the tick.
     pub end_tick: unsafe extern "C" fn(ctx: *mut c_void),
-    /// Plays `sound` as `id`'s (null for none), looping when `loops` isn't 0.
-    pub play_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32, id: *mut c_void, loops: i32),
-    pub sound_playing: unsafe extern "C" fn(ctx: *mut c_void, id: *mut c_void) -> bool,
-    pub stop_sound: unsafe extern "C" fn(ctx: *mut c_void, id: *mut c_void),
 }
 
 /// The worms as the stats read them (`statsWorm` in C++).
@@ -663,6 +662,7 @@ mod tests {
             spectator_viewports: std::ptr::null(),
             spectator_viewport_count: 0,
             stats: std::ptr::null_mut(),
+            sound: LieroSoundOut::NONE,
         };
         f(&fields);
     }

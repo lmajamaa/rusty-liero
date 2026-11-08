@@ -5,9 +5,12 @@
 #include <liero_game.h>
 #include "../common.hpp"
 
-// Plays the game's sounds. The mixer is in Rust (rust/liero-game/src/sfx.rs).
+// Plays the game's sounds. The mixer is in Rust (rust/liero-game/src/sfx.rs),
+// and the game tick plays on `out()`.
 struct SoundPlayer
 {
+	virtual ~SoundPlayer() {}
+	virtual LieroSoundOut out() = 0;
 	virtual void play(int sound, void* id = 0, int loops = 0) = 0;
 	virtual bool isPlaying(void* id) = 0;
 	virtual void stop(void* id) = 0;
@@ -32,6 +35,11 @@ struct RecordSoundPlayer : SoundPlayer
 	LieroMixer* mixer;
 	Common& common;
 
+	LieroSoundOut out()
+	{
+		return LieroSoundOut{ mixer, nullptr };
+	}
+
 	void play(int sound, void* id = 0, int loops = 0)
 	{
 		playOnMixer(mixer, common, sound, id, loops);
@@ -50,6 +58,11 @@ struct RecordSoundPlayer : SoundPlayer
 
 struct NullSoundPlayer : SoundPlayer
 {
+	LieroSoundOut out()
+	{
+		return LieroSoundOut{ nullptr, nullptr };
+	}
+
 	void play(int sound, void* id, int loops)
 	{
 	}
