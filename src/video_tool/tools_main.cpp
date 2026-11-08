@@ -2,7 +2,6 @@
 #define UUID_8615289728154E2FB9B179C2745D5FA9
 
 #include "game/sys.hpp"
-#include "game/reader.hpp"
 #include "game/filesystem.hpp"
 #include "game/text.hpp"
 #include "game/constants.hpp"

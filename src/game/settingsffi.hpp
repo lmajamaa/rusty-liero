@@ -9,8 +9,11 @@
 #include <liero_game.h>
 #include <gvl/crypt/gash.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 struct Settings;
 struct WormSettings;
@@ -73,8 +76,18 @@ LieroWormSettings wormSettingsView(WormSettings const& ws);
 void setSettings(Settings& s, LieroSettings const& v);
 void setWormSettings(WormSettings& ws, LieroWormSettings const& v);
 
+// A replay or profile whose data isn't what was expected, as
+// gvl::archive_check_error was.
+struct ArchiveCheckError : std::runtime_error
+{
+	explicit ArchiveCheckError(std::string const& msg)
+	: std::runtime_error(msg)
+	{
+	}
+};
+
 // Throws what a failed archive read should: the reader's own exception for
-// ReadError, gvl::archive_check_error for CheckError.
+// ReadError, ArchiveCheckError for CheckError.
 void throwArchiveError(LieroSettingsStatus status, std::exception_ptr const& readerError);
 
 // Owns a LieroSettingsResult.
@@ -106,14 +119,11 @@ struct SettingsResult
 		return ret;
 	}
 
-	// Puts the bytes written into `writer`, an octet_writer or a hash
-	// accumulator.
-	template<typename Writer>
-	void writeTo(Writer& writer) const
+	// The bytes written.
+	std::vector<uint8_t> bytes() const
 	{
 		LieroStr b = liero_settings_result_bytes(r);
-		for (std::size_t i = 0; i < b.len; ++i)
-			writer.put(b.ptr[i]);
+		return std::vector<uint8_t>(b.ptr, b.ptr + b.len);
 	}
 
 	LieroSettingsResult* r;

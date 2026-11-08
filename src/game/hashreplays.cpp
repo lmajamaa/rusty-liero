@@ -13,7 +13,6 @@
 #include "filesystem.hpp"
 #include "mixer/player.hpp"
 #include "gfx/renderer.hpp"
-#include <gvl/serialization/archive.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -28,15 +27,6 @@ typedef std::vector<uint8_t> Bytes;
 FsNode tmpNode(std::string const& name)
 {
 	return FsNode("/tmp/" + name);
-}
-
-Bytes readAll(gvl::octet_reader r)
-{
-	Bytes data;
-	uint8_t b;
-	while (r.try_get(b))
-		data.push_back(b);
-	return data;
 }
 
 // What a replay file inflates to, and whether reading on failed.
@@ -190,30 +180,17 @@ void recordGame(gvl::shared_ptr<Common> common, FsNode const& node, uint32_t see
 	}
 }
 
+// Writing sets the settings too, so a copy is written.
 Bytes settingsArchive(Settings const& settings)
 {
-	FsNode node = tmpNode("settings.bin");
-	{
-		gvl::octet_writer w(node.toOctetWriter());
-		GameSerializationContext context;
-		// Writing sets the settings too, so a copy is written.
-		std::unique_ptr<Settings> copy(settings.clone());
-		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(w, context), *copy);
-	}
-	return readAll(node.toOctetReader());
+	std::unique_ptr<Settings> copy(settings.clone());
+	return writeSettingsArchive(*copy);
 }
 
 Bytes wormSettingsArchive(WormSettings const& ws)
 {
-	FsNode node = tmpNode("worm.bin");
-	{
-		gvl::octet_writer w(node.toOctetWriter());
-		GameSerializationContext context;
-		// Writing sets the settings too, so a copy is written.
-		std::unique_ptr<WormSettings> copy(ws.clone());
-		archive(gvl::out_archive<gvl::octet_writer, GameSerializationContext>(w, context), *copy);
-	}
-	return readAll(node.toOctetReader());
+	std::unique_ptr<WormSettings> copy(ws.clone());
+	return writeWormArchive(*copy, GameSerializationContext().replayVersion);
 }
 
 void putU32(Bytes& b, uint32_t v)
@@ -299,7 +276,7 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 
 		// What R rewinds to in ReplayController.
 		std::unique_ptr<Game> initialGame;
-		gvl::octet_reader initialReader = reader.reader;
+		ByteReader initialReader = reader.reader;
 		if (rewindAt > 0)
 		{
 			initialGame.reset(new Game(*game));
@@ -336,11 +313,7 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 		if (ticks == maxTicks)
 			outcome = "stopped";
 	}
-	catch (gvl::stream_error& e)
-	{
-		outcome = std::string("stream error: ") + e.what();
-	}
-	catch (gvl::archive_check_error& e)
+	catch (ArchiveCheckError& e)
 	{
 		outcome = std::string("archive error: ") + e.what();
 	}

@@ -11,12 +11,9 @@
 #include "filesystem.hpp" // For joinPath
 #include <cstdlib>
 
-#include <gvl/serialization/context.hpp>
-#include <gvl/serialization/archive.hpp>
 #include "replay.hpp"
 
 #include <gvl/crypt/gash.hpp>
-#include <gvl/io2/fstream.hpp>
 
 
 gvl::gash::value_type& WormSettings::updateHash()

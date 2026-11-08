@@ -1,10 +1,7 @@
 #include "filesystem.hpp"
-#include <gvl/io2/fstream.hpp>
-#include <cstdio>
 
-// Listing, reading and the .zip folders are in Rust
-// (rust/liero-game/src/fs.rs). Writing still opens the file here, at the
-// path Rust made ready, until the files written move to Rust.
+// Listing, reading, writing and the .zip folders are in Rust
+// (rust/liero-game/src/fs.rs).
 
 std::string getLeaf(std::string const& path)
 {
@@ -49,27 +46,6 @@ std::string str(LieroStr s)
 {
 	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
 }
-
-// A file's bytes as a stream: all of them, then its end.
-struct BytesPipe : gvl::bucket_pipe
-{
-	explicit BytesPipe(std::vector<uint8_t> data)
-	: data(std::move(data))
-	{
-	}
-
-	gvl::source_result read_next(std::size_t) override
-	{
-		if (data.empty())
-			return gvl::source_result(gvl::source_result::eos);
-		uint8_t const* p = data.data();
-		gvl::unique_ptr<gvl::bucket_data_mem> r(gvl::bucket_data_mem::create_from(p, p + data.size(), data.size()));
-		data.clear();
-		return gvl::source_result(std::move(r));
-	}
-
-	std::vector<uint8_t> data;
-};
 
 }
 
@@ -116,22 +92,8 @@ std::vector<uint8_t> FsNode::read() const
 	return data;
 }
 
-gvl::source FsNode::toSource() const
-{
-	return gvl::to_source(new BytesPipe(read()));
-}
-
 void FsNode::write(std::string const& data) const
 {
 	if (!node || !liero_fs_node_write(node, lstr(data)))
 		throw std::runtime_error("Could not write " + path);
-}
-
-gvl::sink FsNode::toSink() const
-{
-	LieroStr p = node ? liero_fs_node_prepare_write(node) : LieroStr{ nullptr, 0 };
-	FILE* f = p.len ? std::fopen(str(p).c_str(), "wb") : nullptr;
-	if (!f)
-		throw std::runtime_error("Could not write " + path);
-	return gvl::sink(new gvl::file_bucket_pipe(f));
 }

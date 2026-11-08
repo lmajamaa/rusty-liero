@@ -1,6 +1,5 @@
 #include "sprite.hpp"
 
-#include "../reader.hpp"
 
 #include <vector>
 #include <cassert>

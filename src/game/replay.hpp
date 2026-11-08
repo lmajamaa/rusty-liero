@@ -1,8 +1,6 @@
 #ifndef UUID_4CF92C398C724F883A02E8A68FE1584F
 #define UUID_4CF92C398C724F883A02E8A68FE1584F
 
-#include <gvl/io2/stream.hpp>
-#include <gvl/serialization/context.hpp>
 #include <gvl/crypt/gash.hpp>
 #include "mixer/player.hpp"
 #include <cstring>
@@ -12,10 +10,11 @@
 #include "common.hpp"
 #include "version.hpp"
 #include "filesystem.hpp"
+#include "bytes.hpp"
 
 struct Game;
 
-struct GameSerializationContext : gvl::serialization_context<GameSerializationContext>
+struct GameSerializationContext
 {
 	GameSerializationContext()
 	: game(0)
@@ -65,9 +64,12 @@ struct ReplayWriter : Replay
 	void unfocus();
 	void focus();
 
-	//gvl::filter_ptr str;
-	//gvl::octet_stream_writer writer;
-	gvl::octet_writer writer;
+	// The file being written, compressed in Rust.
+	struct Writer
+	{
+		void put(uint8_t const* p, std::size_t n);
+		LieroDeflateOut* out;
+	} writer;
 	gvl::gash::value_type lastSettingsHash;
 	bool settingsExpired;
 
@@ -97,7 +99,8 @@ struct ReplayReader : Replay
 	std::unique_ptr<Game> beginPlayback(gvl::shared_ptr<Common> common, gvl::shared_ptr<SoundPlayer> soundPlayer);
 	bool playbackFrame(Renderer& renderer);
 
-	gvl::octet_reader reader;
+	// The inflated file, and how far playback has read it.
+	ByteReader reader;
 };
 
 #endif // UUID_4CF92C398C724F883A02E8A68FE1584F

@@ -67,11 +67,7 @@ Game::Game(
 	gvl::shared_ptr<SoundPlayer> soundPlayer)
 : Game(liero_game_data_new(), common, settingsInit, soundPlayer)
 {
-#if ENABLE_TRACING
-	rand.seed(1);
-#else
 	rand.seed(uint32_t(appTime()));
-#endif
 }
 
 Game::Game(Game const& other)
@@ -220,23 +216,6 @@ void Game::draw(Renderer& renderer, GameState state, bool useSpectatorViewports,
 	}
 }
 
-#if ENABLE_TRACING
-
-void checkMap(Game& game) {
-	Common& common = *game.common;
-	uint32 h = 1;
-	for (std::size_t i = 0; i < 504*350; ++i) {
-		h = h * 33 ^ game.level.data[i];
-	}
-	LTRACE(maph, 0, pixl, h);
-	h = 1;
-	for (std::size_t i = 0; i < 504*350; ++i) {
-		h = h * 33 ^ game.level.materials[i].flags;
-	}
-	LTRACE(maph, 0, matr, h);
-}
-
-#endif
 
 namespace
 {

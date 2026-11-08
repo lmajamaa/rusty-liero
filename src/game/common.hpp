@@ -15,11 +15,6 @@
 extern "C" {
 }
 
-#if ENABLE_TRACING
-#include <gvl/io2/fstream.hpp>
-#include <gvl/serialization/archive.hpp>
-#endif
-
 // A dirt effect, defined in Rust (rust/liero-game/src/level.rs). Its fields
 // were at 1C208 (n_draw_back), 1C1EA (m_frame), 1C1F4 (s_frame) and 1C1FE
 // (r_frame) in the original game.
@@ -81,14 +76,6 @@ struct Bitmap;
 struct FsNode;
 
 using std::vector;
-
-#if ENABLE_TRACING
-#define LTRACE(category, object, attribute, value) common.ltrace(#category, (uint32)(object), #attribute, value)
-#define IF_ENABLE_TRACING(...) __VA_ARGS__
-#else
-#define LTRACE(category, object, attribute, value) ((void)0)
-#define IF_ENABLE_TRACING(x) ((void)0)
-#endif
 
 struct Common : gvl::shared
 {
@@ -154,15 +141,6 @@ struct Common : gvl::shared
 	int32_t C[MaxC];
 	std::string S[MaxS];
 	bool H[MaxH];
-
-#if ENABLE_TRACING
-	void ltrace(char const* category, uint32 object, char const* attribute, uint32 value);
-
-	gvl::octet_writer trace_writer;
-	gvl::octet_reader trace_reader;
-
-	bool writeTrace;
-#endif
 };
 
 #endif // UUID_9E238CFB9F074A3A432E22AE5B8EE5FB

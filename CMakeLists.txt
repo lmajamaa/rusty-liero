@@ -62,8 +62,6 @@ set(SOURCES
     src/gvl/system/system.c
     src/gvl/support/bits.c
     src/gvl/support/debug.cpp
-    src/gvl/io2/stream.cpp
-    src/gvl/io2/convert.cpp
 )
 
 set(GAME_SOURCES ${SOURCES}

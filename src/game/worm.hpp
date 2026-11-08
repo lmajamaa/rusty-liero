@@ -10,7 +10,6 @@
 #include <functional>
 #include <gvl/resman/shared_ptr.hpp>
 #include "version.hpp"
-#include <gvl/serialization/archive.hpp> // For gvl::enable_when
 #include <gvl/crypt/gash.hpp>
 #include "filesystem.hpp"
 #include "settingsffi.hpp"
@@ -154,25 +153,24 @@ public:
 	gvl::gash::value_type hash;
 };
 
-// A worm's settings in a replay of context.replayVersion, or in a profile.
+// A worm's settings in a replay of `replayVersion`, or in a profile.
 // The format is in liero_data::settings::read_worm and write_worm.
-template<typename Reader, typename Context>
-void archive(gvl::in_archive<Reader, Context> ar, WormSettings& ws)
+template<typename Reader>
+void readWormArchive(Reader& reader, WormSettings& ws, int replayVersion)
 {
-	ArchiveByteSource<Reader> source(ar.reader);
+	ArchiveByteSource<Reader> source(reader);
 	LieroWormSettings view = wormSettingsView(ws);
-	SettingsResult r(liero_worm_settings_read_archive(&view, ar.context.replayVersion, &source.hooks));
+	SettingsResult r(liero_worm_settings_read_archive(&view, replayVersion, &source.hooks));
 	setWormSettings(ws, r.worm());
 	source.rethrow(r.status());
 }
 
-template<typename Writer, typename Context, bool Reread>
-void archive(gvl::out_archive<Writer, Context, Reread> ar, WormSettings& ws)
+inline std::vector<uint8_t> writeWormArchive(WormSettings& ws, int replayVersion)
 {
 	LieroWormSettings view = wormSettingsView(ws);
-	SettingsResult r(liero_worm_settings_write_archive(&view, ar.context.replayVersion));
+	SettingsResult r(liero_worm_settings_write_archive(&view, replayVersion));
 	setWormSettings(ws, r.worm());
-	r.writeTo(ar.writer);
+	return r.bytes();
 }
 
 struct Viewport;

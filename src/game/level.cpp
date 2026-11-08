@@ -83,7 +83,7 @@ void Level::resize(int width_new, int height_new)
 	liero_level_box_resize(box, width_new, height_new);
 }
 
-bool Level::load(Common& common, Settings const& settings, gvl::octet_reader r)
+bool Level::load(Common& common, Settings const& settings, ByteReader r)
 {
 	resize(LIERO_LEVEL_WIDTH, LIERO_LEVEL_HEIGHT);
 
@@ -96,7 +96,7 @@ bool Level::load(Common& common, Settings const& settings, gvl::octet_reader r)
 	&&*/ (settings.extensions && settings.loadPowerlevelPalette))
 	{
 		uint8_t buf[10] = {};
-		if (r.try_get(buf, 10))
+		if (r.tryGet(buf, 10))
 		{
 			if(!std::memcmp("POWERLEVEL", buf, 10))
 			{
@@ -134,7 +134,7 @@ void Level::generateFromSettings(Common& common, Settings const& settings, Rand&
 		bool loaded = false;
 		try
 		{
-			loaded = load(common, settings, FsNode(path).toOctetReader());
+			loaded = load(common, settings, ByteReader(FsNode(path).read()));
 		}
 		catch (std::runtime_error&)
 		{

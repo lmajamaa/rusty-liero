@@ -3,7 +3,6 @@
 #include <string>
 #include "game/replay.hpp"
 #include "game/filesystem.hpp"
-#include "game/reader.hpp"
 #include "game/mixer/player.hpp"
 #include "game/game.hpp"
 #include "game/viewport.hpp"
@@ -11,7 +10,6 @@
 #include "game/gfx/renderer.hpp"
 #include "game/text.hpp"
 
-#include <gvl/io2/fstream.hpp>
 #include <memory>
 
 extern "C"

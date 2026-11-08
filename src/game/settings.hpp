@@ -8,7 +8,6 @@
 #include <gvl/resman/shared_ptr.hpp>
 #include <gvl/support/cstdint.hpp>
 #include <gvl/crypt/gash.hpp>
-#include <gvl/serialization/archive.hpp>
 #include <stdexcept>
 #include "settingsffi.hpp"
 
@@ -118,25 +117,23 @@ public:
 // The settings in a replay, without the worms, which replays store with each
 // worm. The format is in liero_data::settings::read_archive and
 // write_archive.
-template<typename Reader, typename Context>
-void archive(gvl::in_archive<Reader, Context> ar, Settings& settings)
+template<typename Reader>
+void readSettingsArchive(Reader& reader, Settings& settings)
 {
-	ArchiveByteSource<Reader> source(ar.reader);
+	ArchiveByteSource<Reader> source(reader);
 	LieroSettings view = settingsView(settings);
 	SettingsResult r(liero_settings_read_archive(&view, &source.hooks));
 	setSettings(settings, r.settings());
 	source.rethrow(r.status());
 }
 
-template<typename Writer, typename Context, bool Reread>
-void archive(gvl::out_archive<Writer, Context, Reread> ar, Settings& settings)
+// Writing resets the TC name, as a reread of the archive would.
+inline std::vector<uint8_t> writeSettingsArchive(Settings& settings)
 {
-	// Writing resets the TC name as a reread of the archive would.
-	static_assert(Reread, "Settings are only written by rereading archives");
 	LieroSettings view = settingsView(settings);
 	SettingsResult r(liero_settings_write_archive(&view));
 	setSettings(settings, r.settings());
-	r.writeTo(ar.writer);
+	return r.bytes();
 }
 
 #endif // LIERO_SETTINGS_HPP

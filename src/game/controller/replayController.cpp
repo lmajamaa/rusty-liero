@@ -82,13 +82,7 @@ bool ReplayController::process()
 						replay.reset();
 					}
 				}
-				catch(gvl::stream_error& e)
-				{
-					gfx.infoBox(std::string("Stream error in replay: ") + e.what());
-					changeState(StateGameEnded);
-					replay.reset();
-				}
-				catch(gvl::archive_check_error& e)
+				catch(ArchiveCheckError& e)
 				{
 					gfx.infoBox(std::string("Archive error in replay: ") + e.what());
 					changeState(StateGameEnded);
@@ -181,10 +175,8 @@ void ReplayController::changeState(GameState newState)
 			game->addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
 		}
 		game->startGame();
-#if !ENABLE_TRACING
 		initialGame.reset(new Game(*game));
 		initialGame->postClone(*game, true);
-#endif
 		initialReader = replay->reader;
 	}
 	else if(newState == StateGameEnded)

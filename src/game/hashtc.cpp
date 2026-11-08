@@ -1,5 +1,5 @@
 // Hashes everything Common::load reads from a TC folder, for the hash run.
-// The TOML parts are written back out with the game's own TOML writer and
+// The TOML parts are written back out as gvl's TOML writer wrote them and
 // hashed as text, so every field the archive functions name is covered; the
 // sprites, palette, font, sounds and precomputed tables are hashed directly.
 
@@ -8,32 +8,161 @@
 #include "common_model.hpp"
 
 #include <cstdio>
+#include <string>
+#include <vector>
 
 namespace
 {
 
-// The output stream gvl::toml::writer writes to, hashing instead of storing.
-struct HashWriter
+// Writes TOML as gvl's toml::writer did, hashing it instead of storing it.
+struct TomlWriter
 {
 	Fnv h;
+	int indent = 0;
+	std::vector<char const*> chain;
+	bool inObject = false;
 
-	void put(uint8_t c) { h.bytes(&c, 1); }
-	void put(uint8_t const* p, std::size_t n) { h.bytes(p, n); }
+	TomlWriter& operator<<(char c) { h.bytes((uint8_t const*)&c, 1); return *this; }
 
-	HashWriter& operator<<(char c) { put((uint8_t)c); return *this; }
-
-	HashWriter& operator<<(char const* s)
+	TomlWriter& operator<<(char const* s)
 	{
 		for (; *s; ++s)
-			put((uint8_t)*s);
+			*this << *s;
 		return *this;
 	}
 
-	HashWriter& operator<<(int32_t v)
+	TomlWriter& operator<<(int32_t v)
 	{
 		char buf[16];
 		std::snprintf(buf, sizeof buf, "%d", (int)v);
 		return *this << (char const*)buf;
+	}
+
+	void windent()
+	{
+		*this << "\r\n";
+		for (int i = 0; i < indent; ++i)
+			*this << "  ";
+	}
+
+	void beginf(char const* name)
+	{
+		chain.push_back(name);
+		inObject = false;
+	}
+
+	void fname()
+	{
+		for (std::size_t i = 0; i < chain.size(); ++i)
+		{
+			if (i)
+				*this << '.';
+			*this << chain[i];
+		}
+	}
+
+	void f(char const* name)
+	{
+		if (!name)
+			return;
+		if (!inObject)
+		{
+			if (!chain.empty())
+			{
+				*this << "\r\n";
+				windent();
+				*this << "[";
+				fname();
+				*this << "]\r\n";
+			}
+			inObject = true;
+		}
+		windent();
+		*this << name << " = ";
+	}
+
+	void endf()
+	{
+		chain.pop_back();
+		inObject = false;
+	}
+
+	template<typename F>
+	void obj(char const* name, F func)
+	{
+		if (name)
+			beginf(name);
+		func();
+		if (name)
+			endf();
+	}
+
+	template<typename A, typename F>
+	void arr(char const* name, A& arr, F func)
+	{
+		f(name);
+		*this << '[';
+		bool first = true;
+		for (auto& e : arr)
+		{
+			if (!first)
+				*this << ", ";
+			first = false;
+			func(e);
+		}
+		*this << "]";
+	}
+
+	template<typename A, typename F>
+	void array_obj(char const* name, A& arr, F func)
+	{
+		beginf(name);
+		for (auto& e : arr)
+		{
+			*this << "\r\n";
+			windent();
+			*this << "[[";
+			fname();
+			*this << "]]\r\n";
+			++indent;
+			inObject = true;
+			func(e);
+			--indent;
+		}
+		endf();
+	}
+
+	void i32(char const* name, int32_t v) { f(name); *this << v; }
+	void b(char const* name, bool v) { f(name); *this << (v ? "true" : "false"); }
+	void null(char const* name) { f(name); *this << "null"; }
+
+	template<typename T, typename Resolver>
+	void ref(char const* name, T const& v, Resolver resolver)
+	{
+		f(name);
+		resolver.v2r(*this, v);
+	}
+
+	void str(char const* name, std::string& s)
+	{
+		f(name);
+		*this << '"';
+		for (char c : s)
+		{
+			if (c >= 0x20 && c <= 0x7e)
+			{
+				if (c == '"' || c == '\\')
+					*this << '\\';
+				*this << c;
+			}
+			else
+			{
+				char buf[8];
+				std::snprintf(buf, sizeof buf, "\\u%04x", (unsigned)(uint8_t)c);
+				*this << (char const*)buf;
+			}
+		}
+		*this << '"';
 	}
 };
 
@@ -57,43 +186,39 @@ void addSprites(Fnv& h, SpriteSet const& ss)
 void hashTc(Common& common)
 {
 	{
-		HashWriter w;
-		gvl::toml::writer<HashWriter> ar(w);
+		TomlWriter ar;
 		archive_text(common, ar);
-		print("tc-cfg", 0, w.h);
+		print("tc-cfg", 0, ar.h);
 	}
 
 	for (std::size_t i = 0; i < common.weapons.size(); ++i)
 	{
 		auto& weapon = common.weapons[i];
-		HashWriter w;
-		gvl::toml::writer<HashWriter> ar(w);
+		TomlWriter ar;
 		archive_text(common, weapon, ar);
-		w.h.add(int32_t(weapon.id));
-		w.h.bytes((uint8_t const*)weapon.idStr.data(), weapon.idStr.size());
-		print("tc-weapon", (int)i, w.h);
+		ar.h.add(int32_t(weapon.id));
+		ar.h.bytes((uint8_t const*)weapon.idStr.data(), weapon.idStr.size());
+		print("tc-weapon", (int)i, ar.h);
 	}
 
 	for (std::size_t i = 0; i < common.nobjectTypes.size(); ++i)
 	{
 		auto& nobject = common.nobjectTypes[i];
-		HashWriter w;
-		gvl::toml::writer<HashWriter> ar(w);
+		TomlWriter ar;
 		archive_text(common, nobject, ar);
-		w.h.add(int32_t(nobject.id));
-		w.h.bytes((uint8_t const*)nobject.idStr.data(), nobject.idStr.size());
-		print("tc-nobject", (int)i, w.h);
+		ar.h.add(int32_t(nobject.id));
+		ar.h.bytes((uint8_t const*)nobject.idStr.data(), nobject.idStr.size());
+		print("tc-nobject", (int)i, ar.h);
 	}
 
 	for (std::size_t i = 0; i < common.sobjectTypes.size(); ++i)
 	{
 		auto& sobject = common.sobjectTypes[i];
-		HashWriter w;
-		gvl::toml::writer<HashWriter> ar(w);
+		TomlWriter ar;
 		archive_text(common, sobject, ar);
-		w.h.add(int32_t(sobject.id));
-		w.h.bytes((uint8_t const*)sobject.idStr.data(), sobject.idStr.size());
-		print("tc-sobject", (int)i, w.h);
+		ar.h.add(int32_t(sobject.id));
+		ar.h.bytes((uint8_t const*)sobject.idStr.data(), sobject.idStr.size());
+		print("tc-sobject", (int)i, ar.h);
 	}
 
 	for (std::size_t i = 0; i < common.sounds.size(); ++i)

@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
-#include <gvl/io2/stream.hpp>
 #include <liero_game.h>
 
 std::string getLeaf(std::string const& path);
@@ -86,20 +85,6 @@ struct FsNode
 
 	// The whole file, or an exception if it can't be read.
 	std::vector<uint8_t> read() const;
-
-	gvl::octet_reader toOctetReader() const
-	{
-		return gvl::octet_reader(toSource());
-	}
-
-	gvl::source toSource() const;
-
-	gvl::octet_writer toOctetWriter() const
-	{
-		return gvl::octet_writer(toSink());
-	}
-
-	gvl::sink toSink() const;
 
 	// The Rust node, or null.
 	LieroFsNode* rust() const

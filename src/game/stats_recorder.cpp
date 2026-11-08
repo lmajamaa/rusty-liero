@@ -51,11 +51,6 @@ void StatsRecorder::aiProcessTime(Worm* worm, uint64_t time)
 {
 }
 
-/*
-void StatsRecorder::write(Common& common, gvl::stream_ptr sink)
-{
-}*/
-
 namespace
 {
 

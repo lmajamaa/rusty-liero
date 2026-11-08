@@ -17,9 +17,6 @@ void SObjectType::create(Game& game, int x, int y, int ownerIdx, WormWeapon* fir
 	Common& common = *game.common;
 	SObject& obj = *game.sobjects.newObjectReuse();
 
-	LTRACE(rand, 0, sobj, game.rand.x);
-	LTRACE(sobj, &obj - game.sobjects.arr, cxpo, x);
-	LTRACE(sobj, &obj - game.sobjects.arr, cypo, y);
 
 	assert(numSounds < 10);
 

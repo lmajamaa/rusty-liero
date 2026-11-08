@@ -56,12 +56,4 @@ struct Rand : LieroRand
 	}
 };
 
-// Replays store the state in this order, as gvl::mwc's archive did.
-template<typename Archive>
-void archive(Archive ar, Rand& x)
-{
-	ar.ui32(x.c);
-	ar.ui32(x.x);
-}
-
 #endif // UUID_C1DCDBE1BD8541A14AEC91A1BDF3B9F4

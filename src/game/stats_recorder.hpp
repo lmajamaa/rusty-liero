@@ -23,7 +23,6 @@ struct StatsRecorder : gvl::shared
 
 	virtual void aiProcessTime(Worm* worm, uint64_t time);
 
-	//virtual void write(Common& common, gvl::stream_ptr sink);
 };
 
 // Records stats in Rust (rust/liero-game/src/stats.rs), which owns them.

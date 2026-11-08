@@ -1,6 +1,5 @@
-#include <gvl/serialization/toml.hpp>
+// The TC as TOML, field by field, for the hash run's writer (hashtc.cpp).
 #include "common.hpp"
-#include <gvl/io2/stream.hpp>
 
 template<typename T>
 struct ObjectResolver
@@ -9,25 +8,6 @@ struct ObjectResolver
 	: common(common)
 	, vec(vec)
 	{
-	}
-
-	void r2v(int& v)
-	{
-		v = -1;
-	}
-
-	void r2v(int& v, std::string const& str)
-	{
-		for (std::size_t i = 0; vec.size(); ++i)
-		{
-			auto& n = vec[i];
-			if (n.idStr == str)
-			{
-				v = (int)i;
-				return;
-			}
-		}
-		v = 0;
 	}
 
 	template<typename Archive>

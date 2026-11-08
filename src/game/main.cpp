@@ -10,7 +10,6 @@
 #include "game.hpp"
 #include "viewport.hpp"
 #include "worm.hpp"
-#include "reader.hpp"
 #include "filesystem.hpp"
 #include "text.hpp"
 #include "keys.hpp"

@@ -11,7 +11,6 @@
 #include "../weapsel.hpp"
 #include "../replay.hpp"
 #include "../console.hpp"
-#include <gvl/serialization/except.hpp>
 #include <ctime>
 extern "C"
 {
@@ -41,7 +40,8 @@ struct ReplayController : CommonController
 
 
 	std::unique_ptr<Game> initialGame;
-	gvl::octet_reader initialReader;
+	// Where R rewinds the replay to.
+	ByteReader initialReader;
 
 
 	std::unique_ptr<ReplayReader> replay;

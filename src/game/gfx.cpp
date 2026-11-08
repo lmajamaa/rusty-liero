@@ -14,14 +14,12 @@
 
 #include "gfx.hpp"
 #include "screen.hpp"
-#include "reader.hpp"
 #include "game.hpp"
 #include "sfx.hpp"
 #include "text.hpp"
 #include "keys.hpp"
 #include "filesystem.hpp"
 
-#include <gvl/io2/fstream.hpp>
 #include <gvl/system/system.hpp>
 
 #include "controller/replayController.hpp"
@@ -1226,7 +1224,7 @@ void selectorPreview(void* ctx, LieroStr rel)
 
 	try
 	{
-		if (level.load(common, *gfx.settings, static_cast<SelectorContext*>(ctx)->node(rel).toOctetReader()))
+		if (level.load(common, *gfx.settings, ByteReader(static_cast<SelectorContext*>(ctx)->node(rel).read())))
 		{
 			int centerX = gfx.singleScreenRenderer.renderResX / 2;
 

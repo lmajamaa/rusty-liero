@@ -9,6 +9,7 @@
 #include "material.hpp"
 #include "common.hpp"
 #include "settingsffi.hpp"
+#include "bytes.hpp"
 #include <liero_game.h>
 #include <gvl/math/vec.hpp>
 #include <gvl/math/rect.hpp>
@@ -53,7 +54,7 @@ struct Level
 	Level& operator=(Level const& other);
 	~Level();
 
-	bool load(Common& common, Settings const& settings, gvl::octet_reader r);
+	bool load(Common& common, Settings const& settings, ByteReader r);
 	void generateDirtPattern(Common& common, Rand& rand);
 	void generateRandom(Common& common, Settings const& settings, Rand& rand);
 	void makeShadow(Common& common);

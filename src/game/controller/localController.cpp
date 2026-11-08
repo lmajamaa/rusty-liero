@@ -2,12 +2,10 @@
 #include "localController.hpp"
 
 #include <gvl/system/system.hpp>
-#include <gvl/io2/fstream.hpp>
 #include "stats_presenter.hpp"
 #include "../keys.hpp"
 #include "../gfx.hpp"
 #include "../sfx.hpp"
-#include "../reader.hpp"
 #include "../filesystem.hpp"
 
 #include "../ai/predictive_ai.hpp"
@@ -247,7 +245,6 @@ void LocalController::changeState(GameState newState)
 		{
 			try
 			{
-#if !ENABLE_TRACING
 				std::time_t ticks = appTime();
 				// The hash run names replays the same in every time zone.
 				std::tm* now = gfx.driver ? std::gmtime(&ticks) : std::localtime(&ticks);
@@ -271,10 +268,6 @@ void LocalController::changeState(GameState newState)
 							playerNames.push_back(ch);
 					}
 				}
-#else
-				std::string prefix = "-  Trace";
-				std::string buf = ".lrp";
-#endif
 				//std::string path = joinPath(joinPath(configRoot, "Replays"), prefix + buf);
 				//create_directories(path);
 
@@ -282,7 +275,6 @@ void LocalController::changeState(GameState newState)
 
 				replay.reset(new ReplayWriter(node));
 
-				//replay.reset(new ReplayWriter(gvl::sink(new gvl::file_bucket_pipe(path.c_str(), "wb"))));
 				replay->beginRecord(game);
 			}
 			catch(std::runtime_error& e)

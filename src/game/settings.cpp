@@ -4,8 +4,6 @@
 #include "gfx.hpp"
 #include "filesystem.hpp"
 
-#include <gvl/io2/stream.hpp>
-#include <gvl/serialization/except.hpp>
 
 #include <stdexcept>
 #include <vector>
@@ -215,7 +213,7 @@ void throwArchiveError(LieroSettingsStatus status, std::exception_ptr const& rea
 			std::rethrow_exception(readerError);
 		throw std::runtime_error("Read error in get()");
 	case LieroSettingsStatus_CheckError:
-		throw gvl::archive_check_error("Expected checkpoint here");
+		throw ArchiveCheckError("Expected checkpoint here");
 	default:
 		return;
 	}
@@ -293,44 +291,4 @@ std::string Settings::text()
 
 void Settings::generateName(WormSettings& ws, Rand& rand)
 {
-#if 0 // TODO
-	try
-	{
-		ReaderFile f(FsNode(joinPath(configRoot, "NAMES.DAT")).read());
-
-		std::vector<std::string> names;
-
-		std::size_t len = f.len;
-
-		// TODO: This is a bit silly since we switched to ReaderFile
-		std::vector<char> chars(len);
-
-		f.get(reinterpret_cast<uint8_t*>(&chars[0]), len);
-
-		std::size_t begin = 0;
-		for(std::size_t i = 0; i < len; ++i)
-		{
-			if(chars[i] == '\r'
-			|| chars[i] == '\n')
-			{
-				if(i > begin)
-				{
-					names.push_back(std::string(chars.begin() + begin, chars.begin() + i));
-				}
-
-				begin = i + 1;
-			}
-		}
-
-		if(!names.empty())
-		{
-			ws.name = names[rand(uint32_t(names.size()))];
-			ws.randomName = true;
-		}
-	}
-	catch (std::runtime_error)
-	{
-		return;
-	}
-#endif
 }
