@@ -38,7 +38,6 @@ set(GAME_SOURCES
     src/game/viewport.cpp
     src/game/weapon.cpp
     src/game/worm.cpp
-    src/game/ai/predictive_ai.cpp
     src/game/gfx/blit.cpp
     src/game/gfx/font.cpp
     src/game/gfx/palette.cpp

@@ -8,22 +8,11 @@
 #include "../sfx.hpp"
 #include "../filesystem.hpp"
 
-#include "../ai/predictive_ai.hpp"
 #include "../worm.hpp"
 #include "../spectatorviewport.hpp"
 #include "../viewport.hpp"
 
 #include <cctype>
-
-std::shared_ptr<WormAI> createAi(int controller, Worm& worm, Settings& settings)
-{
-	if (controller == 1)
-		return std::shared_ptr<WormAI>(new DumbLieroAI());
-	else if (controller == 2)
-		return std::shared_ptr<WormAI>(new FollowAI(settings.aiParallels, worm.index == 0));
-
-	return std::shared_ptr<WormAI>();
-}
 
 LocalController::LocalController(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings)
 : game(common, settings, std::shared_ptr<SoundPlayer>(new DefaultSoundPlayer(*common)))
@@ -33,14 +22,14 @@ LocalController::LocalController(std::shared_ptr<Common> common, std::shared_ptr
 	worm1->health = worm1->settings->health;
 	worm1->index = 0;
 	worm1->statsX = 0;
-	worm1->ai = createAi(worm1->settings->controller, *worm1, *settings);
+	worm1->ai = createWormAi(worm1->settings->controller, settings->aiParallels, worm1->index == 0);
 
 	Worm* worm2 = new Worm();
 	worm2->settings = settings->wormSettings[1];
 	worm2->health = worm2->settings->health;
 	worm2->index = 1;
 	worm2->statsX = 218;
-	worm2->ai = createAi(worm2->settings->controller, *worm2, *settings);
+	worm2->ai = createWormAi(worm2->settings->controller, settings->aiParallels, worm2->index == 0);
 
 #if 0
 	for(int i = 0; i < 10; ++i)
@@ -137,18 +126,7 @@ bool LocalController::process()
 		int ticks = liero_controller_ticks(rust());
 		for(int i = 0; i < ticks && liero_controller_in_game(rust()); ++i)
 		{
-			int phase = game.cycles % 2;
-			for (std::size_t i = 0; i < game.worms.size(); ++i)
-			{
-				Worm& worm = *game.worms[(i + phase) % game.worms.size()];
-				if(worm.ai.get())
-				{
-					uint64_t time = appHiresTicks();
-					worm.ai->process(game, worm);
-					time = appHiresTicks() - time;
-					game.statsRecorder->aiProcessTime(worm.index, time);
-				}
-			}
+			game.processAis(true);
 			if(replay.get())
 			{
 				try

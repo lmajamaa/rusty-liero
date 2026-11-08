@@ -66,6 +66,8 @@ pub struct LieroGameWorm {
     pub data: *mut LieroWormData,
     /// The worm's full health (`settings->health`).
     pub max_health: i32,
+    /// The worm's bot, if any (null for a human).
+    pub ai: *mut crate::ai::LieroWormAi,
 }
 
 impl LieroGameWorm {
@@ -647,7 +649,7 @@ mod tests {
             .enumerate()
             .map(|(i, w)| {
                 w.index = i as i32;
-                LieroGameWorm { data: w, max_health: 100 }
+                LieroGameWorm { data: w, max_health: 100, ai: std::ptr::null_mut() }
             })
             .collect();
         let mut game = LieroGameData::new_boxed();

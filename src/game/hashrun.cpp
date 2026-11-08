@@ -227,7 +227,7 @@ std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, i
 	settings->gameMode = gameMode;
 	for (int i = 0; i < 2; ++i)
 	{
-		settings->wormSettings[i]->controller = 1; // DumbLieroAI
+		settings->wormSettings[i]->controller = 1; // The original bot
 		if (weapons)
 			setWeapons(*common, *settings->wormSettings[i], weapons);
 	}
@@ -252,9 +252,8 @@ std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, i
 		worm->health = worm->settings->health;
 		worm->index = i;
 		worm->statsX = i == 0 ? 0 : 218;
-		DumbLieroAI* ai = new DumbLieroAI();
-		ai->rand.seed(seed * 104729 + i);
-		worm->ai.reset(ai);
+		worm->ai = createWormAi(1, 0, false);
+		liero_rand_seed(liero_worm_ai_rand(worm->ai.get()), seed * 104729 + i);
 		game.addWorm(worm);
 	}
 
@@ -281,13 +280,8 @@ std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, i
 
 void botTick(Game& game)
 {
-	// The same order as LocalController::process.
-	int phase = game.cycles % 2;
-	for (std::size_t i = 0; i < game.worms.size(); ++i)
-	{
-		Worm& worm = *game.worms[(i + phase) % game.worms.size()];
-		worm.ai->process(game, worm);
-	}
+	// As LocalController::process, untimed.
+	game.processAis(false);
 }
 
 namespace

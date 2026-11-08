@@ -96,6 +96,9 @@ struct Game : GameMembers
 	void releaseControls();
 	// Runs the game for one tick, in Rust (rust/liero-game/src/game.rs).
 	void processFrame();
+	// Runs the worms' bots for the tick, in Rust (rust/liero-game/src/ai),
+	// timing them into the stats when `timed`.
+	void processAis(bool timed);
 	void focus(Renderer& renderer);
 	void updateSettings(Renderer& renderer);
 

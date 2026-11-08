@@ -174,21 +174,15 @@ inline std::vector<uint8_t> writeWormArchive(WormSettings& ws, int replayVersion
 struct Viewport;
 struct Renderer;
 
-struct WormAI
+// A worm's bot, in Rust (LieroWormAi in rust/liero-game/src/ai/mod.rs):
+// the one `controller` picks, or none for a human.
+inline std::shared_ptr<LieroWormAi> createWormAi(uint32_t controller, int candidates, bool testing)
 {
-	virtual void process(Game& game, Worm& worm) = 0;
-
-	virtual void drawDebug(Game& game, Worm const& worm, Renderer& renderer, int offsX, int offsY)
-	{
-	}
-};
-
-struct DumbLieroAI : WormAI
-{
-	void process(Game& game, Worm& worm);
-
-	Rand rand;
-};
+	LieroWormAi* ai = liero_worm_ai_new(controller, candidates, testing);
+	if (!ai)
+		return std::shared_ptr<LieroWormAi>();
+	return std::shared_ptr<LieroWormAi>(ai, liero_worm_ai_free);
+}
 
 struct Worm
 {
@@ -391,7 +385,7 @@ public:
 
 	std::shared_ptr<WormSettings> settings; // !CLONING
 
-	std::shared_ptr<WormAI> ai;
+	std::shared_ptr<LieroWormAi> ai;
 };
 
 int sqrVectorLength(int x, int y);

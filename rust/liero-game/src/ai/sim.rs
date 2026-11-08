@@ -95,7 +95,7 @@ impl SimGame {
         let worms: Vec<LieroGameWorm> = worm_data
             .iter_mut()
             .zip(&self.worms)
-            .map(|(d, w)| LieroGameWorm { data: &mut **d, max_health: w.max_health })
+            .map(|(d, w)| LieroGameWorm { data: &mut **d, max_health: w.max_health, ai: std::ptr::null_mut() })
             .collect();
 
         let mut fields = self.fields;
@@ -133,7 +133,7 @@ impl SimGame {
 /// The games, as `*mut SimGame`.
 struct Sims;
 
-// SAFETY, for each call: the games are the one `liero_follow_ai_process`
+// SAFETY, for each call: the games are the one `liero_game_process_ais`
 // was given or copies made here, and are valid until freed.
 impl Games for Sims {
     type G = *mut SimGame;

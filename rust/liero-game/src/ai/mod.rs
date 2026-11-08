@@ -10,7 +10,7 @@ pub mod path;
 pub mod predictive;
 pub mod sim;
 
-use crate::game::{LieroGameFields, LieroGameSettings};
+use crate::game::{LieroGameFields, LieroGameHooks, LieroGameSettings};
 use crate::rand::LieroRand;
 use path::{NONE, NO_CELL};
 use predictive::{FollowAi, LieroAiTrace, Weights};
@@ -89,67 +89,99 @@ fn hash(ai: &FollowAi) -> u64 {
     f.0
 }
 
-/// A predictive AI for C++'s `FollowAI` to own.
-pub struct LieroFollowAi(FollowAi);
+/// A worm's bot, as its `controller` setting picks it: the original
+/// game's (1) or the predictive one (2).
+pub enum LieroWormAi {
+    Dumb(LieroRand),
+    Follow(FollowAi),
+}
 
-/// A new predictive AI with `candidates` plans (`aiParallels`). `testing`
-/// also tries changing to loading weapons; the game gives it to the first
-/// worm's AI.
+/// The bot for `controller`, or null for a human (0). The predictive one
+/// has `candidates` plans (`aiParallels`); `testing` also tries changing
+/// to loading weapons, which the game gives the first worm's.
 #[no_mangle]
-pub extern "C" fn liero_follow_ai_new(candidates: usize, testing: bool) -> *mut LieroFollowAi {
-    Box::into_raw(Box::new(LieroFollowAi(FollowAi::new(Weights::default(), candidates, testing))))
+pub extern "C" fn liero_worm_ai_new(controller: u32, candidates: usize, testing: bool) -> *mut LieroWormAi {
+    let ai = match controller {
+        1 => LieroWormAi::Dumb(LieroRand::default()),
+        2 => LieroWormAi::Follow(FollowAi::new(Weights::default(), candidates, testing)),
+        _ => return std::ptr::null_mut(),
+    };
+    Box::into_raw(Box::new(ai))
 }
 
 /// # Safety
-/// `ai` must come from `liero_follow_ai_new`, or be null.
+/// `ai` must come from `liero_worm_ai_new`, or be null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_follow_ai_free(ai: *mut LieroFollowAi) {
+pub unsafe extern "C" fn liero_worm_ai_free(ai: *mut LieroWormAi) {
     if !ai.is_null() {
         drop(Box::from_raw(ai));
     }
 }
 
-/// One tick for the worm at `place` in the game: the controls to press.
+/// The bot's own generator, which C++ can seed.
+#[no_mangle]
+pub extern "C" fn liero_worm_ai_rand(ai: &mut LieroWormAi) -> &mut LieroRand {
+    match ai {
+        LieroWormAi::Dumb(r) => r,
+        LieroWormAi::Follow(f) => &mut f.rand,
+    }
+}
+
+/// The positions the predictive bot's last plans passed through, with
+/// `aiTraces` on, for C++ to draw. Valid until the next tick.
+#[no_mangle]
+pub extern "C" fn liero_worm_ai_traces(ai: &LieroWormAi, count: &mut usize) -> *const LieroAiTrace {
+    match ai {
+        LieroWormAi::Dumb(_) => {
+            *count = 0;
+            std::ptr::NonNull::dangling().as_ptr()
+        }
+        LieroWormAi::Follow(f) => {
+            *count = f.evaluate_positions.len();
+            f.evaluate_positions.as_ptr()
+        }
+    }
+}
+
+/// A hash of the predictive bot's whole state, for the hash run; 0 for
+/// the original one.
+#[no_mangle]
+pub extern "C" fn liero_worm_ai_hash(ai: &LieroWormAi) -> u64 {
+    match ai {
+        LieroWormAi::Dumb(_) => 0,
+        LieroWormAi::Follow(f) => hash(f),
+    }
+}
+
+/// One tick of the worms' bots, as `LocalController` ran them: from the
+/// first worm on even cycles and the second on odd ones, each setting its
+/// worm's controls. With `hooks`, each bot's time goes into the game's
+/// stats, if any.
 ///
 /// # Safety
-/// The pointers in `game` and `settings` must be valid for the call.
+/// The pointers in `game` and `settings` must be valid for the call, and
+/// the worms' bots must come from `liero_worm_ai_new`, or be null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_follow_ai_process(
-    ai: &mut LieroFollowAi,
+pub unsafe extern "C" fn liero_game_process_ais(
     game: &LieroGameFields,
     settings: &LieroGameSettings,
     ai_settings: &LieroAiSettings,
-    place: i32,
-) -> u32 {
-    sim::process(&mut ai.0, game, settings, ai_settings, place)
-}
-
-/// The AI's own generator, which C++ can seed.
-#[no_mangle]
-pub extern "C" fn liero_follow_ai_rand(ai: &mut LieroFollowAi) -> &mut LieroRand {
-    &mut ai.0.rand
-}
-
-/// The positions the last tick's plans passed through, with `aiTraces` on,
-/// for C++ to draw. Valid until the next tick.
-#[no_mangle]
-pub extern "C" fn liero_follow_ai_traces(ai: &LieroFollowAi, count: &mut usize) -> *const LieroAiTrace {
-    *count = ai.0.evaluate_positions.len();
-    ai.0.evaluate_positions.as_ptr()
-}
-
-/// A hash of the AI's whole state, for the hash run.
-#[no_mangle]
-pub extern "C" fn liero_follow_ai_hash(ai: &LieroFollowAi) -> u64 {
-    hash(&ai.0)
-}
-
-/// One tick of the original bot for the worm at `place`, with its own
-/// generator: the worm's controls after it.
-///
-/// # Safety
-/// The pointers in `game` must be valid for the call.
-#[no_mangle]
-pub unsafe extern "C" fn liero_dumb_ai_process(rand: &mut LieroRand, game: &LieroGameFields, place: i32) -> u32 {
-    sim::process_dumb(rand, game, place)
+    hooks: Option<&LieroGameHooks>,
+) {
+    let n = game.worm_count as usize;
+    let phase = ((*game.game).cycles % 2) as usize;
+    for i in 0..n {
+        let place = (i + phase) % n;
+        let w = *game.worms.add(place);
+        let Some(ai) = w.ai.as_mut() else { continue };
+        let start = hooks.map(|h| (h.hires_ticks)(h.ctx));
+        let controls = match ai {
+            LieroWormAi::Dumb(r) => sim::process_dumb(r, game, place as i32),
+            LieroWormAi::Follow(f) => sim::process(f, game, settings, ai_settings, place as i32),
+        };
+        (*w.data).control_states = controls;
+        if let (Some(h), Some(start), Some(stats)) = (hooks, start, game.stats.as_mut()) {
+            stats.ai_process_time((*w.data).index, (h.hires_ticks)(h.ctx).wrapping_sub(start));
+        }
+    }
 }

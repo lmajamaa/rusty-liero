@@ -93,7 +93,11 @@ void hookDrawAiDebug(void* ctx, int32_t worm, int32_t offsX, int32_t offsY, Lier
 	Bitmap& bmp = c.renderer.bmp;
 	Rect org = bmp.clip_rect;
 	bmp.clip_rect = Rect(clip.x1, clip.y1, clip.x2, clip.y2);
-	w.ai->drawDebug(c.game, w, c.renderer, offsX, offsY);
+	// The positions the predictive bot's plans passed through.
+	std::size_t count;
+	LieroAiTrace const* traces = liero_worm_ai_traces(w.ai.get(), &count);
+	for (std::size_t i = 0; i < count; ++i)
+		bmp.setPixel(ftoi(traces[i].x) + offsX, ftoi(traces[i].y) + offsY, traces[i].color);
 	bmp.clip_rect = org;
 }
 

@@ -224,7 +224,7 @@ GameView::GameView(Game& game)
 
 	for (Worm* w : game.worms)
 	{
-		LieroGameWorm v = { w->rust(), w->settings->health };
+		LieroGameWorm v = { w->rust(), w->settings->health, w->ai.get() };
 		worms.push_back(v);
 	}
 
@@ -321,6 +321,16 @@ void Game::processFrame()
 		this, hookHiresTicks, hookEndTick,
 	};
 	liero_game_process_frame(&view.fields, &view.settings, &hooks);
+}
+
+void Game::processAis(bool timed)
+{
+	GameView view(*this);
+	LieroGameHooks hooks = {
+		this, hookHiresTicks, hookEndTick,
+	};
+	LieroAiSettings ai = { settings->aiFrames, settings->aiMutations, settings->aiTraces };
+	liero_game_process_ais(&view.fields, &view.settings, &ai, timed ? &hooks : nullptr);
 }
 
 void Game::focus(Renderer& renderer)

@@ -136,14 +136,6 @@ int sqrVectorLength(int x, int y)
 	return x*x + y*y;
 }
 
-// In Rust (rust/liero-game/src/ai/dumb.rs).
-void DumbLieroAI::process(Game& game, Worm& worm)
-{
-	auto place = std::find(game.worms.begin(), game.worms.end(), &worm) - game.worms.begin();
-	GameView view(game);
-	worm.controlStates.istate = liero_dumb_ai_process(&rand, &view.fields, int32_t(place));
-}
-
 void Worm::initWeapons(Game& game)
 {
 	Common& common = *game.common;
