@@ -2,7 +2,7 @@
 
 #include "../common.hpp"
 #include "../gfx/bitmap.hpp"
-#include <gvl/support/debug.hpp>
+#include <cassert>
 
 // Selection, scrolling, searching and drawing are implemented in Rust
 // (rust/liero-game/src/menu.rs), which owns the menu.
@@ -52,7 +52,7 @@ void Menu::setVisibility(int id, bool state)
 	int item = indexFromId(id);
 	if (item < 0)
 	{
-		sassert(false);
+		assert(false);
 		return;
 	}
 

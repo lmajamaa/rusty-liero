@@ -8,9 +8,8 @@
 #include <memory>
 #include <numeric>
 #include <functional>
-#include <gvl/resman/shared_ptr.hpp>
+#include <memory>
 #include "version.hpp"
-#include <gvl/crypt/gash.hpp>
 #include "filesystem.hpp"
 #include "settingsffi.hpp"
 
@@ -82,7 +81,7 @@ struct WormSettingsExtensions
 // A worm's settings. Rust owns them (LieroWormSettingsBox in
 // rust/liero-game/src/settings.rs); the fields here refer to its. The fields
 // and their defaults match liero_data::settings::WormSettings.
-struct WormSettings : gvl::shared, WormSettingsExtensions
+struct WormSettings : WormSettingsExtensions
 {
 	WormSettings()
 	: WormSettings(liero_worm_settings_box_new())
@@ -106,7 +105,7 @@ struct WormSettings : gvl::shared, WormSettingsExtensions
 		liero_worm_settings_box_free(box);
 	}
 
-	gvl::gash::value_type& updateHash();
+	SettingsHash& updateHash();
 
 	void saveProfile(FsNode node);
 	void loadProfile(FsNode node);
@@ -150,7 +149,7 @@ public:
 
 	FsNode profileNode;
 
-	gvl::gash::value_type hash;
+	SettingsHash hash;
 };
 
 // A worm's settings in a replay of `replayVersion`, or in a profile.
@@ -176,7 +175,7 @@ inline std::vector<uint8_t> writeWormArchive(WormSettings& ws, int replayVersion
 struct Viewport;
 struct Renderer;
 
-struct WormAI : gvl::shared
+struct WormAI
 {
 	virtual void process(Game& game, Worm& worm) = 0;
 
@@ -192,7 +191,7 @@ struct DumbLieroAI : WormAI
 	Rand rand;
 };
 
-struct Worm : gvl::shared
+struct Worm
 {
 	enum
 	{
@@ -340,7 +339,7 @@ public:
 	fixedvec& pos;
 	fixedvec& vel;
 
-	gvl::ivec2& logicRespawn;
+	IVec2& logicRespawn;
 
 	int& hotspotX;               //Hotspots for laser, laser sight, etc.
 	int& hotspotY;
@@ -393,9 +392,9 @@ public:
 	// Data for LocalController
 	ControlState& cleanControlStates; // This contains the real state of real and extended controls
 
-	gvl::shared_ptr<WormSettings> settings; // !CLONING
+	std::shared_ptr<WormSettings> settings; // !CLONING
 
-	gvl::shared_ptr<WormAI> ai;
+	std::shared_ptr<WormAI> ai;
 };
 
 bool checkForWormHit(Game& game, int x, int y, int dist, Worm* ownWorm);

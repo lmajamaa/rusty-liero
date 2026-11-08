@@ -106,7 +106,7 @@ void addBytes(Fnv& f, Bytes const& b)
 	f.bytes(b.data(), b.size());
 }
 
-void addHash(Fnv& f, gvl::gash::value_type const& h)
+void addHash(Fnv& f, SettingsHash const& h)
 {
 	for (uint64_t v : h.value)
 	{

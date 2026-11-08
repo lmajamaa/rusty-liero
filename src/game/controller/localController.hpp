@@ -16,7 +16,7 @@ struct ReplayWriter;
 
 struct LocalController : CommonController
 {
-	LocalController(gvl::shared_ptr<Common> common, gvl::shared_ptr<Settings> settings);
+	LocalController(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings);
 	~LocalController();
 	void onKey(int key, bool keyState);
 

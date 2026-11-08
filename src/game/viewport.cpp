@@ -78,7 +78,7 @@ std::vector<LieroViewWorm> viewWorms(Game& game)
 	return worms;
 }
 
-static_assert(sizeof(gvl::rect) == sizeof(LieroRect), "gvl::rect layout");
+static_assert(sizeof(Rect) == sizeof(LieroRect), "Rect layout");
 
 struct AiDebugContext
 {
@@ -91,8 +91,8 @@ void hookDrawAiDebug(void* ctx, int32_t worm, int32_t offsX, int32_t offsY, Lier
 	AiDebugContext& c = *static_cast<AiDebugContext*>(ctx);
 	Worm const& w = *c.game.worms[worm];
 	Bitmap& bmp = c.renderer.bmp;
-	gvl::rect org = bmp.clip_rect;
-	bmp.clip_rect = gvl::rect(clip.x1, clip.y1, clip.x2, clip.y2);
+	Rect org = bmp.clip_rect;
+	bmp.clip_rect = Rect(clip.x1, clip.y1, clip.x2, clip.y2);
 	w.ai->drawDebug(c.game, w, c.renderer, offsX, offsY);
 	bmp.clip_rect = org;
 }

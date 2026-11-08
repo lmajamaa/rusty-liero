@@ -305,7 +305,7 @@ ReplayReader::ReplayReader(FsNode const& node)
 	reader = ByteReader(std::move(data), error ? "Error while deflating" : "Read error in get()");
 }
 
-std::unique_ptr<Game> ReplayReader::beginPlayback(gvl::shared_ptr<Common> common, gvl::shared_ptr<SoundPlayer> soundPlayer)
+std::unique_ptr<Game> ReplayReader::beginPlayback(std::shared_ptr<Common> common, std::shared_ptr<SoundPlayer> soundPlayer)
 {
 	ReplaySource source(reader);
 	ReplayResult r(liero_replay_read_start(&source.hooks));
@@ -313,7 +313,7 @@ std::unique_ptr<Game> ReplayReader::beginPlayback(gvl::shared_ptr<Common> common
 	LieroReplayGameOut const& g = *liero_replay_result_game(r.r);
 	context.replayVersion = g.version;
 
-	gvl::shared_ptr<Settings> settings(new Settings);
+	std::shared_ptr<Settings> settings(new Settings);
 	setSettings(*settings, g.settings);
 
 	std::unique_ptr<Game> game(new Game(common, settings, soundPlayer));

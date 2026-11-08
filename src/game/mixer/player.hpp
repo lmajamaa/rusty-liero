@@ -1,12 +1,12 @@
 #ifndef LIERO_MIXER_PLAYER_HPP
 #define LIERO_MIXER_PLAYER_HPP
 
-#include <gvl/resman/shared.hpp>
+#include <memory>
 #include <liero_game.h>
 #include "../common.hpp"
 
 // Plays the game's sounds. The mixer is in Rust (rust/liero-game/src/sfx.rs).
-struct SoundPlayer : gvl::shared
+struct SoundPlayer
 {
 	virtual void play(int sound, void* id = 0, int loops = 0) = 0;
 	virtual bool isPlaying(void* id) = 0;

@@ -7,7 +7,7 @@
 // copies the settings in the result back.
 
 #include <liero_game.h>
-#include <gvl/crypt/gash.hpp>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -17,6 +17,16 @@
 
 struct Settings;
 struct WormSettings;
+
+// A hash of settings, from Rust, as gvl::gash's values were.
+struct SettingsHash
+{
+	static int const size = 4;
+	std::array<uint64_t, size> value{};
+
+	bool operator==(SettingsHash const& b) const { return value == b.value; }
+	bool operator!=(SettingsHash const& b) const { return value != b.value; }
+};
 
 // A text field of settings Rust owns (the TC's name, the level file, a
 // worm's name), used much like a std::string. Assigning one to another
@@ -110,11 +120,11 @@ struct SettingsResult
 	LieroSettings const& settings() const { return *liero_settings_result_settings(r); }
 	LieroWormSettings const& worm() const { return *liero_settings_result_worm(r); }
 
-	gvl::gash::value_type hash() const
+	SettingsHash hash() const
 	{
 		LieroHash h = liero_settings_result_hash(r);
-		gvl::gash::value_type ret;
-		for (int i = 0; i < gvl::gash::value_type::size; ++i)
+		SettingsHash ret;
+		for (int i = 0; i < SettingsHash::size; ++i)
 			ret.value[i] = h.value[i];
 		return ret;
 	}

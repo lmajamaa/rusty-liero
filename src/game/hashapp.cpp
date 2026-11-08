@@ -312,7 +312,7 @@ void buildScript(Script& s)
 
 }
 
-void hashApp(gvl::shared_ptr<Common> common)
+void hashApp(std::shared_ptr<Common> common)
 {
 	// A config folder of its own, with a broken replay to fail on.
 	std::string const root = "/hashapp";

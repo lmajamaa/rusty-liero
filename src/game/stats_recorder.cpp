@@ -1,7 +1,7 @@
 #include "stats_recorder.hpp"
 
 #include "common.hpp"
-#include <gvl/system/system.hpp>
+#include "ticks.hpp"
 #include "game.hpp"
 #include "appclock.hpp"
 #include "text.hpp"

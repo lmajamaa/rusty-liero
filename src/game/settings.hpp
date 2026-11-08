@@ -5,9 +5,8 @@
 #include <memory>
 #include <string>
 #include <cstring>
-#include <gvl/resman/shared_ptr.hpp>
-#include <gvl/support/cstdint.hpp>
-#include <gvl/crypt/gash.hpp>
+#include <memory>
+#include <cstdint>
 #include <stdexcept>
 #include "settingsffi.hpp"
 
@@ -17,7 +16,7 @@ struct Rand;
 // rust/liero-game/src/settings.rs); the fields here refer to its. The fields
 // and their defaults match liero_data::settings::Settings. The worms'
 // settings are apart, since each worm holds on to its own.
-struct Settings : gvl::shared
+struct Settings
 {
 	static bool const extensions = true;
 
@@ -56,7 +55,7 @@ struct Settings : gvl::shared
 	std::string text();
 	// The gash of the settings archive (see archive below). Writing the archive
 	// sets the TC name to the default, since the archive has none.
-	gvl::gash::value_type& updateHash();
+	SettingsHash& updateHash();
 
 	static void generateName(WormSettings& ws, Rand& rand);
 
@@ -109,9 +108,9 @@ public:
 	bool& map;
 	bool& screenSync;
 
-	gvl::shared_ptr<WormSettings> wormSettings[2];
+	std::shared_ptr<WormSettings> wormSettings[2];
 
-	gvl::gash::value_type hash;
+	SettingsHash hash;
 };
 
 // The settings in a replay, without the worms, which replays store with each

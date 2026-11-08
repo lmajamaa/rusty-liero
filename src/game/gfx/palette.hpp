@@ -1,8 +1,8 @@
 #ifndef UUID_74C8EE76D5564F2D8C7BBC9B26C16192
 #define UUID_74C8EE76D5564F2D8C7BBC9B26C16192
 
-#include <gvl/cstdint.hpp>
-#include <gvl/support/debug.hpp>
+#include <cstdint>
+#include <cassert>
 #include "color.hpp"
 
 struct Settings;
@@ -28,9 +28,9 @@ struct Palette
 		entries[dest].g = (add + c[1] * scale) / 64;
 		entries[dest].b = (add + c[2] * scale) / 64;
 
-		sassert(entries[dest].r < 64);
-		sassert(entries[dest].g < 64);
-		sassert(entries[dest].b < 64);
+		assert(entries[dest].r < 64);
+		assert(entries[dest].g < 64);
+		assert(entries[dest].b < 64);
 	}
 
 	void setWormColoursSpan(int base, int const (&c)[3])

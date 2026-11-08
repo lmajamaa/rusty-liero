@@ -17,9 +17,9 @@
 #include <cassert>
 
 GameMembers::GameMembers(
-	gvl::shared_ptr<Common> common,
-	gvl::shared_ptr<Settings> settings,
-	gvl::shared_ptr<SoundPlayer> soundPlayer)
+	std::shared_ptr<Common> common,
+	std::shared_ptr<Settings> settings,
+	std::shared_ptr<SoundPlayer> soundPlayer)
 : common(common)
 , soundPlayer(soundPlayer)
 , settings(settings)
@@ -62,9 +62,9 @@ Game::Game(LieroGameData* d, Members&&... members)
 }
 
 Game::Game(
-	gvl::shared_ptr<Common> common,
-	gvl::shared_ptr<Settings> settingsInit,
-	gvl::shared_ptr<SoundPlayer> soundPlayer)
+	std::shared_ptr<Common> common,
+	std::shared_ptr<Settings> settingsInit,
+	std::shared_ptr<SoundPlayer> soundPlayer)
 : Game(liero_game_data_new(), common, settingsInit, soundPlayer)
 {
 	rand.seed(uint32_t(appTime()));
@@ -221,9 +221,9 @@ namespace
 {
 
 // Rust works on these in place.
-static_assert(sizeof(gvl::rect) == sizeof(LieroRect), "rect layout");
-static_assert(offsetof(gvl::rect, x1) == offsetof(LieroRect, x1) && offsetof(gvl::rect, y1) == offsetof(LieroRect, y1)
-	&& offsetof(gvl::rect, x2) == offsetof(LieroRect, x2) && offsetof(gvl::rect, y2) == offsetof(LieroRect, y2), "rect layout");
+static_assert(sizeof(Rect) == sizeof(LieroRect), "rect layout");
+static_assert(offsetof(Rect, x1) == offsetof(LieroRect, x1) && offsetof(Rect, y1) == offsetof(LieroRect, y1)
+	&& offsetof(Rect, x2) == offsetof(LieroRect, x2) && offsetof(Rect, y2) == offsetof(LieroRect, y2), "rect layout");
 static_assert(sizeof(Holdazone) == sizeof(LieroHoldazone), "Holdazone layout");
 static_assert(sizeof(Bonus) == sizeof(LieroBonus), "Bonus layout");
 static_assert(sizeof(WObject) == sizeof(LieroWObject), "WObject layout");

@@ -3,16 +3,18 @@
 
 #include "color.hpp"
 #include <cstring>
-#include <gvl/math/rect.hpp>
-#include <gvl/support/platform.hpp>
+#include "../geom.hpp"
 #include <liero_game.h>
 
-struct Bitmap : gvl::noncopyable
+struct Bitmap
 {
+	Bitmap(Bitmap const&) = delete;
+	Bitmap& operator=(Bitmap const&) = delete;
+
 	int w, h;
 	unsigned int pitch;
 	unsigned char* pixels;
-	gvl::rect clip_rect;
+	Rect clip_rect;
 
 	Bitmap()
 	: pixels(0)

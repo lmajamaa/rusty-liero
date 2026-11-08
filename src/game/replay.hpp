@@ -1,7 +1,6 @@
 #ifndef UUID_4CF92C398C724F883A02E8A68FE1584F
 #define UUID_4CF92C398C724F883A02E8A68FE1584F
 
-#include <gvl/crypt/gash.hpp>
 #include "mixer/player.hpp"
 #include <cstring>
 #include <map>
@@ -29,7 +28,7 @@ struct GameSerializationContext
 		{
 		}
 
-		gvl::gash::value_type lastSettingsHash;
+		SettingsHash lastSettingsHash;
 		bool settingsExpired;
 	};
 
@@ -70,7 +69,7 @@ struct ReplayWriter : Replay
 		void put(uint8_t const* p, std::size_t n);
 		LieroDeflateOut* out;
 	} writer;
-	gvl::gash::value_type lastSettingsHash;
+	SettingsHash lastSettingsHash;
 	bool settingsExpired;
 
 	void beginRecord(Game& game);
@@ -96,7 +95,7 @@ struct ReplayReader : Replay
 		// Nothing
 	}
 
-	std::unique_ptr<Game> beginPlayback(gvl::shared_ptr<Common> common, gvl::shared_ptr<SoundPlayer> soundPlayer);
+	std::unique_ptr<Game> beginPlayback(std::shared_ptr<Common> common, std::shared_ptr<SoundPlayer> soundPlayer);
 	bool playbackFrame(Renderer& renderer);
 
 	// The inflated file, and how far playback has read it.

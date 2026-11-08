@@ -10,8 +10,7 @@
 #include "gfx/palette.hpp"
 #include "gfx/sprite.hpp"
 #include <string>
-#include <gvl/resman/shared_ptr.hpp>
-#include <gvl/support/platform.hpp>
+#include <memory>
 extern "C" {
 }
 
@@ -77,7 +76,7 @@ struct FsNode;
 
 using std::vector;
 
-struct Common : gvl::shared
+struct Common
 {
 	Common();
 

@@ -48,7 +48,7 @@ AiConfig const aiConfigs[] = {
 	{ "ai-default-6", 106, Settings::GMKillEmAll, mixed, 70 * 2, 2, 3, true, 120 },
 };
 
-void runAiGame(gvl::shared_ptr<Common> common, AiConfig const& config, int interval)
+void runAiGame(std::shared_ptr<Common> common, AiConfig const& config, int interval)
 {
 	std::unique_ptr<Game> gamePtr = setUpGame(common, config.seed, config.gameMode, config.weapons);
 	Game& game = *gamePtr;
@@ -109,7 +109,7 @@ void runAiGame(gvl::shared_ptr<Common> common, AiConfig const& config, int inter
 
 } // namespace
 
-void hashAiGames(gvl::shared_ptr<Common> common)
+void hashAiGames(std::shared_ptr<Common> common)
 {
 	for (AiConfig const& config : aiConfigs)
 		runAiGame(common, config, config.ticks <= 200 ? 10 : 50);

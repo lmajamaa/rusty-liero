@@ -69,9 +69,9 @@ void writeReplay(FsNode const& node, Bytes const& data)
 	liero_deflate_out_free(out);
 }
 
-void addHash(Fnv& f, gvl::gash::value_type const& h)
+void addHash(Fnv& f, SettingsHash const& h)
 {
-	for (int i = 0; i < gvl::gash::value_type::size; ++i)
+	for (int i = 0; i < SettingsHash::size; ++i)
 	{
 		f.add(uint32_t(h.value[i]));
 		f.add(uint32_t(h.value[i] >> 32));
@@ -116,7 +116,7 @@ void hashLoaded(Fnv& f, Game& game)
 }
 
 // Starts a bot game as hashrun.cpp does and runs it `ticks` ticks.
-std::unique_ptr<Game> botGame(gvl::shared_ptr<Common> common, uint32_t seed, int gameMode, int ticks)
+std::unique_ptr<Game> botGame(std::shared_ptr<Common> common, uint32_t seed, int gameMode, int ticks)
 {
 	std::unique_ptr<Game> game = setUpGame(common, seed, gameMode, nullptr);
 	game->startGame();
@@ -139,7 +139,7 @@ struct SettingsChange
 // Records `ticks` ticks of a bot game into `node`. With `startTick` 0 the
 // recording starts as LocalController starts it, before startGame;
 // otherwise after that many ticks.
-void recordGame(gvl::shared_ptr<Common> common, FsNode const& node, uint32_t seed, int gameMode,
+void recordGame(std::shared_ptr<Common> common, FsNode const& node, uint32_t seed, int gameMode,
 	int startTick, int ticks, int version,
 	std::vector<SettingsChange> const& changes = std::vector<SettingsChange>())
 {
@@ -231,7 +231,7 @@ std::size_t frameOffset(std::size_t firstFrame, int k)
 // every `interval` ticks and how it ended: the end of the replay, or the
 // error that stopped it, with the game and settings then.
 // With rewindAt, the replay is also rewound there, as R does in a replay.
-void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks,
+void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& node, int interval, int maxTicks,
 	int rewindAt)
 {
 	{
@@ -255,7 +255,7 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 	int ticks = 0;
 	try
 	{
-		game = reader.beginPlayback(common, gvl::shared_ptr<SoundPlayer>(new NullSoundPlayer));
+		game = reader.beginPlayback(common, std::shared_ptr<SoundPlayer>(new NullSoundPlayer));
 		{
 			Fnv f;
 			hashLoaded(f, *game);
@@ -268,9 +268,9 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 		game->clearViewports();
 		game->worms[0]->statsX = 0;
 		game->worms[1]->statsX = 218;
-		game->addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
-		game->addViewport(new Viewport(gvl::rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
-		game->addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
+		game->addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
+		game->addViewport(new Viewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
+		game->addViewport(new Viewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
 		game->startGame();
 		game->focus(renderer);
 
@@ -340,7 +340,7 @@ void hashReplay(gvl::shared_ptr<Common> common, char const* name, FsNode const& 
 	std::remove(node.fullPath().c_str());
 }
 
-void hashReplays(gvl::shared_ptr<Common> common)
+void hashReplays(std::shared_ptr<Common> common)
 {
 	char name[64];
 

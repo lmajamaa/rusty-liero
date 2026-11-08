@@ -20,7 +20,7 @@ struct Game;
 
 struct ReplayController : CommonController
 {
-	ReplayController(gvl::shared_ptr<Common> common, FsNode const& node);
+	ReplayController(std::shared_ptr<Common> common, FsNode const& node);
 
 	bool isReplay() { return true; };
 	void onKey(int key, bool keyState);
@@ -45,7 +45,7 @@ struct ReplayController : CommonController
 
 
 	std::unique_ptr<ReplayReader> replay;
-	gvl::shared_ptr<Common> common;
+	std::shared_ptr<Common> common;
 
 };
 

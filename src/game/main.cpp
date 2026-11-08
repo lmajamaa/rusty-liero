@@ -6,7 +6,6 @@
 #include "gfx.hpp"
 #include "screen.hpp"
 #include "sfx.hpp"
-#include "sys.hpp"
 #include "game.hpp"
 #include "viewport.hpp"
 #include "worm.hpp"
@@ -16,12 +15,10 @@
 #include "constants.hpp"
 #include "math.hpp"
 #include "console.hpp"
-#include <gvl/support/platform.hpp>
 
 #include <cstdio>
 #include <ctime>
 #include <exception>
-#include <gvl/math/cmwc.hpp>
 #include <liero_game.h>
 #include "hashrun.hpp"
 
@@ -109,7 +106,7 @@ try
 
 	// TC loading
 	FsNode lieroRoot(gfx.getTcNode() / gfx.settings->tc.str());
-	gvl::shared_ptr<Common> common(new Common());
+	std::shared_ptr<Common> common(new Common());
 	common->load(std::move(lieroRoot));
 	gfx.common = common;
 	gfx.playRenderer.loadPalette(*common); // This gets the palette from common
@@ -124,7 +121,6 @@ try
 		SDL_Quit();
 	});
 
-	//gvl::present_profile(std::cout);
 
 	return 0;
 }

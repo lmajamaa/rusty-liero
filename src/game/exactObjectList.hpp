@@ -3,7 +3,6 @@
 
 #include <cstddef>
 #include <cassert>
-#include <gvl/support/bits.hpp>
 #include <cstring>
 
 struct ExactObjectListBase
@@ -95,7 +94,7 @@ struct ExactObjectList
 		{
 			if (freeList[i] != 0)
 			{
-				int bit = gvl_bottom_bit(freeList[i]);
+				int bit = __builtin_ctz(freeList[i]);
 				uint32_t index = (i << 5) + bit;
 				ptr = arr + index;
 				freeList[i] &= ~(uint32_t(1) << bit);

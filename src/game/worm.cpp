@@ -13,10 +13,9 @@
 
 #include "replay.hpp"
 
-#include <gvl/crypt/gash.hpp>
 
 
-gvl::gash::value_type& WormSettings::updateHash()
+SettingsHash& WormSettings::updateHash()
 {
 	LieroWormSettings view = wormSettingsView(*this);
 	SettingsResult r(liero_worm_settings_hash(&view));
@@ -338,7 +337,7 @@ Worm::Worm(LieroWormData* d)
 : data(*d)
 , pos(reinterpret_cast<fixedvec&>(d->pos))
 , vel(reinterpret_cast<fixedvec&>(d->vel))
-, logicRespawn(reinterpret_cast<gvl::ivec2&>(d->logic_respawn))
+, logicRespawn(reinterpret_cast<IVec2&>(d->logic_respawn))
 , hotspotX(d->hotspot_x), hotspotY(d->hotspot_y)
 , aimingAngle(d->aiming_angle), aimingSpeed(d->aiming_speed)
 , ableToJump(d->able_to_jump), ableToDig(d->able_to_dig)
@@ -488,9 +487,9 @@ bool checkForSpecWormHit(Game& game, int x, int y, int dist, Worm& w)
 	int deltaX = x - ftoi(w.pos.x) + 7;
 	int deltaY = y - ftoi(w.pos.y) + 5;
 
-	gvl::rect r(deltaX - dist, deltaY - dist, deltaX + dist + 1, deltaY + dist + 1);
+	Rect r(deltaX - dist, deltaY - dist, deltaX + dist + 1, deltaY + dist + 1);
 
-	r.intersect(gvl::rect(0, 0, 16, 16));
+	r.intersect(Rect(0, 0, 16, 16));
 
 	for(int cy = r.y1; cy < r.y2; ++cy)
 	for(int cx = r.x1; cx < r.x2; ++cx)

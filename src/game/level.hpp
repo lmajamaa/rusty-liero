@@ -11,8 +11,8 @@
 #include "settingsffi.hpp"
 #include "bytes.hpp"
 #include <liero_game.h>
-#include <gvl/math/vec.hpp>
-#include <gvl/math/rect.hpp>
+#include "geom.hpp"
+#include "geom.hpp"
 
 struct Game;
 struct Settings;
@@ -59,7 +59,7 @@ struct Level
 	void generateRandom(Common& common, Settings const& settings, Rand& rand);
 	void makeShadow(Common& common);
 	void generateFromSettings(Common& common, Settings const& settings, Rand& rand);
-	bool selectSpawn(Rand& rand, int w, int h, gvl::ivec2& selected);
+	bool selectSpawn(Rand& rand, int w, int h, IVec2& selected);
 	void drawMiniature(Bitmap& dest, int mapX, int mapY, int step);
 
 	unsigned char pixel(int x, int y)
@@ -119,9 +119,9 @@ struct Level
 	// The levels trade everything.
 	void swap(Level& other);
 
-	gvl::rect rect()
+	Rect rect()
 	{
-		return gvl::rect(0, 0, width, height);
+		return Rect(0, 0, width, height);
 	}
 
 	// Keeps the first pixels; new ones are zero.

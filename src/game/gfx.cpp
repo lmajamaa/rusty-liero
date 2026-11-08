@@ -20,7 +20,7 @@
 #include "keys.hpp"
 #include "filesystem.hpp"
 
-#include <gvl/system/system.hpp>
+#include "ticks.hpp"
 
 #include "controller/replayController.hpp"
 #include "controller/localController.hpp"
@@ -723,7 +723,7 @@ uint32_t appTicks()
 
 uint64_t appHiresTicks()
 {
-	return gfx.driver ? uint64_t(gfx.driver->ticks()) * 1000000 : gvl::get_hires_ticks();
+	return gfx.driver ? uint64_t(gfx.driver->ticks()) * 1000000 : hiresTicks();
 }
 
 std::time_t appTime()
@@ -808,14 +808,14 @@ void Gfx::menuFade(bool quitting)
 
 void Gfx::draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer)
 {
-	gvl::rect updateRect;
+	Rect updateRect;
 	Color realPal[256];
 	renderer.pal.activate(realPal);
 	int offsetX, offsetY;
 	int mag = fitScreen(surface.w, surface.h,
 						renderer.renderResX, renderer.renderResY, offsetX, offsetY);
 
-	gvl::rect newRect(offsetX, offsetY, renderer.renderResX * mag, renderer.renderResY * mag);
+	Rect newRect(offsetX, offsetY, renderer.renderResX * mag, renderer.renderResY * mag);
 
 	if(mag != prevMag)
 	{
@@ -1138,7 +1138,7 @@ void SettingsMenu::onUpdate()
 using std::string;
 using std::vector;
 using std::pair;
-using gvl::shared_ptr;
+using std::shared_ptr;
 
 namespace
 {

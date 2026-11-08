@@ -121,7 +121,7 @@ void hookDrawOnMap(void* ctx, int32_t x, int32_t y)
 	// x and y are 3 left of and above the object. This seems like an overly
 	// large rectangle.
 	if(c.game.settings->shadow)
-		correctShadow(common, c.game.level, gvl::rect(x - 5, y - 5, x + 12, y + 12));
+		correctShadow(common, c.game.level, Rect(x - 5, y - 5, x + 12, y + 12));
 }
 
 bool hookHitWorms(void* ctx)

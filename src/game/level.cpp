@@ -154,7 +154,7 @@ void Level::generateFromSettings(Common& common, Settings const& settings, Rand&
 	}
 }
 
-bool Level::selectSpawn(Rand& rand, int w, int h, gvl::ivec2& selected)
+bool Level::selectSpawn(Rand& rand, int w, int h, IVec2& selected)
 {
 	LieroLevel v = view();
 	LieroIVec2 pos = { selected.x, selected.y };

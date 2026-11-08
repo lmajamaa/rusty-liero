@@ -221,9 +221,9 @@ void setWeapons(Common& common, WormSettings& ws, char const* const* names)
 
 } // namespace
 
-std::unique_ptr<Game> setUpGame(gvl::shared_ptr<Common> common, uint32_t seed, int gameMode, char const* const* weapons)
+std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, int gameMode, char const* const* weapons)
 {
-	gvl::shared_ptr<Settings> settings(new Settings);
+	std::shared_ptr<Settings> settings(new Settings);
 	settings->gameMode = gameMode;
 	for (int i = 0; i < 2; ++i)
 	{
@@ -240,7 +240,7 @@ std::unique_ptr<Game> setUpGame(gvl::shared_ptr<Common> common, uint32_t seed, i
 	gfx.rand.seed(seed);
 
 	// Game holds its object lists by value, too big for the wasm stack.
-	std::unique_ptr<Game> gamePtr(new Game(common, settings, gvl::shared_ptr<SoundPlayer>(new NullSoundPlayer)));
+	std::unique_ptr<Game> gamePtr(new Game(common, settings, std::shared_ptr<SoundPlayer>(new NullSoundPlayer)));
 	Game& game = *gamePtr;
 	game.rand.seed(seed * 7919);
 
@@ -258,9 +258,9 @@ std::unique_ptr<Game> setUpGame(gvl::shared_ptr<Common> common, uint32_t seed, i
 		game.addWorm(worm);
 	}
 
-	game.addViewport(new Viewport(gvl::rect(0, 0, 158, 158), 0, 504, 350));
-	game.addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), 1, 504, 350));
-	game.addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
+	game.addViewport(new Viewport(Rect(0, 0, 158, 158), 0, 504, 350));
+	game.addViewport(new Viewport(Rect(160, 0, 158+160, 158), 1, 504, 350));
+	game.addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
 
 	{
 		Level newLevel;
@@ -293,7 +293,7 @@ void botTick(Game& game)
 namespace
 {
 
-void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks, int interval)
+void runGame(std::shared_ptr<Common> common, RunConfig const& config, int ticks, int interval)
 {
 	std::unique_ptr<Game> gamePtr = setUpGame(common, config.seed, config.gameMode, config.weapons);
 	Game& game = *gamePtr;
@@ -345,7 +345,7 @@ void runGame(gvl::shared_ptr<Common> common, RunConfig const& config, int ticks,
 
 // Loads level files cut short, with and without a palette after the pixels,
 // and hashes the level each gives (a random one when loading fails).
-void hashLevelFiles(gvl::shared_ptr<Common> common)
+void hashLevelFiles(std::shared_ptr<Common> common)
 {
 	std::size_t const pixels = 504 * 350;
 	std::string level(pixels, '\0');
@@ -411,7 +411,7 @@ int hashRun(int argc, char* argv[])
 
 	precomputeTables();
 
-	gvl::shared_ptr<Common> common(new Common());
+	std::shared_ptr<Common> common(new Common());
 	common->load(FsNode(std::string("TC/openliero")));
 	hashTc(*common);
 

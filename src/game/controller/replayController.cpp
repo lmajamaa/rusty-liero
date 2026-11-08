@@ -7,7 +7,7 @@
 #include "../sfx.hpp"
 
 ReplayController::ReplayController(
-	gvl::shared_ptr<Common> common, FsNode const& node)
+	std::shared_ptr<Common> common, FsNode const& node)
 : replay(new ReplayReader(node))
 , common(common)
 {
@@ -40,7 +40,7 @@ void ReplayController::focus()
 	{
 		try
 		{
-			game = replay->beginPlayback(common, gvl::shared_ptr<SoundPlayer>(new DefaultSoundPlayer(*common)));
+			game = replay->beginPlayback(common, std::shared_ptr<SoundPlayer>(new DefaultSoundPlayer(*common)));
 		}
 		catch(std::runtime_error& e)
 		{
@@ -161,18 +161,18 @@ void ReplayController::changeState(GameState newState)
 
 		// spectator viewport is always full size
 		// +68 on x to align the viewport in the middle
-		game->addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
+		game->addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
 		if (gfx.settings->singleScreenReplay)
 		{
 			// on single screen replay, use the spectator viewport for the
 			// main screen as well
 			// we can't use the same object, as the vector's clean function will delete them
-			game->addViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
+			game->addViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
 		}
 		else
 		{
-			game->addViewport(new Viewport(gvl::rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
-			game->addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
+			game->addViewport(new Viewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
+			game->addViewport(new Viewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
 		}
 		game->startGame();
 		initialGame.reset(new Game(*game));

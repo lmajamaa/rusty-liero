@@ -48,7 +48,6 @@ set(SOURCES
     src/game/settings.cpp
     src/game/sobject.cpp
     src/game/stats_recorder.cpp
-    src/game/sys.cpp
     src/game/text.cpp
     src/game/viewport.cpp
     src/game/weapon.cpp
@@ -59,9 +58,6 @@ set(SOURCES
     src/game/gfx/palette.cpp
     src/game/gfx/renderer.cpp
     src/game/gfx/sprite.cpp
-    src/gvl/system/system.c
-    src/gvl/support/bits.c
-    src/gvl/support/debug.cpp
 )
 
 set(GAME_SOURCES ${SOURCES}

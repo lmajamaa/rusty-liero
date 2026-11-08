@@ -2,8 +2,8 @@
 #define LIERO_GFX_HPP
 
 #include <SDL.h>
-#include <gvl/resman/shared_ptr.hpp>
-#include <gvl/math/rect.hpp>
+#include <memory>
+#include "geom.hpp"
 
 #include <cstdio>
 #include <ctime>
@@ -87,7 +87,7 @@ struct PlayerMenu : Menu
 
 	virtual ItemBehavior* getItemBehavior(Common& common, int item);
 
-	gvl::shared_ptr<WormSettings> ws;
+	std::shared_ptr<WormSettings> ws;
 };
 
 struct SettingsMenu : Menu
@@ -343,7 +343,7 @@ struct Gfx
 	Menu* curMenu;
 	std::string prevSelectedReplayPath;
 	FsNode settingsNode; // Currently loaded settings file. TODO: This is only used for display. We could just remember the name.
-	gvl::shared_ptr<Settings> settings;
+	std::shared_ptr<Settings> settings;
 
 	LieroKeys dosKeys;
 	// the window to render into
@@ -376,8 +376,8 @@ struct Gfx
 	unsigned menuCycles;
 	int windowW, windowH;
 	int prevMag; // Previous magnification used for drawing
-	gvl::rect lastUpdateRect; // Last region that was updated when flipping
-	gvl::shared_ptr<Common> common;
+	Rect lastUpdateRect; // Last region that was updated when flipping
+	std::shared_ptr<Common> common;
 	std::unique_ptr<Controller> controller;
 
 	std::vector<Joystick> joysticks;

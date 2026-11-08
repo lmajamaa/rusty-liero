@@ -1,7 +1,7 @@
 
 #include "localController.hpp"
 
-#include <gvl/system/system.hpp>
+#include "ticks.hpp"
 #include "stats_presenter.hpp"
 #include "../keys.hpp"
 #include "../gfx.hpp"
@@ -15,18 +15,18 @@
 
 #include <cctype>
 
-gvl::shared_ptr<WormAI> createAi(int controller, Worm& worm, Settings& settings)
+std::shared_ptr<WormAI> createAi(int controller, Worm& worm, Settings& settings)
 {
 	if (controller == 1)
-		return gvl::shared_ptr<WormAI>(new DumbLieroAI());
+		return std::shared_ptr<WormAI>(new DumbLieroAI());
 	else if (controller == 2)
-		return gvl::shared_ptr<WormAI>(new FollowAI(settings.aiParallels, worm.index == 0));
+		return std::shared_ptr<WormAI>(new FollowAI(settings.aiParallels, worm.index == 0));
 
-	return gvl::shared_ptr<WormAI>();
+	return std::shared_ptr<WormAI>();
 }
 
-LocalController::LocalController(gvl::shared_ptr<Common> common, gvl::shared_ptr<Settings> settings)
-: game(common, settings, gvl::shared_ptr<SoundPlayer>(new DefaultSoundPlayer(*common)))
+LocalController::LocalController(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings)
+: game(common, settings, std::shared_ptr<SoundPlayer>(new DefaultSoundPlayer(*common)))
 {
 	Worm* worm1 = new Worm();
 	worm1->settings = settings->wormSettings[0];
@@ -56,14 +56,14 @@ LocalController::LocalController(gvl::shared_ptr<Common> common, gvl::shared_ptr
 	}
 #endif
 
-	game.addViewport(new Viewport(gvl::rect(0, 0, 158, 158), worm1->index, 504, 350));
-	game.addViewport(new Viewport(gvl::rect(160, 0, 158+160, 158), worm2->index, 504, 350));
+	game.addViewport(new Viewport(Rect(0, 0, 158, 158), worm1->index, 504, 350));
+	game.addViewport(new Viewport(Rect(160, 0, 158+160, 158), worm2->index, 504, 350));
 
 	game.addWorm(worm1);
 	game.addWorm(worm2);
 
 	// +68 on x to align the viewport in the middle
-	game.addSpectatorViewport(new SpectatorViewport(gvl::rect(0, 0, 504 + 68, 350), 504, 350));
+	game.addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
 }
 
 LocalController::~LocalController()

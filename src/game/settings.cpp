@@ -265,7 +265,7 @@ bool Settings::loadLegacy(FsNode node, Rand& rand)
 	}
 }
 
-gvl::gash::value_type& Settings::updateHash()
+SettingsHash& Settings::updateHash()
 {
 	LieroSettings view = settingsView(*this);
 	SettingsResult r(liero_settings_hash(&view));
