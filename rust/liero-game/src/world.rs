@@ -1260,6 +1260,16 @@ impl<'a> World<'a> {
 
         self.g.game_mode_tick();
 
+        // Store old control states so we can see what changes (mainly for
+        // replays). Neither the viewports nor the stats in `end_tick` read
+        // them.
+        for i in 0..self.worm_count() {
+            unsafe {
+                let w = self.worm(i);
+                (*w).prev_control_states = (*w).control_states;
+            }
+        }
+
         unsafe { (self.h.end_tick)(self.h.ctx) };
     }
 }

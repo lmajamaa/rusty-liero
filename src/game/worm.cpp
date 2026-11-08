@@ -1,6 +1,7 @@
 #include <cstddef>
 #include "worm.hpp"
 
+#include <algorithm>
 #include <array>
 #include <vector>
 #include "game.hpp"
@@ -138,35 +139,9 @@ int sqrVectorLength(int x, int y)
 // In Rust (rust/liero-game/src/ai/dumb.rs).
 void DumbLieroAI::process(Game& game, Worm& worm)
 {
-	Common& common = *game.common;
-	Weapon const& w = *worm.weapons[worm.currentWeapon].type;
-
-	LieroDumbAiWorm me;
-	me.pos[0] = worm.pos.x;
-	me.pos[1] = worm.pos.y;
-	me.visible = worm.visible;
-	me.aiming_angle = worm.aimingAngle;
-	me.direction = worm.direction;
-	for (int i = 0; i < 4; ++i)
-		me.reacts[i] = worm.reacts[i];
-	me.rope_out = worm.ninjarope.out;
-	me.rope_attached = worm.ninjarope.attached;
-	me.control_states = worm.controlStates.pack();
-	me.time_to_explo = w.time_to_explo;
-	me.time_to_explo_v = w.time_to_explo_v;
-	me.speed = w.speed;
-	me.gravity = w.gravity;
-
-	std::vector<std::array<int32_t, 2>> others;
-	for (Worm* o : game.worms)
-	{
-		if (o != &worm)
-			others.push_back({{ o->pos.x, o->pos.y }});
-	}
-
-	worm.controlStates.istate = liero_dumb_ai_process(
-		&rand, &me, reinterpret_cast<int32_t const (*)[2]>(others.data()), others.size(),
-		reinterpret_cast<int32_t const (*)[2][7]>(&common.aiParams->k));
+	auto place = std::find(game.worms.begin(), game.worms.end(), &worm) - game.worms.begin();
+	GameView view(game);
+	worm.controlStates.istate = liero_dumb_ai_process(&rand, &view.fields, int32_t(place));
 }
 
 void Worm::initWeapons(Game& game)

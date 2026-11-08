@@ -1,100 +1,20 @@
 //! The bots: the predictive AI (`predictive`, with its path finding in
 //! `path`) and the original game's simpler one (`dumb`).
 //!
-//! The predictive AI plays its plans out on copies of the game, which stay
-//! C++ `Game`s for now. C++ passes a table of hooks to copy, run and free a
-//! game, and to read what the AI needs of a game and its worms; Rust keeps
-//! everything else and returns the controls to press.
+//! The predictive AI plays its plans out on copies of the game (`sim`),
+//! which run the Rust tick without sounds, stats or viewports. C++ passes
+//! the game as the tick sees it and gets the controls to press.
 
 pub mod dumb;
 pub mod path;
 pub mod predictive;
+pub mod sim;
 
-use crate::material::LieroMaterial;
+use crate::game::{LieroGameFields, LieroGameSettings};
 use crate::rand::LieroRand;
-use path::{LevelView, NONE, NO_CELL};
-use predictive::{FollowAi, Games, LieroAiGame, LieroAiTrace, LieroAiWorm, Weights};
-use std::ffi::c_void;
-
-/// A game's level, for the AI to find paths and obstacles in.
-#[repr(C)]
-pub struct LieroAiLevel {
-    pub data: *const u8,
-    pub len: usize,
-    pub width: i32,
-    pub height: i32,
-    /// The TC's 256 materials.
-    pub materials: *const LieroMaterial,
-}
-
-/// What the predictive AI calls back into C++ for. A game is a `Game*`:
-/// the one the AI is in, or a copy from `clone_game`.
-#[repr(C)]
-pub struct LieroAiHooks {
-    /// A copy of the game with no sounds, stats or viewports, and
-    /// `quickSim` on.
-    pub clone_game: unsafe extern "C" fn(game: *mut c_void) -> *mut c_void,
-    /// Frees a copy and its worms.
-    pub free_game: unsafe extern "C" fn(game: *mut c_void),
-    pub process_frame: unsafe extern "C" fn(game: *mut c_void),
-    pub game: unsafe extern "C" fn(game: *mut c_void, out: *mut LieroAiGame),
-    /// The worm at `place` in the game's list.
-    pub worm: unsafe extern "C" fn(game: *mut c_void, place: i32, out: *mut LieroAiWorm),
-    pub set_controls: unsafe extern "C" fn(game: *mut c_void, place: i32, controls: u32),
-    pub level: unsafe extern "C" fn(game: *mut c_void, out: *mut LieroAiLevel),
-}
-
-struct Hooked<'a>(&'a LieroAiHooks);
-
-// SAFETY, for each call: the caller of `liero_follow_ai_process` promises
-// the hooks work on the games they're given, which are the one it passed
-// and copies the hooks made.
-impl Games for Hooked<'_> {
-    type G = *mut c_void;
-
-    fn clone_game(&mut self, g: Self::G) -> Self::G {
-        unsafe { (self.0.clone_game)(g) }
-    }
-
-    fn free_game(&mut self, g: Self::G) {
-        unsafe { (self.0.free_game)(g) }
-    }
-
-    fn process_frame(&mut self, g: Self::G) {
-        unsafe { (self.0.process_frame)(g) }
-    }
-
-    fn game(&mut self, g: Self::G) -> LieroAiGame {
-        let mut out = LieroAiGame::default();
-        unsafe { (self.0.game)(g, &mut out) };
-        out
-    }
-
-    fn worm(&mut self, g: Self::G, place: i32) -> LieroAiWorm {
-        let mut out = LieroAiWorm::default();
-        unsafe { (self.0.worm)(g, place, &mut out) };
-        out
-    }
-
-    fn set_controls(&mut self, g: Self::G, place: i32, controls: u32) {
-        unsafe { (self.0.set_controls)(g, place, controls) }
-    }
-
-    fn level(&self, g: Self::G) -> LevelView<'_> {
-        let mut l = LieroAiLevel { data: std::ptr::null(), len: 0, width: 0, height: 0, materials: std::ptr::null() };
-        unsafe {
-            (self.0.level)(g, &mut l);
-            // The level stays as it is while the AI looks at it: only
-            // `process_frame` changes it.
-            LevelView {
-                data: if l.len == 0 { &[] } else { std::slice::from_raw_parts(l.data, l.len) },
-                width: l.width,
-                height: l.height,
-                materials: std::slice::from_raw_parts(l.materials, 256),
-            }
-        }
-    }
-}
+use path::{NONE, NO_CELL};
+use predictive::{FollowAi, LieroAiTrace, Weights};
+use sim::LieroAiSettings;
 
 /// 64-bit FNV-1a over the bytes of 32-bit words, as the hash run's `Fnv`.
 struct Fnv(u64);
@@ -189,13 +109,19 @@ pub unsafe extern "C" fn liero_follow_ai_free(ai: *mut LieroFollowAi) {
     }
 }
 
-/// One tick for the worm at `place` in `game`: the controls to press.
+/// One tick for the worm at `place` in the game: the controls to press.
 ///
 /// # Safety
-/// The hooks must work on `game` and on the copies they make of it.
+/// The pointers in `game` and `settings` must be valid for the call.
 #[no_mangle]
-pub unsafe extern "C" fn liero_follow_ai_process(ai: &mut LieroFollowAi, game: *mut c_void, place: i32, hooks: &LieroAiHooks) -> u32 {
-    ai.0.process(&mut Hooked(hooks), game, place)
+pub unsafe extern "C" fn liero_follow_ai_process(
+    ai: &mut LieroFollowAi,
+    game: &LieroGameFields,
+    settings: &LieroGameSettings,
+    ai_settings: &LieroAiSettings,
+    place: i32,
+) -> u32 {
+    sim::process(&mut ai.0, game, settings, ai_settings, place)
 }
 
 /// The AI's own generator, which C++ can seed.
@@ -218,19 +144,12 @@ pub extern "C" fn liero_follow_ai_hash(ai: &LieroFollowAi) -> u64 {
     hash(&ai.0)
 }
 
-/// One tick of the original bot: the worm's controls after it. `others`
-/// are the other worms' positions, `k` the TC's `aiParams`.
+/// One tick of the original bot for the worm at `place`, with its own
+/// generator: the worm's controls after it.
 ///
 /// # Safety
-/// `others` must point to `count` positions.
+/// The pointers in `game` must be valid for the call.
 #[no_mangle]
-pub unsafe extern "C" fn liero_dumb_ai_process(
-    rand: &mut LieroRand,
-    worm: &dumb::LieroDumbAiWorm,
-    others: *const [i32; 2],
-    count: usize,
-    k: &[[i32; 7]; 2],
-) -> u32 {
-    let others = if count == 0 || others.is_null() { &[][..] } else { std::slice::from_raw_parts(others, count) };
-    dumb::process(rand, worm, others, k)
+pub unsafe extern "C" fn liero_dumb_ai_process(rand: &mut LieroRand, game: &LieroGameFields, place: i32) -> u32 {
+    sim::process_dumb(rand, game, place)
 }

@@ -5,8 +5,7 @@
 #include <liero_game.h>
 
 // The predictive bot, in Rust (rust/liero-game/src/ai/predictive.rs). It
-// plays plans out on copies of the game, which it makes, runs and reads
-// through hooks in predictive_ai.cpp.
+// plays plans out on copies of the game, which Rust makes and runs too.
 struct FollowAI : WormAI
 {
 	// `candidates` plans, as many as the aiParallels setting. `testing` also

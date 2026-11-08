@@ -190,6 +190,7 @@ pub unsafe extern "C" fn liero_game_data_free(g: *mut LieroGameData) {
 /// entries in the order of C++'s `Game::worms`; worm numbers (killers,
 /// holders, 'it') are positions in it.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct LieroGameFields {
     pub worms: *const LieroGameWorm,
     pub worm_count: i32,
@@ -250,7 +251,7 @@ pub struct LieroGameHooks {
     pub ctx: *mut c_void,
     /// Stats at the start of the tick.
     pub pre_tick: unsafe extern "C" fn(ctx: *mut c_void),
-    /// Viewports, the control states replays compare against, and stats.
+    /// Viewports and stats at the end of the tick.
     pub end_tick: unsafe extern "C" fn(ctx: *mut c_void),
     /// Plays `sound` as `id`'s (null for none), looping when `loops` isn't 0.
     pub play_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32, id: *mut c_void, loops: i32),

@@ -68,6 +68,21 @@ struct GameMembers
 	std::vector<Worm*> worms;
 };
 
+struct Game;
+
+// The game as the Rust game rules see it. Pointers into the game, so it
+// must not outlive the call it is made for.
+struct GameView
+{
+	GameView(Game& game);
+
+	std::vector<LieroGameWorm> worms;
+	std::vector<LieroViewport*> viewports;
+	std::vector<LieroViewport*> spectatorViewports;
+	LieroGameFields fields;
+	LieroGameSettings settings;
+};
+
 struct Game : GameMembers
 {
 	Game(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings, std::shared_ptr<SoundPlayer> soundPlayer);
