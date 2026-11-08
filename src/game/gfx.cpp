@@ -1247,25 +1247,6 @@ bool menusSaveOptions(LieroStr name)
 	return guarded([name] { gfx.saveSettings(gfx.getConfigNode() / (toString(name) + ".cfg")); return true; }, false);
 }
 
-bool menusProfilePath(int32_t player, LieroStr* path)
-{
-	WormSettings& ws = *gfx.settings->wormSettings[player];
-	if (!ws.profileNode)
-		return false;
-	*path = lstr(ws.profileNode.fullPath());
-	return true;
-}
-
-bool menusSaveProfile(int32_t player)
-{
-	return guarded([player]
-	{
-		WormSettings& ws = *gfx.settings->wormSettings[player];
-		ws.saveProfile(ws.profileNode);
-		return true;
-	}, false);
-}
-
 bool menusSaveProfileAs(int32_t player, LieroStr name)
 {
 	return guarded([player, name]
@@ -1289,8 +1270,6 @@ LieroMenusHooks menusHooks()
 	h.take_chosen_tc = menusTakeChosenTc;
 	h.settings_path = menusSettingsPath;
 	h.save_options = menusSaveOptions;
-	h.profile_path = menusProfilePath;
-	h.save_profile = menusSaveProfile;
 	h.save_profile_as = menusSaveProfileAs;
 	return h;
 }

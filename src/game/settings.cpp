@@ -265,13 +265,12 @@ bool Settings::loadLegacy(FsNode node, Rand& rand)
 	}
 }
 
-SettingsHash& Settings::updateHash()
+SettingsHash Settings::updateHash()
 {
 	LieroSettings view = settingsView(*this);
 	SettingsResult r(liero_settings_hash(&view));
 	setSettings(*this, r.settings());
-	hash = r.hash();
-	return hash;
+	return r.hash();
 }
 
 void Settings::save(FsNode node, Rand& rand)

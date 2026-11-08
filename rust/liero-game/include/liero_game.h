@@ -498,6 +498,10 @@ typedef struct LieroWeapsel LieroWeapsel;
  */
 typedef struct LieroWormAi LieroWormAi;
 
+/**
+ * A worm's settings, shared by the C++ `WormSettings` that refer to them
+ * and the game's worms: each holds a reference (`_retain` and `_free`).
+ */
 typedef struct LieroWormSettingsBox LieroWormSettingsBox;
 
 /**
@@ -1696,14 +1700,8 @@ typedef struct LieroMenusHooks {
   struct LieroStr (*settings_path)(void);
   bool (*save_options)(struct LieroStr name);
   /**
-   * `player`'s profile file, if there is one.
+   * Saves `player`'s profile as Profiles/`name`.lpf. False if it threw.
    */
-  bool (*profile_path)(int32_t player, struct LieroStr *path);
-  /**
-   * Saves `player`'s profile to its file, or as Profiles/`name`.lpf.
-   * False if it threw.
-   */
-  bool (*save_profile)(int32_t player);
   bool (*save_profile_as)(int32_t player, struct LieroStr name);
 } LieroMenusHooks;
 
@@ -4294,27 +4292,24 @@ struct LieroSettingsResult *liero_settings_load(const struct LieroSettings *s,
 bool liero_settings_save(const struct LieroSettings *s, const struct LieroFsNode *node);
 
 /**
- * Reads a profile from `node` over `ws`: Ok, or ReadError if it ends
- * early, with the worm settings as far as they were read. Null if the
- * file can't be read.
- *
- * # Safety
- * `ws`'s name must be valid.
+ * Loads a profile from `node` over the settings, keeping their colour,
+ * and remembers the profile (`WormSettings::loadProfile`). False, with
+ * nothing changed, if the file can't be read. A profile that ends early
+ * or fails its checkpoint is loaded as far as it was read, with its
+ * colour: `status` says so, and C++ threw before putting the colour back.
  */
-struct LieroSettingsResult *liero_worm_settings_load_profile(const struct LieroWormSettings *ws,
-                                                             int32_t replay_version,
-                                                             const struct LieroFsNode *node);
+bool liero_worm_settings_box_load_profile(struct LieroWormSettingsBox *s,
+                                          const struct LieroFsNode *node,
+                                          enum LieroSettingsStatus *status);
 
 /**
- * Writes `ws` to `node` as a profile, with the worm settings after writing
- * it. Null, with nothing changed, if the file can't be written.
- *
- * # Safety
- * `ws`'s name must be valid.
+ * Saves the settings to `node` as a profile, in the current replay
+ * version's archive, and remembers the profile
+ * (`WormSettings::saveProfile`). False, with nothing changed, if the file
+ * can't be written.
  */
-struct LieroSettingsResult *liero_worm_settings_save_profile(const struct LieroWormSettings *ws,
-                                                             int32_t replay_version,
-                                                             const struct LieroFsNode *node);
+bool liero_worm_settings_box_save_profile(struct LieroWormSettingsBox *s,
+                                          const struct LieroFsNode *node);
 
 /**
  * Reads the settings archive over `s`: Ok, ReadError or CheckError.
@@ -4463,11 +4458,30 @@ struct LieroWormSettingsBox *liero_worm_settings_box_new(void);
 struct LieroWormSettingsBox *liero_worm_settings_box_clone(const struct LieroWormSettingsBox *s);
 
 /**
+ * Another reference to `s`, which is freed when the last one is.
+ *
  * # Safety
- * `s` comes from `liero_worm_settings_box_new` or `_clone` and isn't used
- * again.
+ * `s` comes from `liero_worm_settings_box_new` or `_clone` and hasn't been
+ * freed.
+ */
+struct LieroWormSettingsBox *liero_worm_settings_box_retain(struct LieroWormSettingsBox *s);
+
+/**
+ * Drops a reference to `s`, freeing it with the last one.
+ *
+ * # Safety
+ * `s` comes from `liero_worm_settings_box_new`, `_clone` or `_retain`, or
+ * is null, and that reference isn't used again.
  */
 void liero_worm_settings_box_free(struct LieroWormSettingsBox *s);
+
+/**
+ * A new node for the settings' profile, or null with none.
+ */
+struct LieroFsNode *liero_worm_settings_box_profile(const struct LieroWormSettingsBox *s);
+
+void liero_worm_settings_box_set_profile(struct LieroWormSettingsBox *s,
+                                         const struct LieroFsNode *node);
 
 /**
  * The plain fields, which stay where they are for the box's life.

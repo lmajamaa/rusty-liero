@@ -104,7 +104,7 @@ struct WormSettings : WormSettingsExtensions
 		liero_worm_settings_box_free(box);
 	}
 
-	SettingsHash& updateHash();
+	SettingsHash updateHash();
 
 	void saveProfile(FsNode node);
 	void loadProfile(FsNode node);
@@ -146,9 +146,10 @@ public:
 
 	int32_t& color;
 
-	FsNode profileNode;
-
-	SettingsHash hash;
+	// The profile the settings were last loaded from or saved to, which the
+	// Rust box keeps.
+	FsNode profileNode() const { return FsNode::adopt(liero_worm_settings_box_profile(box)); }
+	void setProfileNode(FsNode const& node) { liero_worm_settings_box_set_profile(box, node.rust()); }
 };
 
 // A worm's settings in a replay of `replayVersion`, or in a profile.

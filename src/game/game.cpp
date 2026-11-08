@@ -283,11 +283,6 @@ static_assert(offsetof(Holdazone, zoneWidth) == offsetof(LieroHoldazone, zone_wi
 static_assert(offsetof(Holdazone, zoneHeight) == offsetof(LieroHoldazone, zone_height), "Holdazone layout");
 static_assert(sizeof(Settings::weapTable[0]) == sizeof(uint32_t), "weapTable type");
 
-Game& gameOf(void* ctx)
-{
-	return *static_cast<Game*>(ctx);
-}
-
 uint64_t hookHiresTicks(void*)
 {
 	return appHiresTicks();

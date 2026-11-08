@@ -55,7 +55,7 @@ struct Settings
 	std::string text();
 	// The gash of the settings archive (see archive below). Writing the archive
 	// sets the TC name to the default, since the archive has none.
-	SettingsHash& updateHash();
+	SettingsHash updateHash();
 
 	static void generateName(WormSettings& ws, Rand& rand);
 
@@ -109,8 +109,6 @@ public:
 	bool& screenSync;
 
 	std::shared_ptr<WormSettings> wormSettings[2];
-
-	SettingsHash hash;
 };
 
 // The settings in a replay, without the worms, which replays store with each

@@ -128,11 +128,7 @@ pub struct LieroMenusHooks {
     /// `name`.cfg. False if it threw.
     pub settings_path: unsafe extern "C" fn() -> LieroStr,
     pub save_options: unsafe extern "C" fn(name: LieroStr) -> bool,
-    /// `player`'s profile file, if there is one.
-    pub profile_path: unsafe extern "C" fn(player: i32, path: *mut LieroStr) -> bool,
-    /// Saves `player`'s profile to its file, or as Profiles/`name`.lpf.
-    /// False if it threw.
-    pub save_profile: unsafe extern "C" fn(player: i32) -> bool,
+    /// Saves `player`'s profile as Profiles/`name`.lpf. False if it threw.
     pub save_profile_as: unsafe extern "C" fn(player: i32, name: LieroStr) -> bool,
 }
 
@@ -508,9 +504,9 @@ impl LieroMenus {
         self.menu(kind).ids.iter().position(|&x| x == id)
     }
 
+    /// The player's profile file, if there is one.
     fn profile_path(&self) -> Option<Vec<u8>> {
-        let mut p = lstr(&[]);
-        unsafe { (self.h.profile_path)(self.player, &mut p).then(|| p.bytes().to_vec()) }
+        self.worm().profile_path()
     }
 
     /// Shows item `i`'s value (`onUpdate`).
@@ -710,7 +706,7 @@ impl LieroMenus {
                     None => None,
                     Some((x, y)) if save_as => Some(self.input(kind, Then::ProfileSaveAs, b"", 30, x, y, false)),
                     Some(_) => {
-                        if unsafe { (self.h.save_profile)(self.player) } {
+                        if self.worm().save_to_profile() {
                             self.update_items(kind);
                         }
                         None
@@ -1104,12 +1100,6 @@ mod tests {
     unsafe extern "C" fn save_options(_: LieroStr) -> bool {
         true
     }
-    unsafe extern "C" fn profile_path(_: i32, _: *mut LieroStr) -> bool {
-        false
-    }
-    unsafe extern "C" fn save_profile(_: i32) -> bool {
-        true
-    }
     unsafe extern "C" fn save_profile_as(_: i32, _: LieroStr) -> bool {
         true
     }
@@ -1132,8 +1122,6 @@ mod tests {
             take_chosen_tc: no,
             settings_path: path,
             save_options,
-            profile_path,
-            save_profile,
             save_profile_as,
         });
         m.load();

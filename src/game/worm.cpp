@@ -16,47 +16,30 @@
 
 
 
-SettingsHash& WormSettings::updateHash()
+SettingsHash WormSettings::updateHash()
 {
 	LieroWormSettings view = wormSettingsView(*this);
 	SettingsResult r(liero_worm_settings_hash(&view));
 	setWormSettings(*this, r.worm());
-	hash = r.hash();
-	return hash;
+	return r.hash();
 }
 
+// In Rust, which remembers the profile in the settings' box.
 void WormSettings::saveProfile(FsNode node)
 {
-	// Profiles use the archive of the current replay version.
-	LieroWormSettings view = wormSettingsView(*this);
-	LieroSettingsResult* saved = node.rust()
-		? liero_worm_settings_save_profile(&view, GameSerializationContext().replayVersion, node.rust())
-		: nullptr;
-	if (!saved)
+	if (!liero_worm_settings_box_save_profile(box, node.rust()))
 		throw std::runtime_error("Could not write " + node.fullPath());
-	SettingsResult r(saved);
-	profileNode = node;
-	setWormSettings(*this, r.worm());
 }
 
 void WormSettings::loadProfile(FsNode node)
 {
-	int oldColor = color;
-	LieroWormSettings view = wormSettingsView(*this);
-	LieroSettingsResult* loaded = node.rust()
-		? liero_worm_settings_load_profile(&view, GameSerializationContext().replayVersion, node.rust())
-		: nullptr;
-	if (!loaded)
+	LieroSettingsStatus status = LieroSettingsStatus_Ok;
+	if (!liero_worm_settings_box_load_profile(box, node.rust(), &status))
 		throw std::runtime_error("Could not read " + node.fullPath());
-	SettingsResult r(loaded);
-	profileNode = node;
-	setWormSettings(*this, r.worm());
-	// A profile that ends early, or fails its checkpoint, throws before the
-	// colour is put back. Nothing catches it: the warnings the C++ had for
+	// A profile that ends early, or fails its checkpoint, throws with the
+	// profile's colour. Nothing catches it: the warnings the C++ had for
 	// stream errors were never reached.
-	throwArchiveError(r.status(), nullptr);
-
-	color = oldColor;  // We preserve the color
+	throwArchiveError(status, nullptr);
 }
 
 namespace

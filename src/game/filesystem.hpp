@@ -93,6 +93,12 @@ struct FsNode
 	// Writes the whole file, or throws if it can't.
 	void write(std::string const& data) const;
 
+	// Takes `node`, which may be null.
+	static FsNode adopt(LieroFsNode* node)
+	{
+		return node ? FsNode(node) : FsNode();
+	}
+
 private:
 	explicit FsNode(LieroFsNode* node);
 
