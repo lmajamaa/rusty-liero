@@ -65,6 +65,10 @@ pub struct LieroViewport {
     pub rect: LieroRect,
     /// Used for shaking and for the laser sight.
     pub rand: LieroRand,
+    /// `LIERO_VIEWPORT_WORM`, or `LIERO_VIEWPORT_SPECTATOR` for a
+    /// `SpectatorViewport`, which a single-screen replay also shows in the
+    /// split-screen list.
+    pub kind: i32,
 }
 
 /// A C++ `SpriteSet`: `count` sprites of `width` x `height` pixels, one after
@@ -891,6 +895,7 @@ impl LieroViewport {
             banner_y: -8,
             rect,
             rand: LieroRand::default(),
+            kind: LIERO_VIEWPORT_WORM,
         }
     }
 

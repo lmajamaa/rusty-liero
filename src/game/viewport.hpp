@@ -89,7 +89,8 @@ public:
 	}
 
 
-	virtual void draw(Game& game, Renderer& renderer, GameState state, bool isReplay);
+	// By its kind, in Rust.
+	void draw(Game& game, Renderer& renderer, GameState state, bool isReplay);
 };
 
 #endif // LIERO_VIEWPORT_HPP

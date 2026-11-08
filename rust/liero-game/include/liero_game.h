@@ -1145,6 +1145,12 @@ typedef struct LieroViewport {
    * Used for shaking and for the laser sight.
    */
   struct LieroRand rand;
+  /**
+   * `LIERO_VIEWPORT_WORM`, or `LIERO_VIEWPORT_SPECTATOR` for a
+   * `SpectatorViewport`, which a single-screen replay also shows in the
+   * split-screen list.
+   */
+  int32_t kind;
 } LieroViewport;
 
 /**
@@ -4702,8 +4708,8 @@ void liero_time_to_string(int32_t sec, uint8_t *out);
 void liero_time_to_string_ex(int32_t ms, bool force_hours, bool force_minutes, uint8_t *out);
 
 /**
- * Draws viewport `vp`, of `kind`, on `scr` (`Viewport::draw` and
- * `SpectatorViewport::draw`).
+ * Draws viewport `vp` on `scr` (`Viewport::draw` and
+ * `SpectatorViewport::draw`, by its kind).
  *
  * # Safety
  * The pointers in `game` and `settings` are valid, and `vp` is one of the
@@ -4713,7 +4719,6 @@ void liero_game_draw_viewport(const struct LieroGameFields *game,
                               const struct LieroGameSettings *settings,
                               const struct LieroDrawSettings *draw,
                               struct LieroViewport *vp,
-                              int32_t kind,
                               const struct LieroBitmap *scr);
 
 /**

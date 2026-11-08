@@ -11,7 +11,7 @@ use crate::text::LieroStr;
 use crate::viewport::{
     liero_viewport_draw, liero_viewport_process, LieroScene, LieroSpriteSet, LieroViewBObject, LieroViewBonus,
     LieroViewNObject, LieroViewSObject, LieroViewWObject, LieroViewWeapon, LieroViewWorm, LieroViewWormWeapon,
-    LieroViewport, LieroViewportBanner, LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM,
+    LieroViewport, LieroViewportBanner,
 };
 use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE};
 
@@ -121,18 +121,15 @@ pub(crate) unsafe fn view_worms(f: &LieroGameFields) -> Vec<LieroViewWorm> {
 /// The pointers in `f` are valid.
 pub(crate) unsafe fn process_viewports(f: &LieroGameFields) {
     let worms = view_worms(f);
-    for (list, n, kind) in [
-        (f.viewports, f.viewport_count, LIERO_VIEWPORT_WORM),
-        (f.spectator_viewports, f.spectator_viewport_count, LIERO_VIEWPORT_SPECTATOR),
-    ] {
+    for (list, n) in [(f.viewports, f.viewport_count), (f.spectator_viewports, f.spectator_viewport_count)] {
         for &vp in slice(list, n) {
-            liero_viewport_process(&mut *vp, kind, worms.as_ptr(), worms.len() as i32);
+            liero_viewport_process(&mut *vp, (*vp).kind, worms.as_ptr(), worms.len() as i32);
         }
     }
 }
 
-/// Draws viewport `vp`, of `kind`, on `scr` (`Viewport::draw` and
-/// `SpectatorViewport::draw`).
+/// Draws viewport `vp` on `scr` (`Viewport::draw` and
+/// `SpectatorViewport::draw`, by its kind).
 ///
 /// # Safety
 /// The pointers in `game` and `settings` are valid, and `vp` is one of the
@@ -143,7 +140,6 @@ pub unsafe extern "C" fn liero_game_draw_viewport(
     settings: &LieroGameSettings,
     draw: &LieroDrawSettings,
     vp: *mut LieroViewport,
-    kind: i32,
     scr: &LieroBitmap,
 ) {
     let tc: &LieroTcData = &*game.tc;
@@ -209,7 +205,7 @@ pub unsafe extern "C" fn liero_game_draw_viewport(
         state_game: draw.state_game,
         is_replay: draw.is_replay,
     };
-    liero_viewport_draw(&mut *vp, kind, l.self_index, &scene, scr);
+    liero_viewport_draw(&mut *vp, (*vp).kind, l.self_index, &scene, scr);
 }
 
 /// The lists a viewport draws, in C++'s order, which decides what is drawn
@@ -308,7 +304,7 @@ mod tests {
     use crate::level::LieroLevel;
     use crate::sfx::LieroSoundOut;
     use crate::tc::LieroTcSObject;
-    use crate::viewport::{liero_viewport_free, liero_viewport_new};
+    use crate::viewport::{liero_viewport_free, liero_viewport_new, LIERO_VIEWPORT_SPECTATOR};
     use crate::worm::LieroWormData;
 
     fn zeroed<T>(n: usize) -> Vec<T> {
@@ -355,6 +351,7 @@ mod tests {
         let rect = LieroRect { x1: 0, y1: 0, x2: 158, y2: 158 };
         let vps = [liero_viewport_new(rect, 0, 504, 350), liero_viewport_new(rect, 1, 504, 350)];
         let spectators = [liero_viewport_new(rect, 0, 504, 350)];
+        unsafe { (*spectators[0]).kind = LIERO_VIEWPORT_SPECTATOR };
         let mut game = LieroGameData::new_boxed();
         let mut fields = LieroGameFields {
             worms: worms.as_ptr(),
@@ -429,6 +426,15 @@ mod tests {
             let vp = &**f.viewports;
             assert_eq!((vp.x + vp.center_x, vp.y + vp.center_y), (300, 200), "the worm's viewport follows it");
             assert_eq!((spectator.x, spectator.y), before, "the spectator one doesn't");
+
+            // A single-screen replay's spectator viewport in the split-screen
+            // list is still a spectator one.
+            let vp = &mut **f.viewports.add(1);
+            vp.kind = LIERO_VIEWPORT_SPECTATOR;
+            vp.worm_idx = 0;
+            let before = (vp.x, vp.y);
+            process_viewports(f);
+            assert_eq!((vp.x, vp.y), before);
         });
     }
 }

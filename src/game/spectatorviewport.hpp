@@ -12,12 +12,13 @@ struct Renderer;
 
 struct SpectatorViewport : Viewport
 {
+	// Shows the whole level. Its kind, in Rust, is what processes and draws
+	// it so, even in the split-screen list of a single-screen replay.
 	SpectatorViewport(Rect rect, int levwidth, int levheight)
 	: Viewport(rect, 0, levwidth, levheight)
 	{
+		rust()->kind = LIERO_VIEWPORT_SPECTATOR;
 	}
-
-	void draw(Game& game, Renderer& renderer, GameState state, bool isReplay);
 };
 
 #endif // LIERO_SPECTATORVIEWPORT_HPP
