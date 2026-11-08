@@ -1,6 +1,8 @@
 use super::*;
 use crate::fs::Node;
-use crate::game_box::{liero_game_free, liero_game_new};
+use crate::level::LieroLevelBox;
+use crate::tc::LieroTcData;
+use crate::game_box::{liero_game_free, liero_game_new, liero_game_set_context};
 use crate::settings::{liero_settings_box_free, liero_settings_box_new};
 use crate::worm::LieroWormData;
 
@@ -10,7 +12,6 @@ const NO_WASM: &str = "miniz_oxide's debug compressor builds its tables on the 6
 struct Setup {
     game: *mut LieroGame,
     settings: *mut LieroSettingsBox,
-    level: Box<LieroLevelBox>,
     tc: Box<LieroTcData>,
 }
 
@@ -20,7 +21,9 @@ impl Setup {
         // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
         let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
         tc.materials[5] = 7;
-        Setup { game: liero_game_new(), settings: liero_settings_box_new(), level: LieroLevelBox::new(), tc }
+        let s = Setup { game: liero_game_new(), settings: liero_settings_box_new(), tc };
+        unsafe { liero_game_set_context(&mut *s.game, s.settings, &*s.tc, crate::sfx::LieroSoundOut::NONE) };
+        s
     }
 
     /// Two worms, the first's rope on the second, two split-screen
@@ -53,11 +56,14 @@ impl Setup {
             (*liero_game_data(g)).rand.x = 1234;
             (*s.settings).data.lives = 9;
         }
-        let mut s = s;
-        s.level.resize(3, 2);
-        s.level.set_pixels(&[1, 5, 2, 5, 3, 4], |_| LieroMaterial::default());
-        s.level.data_mut().origpal[5].g = 42;
+        s.level().resize(3, 2);
+        s.level().set_pixels(&[1, 5, 2, 5, 3, 4], |_| LieroMaterial::default());
+        s.level().data_mut().origpal[5].g = 42;
         s
+    }
+
+    fn level(&self) -> &mut LieroLevelBox {
+        unsafe { &mut *liero_game_level(&mut *self.game) }
     }
 
     fn worm(&self, i: usize) -> &mut LieroWormData {
@@ -97,7 +103,7 @@ fn record(path: &str, s: &mut Setup, frames: &[[u32; 2]]) {
     let w = liero_replay_writer_new(&node(path));
     assert!(!w.is_null());
     unsafe {
-        ok(liero_replay_writer_begin(&mut *w, &mut *s.game, &mut *s.settings, &s.level, &s.tc));
+        ok(liero_replay_writer_begin(&mut *w, &mut *s.game));
         for f in frames {
             for (i, &c) in f.iter().enumerate() {
                 s.worm(i).control_states = c;
@@ -115,7 +121,7 @@ fn record(path: &str, s: &mut Setup, frames: &[[u32; 2]]) {
 fn play(path: &str, s: &mut Setup) -> *mut LieroReplayReader {
     let r = liero_replay_reader_new(&node(path));
     assert!(!r.is_null());
-    unsafe { ok(liero_replay_reader_begin(&mut *r, &mut *s.game, &mut *s.settings, &mut s.level, &s.tc)) };
+    unsafe { ok(liero_replay_reader_begin(&mut *r, &mut *s.game)) };
     r
 }
 
@@ -157,10 +163,10 @@ fn plays_back_the_game_it_recorded() {
         assert_eq!((vp.shake, vp.worm_idx, vp.rect.x1), (5, 1, 160));
         assert_eq!((*liero_game_data(g)).rand.x, 1234);
         assert_eq!((*t.settings).data.lives, 9);
-        assert_eq!(t.level.pixels(), &[1, 5, 2, 5, 3, 4]);
-        let l = t.level.data().level;
+        assert_eq!(t.level().pixels(), &[1, 5, 2, 5, 3, 4]);
+        let l = t.level().data().level;
         assert_eq!(((*l.materials.add(1)).flags, (*l.materials).flags), (7, 0));
-        assert_eq!(t.level.data().origpal[5].g, 42);
+        assert_eq!(t.level().data().origpal[5].g, 42);
 
         for f in frames {
             let o = frame(r, &t);
@@ -201,7 +207,7 @@ fn writes_settings_changed_while_unfocused() {
     let s = Setup::new();
     let w = liero_replay_writer_new(&node(&p));
     unsafe {
-        ok(liero_replay_writer_begin(&mut *w, &mut *s.game, &mut *s.settings, &s.level, &s.tc));
+        ok(liero_replay_writer_begin(&mut *w, &mut *s.game));
         liero_replay_writer_frame(&mut *w);
         // Unchanged settings aren't written again.
         liero_replay_writer_unfocus(&mut *w);
@@ -250,8 +256,8 @@ fn reports_desyncs_and_short_files() {
     let data = inflate(&std::fs::read(&p).unwrap());
     let r = liero_replay_reader_new(&node(&p));
     unsafe {
-        let mut u = Setup::empty();
-        ok(liero_replay_reader_begin(&mut *r, &mut *u.game, &mut *u.settings, &mut u.level, &u.tc));
+        let u = Setup::empty();
+        ok(liero_replay_reader_begin(&mut *r, &mut *u.game));
         (*r).data.truncate((*r).pos + 1);
         let o = frame(r, &u);
         assert_eq!((o.status, message(&o)), (LieroReplayStatus::ReadError, "Read error in get()"));
@@ -263,8 +269,8 @@ fn reports_desyncs_and_short_files() {
     let r = liero_replay_reader_new(&node(&p));
     unsafe {
         (*r).data.truncate(40);
-        let mut u = Setup::empty();
-        let o = liero_replay_reader_begin(&mut *r, &mut *u.game, &mut *u.settings, &mut u.level, &u.tc);
+        let u = Setup::empty();
+        let o = liero_replay_reader_begin(&mut *r, &mut *u.game);
         assert_eq!(o.status, LieroReplayStatus::ReadError);
         assert_eq!(liero_game_worm_count(&*u.game), 0);
         liero_replay_reader_free(r);
@@ -289,7 +295,7 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
             liero_game_list_worm(g, w);
         }
         let w = liero_replay_writer_new(&node(&p));
-        ok(liero_replay_writer_begin(&mut *w, g, &mut *s.settings, &s.level, &s.tc));
+        ok(liero_replay_writer_begin(&mut *w, g));
         liero_replay_writer_frame(&mut *w);
         liero_replay_writer_unfocus(&mut *w);
         (*liero_worm_settings(&*liero_game_worm(g, 2))).name = b"renamed".to_vec();

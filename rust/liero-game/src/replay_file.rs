@@ -22,9 +22,8 @@ use crate::game::LieroRect;
 use crate::game_box::{
     liero_game_add_viewport, liero_game_data, liero_game_list_worm, liero_game_new_worm, liero_game_viewport,
     liero_game_viewport_count, liero_game_worm, liero_game_worm_count, liero_worm_data, liero_worm_set_settings,
-    liero_worm_settings, LieroGame, LieroWorm,
+    liero_worm_settings, LieroGame, LieroWorm, liero_game_level, liero_game_settings,
 };
-use crate::level::LieroLevelBox;
 use crate::material::LieroMaterial;
 use crate::replay::{
     checksum, liero_replay_viewport_of, liero_replay_viewport_set, liero_replay_worm_of, liero_replay_worm_set,
@@ -32,7 +31,6 @@ use crate::replay::{
     LieroReplayGameFields, LieroReplayStatus, ReplayError, Worm, LIERO_REPLAY_VERSION,
 };
 use crate::settings::{liero_worm_settings_box_free, liero_worm_settings_box_new, LieroSettingsBox, LieroWormSettingsBox};
-use crate::tc::LieroTcData;
 use crate::text::LieroStr;
 use crate::viewport::LIERO_VIEWPORT_WORM;
 
@@ -224,21 +222,18 @@ pub extern "C" fn liero_replay_writer_set_version(w: &mut LieroReplayWriter, ver
     w.version = version;
 }
 
-/// `beginRecord`: writes the game as it is, with `settings`, `level` and
+/// `beginRecord`: writes the game as it is, with its settings, level and
 /// the TC's weapons. The game and settings must stay while the writer
 /// records them. Writing changes the settings as `write_start` says; with
 /// an `OutOfRange` outcome, what was written stays.
 ///
 /// # Safety
-/// The game, settings, level and TC are valid.
+/// The game has its settings and TC (`liero_game_set_context`).
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_begin(
-    w: &mut LieroReplayWriter,
-    game: &mut LieroGame,
-    settings: &mut LieroSettingsBox,
-    level: &LieroLevelBox,
-    tc: &LieroTcData,
-) -> LieroReplayOutcome {
+pub unsafe extern "C" fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut LieroGame) -> LieroReplayOutcome {
+    let settings = &mut *liero_game_settings(game);
+    let level = &*liero_game_level(game);
+    let tc = &*game.tc_data();
     w.game = game;
     w.settings = settings;
 
@@ -442,20 +437,17 @@ pub extern "C" fn liero_replay_reader_set_pos(r: &mut LieroReplayReader, pos: us
 }
 
 /// `beginPlayback`: reads the game the replay starts with into `game`, a
-/// new one with no worms or viewports, its new `settings` and `level`.
+/// new one with no worms or viewports, and its new settings and level.
 /// They must stay while the reader plays them. On an error they are left
 /// as they were.
 ///
 /// # Safety
-/// The game, settings, level and TC are valid.
+/// The game has its settings and TC (`liero_game_set_context`).
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_begin(
-    r: &mut LieroReplayReader,
-    game: &mut LieroGame,
-    settings: &mut LieroSettingsBox,
-    level: &mut LieroLevelBox,
-    tc: &LieroTcData,
-) -> LieroReplayOutcome {
+pub unsafe extern "C" fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut LieroGame) -> LieroReplayOutcome {
+    let settings = &mut *liero_game_settings(game);
+    let level = &mut *liero_game_level(game);
+    let tc = &*game.tc_data();
     let (version, g) = match read_start(&mut r.source()) {
         Ok(read) => read,
         Err(e) => return r.outcome(Err(e)),

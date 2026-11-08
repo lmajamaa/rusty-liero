@@ -1416,15 +1416,6 @@ typedef struct LieroKeys {
 } LieroKeys;
 
 /**
- * What the game's fields take from C++.
- */
-typedef struct LieroGameExtras {
-  struct LieroLevel level;
-  const struct LieroTcData *tc;
-  struct LieroSoundOut sound;
-} LieroGameExtras;
-
-/**
  * View of a C++ `Bitmap`: `h` rows of `pitch` bytes, of which the first
  * `w` are the image. Drawing stays inside `clip` (x2 and y2 excluded),
  * except where the C++ didn't clip either.
@@ -2858,6 +2849,25 @@ struct LieroGame *liero_game_clone(const struct LieroGame *g);
 void liero_game_assign(struct LieroGame *to, const struct LieroGame *from);
 
 /**
+ * Sets what the game is played with: the settings, the TC (or null) and
+ * where its sounds go. They must outlive the game and its copies.
+ */
+void liero_game_set_context(struct LieroGame *g,
+                            struct LieroSettingsBox *settings,
+                            const struct LieroTcData *tc,
+                            struct LieroSoundOut sound);
+
+/**
+ * The game's level, at a fixed address.
+ */
+struct LieroLevelBox *liero_game_level(struct LieroGame *g);
+
+/**
+ * The game's settings box.
+ */
+struct LieroSettingsBox *liero_game_settings(const struct LieroGame *g);
+
+/**
  * The game's state, at a fixed address.
  */
 struct LieroGameData *liero_game_data(struct LieroGame *g);
@@ -2950,13 +2960,15 @@ void liero_game_origpal(const struct LieroGame *g,
                         const struct LieroColor *level_pal);
 
 /**
- * The game's fields, valid while the game's worms and viewports stay and
- * the view isn't freed.
+ * The game's fields and settings, valid while the game's worms, viewports
+ * and settings stay and the view isn't freed. The game has its settings
+ * and TC (`liero_game_set_context`).
  */
-struct LieroGameView *liero_game_view_new(struct LieroGame *g,
-                                          const struct LieroGameExtras *extras);
+struct LieroGameView *liero_game_view_new(struct LieroGame *g);
 
 const struct LieroGameFields *liero_game_view_fields(const struct LieroGameView *v);
+
+const struct LieroGameSettings *liero_game_view_settings(const struct LieroGameView *v);
 
 /**
  * # Safety
@@ -4073,19 +4085,16 @@ void liero_replay_writer_free(struct LieroReplayWriter *w);
 void liero_replay_writer_set_version(struct LieroReplayWriter *w, int32_t version);
 
 /**
- * `beginRecord`: writes the game as it is, with `settings`, `level` and
+ * `beginRecord`: writes the game as it is, with its settings, level and
  * the TC's weapons. The game and settings must stay while the writer
  * records them. Writing changes the settings as `write_start` says; with
  * an `OutOfRange` outcome, what was written stays.
  *
  * # Safety
- * The game, settings, level and TC are valid.
+ * The game has its settings and TC (`liero_game_set_context`).
  */
 struct LieroReplayOutcome liero_replay_writer_begin(struct LieroReplayWriter *w,
-                                                    struct LieroGame *game,
-                                                    struct LieroSettingsBox *settings,
-                                                    const struct LieroLevelBox *level,
-                                                    const struct LieroTcData *tc);
+                                                    struct LieroGame *game);
 
 /**
  * `recordFrame`: the game's controls this tick, and any settings that
@@ -4135,18 +4144,15 @@ void liero_replay_reader_set_pos(struct LieroReplayReader *r, uintptr_t pos);
 
 /**
  * `beginPlayback`: reads the game the replay starts with into `game`, a
- * new one with no worms or viewports, its new `settings` and `level`.
+ * new one with no worms or viewports, and its new settings and level.
  * They must stay while the reader plays them. On an error they are left
  * as they were.
  *
  * # Safety
- * The game, settings, level and TC are valid.
+ * The game has its settings and TC (`liero_game_set_context`).
  */
 struct LieroReplayOutcome liero_replay_reader_begin(struct LieroReplayReader *r,
-                                                    struct LieroGame *game,
-                                                    struct LieroSettingsBox *settings,
-                                                    struct LieroLevelBox *level,
-                                                    const struct LieroTcData *tc);
+                                                    struct LieroGame *game);
 
 /**
  * `playbackFrame` without the renderer: sets the worms' controls for the

@@ -126,7 +126,7 @@ void soundGame(std::shared_ptr<Common> common, char const* name, uint32_t seed, 
 	std::unique_ptr<Game> gamePtr = setUpGame(common, seed, gameMode, weapons);
 	Game& game = *gamePtr;
 	LieroMixer* m = liero_mixer_new();
-	game.soundPlayer.reset(new RecordSoundPlayer(*common, m));
+	game.setSoundPlayer(std::make_shared<RecordSoundPlayer>(*common, m));
 
 	game.startGame();
 
@@ -151,7 +151,7 @@ void soundGame(std::shared_ptr<Common> common, char const* name, uint32_t seed, 
 			break;
 	}
 
-	game.soundPlayer.reset(new NullSoundPlayer);
+	game.setSoundPlayer(std::make_shared<NullSoundPlayer>());
 	liero_mixer_free(m);
 }
 

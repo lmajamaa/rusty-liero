@@ -773,6 +773,12 @@ impl LieroTcData {
         unsafe { *self.constants.add(i) }
     }
 
+    /// TC hack `i` (`common.H[i]`), from `h`.
+    pub(crate) fn hack(&self, i: usize) -> bool {
+        assert!(i < self.hack_count);
+        unsafe { *self.hacks.add(i) }
+    }
+
     /// TC text `i` (`common.S[i]`), from `s`.
     pub(crate) fn text(&self, i: usize) -> &[u8] {
         assert!(i < self.text_count);

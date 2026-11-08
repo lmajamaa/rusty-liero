@@ -59,14 +59,13 @@ struct GameMembers
 	std::shared_ptr<Common> common;
 	std::shared_ptr<SoundPlayer> soundPlayer;
 	std::shared_ptr<Settings> settings;
-
-	Level level;
 };
 
 struct Game;
 
-// The game as the Rust game rules see it. Pointers into the game, so it
-// must not outlive the call it is made for.
+// The game as the Rust game rules see it, with the settings they take
+// (made in Rust). Pointers into the game, so it must not outlive the call
+// it is made for.
 struct GameView
 {
 	GameView(Game& game);
@@ -79,9 +78,9 @@ struct GameView
 	LieroGameSettings settings;
 };
 
-// Rust owns the game's state, worms and viewports (LieroGame in
-// rust/liero-game/src/game_box.rs); `worms` and the viewport lists are
-// views of them.
+// Rust owns the game's state, level, worms and viewports (LieroGame in
+// rust/liero-game/src/game_box.rs), and holds what GameMembers keeps;
+// `level`, `worms` and the viewport lists are views of them.
 struct Game : GameMembers
 {
 	Game(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings, std::shared_ptr<SoundPlayer> soundPlayer);
@@ -131,6 +130,9 @@ struct Game : GameMembers
 		return worms[idx];
 	}
 
+	// Plays the game's sounds on `player` from now on.
+	void setSoundPlayer(std::shared_ptr<SoundPlayer> player);
+
 	// The game in Rust.
 	LieroGame* handle() const { return g; }
 	// Remakes the views of the worms and viewports, after Rust changes them.
@@ -139,8 +141,6 @@ struct Game : GameMembers
 	LieroGameData* rust() { return &data; }
 
 private:
-	// Builds the members from `members`, in place, without a temporary
-	// copy of the level.
 	template<typename... Members>
 	Game(LieroGame* g, Members&&... members);
 	template<typename... Members>
@@ -152,6 +152,8 @@ private:
 	std::vector<std::unique_ptr<Viewport>> viewportViews;
 
 public:
+	// The game's level, which Rust owns.
+	Level level;
 	// The game's worms, with null for a replay's empty places.
 	std::vector<Worm*> worms;
 	// The split-screen viewports.

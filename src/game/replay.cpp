@@ -48,7 +48,7 @@ void ReplayWriter::setVersion(int version)
 
 void ReplayWriter::beginRecord(Game& game)
 {
-	rethrow(liero_replay_writer_begin(w, game.handle(), game.settings->rust(), game.level.rust(), liero_tc_data(game.common->tc)));
+	rethrow(liero_replay_writer_begin(w, game.handle()));
 }
 
 void ReplayWriter::recordFrame()
@@ -83,7 +83,7 @@ std::unique_ptr<Game> ReplayReader::beginPlayback(std::shared_ptr<Common> common
 {
 	std::shared_ptr<Settings> settings(new Settings);
 	std::unique_ptr<Game> g(new Game(common, settings, soundPlayer));
-	rethrow(liero_replay_reader_begin(r, g->handle(), settings->rust(), g->level.rust(), liero_tc_data(common->tc)));
+	rethrow(liero_replay_reader_begin(r, g->handle()));
 	g->syncViews();
 	game = g.get();
 	return g;

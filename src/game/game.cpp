@@ -50,6 +50,7 @@ Game::Game(LieroGame* g, LieroGameData* d, Members&&... members)
 : GameMembers(std::forward<Members>(members)...)
 , g(g)
 , data(*d)
+, level(Level::view(liero_game_level(g)))
 , statsRecorder(new NormalStatsRecorder(liero_game_stats(g)))
 , screenFlash(d->screen_flash)
 , gotChanged(d->got_changed)
@@ -73,7 +74,14 @@ Game::Game(
 	std::shared_ptr<SoundPlayer> soundPlayer)
 : Game(liero_game_new(), common, settingsInit, soundPlayer)
 {
+	setSoundPlayer(this->soundPlayer);
 	rand.seed(uint32_t(appTime()));
+}
+
+void Game::setSoundPlayer(std::shared_ptr<SoundPlayer> player)
+{
+	soundPlayer = std::move(player);
+	liero_game_set_context(g, settings->rust(), common->tc ? liero_tc_data(common->tc) : nullptr, soundPlayer->out());
 }
 
 Game::~Game()
@@ -182,41 +190,10 @@ void Game::draw(Renderer& renderer, GameState state, bool useSpectatorViewports,
 
 
 GameView::GameView(Game& game)
+: view(liero_game_view_new(game.handle()))
+, fields(*liero_game_view_fields(view))
+, settings(*liero_game_view_settings(view))
 {
-	Common& common = *game.common;
-	Settings& s = *game.settings;
-
-	LieroGameExtras extras = {
-		game.level.view(),
-		common.tc ? liero_tc_data(common.tc) : nullptr,
-		game.soundPlayer->out(),
-	};
-	view = liero_game_view_new(game.handle(), &extras);
-	fields = *liero_game_view_fields(view);
-
-	settings.game_mode = int32_t(s.gameMode);
-	settings.max_bonuses = s.maxBonuses;
-	settings.time_to_lose = s.timeToLose;
-	settings.zone_timeout = s.zoneTimeout;
-	settings.zone_capture_time = Settings::zoneCaptureTime;
-	settings.weap_table = s.weapTable;
-	settings.weapon_count = int32_t(common.weapons.size());
-	for (int f = 0; f < 2; ++f)
-		for (int i = 0; i < 2; ++i)
-			settings.bonus_rand_timer[f][i] = common.bonusRandTimer[f][i];
-	settings.bonus_spawn_rect_x = LC(BonusSpawnRectX);
-	settings.bonus_spawn_rect_y = LC(BonusSpawnRectY);
-	settings.bonus_spawn_rect_w = LC(BonusSpawnRectW);
-	settings.bonus_spawn_rect_h = LC(BonusSpawnRectH);
-	settings.bonus_drop_chance = LC(BonusDropChance);
-	settings.bonus_spawn_rect = common.H[HBonusSpawnRect];
-	settings.bonus_only_health = common.H[HBonusOnlyHealth];
-	settings.bonus_only_weapon = common.H[HBonusOnlyWeapon];
-	settings.bonus_disable = common.H[HBonusDisable];
-	settings.blood = s.blood;
-	settings.shadow = s.shadow;
-	settings.loading_time = s.loadingTime;
-	settings.load_change = s.loadChange;
 }
 
 GameView::~GameView()

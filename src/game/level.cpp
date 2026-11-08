@@ -13,8 +13,9 @@
 static_assert(sizeof(Palette) == sizeof(LieroColor) * 256, "Palette layout");
 static_assert(sizeof(Material) == sizeof(LieroMaterial), "Material layout");
 
-Level::Level(LieroLevelBox* box)
+Level::Level(LieroLevelBox* box, bool owned)
 : box(box)
+, owned(owned)
 , level(*liero_level_box_data(box))
 , data(level.level.data, level.level.width, level.level.height)
 , materials(reinterpret_cast<Material*&>(level.level.materials), level.level.width, level.level.height)
@@ -27,13 +28,19 @@ Level::Level(LieroLevelBox* box)
 }
 
 Level::Level()
-: Level(liero_level_box_new())
+: Level(liero_level_box_new(), true)
 {
 }
 
 Level::Level(Level const& other)
-: Level(liero_level_box_clone(other.box))
+: Level(liero_level_box_clone(other.box), true)
 {
+}
+
+Level::Level(Level&& other)
+: Level(other.box, other.owned)
+{
+	other.owned = false;
 }
 
 Level& Level::operator=(Level const& other)
@@ -44,7 +51,8 @@ Level& Level::operator=(Level const& other)
 
 Level::~Level()
 {
-	liero_level_box_free(box);
+	if (owned)
+		liero_level_box_free(box);
 }
 
 void Level::swap(Level& other)
