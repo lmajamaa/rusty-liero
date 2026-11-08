@@ -12,6 +12,8 @@ crate-type = ["staticlib"]
 
 [dependencies]
 liero-data = { path = "../liero-data" }
+# Replays' deflate streams and zipped TCs, as miniz.c did. Agreed 2026-11-08.
+miniz_oxide = { version = "=0.9.1", default-features = false, features = ["with-alloc"] }
 
 # A panic must never unwind into C++, so it aborts instead.
 [profile.dev]

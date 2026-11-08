@@ -100,12 +100,7 @@ void copyArray(T (&dest)[N], U const (&src)[N])
 // The whole file, or a std::runtime_error if it can't be opened.
 std::vector<uint8_t> readAll(FsNode const& node)
 {
-	gvl::octet_reader reader(node.toOctetReader());
-	std::vector<uint8_t> data;
-	uint8_t b;
-	while (reader.try_get(b))
-		data.push_back(b);
-	return data;
+	return node.read();
 }
 
 }

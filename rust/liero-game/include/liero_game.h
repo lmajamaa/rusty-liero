@@ -408,6 +408,11 @@ typedef struct LieroApp LieroApp;
 typedef struct LieroFollowAi LieroFollowAi;
 
 /**
+ * A file node for C++'s `FsNode` to own.
+ */
+typedef struct LieroFsNode LieroFsNode;
+
+/**
  * A level. C++ holds a pointer to it, and its fields refer to `data`.
  */
 typedef struct LieroLevelBox LieroLevelBox;
@@ -3408,6 +3413,64 @@ bool liero_controller_in_game(const struct LieroControllerData *c);
  * inverted, and the frame is counted.
  */
 void liero_controller_process(struct LieroControllerData *c, struct LieroKeys *keys);
+
+/**
+ * # Safety
+ * `path` must be valid.
+ */
+struct LieroFsNode *liero_fs_node_new(struct LieroStr path);
+
+struct LieroFsNode *liero_fs_node_clone(const struct LieroFsNode *n);
+
+/**
+ * # Safety
+ * `n` must come from a `liero_fs_node_*` function, or be null.
+ */
+void liero_fs_node_free(struct LieroFsNode *n);
+
+/**
+ * `n / name`.
+ *
+ * # Safety
+ * `name` must be valid.
+ */
+struct LieroFsNode *liero_fs_node_go(const struct LieroFsNode *n, struct LieroStr name);
+
+bool liero_fs_node_is_null(const struct LieroFsNode *n);
+
+/**
+ * The node's path, valid while it lives.
+ */
+struct LieroStr liero_fs_node_full_path(const struct LieroFsNode *n);
+
+bool liero_fs_node_exists(const struct LieroFsNode *n);
+
+/**
+ * Calls `add(ctx, name, is_dir)` for each entry, sorted.
+ *
+ * # Safety
+ * `add` must take `ctx`.
+ */
+void liero_fs_node_list(const struct LieroFsNode *n, void *ctx, void (*add)(void *ctx,
+                                                                            struct LieroStr name,
+                                                                            bool is_dir));
+
+/**
+ * Reads the node: `got(ctx, bytes)` with its contents, which are valid
+ * during the call. False, without calling it, if it can't be read.
+ *
+ * # Safety
+ * `got` must take `ctx`.
+ */
+bool liero_fs_node_read(const struct LieroFsNode *n, void *ctx, void (*got)(void *ctx,
+                                                                            struct LieroStr data));
+
+/**
+ * Makes the node writable, creating its folders if needed, and gives the
+ * path to write it at (valid while the node lives), or an empty one if it
+ * can't be.
+ */
+struct LieroStr liero_fs_node_prepare_write(const struct LieroFsNode *n);
 
 struct LieroGameData *liero_game_data_new(void);
 
