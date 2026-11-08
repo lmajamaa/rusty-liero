@@ -9,38 +9,11 @@
 
 struct Renderer;
 
-// A camera. Rust owns its state (LieroViewport in
-// rust/liero-game/src/viewport.rs); the fields here refer to it.
+// A view of one of the game's viewports, which Rust owns, processes and
+// draws (LieroViewport, rust/liero-game/src/viewport.rs). A spectator one
+// shows the whole level, by its kind.
 struct Viewport
 {
-	Viewport(Rect rect, int wormIdx, int levwidth, int levheight)
-	: Viewport(liero_viewport_new(LieroRect{ rect.x1, rect.y1, rect.x2, rect.y2 }, wormIdx, levwidth, levheight))
-	{
-	}
-
-	// Its fields are set after.
-	Viewport()
-	: Viewport(Rect(0, 0, 0, 0), 0, 0, 0)
-	{
-	}
-
-	// A copy with state of its own.
-	Viewport(Viewport const& other)
-	: Viewport(liero_viewport_clone(&other.data))
-	{
-	}
-
-	Viewport& operator=(Viewport const&) = delete;
-
-	virtual ~Viewport()
-	{
-		liero_viewport_free(&data);
-	}
-
-	// The viewport's state in Rust.
-	LieroViewport* rust() { return &data; }
-
-private:
 	explicit Viewport(LieroViewport* d)
 	: data(*d)
 	, x(d->x), y(d->y)
@@ -54,6 +27,12 @@ private:
 	{
 	}
 
+	Viewport(Viewport const&) = delete;
+	Viewport& operator=(Viewport const&) = delete;
+
+	LieroViewport* rust() { return &data; }
+
+private:
 	LieroViewport& data;
 
 public:
@@ -87,10 +66,9 @@ public:
 			else if(y > destY - centerY) --y;
 		}
 	}
-
-
-	// By its kind, in Rust.
-	void draw(Game& game, Renderer& renderer, GameState state, bool isReplay);
 };
+
+// Draws one of the game's viewports, by its kind, in Rust.
+void drawViewport(Game& game, LieroViewport* vp, Renderer& renderer, GameState state, bool isReplay);
 
 #endif // LIERO_VIEWPORT_HPP

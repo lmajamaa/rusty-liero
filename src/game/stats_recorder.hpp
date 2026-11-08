@@ -7,26 +7,17 @@
 struct Game;
 struct Worm;
 
-// The stats a game records, in Rust (rust/liero-game/src/stats.rs), which
-// the game tick records into.
+// A view of the stats a game records, which the Rust game owns and its tick
+// records into (rust/liero-game/src/stats.rs).
 struct NormalStatsRecorder
 {
-	NormalStatsRecorder()
-	: s(liero_stats_new())
+	explicit NormalStatsRecorder(LieroStats* s)
+	: s(s)
 	{
 	}
 
-	NormalStatsRecorder(NormalStatsRecorder const& other)
-	: s(liero_stats_clone(other.s))
-	{
-	}
-
+	NormalStatsRecorder(NormalStatsRecorder const&) = delete;
 	NormalStatsRecorder& operator=(NormalStatsRecorder const&) = delete;
-
-	~NormalStatsRecorder()
-	{
-		liero_stats_free(s);
-	}
 
 	// Valid until the stats next change.
 	LieroStatsView view() const { return liero_stats_view(s); }

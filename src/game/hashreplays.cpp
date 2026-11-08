@@ -9,7 +9,6 @@
 #include "replay.hpp"
 #include "settings.hpp"
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "filesystem.hpp"
 #include "mixer/player.hpp"
 #include "gfx/renderer.hpp"
@@ -268,9 +267,9 @@ void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& 
 		game->clearViewports();
 		game->worms[0]->statsX = 0;
 		game->worms[1]->statsX = 218;
-		game->addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
-		game->addViewport(new Viewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
-		game->addViewport(new Viewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
+		game->addSpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350);
+		game->addViewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350);
+		game->addViewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350);
 		game->startGame();
 		game->focus(renderer);
 
@@ -279,8 +278,7 @@ void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& 
 		ByteReader initialReader = reader.reader;
 		if (rewindAt > 0)
 		{
-			initialGame.reset(new Game(*game));
-			initialGame->postClone(*game, true);
+			initialGame = game->clone();
 		}
 
 		while (ticks < maxTicks)
@@ -296,8 +294,7 @@ void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& 
 			{
 				// As R in ReplayController::process: back to the start, then
 				// play to here again, which has to give the same game.
-				*game = *initialGame;
-				game->postClone(*initialGame, true);
+				game->assign(*initialGame);
 				reader.reader = initialReader;
 				int t = 0;
 				while (t < rewindAt && reader.playbackFrame(renderer))

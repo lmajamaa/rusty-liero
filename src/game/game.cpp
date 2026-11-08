@@ -7,7 +7,6 @@
 #include <utility>
 #include "appclock.hpp"
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "worm.hpp"
 #include "filesystem.hpp"
 #include "gfx/renderer.hpp"
@@ -23,7 +22,6 @@ GameMembers::GameMembers(
 : common(common)
 , soundPlayer(soundPlayer)
 , settings(settings)
-, statsRecorder(new NormalStatsRecorder)
 {
 }
 
@@ -42,9 +40,17 @@ static_assert(sizeof(Game::NObjectList) == sizeof(LieroNObjectList), "nobject li
 static_assert(sizeof(Game::BObjectList) == sizeof(LieroBObjectList), "blood list layout");
 
 template<typename... Members>
-Game::Game(LieroGameData* d, Members&&... members)
+Game::Game(LieroGame* g, Members&&... members)
+: Game(g, liero_game_data(g), std::forward<Members>(members)...)
+{
+}
+
+template<typename... Members>
+Game::Game(LieroGame* g, LieroGameData* d, Members&&... members)
 : GameMembers(std::forward<Members>(members)...)
+, g(g)
 , data(*d)
+, statsRecorder(new NormalStatsRecorder(liero_game_stats(g)))
 , screenFlash(d->screen_flash)
 , gotChanged(d->got_changed)
 , lastKilledIdx(d->last_killed_idx)
@@ -65,28 +71,53 @@ Game::Game(
 	std::shared_ptr<Common> common,
 	std::shared_ptr<Settings> settingsInit,
 	std::shared_ptr<SoundPlayer> soundPlayer)
-: Game(liero_game_data_new(), common, settingsInit, soundPlayer)
+: Game(liero_game_new(), common, settingsInit, soundPlayer)
 {
 	rand.seed(uint32_t(appTime()));
 }
 
-Game::Game(Game const& other)
-: Game(liero_game_data_clone(&other.data), static_cast<GameMembers const&>(other))
-{
-}
-
-Game& Game::operator=(Game const& other)
-{
-	GameMembers::operator=(other);
-	liero_game_data_assign(&data, &other.data);
-	return *this;
-}
-
 Game::~Game()
 {
-	clearViewports();
-	clearWorms();
-	liero_game_data_free(&data);
+	liero_game_free(g);
+}
+
+std::unique_ptr<Game> Game::clone() const
+{
+	std::unique_ptr<Game> c(new Game(liero_game_clone(g), static_cast<GameMembers const&>(*this)));
+	c->syncViews();
+	return c;
+}
+
+void Game::assign(Game const& other)
+{
+	GameMembers::operator=(other);
+	liero_game_assign(g, other.g);
+	syncViews();
+}
+
+void Game::syncViews()
+{
+	wormViews.clear();
+	worms.clear();
+	for (std::size_t i = 0; i < liero_game_worm_count(g); ++i)
+	{
+		LieroWorm* w = liero_game_worm(g, i);
+		if (w)
+		{
+			wormViews.emplace_back(new Worm(w));
+			worms.push_back(wormViews.back().get());
+		}
+		else
+			worms.push_back(nullptr);
+	}
+
+	viewportViews.clear();
+	viewports.clear();
+	for (std::size_t i = 0; i < liero_game_viewport_count(g, false); ++i)
+	{
+		viewportViews.emplace_back(new Viewport(liero_game_viewport(g, false, i)));
+		viewports.push_back(viewportViews.back().get());
+	}
 }
 
 void Game::onKey(uint32_t key, bool state)
@@ -120,41 +151,28 @@ void Game::releaseControls()
 
 void Game::clearViewports()
 {
-	viewports.clear();
-	spectatorViewports.clear();
+	liero_game_clear_viewports(g);
+	syncViews();
 }
 
-void Game::addViewport(Viewport* vp)
+Viewport* Game::addViewport(Rect rect, int wormIdx, int levwidth, int levheight, int kind)
 {
-	//vp->worm->viewport = vp;
-	viewports.push_back(vp);
+	LieroRect r = { rect.x1, rect.y1, rect.x2, rect.y2 };
+	viewportViews.emplace_back(new Viewport(liero_game_add_viewport(g, r, wormIdx, levwidth, levheight, kind, false)));
+	viewports.push_back(viewportViews.back().get());
+	return viewports.back();
 }
 
-void Game::addSpectatorViewport(SpectatorViewport* vp)
+void Game::addSpectatorViewport(Rect rect, int levwidth, int levheight)
 {
-	spectatorViewports.push_back(vp);
+	LieroRect r = { rect.x1, rect.y1, rect.x2, rect.y2 };
+	liero_game_add_viewport(g, r, 0, levwidth, levheight, LIERO_VIEWPORT_SPECTATOR, true);
 }
 
-void Game::drawViewports(Renderer& renderer, GameState state, bool isReplay)
+void Game::drawViewports(Renderer& renderer, GameState state, bool spectators, bool isReplay)
 {
-	for(std::size_t i = 0; i < viewports.size(); ++i)
-	{
-		viewports[i]->draw(*this, renderer, state, isReplay);
-	}
-}
-
-void Game::drawSpectatorViewports(Renderer& renderer, GameState state, bool isReplay)
-{
-	for(std::size_t i = 0; i < spectatorViewports.size(); ++i)
-	{
-		spectatorViewports[i]->draw(*this, renderer, state, isReplay);
-	}
-}
-
-
-void Game::clearWorms()
-{
-	worms.clear();
+	for (std::size_t i = 0; i < liero_game_viewport_count(g, spectators); ++i)
+		drawViewport(*this, liero_game_viewport(g, spectators, i), renderer, state, isReplay);
 }
 
 void Game::resetWorms()
@@ -172,21 +190,35 @@ void Game::resetWorms()
 	}
 }
 
-void Game::addWorm(Worm* worm)
+Worm* Game::addWorm(std::shared_ptr<WormSettings> settings)
 {
-	worms.push_back(worm);
+	LieroWorm* w = newWorm();
+	listWorm(w);
+	Worm* worm = worms.back();
+	worm->setSettings(settings);
+	return worm;
+}
+
+LieroWorm* Game::newWorm()
+{
+	return liero_game_new_worm(g, nullptr);
+}
+
+void Game::listWorm(LieroWorm* w)
+{
+	liero_game_list_worm(g, w);
+	if (w)
+	{
+		wormViews.emplace_back(new Worm(w));
+		worms.push_back(wormViews.back().get());
+	}
+	else
+		worms.push_back(nullptr);
 }
 
 void Game::draw(Renderer& renderer, GameState state, bool useSpectatorViewports, bool isReplay)
 {
-	if (useSpectatorViewports)
-	{
-		drawSpectatorViewports(renderer, state, isReplay);
-	}
-	else
-	{
-		drawViewports(renderer, state, isReplay);
-	}
+	drawViewports(renderer, state, useSpectatorViewports, isReplay);
 
 	//common->font.drawText(toString(cycles / 70), 10, 10, 7);
 
@@ -209,27 +241,13 @@ GameView::GameView(Game& game)
 	Common& common = *game.common;
 	Settings& s = *game.settings;
 
-	for (Worm* w : game.worms)
-	{
-		LieroGameWorm v = { w->rust(), w->settings->health, w->ai.get(), w->settings->name.view(), w->settings->color };
-		worms.push_back(v);
-	}
-
-	fields.worms = worms.data();
-	fields.worm_count = int32_t(worms.size());
-	fields.game = game.rust();
-	fields.level = game.level.view();
-	fields.tc = common.tc ? liero_tc_data(common.tc) : nullptr;
-	for (Viewport* v : game.viewports)
-		viewports.push_back(v->rust());
-	for (SpectatorViewport* v : game.spectatorViewports)
-		spectatorViewports.push_back(v->rust());
-	fields.viewports = viewports.data();
-	fields.viewport_count = int32_t(viewports.size());
-	fields.spectator_viewports = spectatorViewports.data();
-	fields.spectator_viewport_count = int32_t(spectatorViewports.size());
-	fields.stats = game.statsRecorder ? game.statsRecorder->s : nullptr;
-	fields.sound = game.soundPlayer->out();
+	LieroGameExtras extras = {
+		game.level.view(),
+		common.tc ? liero_tc_data(common.tc) : nullptr,
+		game.soundPlayer->out(),
+	};
+	view = liero_game_view_new(game.handle(), &extras);
+	fields = *liero_game_view_fields(view);
 
 	settings.game_mode = int32_t(s.gameMode);
 	settings.max_bonuses = s.maxBonuses;
@@ -254,6 +272,11 @@ GameView::GameView(Game& game)
 	settings.shadow = s.shadow;
 	settings.loading_time = s.loadingTime;
 	settings.load_change = s.loadChange;
+}
+
+GameView::~GameView()
+{
+	liero_game_view_free(view);
 }
 
 namespace
@@ -353,30 +376,4 @@ bool Game::isGameOver()
 {
 	GameView view(*this);
 	return liero_game_is_over(&view.fields, &view.settings);
-}
-
-void Game::postClone(Game& original, bool complete)
-{
-	if (!complete)
-	{
-		statsRecorder.reset();
-		soundPlayer.reset(new NullSoundPlayer);
-		viewports.clear();
-	}
-	else
-	{
-		if (statsRecorder)
-			statsRecorder.reset(new NormalStatsRecorder(*statsRecorder));
-
-		for (auto& vp : viewports)
-		{
-			vp = new Viewport(*vp);
-		}
-	}
-
-	for (auto& w : worms)
-	{
-		w = new Worm(*w);
-	}
-
 }

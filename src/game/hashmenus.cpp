@@ -13,7 +13,6 @@
 #include "gfx.hpp"
 #include "weapsel.hpp"
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "worm.hpp"
 #include "mixer/player.hpp"
 #include <functional>
@@ -327,16 +326,14 @@ void runWeaponSelection(std::shared_ptr<Common> common, char const* name, uint32
 	Game& game = *gamePtr;
 	for (int i = 0; i < 2; ++i)
 	{
-		Worm* worm = new Worm();
-		worm->settings = settings->wormSettings[i];
+		Worm* worm = game.addWorm(settings->wormSettings[i]);
 		worm->health = worm->settings->health;
 		worm->index = i;
 		worm->statsX = i == 0 ? 0 : 218;
-		game.addWorm(worm);
 	}
-	game.addViewport(new Viewport(Rect(0, 0, 158, 158), 0, 504, 350));
-	game.addViewport(new Viewport(Rect(160, 0, 158+160, 158), 1, 504, 350));
-	game.addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
+	game.addViewport(Rect(0, 0, 158, 158), 0, 504, 350);
+	game.addViewport(Rect(160, 0, 158+160, 158), 1, 504, 350);
+	game.addSpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350);
 	{
 		Level newLevel;
 		newLevel.generateFromSettings(*common, *settings, gfx.rand);

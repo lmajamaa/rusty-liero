@@ -182,25 +182,28 @@ std::unique_ptr<Game> ReplayReader::beginPlayback(std::shared_ptr<Common> common
 
 	// Every worm read, including any only referred to, which the game
 	// doesn't own, as before.
-	std::vector<Worm*> all(g.worm_count);
-	for (auto& w : all)
-		w = new Worm();
-	std::vector<LieroWormData*> allData = rustWorms(all);
+	std::vector<LieroWorm*> all(g.worm_count);
+	std::vector<LieroWormData*> allData(g.worm_count);
+	for (std::size_t i = 0; i < g.worm_count; ++i)
+	{
+		all[i] = game->newWorm();
+		allData[i] = liero_worm_data(all[i]);
+	}
 	LieroTcData const* tc = liero_tc_data(common->tc);
 	for (std::size_t i = 0; i < g.worm_count; ++i)
 	{
-		liero_replay_worm_set(all[i]->rust(), &g.worms[i], allData.data(), allData.size(), tc);
-		all[i]->settings.reset(new WormSettings);
-		setWormSettings(*all[i]->settings, g.worm_settings[i]);
+		liero_replay_worm_set(allData[i], &g.worms[i], allData.data(), allData.size(), tc);
+		WormSettings ws;
+		setWormSettings(ws, g.worm_settings[i]);
+		liero_worm_set_settings(all[i], ws.rust());
 	}
 	for (std::size_t i = 0; i < g.list_len; ++i)
-		game->addWorm(g.list[i] < 0 ? 0 : all[g.list[i]]);
+		game->listWorm(g.list[i] < 0 ? nullptr : all[g.list[i]]);
 
 	for (std::size_t i = 0; i < g.viewport_count; ++i)
 	{
-		Viewport* vp = new Viewport();
+		Viewport* vp = game->addViewport(Rect(0, 0, 0, 0), 0, 0, 0);
 		liero_replay_viewport_set(vp->rust(), &g.viewports[i]);
-		game->addViewport(vp);
 	}
 
 	Level& level = game->level;

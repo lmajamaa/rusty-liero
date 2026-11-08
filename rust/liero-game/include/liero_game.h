@@ -438,6 +438,17 @@ typedef struct LieroDeflateOut LieroDeflateOut;
 typedef struct LieroFsNode LieroFsNode;
 
 /**
+ * The game.
+ */
+typedef struct LieroGame LieroGame;
+
+/**
+ * The game as the tick, the bots and the viewports see it, with the
+ * lists it points to.
+ */
+typedef struct LieroGameView LieroGameView;
+
+/**
  * A level. C++ holds a pointer to it, and its fields refer to `data`.
  */
 typedef struct LieroLevelBox LieroLevelBox;
@@ -491,6 +502,11 @@ typedef struct LieroTc LieroTc;
  * Weapon selection: each viewport's worm's menu (`WeaponSelection`).
  */
 typedef struct LieroWeapsel LieroWeapsel;
+
+/**
+ * A worm: its state, its settings and its bot, if any.
+ */
+typedef struct LieroWorm LieroWorm;
 
 /**
  * A worm's bot, as its `controller` setting picks it: the original
@@ -1392,6 +1408,15 @@ typedef struct LieroControllerData {
 typedef struct LieroKeys {
   bool down[LIERO_MAX_DOS_KEY];
 } LieroKeys;
+
+/**
+ * What the game's fields take from C++.
+ */
+typedef struct LieroGameExtras {
+  struct LieroLevel level;
+  const struct LieroTcData *tc;
+  struct LieroSoundOut sound;
+} LieroGameExtras;
 
 /**
  * View of a C++ `Bitmap`: `h` rows of `pitch` bytes, of which the first
@@ -2936,6 +2961,124 @@ void liero_game_spawn_zone(const struct LieroGameFields *game,
  */
 bool liero_game_is_over(const struct LieroGameFields *game,
                         const struct LieroGameSettings *settings);
+
+/**
+ * A new game with no worms or viewports (`Game::Game`).
+ */
+struct LieroGame *liero_game_new(void);
+
+/**
+ * # Safety
+ * `g` comes from `liero_game_new` or `_clone`, or is null, and isn't used
+ * again.
+ */
+void liero_game_free(struct LieroGame *g);
+
+/**
+ * A copy of the game, as a replay keeps to rewind to.
+ */
+struct LieroGame *liero_game_clone(const struct LieroGame *g);
+
+/**
+ * Makes `to` a copy of `from` (rewinding a replay). `to`'s old worms are
+ * kept, as ropes copied before may be anchored to them.
+ */
+void liero_game_assign(struct LieroGame *to, const struct LieroGame *from);
+
+/**
+ * The game's state, at a fixed address.
+ */
+struct LieroGameData *liero_game_data(struct LieroGame *g);
+
+/**
+ * The game's stats, at a fixed address.
+ */
+struct LieroStats *liero_game_stats(struct LieroGame *g);
+
+/**
+ * A new worm with `settings` (which may be null for now), which the game
+ * keeps but doesn't list.
+ *
+ * # Safety
+ * `settings` is a valid box, or null.
+ */
+struct LieroWorm *liero_game_new_worm(struct LieroGame *g, struct LieroWormSettingsBox *settings);
+
+/**
+ * Adds `w`, one of the game's worms, or an empty place for null, to the
+ * end of the game's list (`Game::addWorm`).
+ */
+void liero_game_list_worm(struct LieroGame *g, struct LieroWorm *w);
+
+uintptr_t liero_game_worm_count(const struct LieroGame *g);
+
+/**
+ * The game's worm `i`, or null for an empty place.
+ */
+struct LieroWorm *liero_game_worm(const struct LieroGame *g, uintptr_t i);
+
+struct LieroWormData *liero_worm_data(struct LieroWorm *w);
+
+/**
+ * The worm's settings box, or null.
+ */
+struct LieroWormSettingsBox *liero_worm_settings(const struct LieroWorm *w);
+
+/**
+ * # Safety
+ * `s` is a valid box, or null.
+ */
+void liero_worm_set_settings(struct LieroWorm *w, struct LieroWormSettingsBox *s);
+
+/**
+ * Gives the worm the bot for `controller`, or none for a human (0). See
+ * `liero_worm_ai_new`.
+ */
+void liero_worm_set_ai(struct LieroWorm *w,
+                       uint32_t controller,
+                       uintptr_t candidates,
+                       bool testing);
+
+/**
+ * The worm's bot, or null.
+ */
+struct LieroWormAi *liero_worm_ai(const struct LieroWorm *w);
+
+/**
+ * Adds a viewport (`Game::addViewport`, or `addSpectatorViewport` with
+ * `spectator_list`), at a fixed address.
+ */
+struct LieroViewport *liero_game_add_viewport(struct LieroGame *g,
+                                              struct LieroRect rect,
+                                              int32_t worm_idx,
+                                              int32_t level_width,
+                                              int32_t level_height,
+                                              int32_t kind,
+                                              bool spectator_list);
+
+/**
+ * `Game::clearViewports`.
+ */
+void liero_game_clear_viewports(struct LieroGame *g);
+
+uintptr_t liero_game_viewport_count(const struct LieroGame *g, bool spectator_list);
+
+struct LieroViewport *liero_game_viewport(struct LieroGame *g, bool spectator_list, uintptr_t i);
+
+/**
+ * The game's fields, valid while the game's worms and viewports stay and
+ * the view isn't freed.
+ */
+struct LieroGameView *liero_game_view_new(struct LieroGame *g,
+                                          const struct LieroGameExtras *extras);
+
+const struct LieroGameFields *liero_game_view_fields(const struct LieroGameView *v);
+
+/**
+ * # Safety
+ * `v` comes from `liero_game_view_new`, or is null, and isn't used again.
+ */
+void liero_game_view_free(struct LieroGameView *v);
 
 /**
  * Fills a rectangle, clipped: `fillRect`.
@@ -4557,22 +4700,6 @@ void liero_mixer_set_volume(struct LieroMixer *m, void *id, double volume);
  * `out` must point to `frames` samples.
  */
 void liero_mixer_mix(struct LieroMixer *m, int16_t *out, uintptr_t frames);
-
-/**
- * New, empty stats. Free them with `liero_stats_free`.
- */
-struct LieroStats *liero_stats_new(void);
-
-/**
- * A copy of `s`, for a copy of the game. Free it with `liero_stats_free`.
- */
-struct LieroStats *liero_stats_clone(const struct LieroStats *s);
-
-/**
- * # Safety
- * `s` must come from `liero_stats_new` or `liero_stats_clone`, or be null.
- */
-void liero_stats_free(struct LieroStats *s);
 
 struct LieroStatsView liero_stats_view(const struct LieroStats *s);
 

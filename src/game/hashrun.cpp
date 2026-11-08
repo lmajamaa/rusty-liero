@@ -15,7 +15,6 @@
 #include "worm.hpp"
 #include "weapsel.hpp"
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "filesystem.hpp"
 #include "gfx.hpp"
 #include "math.hpp"
@@ -247,19 +246,17 @@ std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, i
 	// The same setup as LocalController.
 	for (int i = 0; i < 2; ++i)
 	{
-		Worm* worm = new Worm();
-		worm->settings = settings->wormSettings[i];
+		Worm* worm = game.addWorm(settings->wormSettings[i]);
 		worm->health = worm->settings->health;
 		worm->index = i;
 		worm->statsX = i == 0 ? 0 : 218;
-		worm->ai = createWormAi(1, 0, false);
-		liero_rand_seed(liero_worm_ai_rand(worm->ai.get()), seed * 104729 + i);
-		game.addWorm(worm);
+		worm->setAi(1, 0, false);
+		liero_rand_seed(liero_worm_ai_rand(worm->ai()), seed * 104729 + i);
 	}
 
-	game.addViewport(new Viewport(Rect(0, 0, 158, 158), 0, 504, 350));
-	game.addViewport(new Viewport(Rect(160, 0, 158+160, 158), 1, 504, 350));
-	game.addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
+	game.addViewport(Rect(0, 0, 158, 158), 0, 504, 350);
+	game.addViewport(Rect(160, 0, 158+160, 158), 1, 504, 350);
+	game.addSpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350);
 
 	{
 		Level newLevel;

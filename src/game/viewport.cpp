@@ -1,5 +1,4 @@
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "game.hpp"
 #include "gfx/renderer.hpp"
 
@@ -11,7 +10,7 @@ static_assert(LIERO_GAME_GAME_OF_TAG == Settings::GMGameOfTag, "game modes");
 static_assert(LIERO_GAME_HOLDAZONE == Settings::GMHoldazone, "game modes");
 static_assert(LIERO_GAME_SCALES_OF_JUSTICE == Settings::GMScalesOfJustice, "game modes");
 
-void Viewport::draw(Game& game, Renderer& renderer, GameState gameState, bool isReplay)
+void drawViewport(Game& game, LieroViewport* vp, Renderer& renderer, GameState gameState, bool isReplay)
 {
 	Settings& s = *game.settings;
 	GameView view(game);
@@ -24,5 +23,5 @@ void Viewport::draw(Game& game, Renderer& renderer, GameState gameState, bool is
 	d.state_game = gameState == StateGame;
 	d.is_replay = isReplay;
 	LieroBitmap scr = renderer.bmp.view();
-	liero_game_draw_viewport(&view.fields, &view.settings, &d, rust(), &scr);
+	liero_game_draw_viewport(&view.fields, &view.settings, &d, vp, &scr);
 }

@@ -2,7 +2,6 @@
 
 #include "../game.hpp"
 #include "stats_presenter.hpp"
-#include "../spectatorviewport.hpp"
 #include "../viewport.hpp"
 #include "../sfx.hpp"
 
@@ -64,8 +63,7 @@ bool ReplayController::process()
 	{
 		if(gfx.testSDLKeyOnce(SDL_SCANCODE_R))
 		{
-			*game = *initialGame;
-			game->postClone(*initialGame, true);
+			game->assign(*initialGame);
 			replay->reader = initialReader;
 		}
 
@@ -161,22 +159,20 @@ void ReplayController::changeState(GameState newState)
 
 		// spectator viewport is always full size
 		// +68 on x to align the viewport in the middle
-		game->addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
+		game->addSpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350);
 		if (gfx.settings->singleScreenReplay)
 		{
 			// on single screen replay, use the spectator viewport for the
 			// main screen as well
-			// we can't use the same object, as the vector's clean function will delete them
-			game->addViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
+			game->addViewport(Rect(0, 0, 504 + 68, 350), 0, 504, 350, LIERO_VIEWPORT_SPECTATOR);
 		}
 		else
 		{
-			game->addViewport(new Viewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
-			game->addViewport(new Viewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
+			game->addViewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350);
+			game->addViewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350);
 		}
 		game->startGame();
-		initialGame.reset(new Game(*game));
-		initialGame->postClone(*game, true);
+		initialGame = game->clone();
 		initialReader = replay->reader;
 	}
 	else if(newState == StateGameEnded)

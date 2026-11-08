@@ -9,7 +9,6 @@
 #include "../filesystem.hpp"
 
 #include "../worm.hpp"
-#include "../spectatorviewport.hpp"
 #include "../viewport.hpp"
 
 #include <cctype>
@@ -17,42 +16,20 @@
 LocalController::LocalController(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings)
 : game(common, settings, std::shared_ptr<SoundPlayer>(new DefaultSoundPlayer(*common)))
 {
-	Worm* worm1 = new Worm();
-	worm1->settings = settings->wormSettings[0];
-	worm1->health = worm1->settings->health;
-	worm1->index = 0;
-	worm1->statsX = 0;
-	worm1->ai = createWormAi(worm1->settings->controller, settings->aiParallels, worm1->index == 0);
-
-	Worm* worm2 = new Worm();
-	worm2->settings = settings->wormSettings[1];
-	worm2->health = worm2->settings->health;
-	worm2->index = 1;
-	worm2->statsX = 218;
-	worm2->ai = createWormAi(worm2->settings->controller, settings->aiParallels, worm2->index == 0);
-
-#if 0
-	for(int i = 0; i < 10; ++i)
+	for (int i = 0; i < 2; ++i)
 	{
-		Worm* worm2 = new Worm(*this);
-		worm2->settings = settings->wormSettings[1];
-		worm2->health = worm2->settings->health;
-		worm2->index = 1;
-		if(worm2->settings->controller == 1)
-			worm2->ai.reset(new DumbLieroAI(*worm2));
-
-		addWorm(worm2);
+		Worm* w = game.addWorm(settings->wormSettings[i]);
+		w->health = w->settings->health;
+		w->index = i;
+		w->statsX = i == 0 ? 0 : 218;
+		w->setAi(w->settings->controller, settings->aiParallels, w->index == 0);
 	}
-#endif
 
-	game.addViewport(new Viewport(Rect(0, 0, 158, 158), worm1->index, 504, 350));
-	game.addViewport(new Viewport(Rect(160, 0, 158+160, 158), worm2->index, 504, 350));
-
-	game.addWorm(worm1);
-	game.addWorm(worm2);
+	game.addViewport(Rect(0, 0, 158, 158), game.worms[0]->index, 504, 350);
+	game.addViewport(Rect(160, 0, 158+160, 158), game.worms[1]->index, 504, 350);
 
 	// +68 on x to align the viewport in the middle
-	game.addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
+	game.addSpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350);
 }
 
 LocalController::~LocalController()

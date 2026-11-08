@@ -713,6 +713,13 @@ pub struct LieroWormSettingsBox {
     refs: usize,
 }
 
+impl LieroWormSettingsBox {
+    #[cfg(test)]
+    pub(crate) fn refs(&self) -> usize {
+        self.refs
+    }
+}
+
 impl Default for LieroWormSettingsBox {
     fn default() -> Self {
         LieroWormSettingsBox { data: LieroWormSettingsData::default(), name: Vec::new(), profile: None, refs: 1 }

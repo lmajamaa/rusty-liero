@@ -13,7 +13,6 @@
 #include "game.hpp"
 #include "worm.hpp"
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "gfx/renderer.hpp"
 
 #include <cstdio>
@@ -62,8 +61,8 @@ void runAiGame(std::shared_ptr<Common> common, AiConfig const& config, int inter
 	{
 		Worm& worm = *game.worms[i];
 		worm.settings->controller = 2;
-		worm.ai = createWormAi(2, settings.aiParallels, worm.index == 0);
-		liero_rand_seed(liero_worm_ai_rand(worm.ai.get()), config.seed * 31 + i);
+		worm.setAi(2, settings.aiParallels, worm.index == 0);
+		liero_rand_seed(liero_worm_ai_rand(worm.ai()), config.seed * 31 + i);
 	}
 
 	game.startGame();
@@ -93,7 +92,7 @@ void runAiGame(std::shared_ptr<Common> common, AiConfig const& config, int inter
 			std::printf("%s %d %016llx%s\n", config.name, tick, (unsigned long long)hashGame(game), over ? " end" : "");
 			std::printf("%s-controls %d %016llx\n", config.name, tick, (unsigned long long)controls.h);
 			for (int i = 0; i < 2; ++i)
-				std::printf("%s-ai%d %d %016llx\n", config.name, i, tick, (unsigned long long)liero_worm_ai_hash(game.worms[i]->ai.get()));
+				std::printf("%s-ai%d %d %016llx\n", config.name, i, tick, (unsigned long long)liero_worm_ai_hash(game.worms[i]->ai()));
 			std::printf("%s %d %016llx frame\n", config.name, tick, (unsigned long long)hashFrame(game, split, spectator));
 		}
 		if (over)

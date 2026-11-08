@@ -92,6 +92,12 @@ struct WormSettings : WormSettingsExtensions
 	WormSettings(WormSettings const&) = delete;
 	WormSettings& operator=(WormSettings const&) = delete;
 
+	// Another view of `box`, which it shares.
+	static std::shared_ptr<WormSettings> share(LieroWormSettingsBox* box)
+	{
+		return std::shared_ptr<WormSettings>(new WormSettings(liero_worm_settings_box_retain(box)));
+	}
+
 	// A copy of the settings, without the profile they came from. The game
 	// shares a worm's settings; only the hash run copies them.
 	std::unique_ptr<WormSettings> clone() const
@@ -175,16 +181,8 @@ inline std::vector<uint8_t> writeWormArchive(WormSettings& ws, int replayVersion
 struct Viewport;
 struct Renderer;
 
-// A worm's bot, in Rust (LieroWormAi in rust/liero-game/src/ai/mod.rs):
-// the one `controller` picks, or none for a human.
-inline std::shared_ptr<LieroWormAi> createWormAi(uint32_t controller, int candidates, bool testing)
-{
-	LieroWormAi* ai = liero_worm_ai_new(controller, candidates, testing);
-	if (!ai)
-		return std::shared_ptr<LieroWormAi>();
-	return std::shared_ptr<LieroWormAi>(ai, liero_worm_ai_free);
-}
-
+// A view of one of the game's worms, which Rust owns with its settings and
+// bot (LieroWorm, rust/liero-game/src/game_box.rs).
 struct Worm
 {
 	enum
@@ -258,25 +256,10 @@ struct Worm
 		uint32_t istate;
 	};
 
-	Worm()
-	: Worm(liero_worm_data_new())
-	{
-	}
+	explicit Worm(LieroWorm* w);
 
-	// A copy with state of its own, sharing the settings and AI.
-	Worm(Worm const& other)
-	: Worm(liero_worm_data_clone(&other.data))
-	{
-		settings = other.settings;
-		ai = other.ai;
-	}
-
+	Worm(Worm const&) = delete;
 	Worm& operator=(Worm const&) = delete;
-
-	~Worm()
-	{
-		liero_worm_data_free(&data);
-	}
 
 	bool pressed(Control control) const
 	{
@@ -321,7 +304,8 @@ struct Worm
 	LieroWormData* rust() { return &data; }
 
 private:
-	explicit Worm(LieroWormData* d);
+
+	Worm(LieroWorm* w, LieroWormData* d);
 
 	LieroWormData& data;
 
@@ -383,9 +367,27 @@ public:
 	// Data for LocalController
 	ControlState& cleanControlStates; // This contains the real state of real and extended controls
 
-	std::shared_ptr<WormSettings> settings; // !CLONING
+	// The worm in Rust.
+	LieroWorm* handle;
 
-	std::shared_ptr<LieroWormAi> ai;
+	// A view of the worm's settings, shared with the worm.
+	std::shared_ptr<WormSettings> settings;
+
+	void setSettings(std::shared_ptr<WormSettings> s)
+	{
+		liero_worm_set_settings(handle, s->rust());
+		settings = s;
+	}
+
+	// Gives the worm the bot `controller` picks (in rust/liero-game/src/ai),
+	// or none for a human.
+	void setAi(uint32_t controller, int candidates, bool testing)
+	{
+		liero_worm_set_ai(handle, controller, candidates, testing);
+	}
+
+	LieroWormAi* ai() const { return liero_worm_ai(handle); }
+
 };
 
 int sqrVectorLength(int x, int y);

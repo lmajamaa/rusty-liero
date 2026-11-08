@@ -69,7 +69,12 @@ static_assert(sizeof(Ninjarope) == sizeof(LieroNinjarope), "Ninjarope layout");
 static_assert(sizeof(WormWeapon) == sizeof(LieroWormWeapon), "WormWeapon layout");
 static_assert(sizeof(Worm::ControlState) == sizeof(uint32_t), "ControlState layout");
 
-Worm::Worm(LieroWormData* d)
+Worm::Worm(LieroWorm* w)
+: Worm(w, liero_worm_data(w))
+{
+}
+
+Worm::Worm(LieroWorm* w, LieroWormData* d)
 : data(*d)
 , pos(reinterpret_cast<fixedvec&>(d->pos))
 , vel(reinterpret_cast<fixedvec&>(d->vel))
@@ -106,7 +111,10 @@ Worm::Worm(LieroWormData* d)
 , steerableCount(d->steerable_count)
 , statsX(d->stats_x)
 , cleanControlStates(reinterpret_cast<ControlState&>(d->clean_control_states))
+, handle(w)
 {
+	if (LieroWormSettingsBox* b = liero_worm_settings(w))
+		settings = WormSettings::share(b);
 }
 
 int Worm::angleFrame() const
