@@ -5,8 +5,8 @@
 //! which `tools/hashrun` checks.
 //!
 //! Rust owns the game's state (`LieroGameData`, with the object lists) and
-//! each worm's (`LieroWormData`). The tick itself is in `world.rs`; it calls
-//! C++ only for sounds, stats and the viewports' own processing.
+//! each worm's (`LieroWormData`). The tick itself is in `world.rs`; it
+//! calls C++ only for the clock.
 
 use std::ffi::c_void;
 
@@ -15,6 +15,7 @@ use crate::objects::{zeroed_box, LieroBObjectList, LieroBonusList, LieroNObjectL
 use crate::math::ftoi;
 use crate::rand::LieroRand;
 use crate::tc::LieroTcData;
+use crate::text::LieroStr;
 use crate::sfx::LieroSoundOut;
 use crate::stats::{LieroStats, LieroStatsWorm};
 use crate::viewport::LieroViewport;
@@ -68,6 +69,9 @@ pub struct LieroGameWorm {
     pub max_health: i32,
     /// The worm's bot, if any (null for a human).
     pub ai: *mut crate::ai::LieroWormAi,
+    /// The worm's name and colour, from its settings.
+    pub name: LieroStr,
+    pub color: i32,
 }
 
 impl LieroGameWorm {
@@ -250,15 +254,16 @@ pub struct LieroGameSettings {
     pub load_change: bool,
 }
 
-/// What C++ does during a tick: the clock and the viewports. `ctx` is
-/// passed back to each function.
+/// What the tick takes from C++: the clock, and whether to move the
+/// viewports. `ctx` is passed back to `hires_ticks`.
 #[repr(C)]
 pub struct LieroGameHooks {
     pub ctx: *mut c_void,
     /// The clock the stats time ticks with (`appHiresTicks`).
     pub hires_ticks: unsafe extern "C" fn(ctx: *mut c_void) -> u64,
-    /// The viewports at the end of the tick.
-    pub end_tick: unsafe extern "C" fn(ctx: *mut c_void),
+    /// Whether the tick ends by processing the viewports, which the AI's
+    /// copies of the game don't.
+    pub process_viewports: bool,
 }
 
 /// The worms as the stats read them (`statsWorm` in C++).
@@ -649,7 +654,7 @@ mod tests {
             .enumerate()
             .map(|(i, w)| {
                 w.index = i as i32;
-                LieroGameWorm { data: w, max_health: 100, ai: std::ptr::null_mut() }
+                LieroGameWorm { data: w, max_health: 100, ai: std::ptr::null_mut(), name: LieroStr { ptr: std::ptr::null(), len: 0 }, color: 0 }
             })
             .collect();
         let mut game = LieroGameData::new_boxed();

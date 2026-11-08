@@ -105,7 +105,6 @@ struct Game : GameMembers
 	void clearViewports();
 	void addViewport(Viewport*);
 	void addSpectatorViewport(SpectatorViewport*);
-	void processViewports();
 	void drawViewports(Renderer& renderer, GameState state, bool isReplay = false);
 	void drawSpectatorViewports(Renderer& renderer, GameState state, bool isReplay = false);
 	void clearWorms();

@@ -33,6 +33,7 @@ pub mod sfx;
 pub mod stats;
 pub mod tc;
 pub mod text;
+pub mod scene;
 pub mod viewport;
 pub mod weapon;
 pub mod weapon_options;

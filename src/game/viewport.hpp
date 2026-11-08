@@ -90,7 +90,6 @@ public:
 
 
 	virtual void draw(Game& game, Renderer& renderer, GameState state, bool isReplay);
-	virtual void process(Game& game);
 };
 
 #endif // LIERO_VIEWPORT_HPP

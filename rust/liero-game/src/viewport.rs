@@ -10,8 +10,8 @@
 //! is drawn from that. Rust owns a viewport's own state (`LieroViewport`),
 //! and the fields of C++'s `Viewport` refer to it.
 
-use std::ffi::c_void;
 
+use crate::ai::predictive::LieroAiTrace;
 use crate::game::{LieroHoldazone, LieroRect};
 use crate::gfx::{
     liero_font_draw_text, liero_gfx_blit_fire_cone, liero_gfx_blit_image, liero_gfx_blit_image_no_key_colour,
@@ -141,8 +141,10 @@ pub struct LieroViewWorm {
     pub steerable_count: i32,
     pub steerable_sum_x: i32,
     pub steerable_sum_y: i32,
-    /// The worm has an AI, which may draw debug output.
-    pub has_ai: bool,
+    /// Where the worm's predictive bot's plans went, with `aiTraces` on,
+    /// drawn as debug output.
+    pub traces: *const LieroAiTrace,
+    pub trace_count: usize,
 }
 
 #[repr(C)]
@@ -198,15 +200,6 @@ pub struct LieroViewBObject {
 pub struct LieroViewportBanner {
     pub worm_idx: i32,
     pub banner_y: i32,
-}
-
-/// What C++ draws. `ctx` is passed back.
-#[repr(C)]
-pub struct LieroViewportHooks {
-    pub ctx: *mut c_void,
-    /// Lets the AI of worm `worm` (a position in `LieroScene::worms`) draw its
-    /// debug output, clipped to `clip`.
-    pub draw_ai_debug: unsafe extern "C" fn(ctx: *mut c_void, worm: i32, offs_x: i32, offs_y: i32, clip: LieroRect),
 }
 
 /// Everything a viewport draws. Lists are in C++'s order, which decides what
@@ -278,8 +271,6 @@ pub struct LieroScene {
     /// The game is running (`StateGame`), not paused or over.
     pub state_game: bool,
     pub is_replay: bool,
-
-    pub hooks: LieroViewportHooks,
 }
 
 /// C++ integer division, which Rust panics on where C++ is undefined.
@@ -634,7 +625,7 @@ impl<'a> Scene<'a> {
     /// debug output.
     unsafe fn draw_worms(&self, scr: &LieroBitmap, offs: LieroIVec2, rand: &mut LieroRand) {
         let s = self.s;
-        for (i, w) in self.worms.iter().enumerate() {
+        for w in self.worms.iter() {
             if w.visible {
                 let x = ftoi(w.pos.x) - 7 + offs.x;
                 let y = ftoi(w.pos.y) - 5 + offs.y;
@@ -682,9 +673,7 @@ impl<'a> Scene<'a> {
                 }
             }
 
-            if w.has_ai {
-                (s.hooks.draw_ai_debug)(s.hooks.ctx, i as i32, offs.x, offs.y, scr.clip);
-            }
+            draw_traces(scr, slice(w.traces, w.trace_count as i32), offs);
         }
     }
 
@@ -996,6 +985,19 @@ pub unsafe extern "C" fn liero_viewport_process(
     vp.shake_and_clamp();
 }
 
+/// The positions a predictive bot's plans went through
+/// (`FollowAI::drawDebug`), with `Bitmap::setPixel`'s clipping.
+unsafe fn draw_traces(scr: &LieroBitmap, traces: &[LieroAiTrace], offs: LieroIVec2) {
+    let clip = scr.clip;
+    for t in traces {
+        let (x, y) = (ftoi(t.x).wrapping_add(offs.x), ftoi(t.y).wrapping_add(offs.y));
+        let (dx, dy) = (x.wrapping_sub(clip.x1), y.wrapping_sub(clip.y1));
+        if dx >= 0 && dx < clip.x2.wrapping_sub(clip.x1) && dy >= 0 && dy < clip.y2.wrapping_sub(clip.y1) {
+            *scr.pixels.offset(y as isize * scr.pitch as isize + x as isize) = t.color;
+        }
+    }
+}
+
 /// Draws a viewport on `scr`: `Viewport::draw` for `LIERO_VIEWPORT_WORM`,
 /// `SpectatorViewport::draw` for `LIERO_VIEWPORT_SPECTATOR`. `self_index` is
 /// a split-screen viewport's position in `scene.viewports`.
@@ -1060,7 +1062,8 @@ mod tests {
             steerable_count: 0,
             steerable_sum_x: 0,
             steerable_sum_y: 0,
-            has_ai: false,
+            traces: std::ptr::null(),
+            trace_count: 0,
         }
     }
 
@@ -1130,6 +1133,23 @@ mod tests {
     }
 
     #[test]
+    fn traces_are_clipped() {
+        let mut screen = vec![0u8; 10 * 10];
+        let scr = LieroBitmap {
+            pixels: screen.as_mut_ptr(),
+            w: 10,
+            h: 10,
+            pitch: 10,
+            clip: LieroRect { x1: 2, y1: 3, x2: 6, y2: 7 },
+        };
+        let t = |x: i32, y: i32| LieroAiTrace { x: x << 16, y: y << 16, color: 9 };
+        let traces = [t(0, 4), t(1, 3), t(2, 3), t(5, 6), t(6, 6), t(5, 7), t(4, 2)];
+        unsafe { draw_traces(&scr, &traces, LieroIVec2 { x: 1, y: 0 }) };
+        let set: Vec<(usize, usize)> = (0..100).filter(|&i| screen[i] == 9).map(|i| (i % 10, i / 10)).collect();
+        assert_eq!(set, vec![(2, 3), (3, 3)]);
+    }
+
+    #[test]
     fn spectator_viewport_only_shakes() {
         let mut vp = viewport();
         vp.x = 50;
@@ -1168,8 +1188,6 @@ mod tests {
         wobjects: Vec<LieroViewWObject>,
         screen: Vec<u8>,
     }
-
-    unsafe extern "C" fn no_ai(_: *mut c_void, _: i32, _: i32, _: i32, _: LieroRect) {}
 
     impl TestScene {
         fn new() -> Self {
@@ -1267,7 +1285,6 @@ mod tests {
                 render_res_y: 200,
                 state_game: true,
                 is_replay: false,
-                hooks: LieroViewportHooks { ctx: std::ptr::null_mut(), draw_ai_debug: no_ai },
             };
             f(&mut scene);
 

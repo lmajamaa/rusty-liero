@@ -43,7 +43,6 @@ pub struct SimGame {
     _worm_data: Vec<Box<LieroWormData>>,
 }
 
-unsafe extern "C" fn no_tick(_: *mut c_void) {}
 unsafe extern "C" fn no_ticks(_: *mut c_void) -> u64 {
     0
 }
@@ -53,7 +52,7 @@ unsafe extern "C" fn no_ticks(_: *mut c_void) -> u64 {
 const NO_HOOKS: LieroGameHooks = LieroGameHooks {
     ctx: null_mut(),
     hires_ticks: no_ticks,
-    end_tick: no_tick,
+    process_viewports: false,
 };
 
 impl SimGame {
@@ -95,7 +94,7 @@ impl SimGame {
         let worms: Vec<LieroGameWorm> = worm_data
             .iter_mut()
             .zip(&self.worms)
-            .map(|(d, w)| LieroGameWorm { data: &mut **d, max_health: w.max_health, ai: std::ptr::null_mut() })
+            .map(|(d, w)| LieroGameWorm { data: &mut **d, max_health: w.max_health, ai: std::ptr::null_mut(), name: w.name, color: w.color })
             .collect();
 
         let mut fields = self.fields;

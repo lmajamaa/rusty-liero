@@ -135,19 +135,6 @@ void Game::addSpectatorViewport(SpectatorViewport* vp)
 	spectatorViewports.push_back(vp);
 }
 
-void Game::processViewports()
-{
-	for(std::size_t i = 0; i < viewports.size(); ++i)
-	{
-		viewports[i]->process(*this);
-	}
-	for(std::size_t i = 0; i < spectatorViewports.size(); ++i)
-	{
-		spectatorViewports[i]->process(*this);
-	}
-
-}
-
 void Game::drawViewports(Renderer& renderer, GameState state, bool isReplay)
 {
 	for(std::size_t i = 0; i < viewports.size(); ++i)
@@ -224,7 +211,7 @@ GameView::GameView(Game& game)
 
 	for (Worm* w : game.worms)
 	{
-		LieroGameWorm v = { w->rust(), w->settings->health, w->ai.get() };
+		LieroGameWorm v = { w->rust(), w->settings->health, w->ai.get(), w->settings->name.view(), w->settings->color };
 		worms.push_back(v);
 	}
 
@@ -306,19 +293,13 @@ uint64_t hookHiresTicks(void*)
 	return appHiresTicks();
 }
 
-void hookEndTick(void* ctx)
-{
-	Game& game = gameOf(ctx);
-	game.processViewports();
-}
-
 } // namespace
 
 void Game::processFrame()
 {
 	GameView view(*this);
 	LieroGameHooks hooks = {
-		this, hookHiresTicks, hookEndTick,
+		this, hookHiresTicks, true,
 	};
 	liero_game_process_frame(&view.fields, &view.settings, &hooks);
 }
@@ -327,7 +308,7 @@ void Game::processAis(bool timed)
 {
 	GameView view(*this);
 	LieroGameHooks hooks = {
-		this, hookHiresTicks, hookEndTick,
+		this, hookHiresTicks, true,
 	};
 	LieroAiSettings ai = { settings->aiFrames, settings->aiMutations, settings->aiTraces };
 	liero_game_process_ais(&view.fields, &view.settings, &ai, timed ? &hooks : nullptr);

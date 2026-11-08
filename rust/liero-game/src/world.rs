@@ -1264,7 +1264,7 @@ impl<'a> World<'a> {
         self.g.game_mode_tick();
 
         // Store old control states so we can see what changes (mainly for
-        // replays). Neither the viewports nor the stats in `end_tick` read
+        // replays). Neither the viewports nor the stats at the end read
         // them.
         for i in 0..self.worm_count() {
             unsafe {
@@ -1273,7 +1273,9 @@ impl<'a> World<'a> {
             }
         }
 
-        unsafe { (self.h.end_tick)(self.h.ctx) };
+        if self.h.process_viewports {
+            unsafe { crate::scene::process_viewports(self.g.f) };
+        }
         self.stats_tick(true);
     }
 }

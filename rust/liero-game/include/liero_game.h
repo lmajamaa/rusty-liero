@@ -631,6 +631,14 @@ typedef struct LieroWormData {
 } LieroWormData;
 
 /**
+ * Text from C++: `len` bytes from `ptr`.
+ */
+typedef struct LieroStr {
+  const uint8_t *ptr;
+  uintptr_t len;
+} LieroStr;
+
+/**
  * A worm, as the game rules see it.
  */
 typedef struct LieroGameWorm {
@@ -643,6 +651,11 @@ typedef struct LieroGameWorm {
    * The worm's bot, if any (null for a human).
    */
   struct LieroWormAi *ai;
+  /**
+   * The worm's name and colour, from its settings.
+   */
+  struct LieroStr name;
+  int32_t color;
 } LieroGameWorm;
 
 /**
@@ -862,14 +875,6 @@ typedef struct LieroLevel {
   int32_t width;
   int32_t height;
 } LieroLevel;
-
-/**
- * Text from C++: `len` bytes from `ptr`.
- */
-typedef struct LieroStr {
-  const uint8_t *ptr;
-  uintptr_t len;
-} LieroStr;
 
 typedef struct LieroTcWeapon {
   /**
@@ -1245,8 +1250,8 @@ typedef struct LieroAiSettings {
 } LieroAiSettings;
 
 /**
- * What C++ does during a tick: the clock and the viewports. `ctx` is
- * passed back to each function.
+ * What the tick takes from C++: the clock, and whether to move the
+ * viewports. `ctx` is passed back to `hires_ticks`.
  */
 typedef struct LieroGameHooks {
   void *ctx;
@@ -1255,9 +1260,10 @@ typedef struct LieroGameHooks {
    */
   uint64_t (*hires_ticks)(void *ctx);
   /**
-   * The viewports at the end of the tick.
+   * Whether the tick ends by processing the viewports, which the AI's
+   * copies of the game don't.
    */
-  void (*end_tick)(void *ctx);
+  bool process_viewports;
 } LieroGameHooks;
 
 /**
@@ -2310,6 +2316,23 @@ typedef struct LieroStatsScene {
 } LieroStatsScene;
 
 /**
+ * What a draw needs besides the game: the settings the tick doesn't use,
+ * and the screen.
+ */
+typedef struct LieroDrawSettings {
+  bool names_on_bonuses;
+  bool allow_viewing_spawn_point;
+  bool map;
+  int32_t render_res_x;
+  int32_t render_res_y;
+  /**
+   * The game is running (`StateGame`), not paused or over.
+   */
+  bool state_game;
+  bool is_replay;
+} LieroDrawSettings;
+
+/**
  * One of a worm's weapon slots.
  */
 typedef struct LieroViewWormWeapon {
@@ -2362,9 +2385,11 @@ typedef struct LieroViewWorm {
   int32_t steerable_sum_x;
   int32_t steerable_sum_y;
   /**
-   * The worm has an AI, which may draw debug output.
+   * Where the worm's predictive bot's plans went, with `aiTraces` on,
+   * drawn as debug output.
    */
-  bool has_ai;
+  const struct LieroAiTrace *traces;
+  uintptr_t trace_count;
 } LieroViewWorm;
 
 /**
@@ -2451,22 +2476,6 @@ typedef struct LieroSpriteSet {
 } LieroSpriteSet;
 
 /**
- * What C++ draws. `ctx` is passed back.
- */
-typedef struct LieroViewportHooks {
-  void *ctx;
-  /**
-   * Lets the AI of worm `worm` (a position in `LieroScene::worms`) draw its
-   * debug output, clipped to `clip`.
-   */
-  void (*draw_ai_debug)(void *ctx,
-                        int32_t worm,
-                        int32_t offs_x,
-                        int32_t offs_y,
-                        struct LieroRect clip);
-} LieroViewportHooks;
-
-/**
  * Everything a viewport draws. Lists are in C++'s order, which decides what
  * is drawn on top.
  */
@@ -2550,7 +2559,6 @@ typedef struct LieroScene {
    */
   bool state_game;
   bool is_replay;
-  struct LieroViewportHooks hooks;
 } LieroScene;
 
 /**
@@ -4643,6 +4651,21 @@ void liero_time_to_string(int32_t sec, uint8_t *out);
  * `out` must hold 10 bytes.
  */
 void liero_time_to_string_ex(int32_t ms, bool force_hours, bool force_minutes, uint8_t *out);
+
+/**
+ * Draws viewport `vp`, of `kind`, on `scr` (`Viewport::draw` and
+ * `SpectatorViewport::draw`).
+ *
+ * # Safety
+ * The pointers in `game` and `settings` are valid, and `vp` is one of the
+ * game's viewports.
+ */
+void liero_game_draw_viewport(const struct LieroGameFields *game,
+                              const struct LieroGameSettings *settings,
+                              const struct LieroDrawSettings *draw,
+                              struct LieroViewport *vp,
+                              int32_t kind,
+                              const struct LieroBitmap *scr);
 
 /**
  * See `LieroViewport::new`.
