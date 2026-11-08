@@ -711,6 +711,86 @@ pub unsafe extern "C" fn liero_tc_free(tc: *mut LieroTc) {
     }
 }
 
+
+const fn str_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// The index of TC constant `name` (C++'s `C` enum).
+pub(crate) const fn c(name: &str) -> usize {
+    let order = liero_data::exe::CONSTANT_ORDER;
+    let mut i = 0;
+    while i < order.len() {
+        if str_eq(order[i], name) {
+            return i;
+        }
+        i += 1;
+    }
+    panic!("no such constant");
+}
+
+/// The index of TC hack `name` (C++'s `H` enum).
+pub(crate) const fn h(name: &str) -> usize {
+    let hacks = liero_data::exe::HACKS;
+    let mut i = 0;
+    while i < hacks.len() {
+        if str_eq(hacks[i].0, name) {
+            return i;
+        }
+        i += 1;
+    }
+    panic!("no such hack");
+}
+
+/// The index of TC text `name` (C++'s `S` enum).
+pub(crate) const fn s(name: &str) -> usize {
+    let texts = liero_data::exe::TEXTS;
+    let mut i = 0;
+    while i < texts.len() {
+        if str_eq(texts[i].0, name) {
+            return i;
+        }
+        i += 1;
+    }
+    panic!("no such text");
+}
+
+impl LieroTcData {
+    /// TC constant `i` (`common.C[i]`), from `c`.
+    pub(crate) fn constant(&self, i: usize) -> i32 {
+        assert!(i < self.constant_count);
+        unsafe { *self.constants.add(i) }
+    }
+
+    /// TC text `i` (`common.S[i]`), from `s`.
+    pub(crate) fn text(&self, i: usize) -> &[u8] {
+        assert!(i < self.text_count);
+        unsafe { (*self.texts.add(i)).bytes() }
+    }
+
+    /// The weapons in menu order (`weapOrder`), as indexes into `weapons`.
+    pub(crate) fn weapon_order(&self) -> &[i32] {
+        unsafe { std::slice::from_raw_parts(self.weap_order, self.weapon_count) }
+    }
+
+    /// Weapon `i`'s name.
+    pub(crate) fn weapon_name(&self, i: usize) -> &[u8] {
+        assert!(i < self.weapon_count);
+        unsafe { (*self.weapons.add(i)).name.bytes() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

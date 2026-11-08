@@ -321,7 +321,7 @@ impl LieroScreen {
         LieroScreen { data: std::ptr::null_mut(), tick: None, resume: None, free: None }
     }
 
-    unsafe fn release(self) {
+    pub(crate) unsafe fn release(self) {
         if let Some(free) = self.free {
             free(self.data);
         }

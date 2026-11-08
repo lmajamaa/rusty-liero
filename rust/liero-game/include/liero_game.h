@@ -178,6 +178,31 @@
 #define LIERO_MAIN_TC 9
 
 /**
+ * The main menu's item ids (`MainMenu`).
+ */
+#define LIERO_MAIN_RESUME_GAME 0
+
+#define LIERO_MAIN_NEW_GAME 1
+
+/**
+ * What choosing a replay closes the menu with.
+ */
+#define LIERO_MAIN_REPLAY 8
+
+/**
+ * The file selectors C++ opens (`LieroMenusHooks::open_selector`).
+ */
+#define LIERO_SELECTOR_LEVEL 0
+
+#define LIERO_SELECTOR_PROFILE 1
+
+#define LIERO_SELECTOR_REPLAY 2
+
+#define LIERO_SELECTOR_OPTIONS 3
+
+#define LIERO_SELECTOR_TC 4
+
+/**
  * Number of entries in the cos/sin table: a full turn in 128 steps.
  */
 #define LIERO_COS_SIN_ENTRIES 128
@@ -426,6 +451,12 @@ typedef struct LieroLevelBox LieroLevelBox;
  * A menu Rust owns for C++ (`Menu`).
  */
 typedef struct LieroMenuBox LieroMenuBox;
+
+/**
+ * The menus (`Gfx`'s `mainMenu`, `settingsMenu`, `playerMenu`,
+ * `hiddenMenu` and `curMenu`).
+ */
+typedef struct LieroMenus LieroMenus;
 
 /**
  * The mixer's channels and time. Opaque to C++.
@@ -1579,14 +1610,9 @@ typedef struct LieroMenuItemSpec {
  */
 typedef struct LieroMenuScreenHooks {
   /**
-   * The menu's box, which stays put while the screen is up.
+   * The menus, which outlive the screen.
    */
-  struct LieroMenuBox *(*menu)(int32_t kind);
-  /**
-   * The menu taking the keys (`Gfx::curMenu`), and changing it.
-   */
-  int32_t (*cur)(void);
-  void (*set_cur)(int32_t kind);
+  struct LieroMenus *menus;
   /**
    * Blacks out the palettes before the first frame.
    */
@@ -1613,29 +1639,6 @@ typedef struct LieroMenuScreenHooks {
    */
   void (*draw)(void);
   /**
-   * The menu's `onEnter` and `onLeftRight` on its selected item.
-   */
-  int32_t (*enter)(int32_t kind);
-  bool (*left_right)(int32_t kind, int32_t dir);
-  /**
-   * Moves the screen the last `enter` opened (`Gfx::open`) into `out`.
-   * False if it opened none.
-   */
-  bool (*take_opened)(struct LieroScreen *out);
-  /**
-   * What the item that opened it does with the screen's result; returns
-   * what the item's `onEnter` would have.
-   */
-  int32_t (*then)(int32_t result);
-  /**
-   * Shows player `player`'s menu (`Gfx::playerSettings`).
-   */
-  void (*player_settings)(int32_t player);
-  /**
-   * Shows the options menu (`Gfx::openHiddenMenu`).
-   */
-  void (*open_hidden_menu)(void);
-  /**
    * F8: the developers' random TC.
    */
   void (*randomize_tc)(void);
@@ -1644,6 +1647,54 @@ typedef struct LieroMenuScreenHooks {
    */
   void (*release_left_right)(void);
 } LieroMenuScreenHooks;
+
+/**
+ * What the menus call in C++.
+ */
+typedef struct LieroMenusHooks {
+  /**
+   * The settings the menus change, and a player's.
+   */
+  struct LieroSettingsBox *(*settings)(void);
+  struct LieroWormSettingsBox *(*worm_settings)(int32_t player);
+  const struct LieroTcData *(*tc)(void);
+  /**
+   * Frames the menu has shown, for how fast held keys step a number.
+   */
+  uint32_t (*menu_cycles)(void);
+  /**
+   * The window's double size, and setting it or full screen. These don't
+   * update the options menu, which does it itself.
+   */
+  bool *(*double_res)(void);
+  void (*set_double_res)(bool on);
+  void (*set_fullscreen)(bool on);
+  /**
+   * A file selector (`LIERO_SELECTOR_*`), for `player`'s profile; an
+   * empty screen if listing its folder threw.
+   */
+  struct LieroScreen (*open_selector)(int32_t kind, int32_t player);
+  /**
+   * Switches to the TC the TC selector loaded, if it loaded one.
+   */
+  bool (*take_chosen_tc)(void);
+  /**
+   * The setup file loaded or saved last, and saving the setup as
+   * `name`.cfg. False if it threw.
+   */
+  struct LieroStr (*settings_path)(void);
+  bool (*save_options)(struct LieroStr name);
+  /**
+   * `player`'s profile file, if there is one.
+   */
+  bool (*profile_path)(int32_t player, struct LieroStr *path);
+  /**
+   * Saves `player`'s profile to its file, or as Profiles/`name`.lpf.
+   * False if it threw.
+   */
+  bool (*save_profile)(int32_t player);
+  bool (*save_profile_as)(int32_t player, struct LieroStr name);
+} LieroMenusHooks;
 
 typedef struct LieroWormSettings {
   int32_t health;
@@ -3877,6 +3928,59 @@ void liero_menu_box_draw(struct LieroMenuBox *b,
  * The main menu screen.
  */
 struct LieroScreen liero_menu_screen(struct LieroMenuScreenHooks hooks);
+
+/**
+ * The menus, empty (`Menu(x, y)` for each).
+ */
+struct LieroMenus *liero_menus_new(struct LieroMenusHooks hooks);
+
+/**
+ * # Safety
+ * `m` came from `liero_menus_new` and isn't used after.
+ */
+void liero_menus_free(struct LieroMenus *m);
+
+/**
+ * Empties the menus, as they were made, keeping their addresses.
+ */
+void liero_menus_reset(struct LieroMenus *m);
+
+/**
+ * Adds the menus' items (`Gfx::loadMenus`).
+ */
+void liero_menus_load(struct LieroMenus *m);
+
+struct LieroMenuBox *liero_menus_box(struct LieroMenus *m, int32_t kind);
+
+int32_t liero_menus_cur(const struct LieroMenus *m);
+
+void liero_menus_set_cur(struct LieroMenus *m, int32_t kind);
+
+void liero_menus_player_settings(struct LieroMenus *m, int32_t player);
+
+void liero_menus_open_hidden(struct LieroMenus *m);
+
+void liero_menus_update_items(struct LieroMenus *m, int32_t kind);
+
+bool liero_menus_left_right(struct LieroMenus *m, int32_t kind, int32_t dir);
+
+/**
+ * Enter on `kind`'s selected item. A screen it opened is dropped: the menu
+ * checks only press items that open none.
+ */
+int32_t liero_menus_enter(struct LieroMenus *m, int32_t kind);
+
+/**
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_menus_draw(struct LieroMenus *m,
+                      int32_t kind,
+                      const struct LieroBitmap *scr,
+                      const struct LieroFont *font,
+                      bool disabled,
+                      int32_t x,
+                      bool show_disabled_selection);
 
 int32_t liero_vector_length(int32_t x, int32_t y);
 

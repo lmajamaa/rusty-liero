@@ -15,8 +15,7 @@
 #include "gfx/bitmap.hpp"
 #include "gfx/renderer.hpp"
 #include "menu/menu.hpp"
-#include "menu/hiddenMenu.hpp"
-#include "menu/mainMenu.hpp"
+#include "menu/menuIds.hpp"
 #include "rand.hpp"
 #include "keys.hpp"
 #include "settings.hpp"
@@ -36,8 +35,8 @@ void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::
 // A message in a box centred on (x, y), as `Gfx::infoBox` shows it.
 void drawInfoBox(Common& common, Bitmap& bmp, std::string const& text, int x, int y);
 
-// The text being typed, `str`, in a box at (x, y) over `frozen`, as
-// `inputStringScreen` shows it.
+// The text being typed, `str`, in a box at (x, y) over `frozen`, as the
+// text box shows it.
 void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const& str, int x, int y, bool centered);
 
 struct Key
@@ -55,93 +54,8 @@ struct Game;
 struct Controller;
 struct Gfx;
 
-struct PlayerMenu : Menu
-{
-	PlayerMenu(int x, int y)
-	: Menu(x, y)
-	{
-	}
-
-	enum
-	{
-		PlName,
-		PlHealth,
-		PlRed, PlGreen, PlBlue,
-		PlUp,
-		PlDown,
-		PlLeft,
-		PlRight,
-		PlFire,
-		PlChange,
-		PlJump,
-		PlDig,
-		PlWeap0,
-		PlController = PlWeap0 + 5,
-		PlSaveProfile,
-		PlSaveProfileAs,
-		PlLoadProfile,
-		PlLoadedProfile,
-	};
-
-	virtual void drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled);
-
-	virtual ItemBehavior* getItemBehavior(Common& common, int item);
-
-	std::shared_ptr<WormSettings> ws;
-};
-
-struct SettingsMenu : Menu
-{
-	enum
-	{
-		SiGameMode,
-		SiLives,
-		SiTimeToLose, // Extra
-		SiTimeToWin,
-		SiZoneTimeout,
-		SiFlagsToWin, // Extra
-		SiLoadingTimes,
-		SiMaxBonuses,
-		SiNamesOnBonuses,
-		SiMap,
-		SiAmountOfBlood,
-		SiLevel,
-		SiRegenerateLevel,
-		SiWeaponOptions,
-		LoadOptions,
-		SaveOptions,
-		LoadChange,
-	};
-
-	SettingsMenu(int x, int y)
-	: Menu(x, y)
-	{
-	}
-
-	virtual ItemBehavior* getItemBehavior(Common& common, int item);
-
-	virtual void onUpdate();
-};
-
-
-// The file selectors and weapon options (gfx.cpp). The TC selector puts the
-// TC chosen in `chosen`. The replay selector closes with MainMenu::MaReplay
-// when one is chosen, -1 if not.
-std::unique_ptr<Screen> selectLevelScreen();
-std::unique_ptr<Screen> selectProfileScreen(WormSettings& ws);
-std::unique_ptr<Screen> selectReplayScreen();
-std::unique_ptr<Screen> selectOptionsScreen();
-std::unique_ptr<Screen> selectTcScreen(std::shared_ptr<std::unique_ptr<Common>> chosen);
-std::unique_ptr<Screen> weaponOptionsScreen();
-
 // A message (Gfx::infoBox) until a key is pressed.
 std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
-// Waits for a key, joystick button or stick move and closes with its key.
-// Unless `extended`, keys only the extended controls have are passed over.
-std::unique_ptr<Screen> keyChoiceScreen(bool extended);
-// Typing into a box at (x, y) over the frozen screen; `*text` is the start
-// and, when Enter closes it with 1, what was typed. Escape closes it with 0.
-std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, bool digitsOnly = false);
 
 struct Joystick {
 	SDL_GameController *sdlGameController;
@@ -243,8 +157,9 @@ struct Gfx
 
 	std::string getKeyName(uint32_t key);
 	void setSpectatorFullscreen(bool newFullscreen);
-	void setFullscreen(bool newFullscreen);
-	void setDoubleRes(bool newDoubleRes);
+	// `updateMenu`: show the change in the options menu.
+	void setFullscreen(bool newFullscreen, bool updateMenu = true);
+	void setDoubleRes(bool newDoubleRes, bool updateMenu = true);
 
 	void saveSettings(FsNode node);
 	bool loadSettings(FsNode node);
@@ -275,17 +190,9 @@ struct Gfx
 	std::function<int(int)> openingThen;
 	void drawBasicMenu(/*int curSel*/);
 	void drawSpectatorInfo();
-	void playerSettings(int player);
-	void openHiddenMenu();
 
 	// A text box from a menu item (`open`): `then` gets whether Enter closed
 	// it and the text, and returns what onEnter would have.
-	void openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, bool digitsOnly = false);
-	// A number box: Enter puts the number typed, kept within min and max, in
-	// `dest`. Then `then` runs.
-	void openInputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y, std::function<void()> then);
-	// Opens a message from a controller; the game screen shows it once the
-	// controller's focus or process returns.
 	void infoBox(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
 
 	static void preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256]);
@@ -335,12 +242,13 @@ struct Gfx
 	// liero.cfg as saveSettingsIfChanged last read or wrote it.
 	std::string savedSettingsText;
 
-	MainMenu mainMenu;
-	SettingsMenu settingsMenu;
-	PlayerMenu playerMenu;
-	HiddenMenu hiddenMenu;
+	// The menus, in Rust, and views of them.
+	LieroMenus* menus;
+	Menu mainMenu;
+	Menu settingsMenu;
+	Menu playerMenu;
+	Menu hiddenMenu;
 
-	Menu* curMenu;
 	std::string prevSelectedReplayPath;
 	FsNode settingsNode; // Currently loaded settings file. TODO: This is only used for display. We could just remember the name.
 	std::shared_ptr<Settings> settings;

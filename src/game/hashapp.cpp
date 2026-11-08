@@ -323,11 +323,7 @@ void hashApp(std::shared_ptr<Common> common)
 
 	// Fresh menus, as the game starts with: the menu checks before this one
 	// leave items hidden and selected.
-	gfx.mainMenu = MainMenu(53, 20);
-	gfx.settingsMenu = SettingsMenu(178, 20);
-	gfx.playerMenu = PlayerMenu(178, 20);
-	gfx.hiddenMenu = HiddenMenu(178, 20);
-	gfx.curMenu = nullptr;
+	liero_menus_reset(gfx.menus);
 	gfx.settings.reset(new Settings);
 	gfx.common = common;
 	gfx.setConfigPath(root);

@@ -16,7 +16,7 @@
 #include "spectatorviewport.hpp"
 #include "worm.hpp"
 #include "mixer/player.hpp"
-#include "menu/arrayEnumBehavior.hpp"
+#include <functional>
 
 #include <cstdio>
 #include <memory>
@@ -70,31 +70,123 @@ void print(char const* name, int step, Fnv const& f)
 	std::printf("%s %d %016llx frame\n", name, step, (unsigned long long)f.h);
 }
 
-// Weapon availability, as `Gfx::weaponOptions` shows it.
-struct AvailabilityMenu : Menu
+// What runMenu does to a menu: left or right, Enter, showing every item's
+// value, and drawing.
+struct MenuOps
 {
-	AvailabilityMenu(int x, int y)
-	: Menu(x, y)
-	{
-	}
-
-	ItemBehavior* getItemBehavior(Common& common, int item)
-	{
-		int index = common.weapOrder[itemId(item)];
-		return new ArrayEnumBehavior(common, gfx.settings->weapTable[index], common.texts.weapStates);
-	}
+	Menu& menu;
+	std::function<void(int)> leftRight;
+	std::function<void()> enter;
+	std::function<void()> updateItems;
+	std::function<void(Renderer&, bool, int, bool)> draw;
 };
 
-// Presses random keys in `menu` for `steps` steps. Items in `noEnter` and
+// One of the menus in Rust (rust/liero-game/src/menus.rs).
+MenuOps rustMenu(Menu& menu, int kind)
+{
+	Common& common = *gfx.common;
+	return MenuOps{
+		menu,
+		[kind](int dir) { liero_menus_left_right(gfx.menus, kind, dir); },
+		[kind] { liero_menus_enter(gfx.menus, kind); },
+		[kind] { liero_menus_update_items(gfx.menus, kind); },
+		[kind, &common](Renderer& r, bool disabled, int x, bool show)
+		{
+			LieroBitmap scr = r.bmp.view();
+			LieroFont font = common.font.view();
+			liero_menus_draw(gfx.menus, kind, &scr, &font, disabled, x, show);
+		}
+	};
+}
+
+// Weapon availability, as the weapon options show it: each item is the
+// weapon's entry in the weapon table, shown by name.
+struct Availability
+{
+	Availability(Common& common, Menu& menu)
+	: common(common), menu(menu)
+	{
+		for (auto const& s : common.texts.weapStates)
+			names.push_back({ reinterpret_cast<uint8_t const*>(s.data()), s.size() });
+	}
+
+	LieroItemBehavior behavior(int item)
+	{
+		LieroItemBehavior b;
+		b.kind = LieroItemKind_Enum;
+		b.flag = nullptr;
+		b.set_flag = nullptr;
+		b.value = reinterpret_cast<int32_t*>(&gfx.settings->weapTable[common.weapOrder[menu.itemId(item)]]);
+		b.min = 0;
+		b.max = int32_t(names.size()) - 1;
+		b.step = 1;
+		b.scroll_interval = 5;
+		b.value_kind = LIERO_MENU_VALUE_INTEGER;
+		b.allow_entry = true;
+		b.names = names.data();
+		b.name_count = names.size();
+		return b;
+	}
+
+	void update(int item)
+	{
+		LieroItemBehavior b = behavior(item);
+		char buf[64];
+		std::size_t len = liero_item_value_text(&b, reinterpret_cast<uint8_t*>(buf), sizeof(buf));
+		menu.setItemValue(item, std::string(buf, std::min(len, sizeof(buf))));
+	}
+
+	void updateItems()
+	{
+		for (int i = 0; i < menu.itemCount(); ++i)
+			update(i);
+	}
+
+	void apply(int item, LieroItemAction a)
+	{
+		if (a.update_item)
+			update(item);
+		if (a.update_menu)
+			updateItems();
+	}
+
+	MenuOps ops()
+	{
+		return MenuOps{
+			menu,
+			[this](int dir)
+			{
+				if (!menu.isSelectionValid()) return;
+				LieroItemBehavior b = behavior(menu.selection());
+				apply(menu.selection(), liero_item_left_right(&b, dir, gfx.menuCycles));
+			},
+			[this]
+			{
+				if (!menu.isSelectionValid()) return;
+				LieroItemBehavior b = behavior(menu.selection());
+				apply(menu.selection(), liero_item_enter(&b));
+			},
+			[this] { updateItems(); },
+			[this](Renderer& r, bool disabled, int x, bool show) { menu.draw(common, r, disabled, x, show); }
+		};
+	}
+
+	Common& common;
+	Menu& menu;
+	std::vector<LieroStr> names;
+};
+
+// Presses random keys in the menu for `steps` steps. Items in `noEnter` and
 // `noLeftRight` would open a dialog or change the window.
-void runMenu(Common& common, char const* name, Menu& menu, std::set<int> const& noEnter,
+void runMenu(char const* name, MenuOps ops, std::set<int> const& noEnter,
 	std::set<int> const& noLeftRight, bool contains, uint32_t seed, int steps)
 {
+	Menu& menu = ops.menu;
 	Rand r(seed);
 	Renderer& rr = gfx.playRenderer;
 	Uint32 time = 0;
 
-	menu.updateItems(common);
+	ops.updateItems();
 	menu.moveToFirstVisible();
 
 	for (int step = 0; step < steps; ++step)
@@ -108,11 +200,11 @@ void runMenu(Common& common, char const* name, Menu& menu, std::set<int> const& 
 		case 3: menu.scroll(int(r(5)) - 2); break;
 		case 4:
 			if (!noLeftRight.count(id))
-				menu.onLeftRight(common, r(2) ? 1 : -1);
+				ops.leftRight(r(2) ? 1 : -1);
 			break;
 		case 5:
 			if (!noEnter.count(id))
-				menu.onEnter(common);
+				ops.enter();
 			break;
 		case 6:
 		{
@@ -139,7 +231,7 @@ void runMenu(Common& common, char const* name, Menu& menu, std::set<int> const& 
 				menu.setVisibility(menu.itemId(i), !menu.itemVisible(i));
 			break;
 		}
-		case 8: menu.updateItems(common); break;
+		case 8: ops.updateItems(); break;
 		}
 
 		++gfx.menuCycles;
@@ -150,7 +242,7 @@ void runMenu(Common& common, char const* name, Menu& menu, std::set<int> const& 
 		bool disabled = r(5) == 0;
 		int x = r(4) == 0 ? int(r(300)) : -1;
 		bool showDisabledSelection = r(2) == 1;
-		menu.draw(common, rr, disabled, x, showDisabledSelection);
+		ops.draw(rr, disabled, x, showDisabledSelection);
 		hashScreen(f, rr);
 		print(name, step, f);
 	}
@@ -177,33 +269,34 @@ void runMenus(std::shared_ptr<Common> common)
 	gfx.mainMenu.setVisibility(MainMenu::MaResumeGame, false);
 	gfx.mainMenu.setItemString(gfx.mainMenu.indexFromId(MainMenu::MaNewGame), "NEW GAME (F1)");
 
-	runMenu(c, "menu-main", gfx.mainMenu, { MainMenu::MaReplays, MainMenu::MaTc }, {}, false, 1, 200);
+	runMenu("menu-main", rustMenu(gfx.mainMenu, LIERO_MENU_MAIN), { MainMenu::MaReplays, MainMenu::MaTc }, {}, false, 1, 200);
 
-	runMenu(c, "menu-setup", gfx.settingsMenu,
+	runMenu("menu-setup", rustMenu(gfx.settingsMenu, LIERO_MENU_SETTINGS),
 		{ SettingsMenu::SiLevel, SettingsMenu::SiWeaponOptions, SettingsMenu::LoadOptions, SettingsMenu::SaveOptions,
 		  SettingsMenu::SiLoadingTimes, SettingsMenu::SiMaxBonuses, SettingsMenu::SiLives, SettingsMenu::SiFlagsToWin },
 		{}, false, 2, 400);
 
-	gfx.playerMenu.ws = gfx.settings->wormSettings[0];
+	liero_menus_player_settings(gfx.menus, 0);
 	std::set<int> playerNoEnter;
 	for (int id = PlayerMenu::PlName; id <= PlayerMenu::PlLoadProfile; ++id)
 		if (id != PlayerMenu::PlController)
 			playerNoEnter.insert(id);
-	runMenu(c, "menu-player", gfx.playerMenu, playerNoEnter, {}, false, 3, 400);
+	runMenu("menu-player", rustMenu(gfx.playerMenu, LIERO_MENU_PLAYER), playerNoEnter, {}, false, 3, 400);
 
-	runMenu(c, "menu-options", gfx.hiddenMenu,
-		{ HiddenMenu::DoubleRes, HiddenMenu::Fullscreen, HiddenMenu::SpectatorWindow,
+	runMenu("menu-options", rustMenu(gfx.hiddenMenu, LIERO_MENU_HIDDEN),
+		{ HiddenMenu::DoubleRes, HiddenMenu::Fullscreen,
 		  HiddenMenu::AiFrames, HiddenMenu::AiMutations, HiddenMenu::PaletteSelect, HiddenMenu::AiParallels },
-		{ HiddenMenu::DoubleRes, HiddenMenu::Fullscreen, HiddenMenu::SpectatorWindow }, false, 4, 300);
+		{ HiddenMenu::DoubleRes, HiddenMenu::Fullscreen }, false, 4, 300);
 
 	// Long enough to scroll, and searched by any part of the name like the
 	// file selectors.
-	AvailabilityMenu weapons(179, 28);
+	Menu weapons(179, 28);
 	weapons.setHeight(14);
 	weapons.valueOffsetX = 89;
 	for (int i = 0; i < (int)c.weapons.size(); ++i)
 		weapons.addItem(MenuItem(48, 7, tcString(c.weapons[c.weapOrder[i]].name), i));
-	runMenu(c, "menu-weapons", weapons, {}, {}, true, 5, 400);
+	Availability availability(c, weapons);
+	runMenu("menu-weapons", availability.ops(), {}, {}, true, 5, 400);
 }
 
 // The weapon selection screen with both worms' controls pressed at random.

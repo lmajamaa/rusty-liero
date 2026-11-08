@@ -18,7 +18,6 @@
 use std::ffi::c_void;
 use std::ptr::{addr_of_mut, null_mut};
 
-use liero_data::exe::{CONSTANT_ORDER, HACKS};
 
 use crate::game::{Game, LieroBonusState, LieroGameHooks, LieroRect};
 use crate::level::{
@@ -37,7 +36,7 @@ use crate::objects::{
 };
 use crate::object::LieroBObject;
 use crate::rand::LieroRand;
-use crate::tc::{LieroTcData, LieroTcNObject, LieroTcSObject, LieroTcWeapon};
+use crate::tc::{c, h, LieroTcData, LieroTcNObject, LieroTcSObject, LieroTcWeapon};
 use crate::weapon::{
     liero_wobject_blow_up, liero_wobject_process, LieroBlowUpHooks, LieroWObjectEnv, LieroWObjectFields,
     LieroWeapon, LieroWormFiringHooks, LieroWormWeapon, LIERO_HIT_EXPLODE, LIERO_HIT_REMOVE,
@@ -46,45 +45,6 @@ use crate::worm::{
     liero_worm_process, LieroBonusRef, LieroSteerable, LieroWormConstants, LieroWormData, LieroWormEnv,
     LieroWormHooks, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
 };
-
-const fn str_eq(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut i = 0;
-    while i < a.len() {
-        if a[i] != b[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-/// The index of TC constant `name` (C++'s `C` enum).
-const fn c(name: &str) -> usize {
-    let mut i = 0;
-    while i < CONSTANT_ORDER.len() {
-        if str_eq(CONSTANT_ORDER[i], name) {
-            return i;
-        }
-        i += 1;
-    }
-    panic!("no such constant");
-}
-
-/// The index of TC hack `name` (C++'s `H` enum).
-const fn h(name: &str) -> usize {
-    let mut i = 0;
-    while i < HACKS.len() {
-        if str_eq(HACKS[i].0, name) {
-            return i;
-        }
-        i += 1;
-    }
-    panic!("no such hack");
-}
 
 /// `Settings::wormAnimTab`.
 const WORM_ANIM_TAB: [i32; 4] = [0, 7, 0, 14];
@@ -1742,7 +1702,7 @@ mod tests {
     #[test]
     fn constant_and_hack_indexes_follow_the_cpp_enums() {
         assert_eq!(c("NRInitialLength"), 0);
-        assert_eq!(c("RemExpObject"), CONSTANT_ORDER.len() - 1);
+        assert_eq!(c("RemExpObject"), liero_data::exe::CONSTANT_ORDER.len() - 1);
         assert_eq!(h("FallDamage"), 0);
         assert_eq!(h("MultiJump"), 10);
     }

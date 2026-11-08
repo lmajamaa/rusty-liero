@@ -122,7 +122,7 @@ pub const CONSTANT_ORDER: &[&str] = &[
 ];
 
 /// Pascal strings, in the order they are written to tc.cfg (LIERO_SDEFS).
-pub(crate) const TEXTS: &[(&str, usize)] = &[
+pub const TEXTS: &[(&str, usize)] = &[
     ("InitSound", 0x177F),
     ("LoadingSounds", 0x18F2),
     ("LoadingAndThinking", 0xFB92),

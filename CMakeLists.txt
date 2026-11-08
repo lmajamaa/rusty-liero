@@ -63,9 +63,6 @@ set(GAME_SOURCES
     src/game/controller/localController.cpp
     src/game/controller/replayController.cpp
     src/game/controller/stats_presenter.cpp
-    src/game/menu/hiddenMenu.cpp
-    src/game/menu/itemBehavior.cpp
-    src/game/menu/mainMenu.cpp
     src/game/menu/menu.cpp
     src/game/sdlmain.cpp
 )

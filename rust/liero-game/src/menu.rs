@@ -818,6 +818,13 @@ impl OwnedMenu {
         self.names.is_empty()
     }
 
+    /// Where item `i` is drawn, if it's in view (`Menu::itemPosition`).
+    pub fn item_position(&mut self, i: i32) -> Option<(i32, i32)> {
+        let (mut x, mut y) = (0, 0);
+        self.with(|m, items, n| unsafe { liero_menu_item_position(m, items, n, i, &mut x, &mut y) })
+            .then_some((x, y))
+    }
+
     pub fn move_to(&mut self, i: i32) {
         self.with(|m, items, n| unsafe { liero_menu_move_to(m, items, n, i) });
     }
