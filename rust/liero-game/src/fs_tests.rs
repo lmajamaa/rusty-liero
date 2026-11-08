@@ -9,13 +9,25 @@ fn scratch(name: &str) -> String {
     dir
 }
 
+/// Raw deflate streams from Python's zlib (level 6, wbits -15). Not made
+/// with miniz_oxide's compressor: a debug build makes its tables on the
+/// stack, which overflows the wasm tests' 64 KB.
+fn deflated(data: &[u8]) -> Vec<u8> {
+    match data {
+        b"zip" => vec![171, 202, 44, 0, 0],
+        b"data" => vec![75, 73, 44, 73, 4, 0],
+        d if d == [b'a'; 48] => vec![75, 76, 36, 13, 0, 0],
+        _ => panic!("no deflate stream for {data:?}"),
+    }
+}
+
 /// A zip with `files` (name, contents, deflated), and `bad_crc` on the
 /// first file's checksum.
 fn zip(files: &[(&str, &[u8], bool)], bad_crc: bool) -> Vec<u8> {
     let mut out = Vec::new();
     let mut central = Vec::new();
     for (i, (name, data, deflate)) in files.iter().enumerate() {
-        let body = if *deflate { miniz_oxide::deflate::compress_to_vec(data, 6) } else { data.to_vec() };
+        let body = if *deflate { deflated(data) } else { data.to_vec() };
         let crc = crc32(data) ^ (bad_crc && i == 0) as u32;
         let method: u16 = if *deflate { 8 } else { 0 };
         let offset = out.len() as u32;
