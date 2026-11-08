@@ -142,6 +142,18 @@ pub struct LieroScreenHost {
     /// The frozen screen with the main menu over it, greyed out while
     /// another menu is up (`Gfx::drawBasicMenu`).
     pub draw_basic_menu: Option<unsafe extern "C" fn()>,
+    /// The time, in seconds since 1970 (`appTime`).
+    pub time: Option<unsafe extern "C" fn() -> i64>,
+    /// The stats' clock, in nanoseconds (`appHiresTicks`).
+    pub hires_ticks: Option<unsafe extern "C" fn() -> u64>,
+    /// `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in UTC under
+    /// the app driver and local time otherwise. Writes at most `cap` bytes
+    /// and returns how many.
+    pub replay_time: Option<unsafe extern "C" fn(t: i64, out: *mut u8, cap: usize) -> usize>,
+    /// The config folder, or null.
+    pub config_node: Option<unsafe extern "C" fn() -> *const crate::fs::LieroFsNode>,
+    /// Where the games' sounds go (`DefaultSoundPlayer::out`).
+    pub sound: Option<unsafe extern "C" fn() -> crate::sfx::LieroSoundOut>,
 }
 
 static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
@@ -237,6 +249,27 @@ impl Host {
         if let Some(f) = self.0.menu_fade {
             unsafe { f() }
         }
+    }
+    pub fn time(&self) -> i64 {
+        self.0.time.map_or(0, |f| unsafe { f() })
+    }
+    pub fn hires_ticks(&self) -> u64 {
+        self.0.hires_ticks.map_or(0, |f| unsafe { f() })
+    }
+    pub fn replay_time(&self, t: i64) -> Vec<u8> {
+        let Some(f) = self.0.replay_time else {
+            return Vec::new();
+        };
+        let mut buf = vec![0; 512];
+        let n = unsafe { f(t, buf.as_mut_ptr(), buf.len()) };
+        buf.truncate(n.min(512));
+        buf
+    }
+    pub fn config_node(&self) -> *const crate::fs::LieroFsNode {
+        self.0.config_node.map_or(std::ptr::null(), |f| unsafe { f() })
+    }
+    pub fn sound(&self) -> crate::sfx::LieroSoundOut {
+        self.0.sound.map_or(crate::sfx::LieroSoundOut::NONE, |f| unsafe { f() })
     }
 }
 

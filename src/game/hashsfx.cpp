@@ -20,7 +20,7 @@
 #include "keys.hpp"
 #include "worm.hpp"
 #include "mixer/player.hpp"
-#include "controller/localController.hpp"
+#include "controller/controller.hpp"
 
 #include <SDL.h>
 #include <cstdio>
@@ -194,7 +194,7 @@ void hashKeyMap()
 	print("keys-map", SDL_NUM_SCANCODES / 64, f.h);
 }
 
-struct KeyRecorder : Controller
+struct KeyRecorder : KeySink
 {
 	Fnv f;
 
@@ -203,15 +203,6 @@ struct KeyRecorder : Controller
 		f.add(key);
 		f.add(state);
 	}
-
-	void unfocus() {}
-	void focus() {}
-	bool process() { return true; }
-	void draw(Renderer&, bool) {}
-	bool running() { return false; }
-	Level* currentLevel() { return 0; }
-	Game* currentGame() { return 0; }
-	void swapLevel(Level&) {}
 };
 
 void hashKeyState(Fnv& f)
@@ -372,8 +363,10 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 			c = pool[r(12)];
 	}
 
-	// LocalController holds a Game by value, too big for the wasm stack.
-	std::unique_ptr<LocalController> lc(new LocalController(common, settings));
+	std::unique_ptr<Controller> lc(Controller::local(settings->rust(), common->tc));
+	LieroControllerData& d = lc->data();
+	LieroGame* game = lc->currentGame();
+	auto worm = [game](std::size_t i) { return liero_worm_data(liero_game_worm(game, i)); };
 
 	char name[32];
 	std::snprintf(name, sizeof(name), "keys-controls-%u", seed);
@@ -388,7 +381,7 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 			lc->onKey(int(key), r(2) != 0);
 		}
 		else if (op == 7)
-			lc->goingToMenu = false;
+			d.going_to_menu = false;
 		else if (op == 8)
 		{
 			// The frame skip keys, maybe with ctrl.
@@ -397,24 +390,24 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 				SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL, SDL_SCANCODE_A };
 			for (int i = 0; i < 3; ++i)
 				gfx.setKey(SDLToDOSKey(keys[r(8)]), r(2) != 0);
-			lc->CommonController::process();
+			liero_controller_process(&d, &gfx.dosKeys);
 		}
 		else
 		{
-			Worm& w = *lc->game.worms[r(2)];
-			w.controlStates.istate = r(128);
+			LieroWormData* w = worm(r(2));
+			w->control_states = r(128);
 		}
 
-		for (Worm* w : lc->game.worms)
+		for (std::size_t i = 0; i < liero_game_worm_count(game); ++i)
 		{
-			f.add(w->controlStates.pack());
-			f.add(w->cleanControlStates.pack());
+			f.add(worm(i)->control_states);
+			f.add(worm(i)->clean_control_states);
 		}
-		f.add(lc->fadeValue);
-		f.add(lc->goingToMenu);
-		f.add(lc->frameSkip);
-		f.add(lc->inverseFrameSkip);
-		f.add(lc->cycles);
+		f.add(d.fade_value);
+		f.add(d.going_to_menu);
+		f.add(d.frame_skip);
+		f.add(d.inverse_frame_skip);
+		f.add(d.cycles);
 		for (bool k : gfx.dosKeys.down)
 			f.add(k);
 

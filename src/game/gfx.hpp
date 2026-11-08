@@ -52,6 +52,7 @@ struct Key
 
 struct Game;
 struct Controller;
+struct KeySink;
 struct Gfx;
 
 // A message (Gfx::infoBox) until a key is pressed.
@@ -103,7 +104,7 @@ struct Gfx
 	void onWindowResize(Uint32 windowId);
 	void loadMenus();
 
-	void process(Controller* controller = 0);
+	void process(KeySink* controller = 0);
 	// draws a given surface onto an SDL texture/renderer, using a given Renderer
 	void draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer);
 	void flip();
@@ -173,7 +174,7 @@ struct Gfx
 	// loop, since a closed tab never reaches the save at the end of main.
 	void saveSettingsIfChanged();
 
-	void processEvent(SDL_Event& ev, Controller* controller = 0);
+	void processEvent(SDL_Event& ev, KeySink* controller = 0);
 
 	// The main menu's setup (rust/liero-game/src/menu_screen.rs runs the
 	// menu), which returns the item F1 picks.
@@ -238,8 +239,11 @@ struct Gfx
 
 	// the renderer currently in use by the primary window. Usually
 	// playRenderer, but is singleScreenRenderer if watching a replay in
-	// single screen mode.
-	Renderer* primaryRenderer;
+	// single screen mode. Rust keeps which (liero_app_set_primary_single).
+	Renderer& primaryRenderer()
+	{
+		return liero_app_primary(app) == singleScreenRenderer.rust() ? singleScreenRenderer : playRenderer;
+	}
 
 	FsNode configNode;
 	FsNode tcNode;

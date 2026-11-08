@@ -81,7 +81,7 @@ Game::Game(
 void Game::setSoundPlayer(std::shared_ptr<SoundPlayer> player)
 {
 	soundPlayer = std::move(player);
-	liero_game_set_context(g, settings->rust(), common->tc ? liero_tc_data(common->tc) : nullptr, soundPlayer->out());
+	liero_game_set_context(g, settings->rust(), common->tc, soundPlayer->out());
 }
 
 Game::~Game()

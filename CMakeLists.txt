@@ -56,10 +56,7 @@ set(GAME_SOURCES
     src/game/replay.cpp
     src/game/screen.cpp
     src/game/sfx.cpp
-    src/game/controller/commonController.cpp
-    src/game/controller/localController.cpp
-    src/game/controller/replayController.cpp
-    src/game/controller/stats_presenter.cpp
+    src/game/controller/controller.cpp
     src/game/menu/menu.cpp
     src/game/sdlmain.cpp
 )

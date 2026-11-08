@@ -5,10 +5,13 @@
 #include "sfx.hpp"
 #include "text.hpp"
 #include "gfx/blit.hpp"
+#include "appclock.hpp"
+#include "filesystem.hpp"
 
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <ctime>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -205,6 +208,23 @@ size_t hostTypedKeys(LieroTypedKey* out, size_t cap)
 
 uint32_t hostTicks() { return appTicks(); }
 void hostMenuFade() { gfx.menuFade(); }
+int64_t hostTime() { return int64_t(appTime()); }
+uint64_t hostHiresTicks() { return appHiresTicks(); }
+
+size_t hostReplayTime(int64_t t, uint8_t* out, size_t cap)
+{
+	std::time_t ticks = std::time_t(t);
+	// The hash run names replays the same in every time zone.
+	std::tm* now = gfx.driver ? std::gmtime(&ticks) : std::localtime(&ticks);
+	return std::strftime(reinterpret_cast<char*>(out), cap, "%Y-%m-%d %H.%M.%S", now);
+}
+
+LieroFsNode const* hostConfigNode() { return gfx.configNode.rust(); }
+
+LieroSoundOut hostSound()
+{
+	return DefaultSoundPlayer(*gfx.common).out();
+}
 
 void setScreenHost()
 {
@@ -225,6 +245,11 @@ void setScreenHost()
 	h.menu_fade = hostMenuFade;
 	h.test_key = hostTestKey;
 	h.draw_basic_menu = hostDrawBasicMenu;
+	h.time = hostTime;
+	h.hires_ticks = hostHiresTicks;
+	h.replay_time = hostReplayTime;
+	h.config_node = hostConfigNode;
+	h.sound = hostSound;
 	liero_screen_set_host(&h);
 }
 

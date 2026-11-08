@@ -52,7 +52,7 @@ struct ScriptDriver : AppDriver
 	void frame() override
 	{
 		Fnv f;
-		Renderer& r = *gfx.primaryRenderer;
+		Renderer& r = gfx.primaryRenderer();
 		for (int y = 0; y < r.bmp.h; ++y)
 			f.bytes(&r.bmp.getPixel(0, y), r.bmp.w);
 		for (Color const& c : r.pal.entries)
@@ -334,7 +334,7 @@ void hashApp(std::shared_ptr<Common> common)
 	gfx.singleScreenRenderer.init(640, 400);
 	gfx.playRenderer.loadPalette(*common);
 	gfx.singleScreenRenderer.loadPalette(*common);
-	gfx.primaryRenderer = &gfx.playRenderer;
+	liero_app_set_primary_single(gfx.app, false);
 	gfx.settings->spectatorWindow = false;
 	gfx.clearKeys();
 	gfx.loadMenus();

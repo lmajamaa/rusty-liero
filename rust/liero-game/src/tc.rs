@@ -678,7 +678,7 @@ fn load(node: &Node) -> LieroTc {
 /// `liero_tc_free`; `liero_tc_error` says whether loading failed.
 #[no_mangle]
 pub extern "C" fn liero_tc_load(node: &LieroFsNode) -> *mut LieroTc {
-    Box::into_raw(Box::new(load(&node.0)))
+    crate::shared::new_shared(load(&node.0))
 }
 
 /// Why loading failed, or an empty string.
@@ -707,7 +707,7 @@ pub unsafe extern "C" fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
 #[no_mangle]
 pub unsafe extern "C" fn liero_tc_free(tc: *mut LieroTc) {
     if !tc.is_null() {
-        drop(Box::from_raw(tc));
+        crate::shared::release_shared(tc);
     }
 }
 

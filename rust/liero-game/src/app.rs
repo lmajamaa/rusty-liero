@@ -33,6 +33,9 @@ pub struct LieroApp {
     /// The menus' settings (`gfx.settings`), which can be another game's
     /// than the one played.
     pub menu_settings: Option<unsafe extern "C" fn() -> *mut LieroSettingsBox>,
+    /// Whether the screen shows the single screen renderer, for a replay on
+    /// one screen (`gfx.primaryRenderer`), rather than the play one.
+    pub primary_single: bool,
 }
 
 impl LieroApp {
@@ -56,6 +59,7 @@ impl LieroApp {
             keys: LieroKeys::default(),
             menu_cycles: 0,
             menu_settings: None,
+            primary_single: false,
         }
     }
 }
@@ -115,6 +119,18 @@ pub extern "C" fn liero_app_keys(a: &mut LieroApp) -> *mut LieroKeys {
 #[no_mangle]
 pub extern "C" fn liero_app_set_menu_settings(a: &mut LieroApp, f: unsafe extern "C" fn() -> *mut LieroSettingsBox) {
     a.menu_settings = Some(f);
+}
+
+/// Shows the single screen renderer, or the play one.
+#[no_mangle]
+pub extern "C" fn liero_app_set_primary_single(a: &mut LieroApp, single: bool) {
+    a.primary_single = single;
+}
+
+/// The renderer the screen shows.
+#[no_mangle]
+pub extern "C" fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
+    liero_app_renderer(a, a.primary_single)
 }
 
 #[no_mangle]

@@ -968,12 +968,12 @@ fn set_bytes(dest: &mut Vec<u8>, text: LieroStr) {
 /// sets the defaults.
 #[no_mangle]
 pub extern "C" fn liero_settings_box_new() -> *mut LieroSettingsBox {
-    Box::into_raw(Box::new(LieroSettingsBox {
+    crate::shared::new_shared(LieroSettingsBox {
         data: LieroSettingsData::default(),
         tc: Vec::new(),
         level_file: Vec::new(),
         worms: [WormSettingsRef::new(), WormSettingsRef::new()],
-    }))
+    })
 }
 
 /// Player `i`'s worm settings, which the box holds a reference to.
@@ -993,15 +993,18 @@ pub unsafe extern "C" fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i
 
 #[no_mangle]
 pub extern "C" fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSettingsBox {
-    Box::into_raw(Box::new(s.clone()))
+    crate::shared::new_shared(s.clone())
 }
 
+/// Gives up a reference to `s` (from `liero_settings_box_new` or `_clone`,
+/// or a game's), freeing it with the last.
+///
 /// # Safety
-/// `s` comes from `liero_settings_box_new` or `_clone` and isn't used again.
+/// `s` has a reference, or is null, and this reference isn't used again.
 #[no_mangle]
 pub unsafe extern "C" fn liero_settings_box_free(s: *mut LieroSettingsBox) {
     if !s.is_null() {
-        drop(Box::from_raw(s));
+        crate::shared::release_shared(s);
     }
 }
 

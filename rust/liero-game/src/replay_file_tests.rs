@@ -2,7 +2,7 @@ use super::*;
 use crate::fs::Node;
 use crate::level::LieroLevelBox;
 use crate::tc::LieroTcData;
-use crate::game_box::{liero_game_free, liero_game_new, liero_game_set_context};
+use crate::game_box::{liero_game_free, liero_game_new};
 use crate::settings::{liero_settings_box_free, liero_settings_box_new};
 use crate::worm::LieroWormData;
 
@@ -22,7 +22,8 @@ impl Setup {
         let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
         tc.materials[5] = 7;
         let s = Setup { game: liero_game_new(), settings: liero_settings_box_new(), tc };
-        unsafe { liero_game_set_context(&mut *s.game, s.settings, &*s.tc, crate::sfx::LieroSoundOut::NONE) };
+        let settings = unsafe { crate::shared::Shared::retain(s.settings) };
+        unsafe { (*s.game).set_context_data(Some(settings), None, &*s.tc, crate::sfx::LieroSoundOut::NONE) };
         s
     }
 

@@ -22,8 +22,6 @@
 
 #include "ticks.hpp"
 
-#include "controller/replayController.hpp"
-#include "controller/localController.hpp"
 #include "controller/controller.hpp"
 
 #include "gfx/macros.hpp"
@@ -51,7 +49,7 @@ Gfx::Gfx()
 , keyBufPtr(keyBuf)
 {
 	clearKeys();
-	primaryRenderer = &playRenderer;
+	liero_app_set_primary_single(app, false);
 	liero_app_set_menu_settings(app, []() { return gfx.settings->rust(); });
 }
 
@@ -335,7 +333,7 @@ namespace
 {
 
 // Passes joystick buttons that changed to the controller.
-void sendKeys(Controller* controller, LieroKeyChanges const& changes)
+void sendKeys(KeySink* controller, LieroKeyChanges const& changes)
 {
 	if (!controller)
 		return;
@@ -345,7 +343,7 @@ void sendKeys(Controller* controller, LieroKeyChanges const& changes)
 
 } // namespace
 
-void Gfx::processEvent(SDL_Event& ev, Controller* controller)
+void Gfx::processEvent(SDL_Event& ev, KeySink* controller)
 {
 	switch(ev.type)
 	{
@@ -464,7 +462,7 @@ void Gfx::idle()
 #endif
 }
 
-void Gfx::process(Controller* controller)
+void Gfx::process(KeySink* controller)
 {
 	SDL_Event ev;
 	keyBufPtr = keyBuf;
@@ -567,7 +565,7 @@ void Gfx::flip()
 	// draw into the play window. This uses either the normal split screen renderer
 	// or the single screen renderer if this is a replay and single screen replay
 	// is turned on
-	draw(*sdlDrawSurface, *sdlTexture, *sdlRenderer, *primaryRenderer);
+	draw(*sdlDrawSurface, *sdlTexture, *sdlRenderer, primaryRenderer());
 	if (settings->spectatorWindow)
 	{
 		draw(*sdlSpectatorDrawSurface, *sdlSpectatorTexture, *sdlSpectatorRenderer, singleScreenRenderer);
@@ -738,7 +736,10 @@ int32_t selectorChoose(void* ctx, LieroStr rel, LieroStr fullPath, LieroStr name
 			// Reset controller before opening the replay, since we may be recording it
 			gfx.controller.reset();
 
-			gfx.controller.reset(new ReplayController(gfx.common, c.node(rel)));
+			{
+				FsNode node = c.node(rel);
+				gfx.controller.reset(Controller::replay(node.rust(), node.fullPath(), gfx.common->tc));
+			}
 			return MainMenu::MaReplay;
 
 		case SelectorContext::Options:
@@ -919,7 +920,7 @@ auto guarded(F f, decltype(f()) fallback) -> decltype(f())
 void restartApp()
 {
 	Gfx& g = gfx;
-	g.controller.reset(new LocalController(g.common, g.settings));
+	g.controller.reset(Controller::local(g.settings->rust(), g.common->tc));
 
 	{
 		Level newLevel;
@@ -927,8 +928,8 @@ void restartApp()
 		g.controller->swapLevel(newLevel);
 	}
 
-	g.controller->currentGame()->focus(g.playRenderer);
-	g.controller->currentGame()->focus(g.singleScreenRenderer);
+	liero_game_focus(g.controller->currentGame(), g.playRenderer.rust());
+	liero_game_focus(g.controller->currentGame(), g.singleScreenRenderer.rust());
 
 	// TODO: Unfocus game when necessary
 }
@@ -942,9 +943,10 @@ int afterMenu(int selection)
 
 	if(selection == MainMenu::MaNewGame)
 	{
-		std::unique_ptr<Controller> newController(new LocalController(g.common, settings));
+		std::unique_ptr<Controller> newController(Controller::local(settings->rust(), g.common->tc));
 
-		Level* oldLevel = controller->currentLevel();
+		LieroLevelBox* oldBox = controller->currentLevel();
+		std::unique_ptr<Level> oldLevel(oldBox ? new Level(Level::view(oldBox)) : nullptr);
 
 		if(oldLevel
 		&& !settings->regenerateLevel
@@ -967,7 +969,7 @@ int afterMenu(int selection)
 	{
 		if (controller->isReplay())
 		{
-			g.primaryRenderer = &g.singleScreenRenderer;
+			liero_app_set_primary_single(g.app, true);
 		}
 	}
 	else if(selection == MainMenu::MaQuit) // QUIT TO OS
@@ -978,7 +980,7 @@ int afterMenu(int selection)
 	{
 		if (settings->singleScreenReplay)
 		{
-			g.primaryRenderer = &g.singleScreenRenderer;
+			liero_app_set_primary_single(g.app, true);
 		}
 	}
 	else if (selection == MainMenu::MaTc)
@@ -1002,7 +1004,7 @@ void appFinish()
 	guarded([]
 	{
 		Gfx& g = gfx;
-		g.primaryRenderer = &g.playRenderer;
+		liero_app_set_primary_single(g.app, false);
 		g.controller->unfocus();
 		g.clearKeys();
 		return 0;
@@ -1026,6 +1028,13 @@ void appDraw(bool count)
 
 bool appTakeOpened(LieroScreen* out)
 {
+	// What the controller opened (a message, the stats screen) comes back
+	// to the game with nothing to do.
+	if (gfx.controller && gfx.controller->takeOpened(out))
+	{
+		gameThen = nullptr;
+		return true;
+	}
 	if (!gfx.opening)
 		return false;
 	gameThen = std::move(gfx.openingThen);
@@ -1187,7 +1196,7 @@ int Gfx::menuStart()
 	singleScreenRenderer.clear();
 	if (controller->currentLevel())
 	{
-		controller->currentLevel()->drawMiniature(singleScreenRenderer.bmp, centerX - 126, singleScreenRenderer.renderResY - 208, 2);
+		Level::view(controller->currentLevel()).drawMiniature(singleScreenRenderer.bmp, centerX - 126, singleScreenRenderer.renderResY - 208, 2);
 	}
 	frozenSpectatorScreen.copy(singleScreenRenderer.bmp);
 
