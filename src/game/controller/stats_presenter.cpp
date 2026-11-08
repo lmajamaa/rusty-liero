@@ -65,7 +65,7 @@ void StatsScreen::draw(double pane, double offset)
 	LieroBitmap v = renderer.bmp.view();
 	liero_stats_screen_draw(screen, recorder.s, &scene, &v, pane, offset);
 
-	renderer.pal = game.common->exepal; // We don't use gfx.origpal because the colors are unpredictable
+	renderer.pal = *game.common->exepal; // We don't use gfx.origpal because the colors are unpredictable
 }
 
 void presentStats(NormalStatsRecorder& recorder, Game& game)

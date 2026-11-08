@@ -173,7 +173,7 @@ void archive_text(Common& common, Archive& ar)
 {
 	ar.obj("types", [&] {
 
-		ar.arr("sounds", common.sounds, [&] (SfxSample& s) {
+		ar.arr("sounds", common.sounds, [&] (SfxSample const& s) {
 			ar.str(0, s.name);
 		});
 
@@ -201,22 +201,20 @@ void archive_text(Common& common, Archive& ar)
 			ar.ref("sobj", common.bonusSObjects[idx], ObjectResolver<SObjectType>(common, common.sobjectTypes));
 		});
 
-		ar.array_obj("textures", common.textures, [&] (Texture& tx) {
+		ar.array_obj("textures", TcList<Texture>(common.textures, LIERO_TEXTURE_COUNT), [&] (Texture const& tx) {
 			ar.i32("mframe", tx.m_frame);
 			ar.i32("rframe", tx.r_frame);
 			ar.i32("sframe", tx.s_frame);
 			ar.b("ndrawback", tx.n_draw_back);
 		});
 
-		ar.array_obj("colorAnim", common.colorAnim, [&] (ColourAnim& ca) {
+		ar.array_obj("colorAnim", TcList<ColourAnim>(common.colorAnim, 4), [&] (ColourAnim const& ca) {
 			ar.i32("from", ca.from);
 			ar.i32("to", ca.to);
 		});
 
-		ar.arr("materials", common.materials, [&] (Material& m) {
-			int f = m.flags;
-			ar.i32(0, f);
-			m.flags = (uint8_t)(f & 0xff);
+		ar.arr("materials", TcList<Material>(common.materials, 256), [&] (Material const& m) {
+			ar.i32(0, m.flags);
 		});
 
 		char const* names[7] = {
@@ -228,8 +226,8 @@ void archive_text(Common& common, Archive& ar)
 			for (int i = 0; i < 7; ++i)
 			{
 				ar.obj(names[i], [&] () {
-					ar.i32("on", common.aiParams.k[1][i]);
-					ar.i32("off", common.aiParams.k[0][i]);
+					ar.i32("on", common.aiParams->k[1][i]);
+					ar.i32("off", common.aiParams->k[0][i]);
 				});
 			}
 		});

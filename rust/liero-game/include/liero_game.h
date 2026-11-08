@@ -2380,6 +2380,12 @@ typedef struct LieroTcSound {
    * False when the WAV file had another format: the game has no sound.
    */
   bool valid;
+  /**
+   * The 16-bit samples the mixer plays, twice as many as `len`
+   * (`SfxSample::createSound`). They stay put while a sound plays.
+   */
+  const int16_t *samples;
+  uintptr_t sample_count;
 } LieroTcSound;
 
 typedef struct LieroTcSprites {
@@ -2422,6 +2428,10 @@ typedef struct LieroTcData {
    * 6-bit VGA palette, red, green and blue for each of 256 entries.
    */
   uint8_t palette[768];
+  /**
+   * The same palette as the game's `Palette` holds it (`Common::exepal`).
+   */
+  struct LieroColor palette_colors[256];
   /**
    * (from, to) for each of 4 colour animations.
    */

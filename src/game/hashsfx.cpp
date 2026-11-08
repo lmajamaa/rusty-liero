@@ -38,12 +38,12 @@ void hashSamples(Common& common)
 {
 	for (std::size_t i = 0; i < common.sounds.size(); ++i)
 	{
-		SfxSample& s = common.sounds[i];
+		SfxSample const& s = common.sounds[i];
 		Fnv f;
-		f.add(s.loaded);
-		if (s.loaded)
+		f.add(s.valid);
+		if (s.valid)
 		{
-			std::size_t n = s.originalData.size() * 2;
+			std::size_t n = s.sample_count;
 			f.add(uint32_t(n));
 			for (std::size_t j = 0; j < n; ++j)
 				f.add(int32_t(s.samples[j]));
@@ -61,20 +61,20 @@ void hashBuffer(Fnv& f, int16_t const* buf, int n)
 
 void mixerScript(Common& common, uint32_t seed, int steps)
 {
-	std::vector<std::vector<int16_t> const*> sounds;
-	for (SfxSample& s : common.sounds)
-		if (s.loaded)
-			sounds.push_back(&s.samples);
+	std::vector<TcList<int16_t>> sounds;
+	for (SfxSample const& s : common.sounds)
+		if (s.valid)
+			sounds.push_back(TcList<int16_t>(s.samples, s.sample_count));
 
 	// A full-scale square wave, which clips as soon as two play at once.
 	std::vector<int16_t> square(300);
 	for (int i = 0; i < 300; ++i)
 		square[i] = (i / 25) % 2 ? 32767 : -32768;
-	sounds.push_back(&square);
+	sounds.push_back(TcList<int16_t>(square.data(), square.size()));
 	std::vector<int16_t> one { -32768 };
-	sounds.push_back(&one);
+	sounds.push_back(TcList<int16_t>(one.data(), one.size()));
 	std::vector<int16_t> two { 12345, -23456 };
-	sounds.push_back(&two);
+	sounds.push_back(TcList<int16_t>(two.data(), two.size()));
 
 	// Ids are only compared, never followed.
 	void* ids[] = { 0, (void*)16, (void*)32, (void*)48, (void*)64, (void*)80 };
@@ -93,10 +93,10 @@ void mixerScript(Common& common, uint32_t seed, int steps)
 		uint32_t op = r(10);
 		if (op < 4)
 		{
-			std::vector<int16_t> const& snd = *sounds[r(uint32_t(sounds.size()))];
+			TcList<int16_t> const& snd = sounds[r(uint32_t(sounds.size()))];
 			uint32_t time = uint32_t(liero_mixer_now(m) + int32_t(r(6000)) - 3000);
 			uint32_t flags = r(4) == 0 ? LIERO_SOUND_LOOP : LIERO_SOUND_NORMAL;
-			void* ret = liero_mixer_add(m, snd.data(), snd.size(), time, id, flags);
+			void* ret = liero_mixer_add(m, snd.items, snd.size(), time, id, flags);
 			f.add(ret == id);
 			f.add(ret != 0);
 		}

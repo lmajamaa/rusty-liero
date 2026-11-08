@@ -442,7 +442,7 @@ void DumbLieroAI::process(Game& game, Worm& worm)
 
 	worm.controlStates.istate = liero_dumb_ai_process(
 		&rand, &me, reinterpret_cast<int32_t const (*)[2]>(others.data()), others.size(),
-		reinterpret_cast<int32_t const (*)[2][7]>(&common.aiParams.k));
+		reinterpret_cast<int32_t const (*)[2][7]>(&common.aiParams->k));
 }
 
 void Worm::initWeapons(Game& game)
@@ -482,7 +482,7 @@ bool checkForSpecWormHit(Game& game, int x, int y, int dist, Worm& w)
 	if(!w.visible)
 		return false;
 
-	PalIdx* wormSprite = common.wormSprite(w.currentFrame, w.direction, 0);
+	PalIdx const* wormSprite = common.wormSprite(w.currentFrame, w.direction, 0);
 
 	int deltaX = x - ftoi(w.pos.x) + 7;
 	int deltaY = y - ftoi(w.pos.y) + 5;

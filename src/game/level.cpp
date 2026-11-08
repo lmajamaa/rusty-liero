@@ -63,7 +63,7 @@ void Level::generateDirtPattern(Common& common, Rand& rand)
 
 void Level::generateRandom(Common& common, Settings const& settings, Rand& rand)
 {
-	origpal.resetPalette(common.exepal, settings);
+	origpal.resetPalette(*common.exepal, settings);
 
 	resize(LIERO_LEVEL_WIDTH, LIERO_LEVEL_HEIGHT);
 	LieroLevel v = view();
@@ -114,7 +114,7 @@ bool Level::load(Common& common, Settings const& settings, ByteReader r)
 	liero_level_update_materials(&v, &c);
 
 	if (resetPalette)
-		origpal.resetPalette(common.exepal, settings);
+		origpal.resetPalette(*common.exepal, settings);
 
 	return true;
 }

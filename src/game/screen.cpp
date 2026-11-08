@@ -174,7 +174,7 @@ void hostScreen(LieroBitmap* out) { *out = gfx.playRenderer.bmp.view(); }
 void hostFrozen(LieroBitmap* out) { *out = gfx.frozenScreen.view(); }
 void hostFont(LieroFont* out) { *out = gfx.common->font.view(); }
 void hostFillScreen(uint8_t color) { fill(gfx.playRenderer.bmp, color); }
-void hostMenuPalette() { gfx.playRenderer.pal = gfx.common->exepal; }
+void hostMenuPalette() { gfx.playRenderer.pal = *gfx.common->exepal; }
 
 void hostTextInput(bool on)
 {

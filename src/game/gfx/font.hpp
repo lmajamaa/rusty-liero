@@ -5,21 +5,14 @@
 #include <string>
 
 #include <liero_game.h>
+#include "../tclist.hpp"
 
 struct Bitmap;
 
 struct Font
 {
-	struct Char
-	{
-		unsigned char data[8*7];
-		int width;
-	};
-
-	Font()
-	: chars(250)
-	{
-	}
+	// The TC's characters, in Rust (rust/liero-game/src/tc.rs).
+	typedef LieroTcFontChar Char;
 
 	void drawText(Bitmap& scr, char const* str, std::size_t len, int x, int y, int color, int size);
 	int getDims(char const* str, std::size_t len, int* height = 0);
@@ -69,11 +62,11 @@ struct Font
 	// The font as Rust draws with it.
 	LieroFont view() const
 	{
-		LieroFont f = { reinterpret_cast<LieroFontChar const*>(chars.data()), chars.size() };
+		LieroFont f = { reinterpret_cast<LieroFontChar const*>(chars.items), chars.size() };
 		return f;
 	}
 
-	std::vector<Char> chars;
+	TcList<Char> chars;
 };
 
 #endif // UUID_B06B65B783A849C7B4E509A9676180F8

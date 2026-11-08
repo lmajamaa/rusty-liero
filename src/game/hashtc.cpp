@@ -100,7 +100,7 @@ struct TomlWriter
 	}
 
 	template<typename A, typename F>
-	void arr(char const* name, A& arr, F func)
+	void arr(char const* name, A const& arr, F func)
 	{
 		f(name);
 		*this << '[';
@@ -116,7 +116,7 @@ struct TomlWriter
 	}
 
 	template<typename A, typename F>
-	void array_obj(char const* name, A& arr, F func)
+	void array_obj(char const* name, A const& arr, F func)
 	{
 		beginf(name);
 		for (auto& e : arr)
@@ -184,8 +184,8 @@ void addSprites(Fnv& h, SpriteSet const& ss)
 	h.add(int32_t(ss.height));
 	h.add(int32_t(ss.spriteSize));
 	h.add(int32_t(ss.count));
-	h.add(uint32_t(ss.data.size()));
-	h.bytes(ss.data.data(), ss.data.size());
+	h.add(uint32_t(ss.size()));
+	h.bytes(ss.data, ss.size());
 }
 
 } // namespace
@@ -232,10 +232,10 @@ void hashTc(Common& common)
 	{
 		auto& s = common.sounds[i];
 		Fnv h;
-		h.bytes((uint8_t const*)s.name.data(), s.name.size());
-		h.add(uint32_t(s.originalData.size()));
-		h.bytes(s.originalData.data(), s.originalData.size());
-		h.add(s.loaded);
+		h.bytes(s.name.ptr, s.name.len);
+		h.add(uint32_t(s.len));
+		h.bytes(s.data, s.len);
+		h.add(s.valid);
 		print("tc-sound", (int)i, h);
 	}
 
@@ -244,7 +244,7 @@ void hashTc(Common& common)
 		addSprites(h, common.smallSprites);
 		addSprites(h, common.largeSprites);
 		addSprites(h, common.textSprites);
-		for (auto const& c : common.exepal.entries)
+		for (auto const& c : common.exepal->entries)
 		{
 			h.add(uint32_t(c.r));
 			h.add(uint32_t(c.g));

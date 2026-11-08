@@ -57,7 +57,6 @@ set(SOURCES
     src/game/gfx/font.cpp
     src/game/gfx/palette.cpp
     src/game/gfx/renderer.cpp
-    src/game/gfx/sprite.cpp
 )
 
 set(GAME_SOURCES ${SOURCES}

@@ -6,7 +6,9 @@
 //! the `LieroTc` until it's freed.
 
 use crate::level::{LieroTexture, LIERO_TEXTURE_COUNT};
+use crate::gfx::LieroColor;
 use crate::rand::LieroRand;
+use crate::sfx::samples_from_tc;
 use crate::text::LieroStr;
 use liero_data::model::{self, Common};
 use liero_data::Error;
@@ -129,6 +131,10 @@ pub struct LieroTcSound {
     pub len: usize,
     /// False when the WAV file had another format: the game has no sound.
     pub valid: bool,
+    /// The 16-bit samples the mixer plays, twice as many as `len`
+    /// (`SfxSample::createSound`). They stay put while a sound plays.
+    pub samples: *const i16,
+    pub sample_count: usize,
 }
 
 #[repr(C)]
@@ -169,6 +175,8 @@ pub struct LieroTcData {
     pub hack_count: usize,
     /// 6-bit VGA palette, red, green and blue for each of 256 entries.
     pub palette: [u8; 768],
+    /// The same palette as the game's `Palette` holds it (`Common::exepal`).
+    pub palette_colors: [LieroColor; 256],
     /// (from, to) for each of 4 colour animations.
     pub color_anim: [i32; 8],
     pub materials: [u8; 256],
@@ -198,6 +206,7 @@ pub struct LieroTc {
     nobjects: Vec<LieroTcNObject>,
     sobjects: Vec<LieroTcSObject>,
     sounds: Vec<LieroTcSound>,
+    samples: Vec<Vec<i16>>,
     constants: Vec<i32>,
     texts: Vec<LieroStr>,
     hacks: Vec<bool>,
@@ -285,6 +294,7 @@ impl LieroTc {
             nobjects: Vec::new(),
             sobjects: Vec::new(),
             sounds: Vec::new(),
+            samples: Vec::new(),
             constants: Vec::new(),
             texts: Vec::new(),
             hacks: Vec::new(),
@@ -418,12 +428,30 @@ impl LieroTc {
                 dirt_effect: s.dirt_effect,
             })
             .collect();
-        tc.sounds = c
+        tc.samples = c
             .sounds
             .iter()
             .map(|s| {
                 let data = s.data.as_deref().unwrap_or(&[]);
-                LieroTcSound { name: str(s.name.as_bytes()), data: data.as_ptr(), len: data.len(), valid: s.data.is_some() }
+                let mut out = vec![0i16; data.len() * 2];
+                samples_from_tc(data, &mut out);
+                out
+            })
+            .collect();
+        tc.sounds = c
+            .sounds
+            .iter()
+            .zip(&tc.samples)
+            .map(|(s, samples)| {
+                let data = s.data.as_deref().unwrap_or(&[]);
+                LieroTcSound {
+                    name: str(s.name.as_bytes()),
+                    data: data.as_ptr(),
+                    len: data.len(),
+                    valid: s.data.is_some(),
+                    samples: samples.as_ptr(),
+                    sample_count: samples.len(),
+                }
             })
             .collect();
         tc.constants = c.constants.iter().map(|&(_, v)| v).collect();
@@ -469,6 +497,12 @@ impl LieroTc {
             hacks: tc.hacks.as_ptr(),
             hack_count: tc.hacks.len(),
             palette,
+            palette_colors: std::array::from_fn(|i| LieroColor {
+                r: palette[i * 3],
+                g: palette[i * 3 + 1],
+                b: palette[i * 3 + 2],
+                unused: 0,
+            }),
             color_anim,
             materials: c.materials,
             textures,

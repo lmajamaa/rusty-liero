@@ -20,7 +20,7 @@ LieroStr str(std::string const& s)
 
 LieroSpriteSet spriteSet(SpriteSet const& s)
 {
-	LieroSpriteSet r = { s.data.data(), s.width, s.height, s.count };
+	LieroSpriteSet r = { s.data, s.width, s.height, s.count };
 	return r;
 }
 
@@ -193,7 +193,7 @@ void draw(Viewport& vp, int kind, Game& game, Renderer& renderer, GameState game
 	s.worm_sprites = spriteSet(common.wormSprites);
 	s.fire_cone_sprites = spriteSet(common.fireConeSprites);
 	s.text_sprites = spriteSet(common.textSprites);
-	s.font = reinterpret_cast<LieroFontChar const*>(common.font.chars.data());
+	s.font = reinterpret_cast<LieroFontChar const*>(common.font.chars.items);
 	s.font_count = common.font.chars.size();
 	s.materials = reinterpret_cast<LieroMaterial const*>(common.materials);
 	s.level = game.level.view();

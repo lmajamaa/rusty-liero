@@ -16,8 +16,8 @@ struct SoundPlayer
 // Starts a sound on a mixer at the mixer's current time.
 inline void playOnMixer(LieroMixer* mixer, Common& common, int sound, void* id, int loops)
 {
-	std::vector<int16_t> const& s = common.sounds[sound].samples;
-	liero_mixer_add(mixer, s.data(), s.size(), uint32_t(liero_mixer_now(mixer)), id, loops ? LIERO_SOUND_LOOP : LIERO_SOUND_NORMAL);
+	SfxSample const& s = common.sounds[sound];
+	liero_mixer_add(mixer, s.samples, s.sample_count, uint32_t(liero_mixer_now(mixer)), id, loops ? LIERO_SOUND_LOOP : LIERO_SOUND_NORMAL);
 }
 
 // Plays sounds on a mixer it doesn't own, for the hash run and videotool.

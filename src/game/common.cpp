@@ -233,25 +233,8 @@ void Common::drawTextSmall(Bitmap& scr, char const* str, int x, int y)
 }
 
 
-namespace
-{
-
-std::string str(LieroStr s)
-{
-	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
-}
-
-void copySprites(SpriteSet& dest, LieroTcSprites const& src)
-{
-	dest.allocate(src.width, src.height, src.count);
-	std::copy(src.data, src.data + dest.data.size(), dest.data.begin());
-}
-
-
-} // namespace
-
-// The TC is read in Rust (liero_data::load). Common keeps it, and copies in
-// the sprites, palette, font and sounds.
+// The TC is read in Rust (liero_data::load). Common keeps it and points into
+// it.
 void Common::load(FsNode node)
 {
 	if (!node.rust())
@@ -260,7 +243,7 @@ void Common::load(FsNode node)
 	LieroTcData const* d = liero_tc_data(loaded);
 	if (!d)
 	{
-		std::string error = str(liero_tc_error(loaded));
+		std::string error = tcString(liero_tc_error(loaded));
 		liero_tc_free(loaded);
 		throw std::runtime_error("Could not load the TC: " + error);
 	}
@@ -272,21 +255,7 @@ void Common::load(FsNode node)
 	liero_tc_free(tc);
 	tc = loaded;
 
-	sounds.clear();
-	sounds.resize(d->sound_count);
-	for (std::size_t i = 0; i < d->sound_count; ++i)
-	{
-		LieroTcSound const& src = d->sounds[i];
-		SfxSample& s = sounds[i];
-		s.name = str(src.name);
-		if (src.valid)
-		{
-			s.originalData.assign(src.data, src.data + src.len);
-			s.loaded = true;
-			s.createSound();
-		}
-	}
-
+	sounds = { d->sounds, d->sound_count };
 	weapons = { d->weapons, d->weapon_count };
 	nobjectTypes = { d->nobjects, d->nobject_count };
 	sobjectTypes = { d->sobjects, d->sobject_count };
@@ -294,47 +263,28 @@ void Common::load(FsNode node)
 	S = d->texts;
 	H = d->hacks;
 
-	for (int i = 0; i < 2; ++i)
-	{
-		bonusRandTimer[i][0] = d->bonus_rand_timer[i * 2];
-		bonusRandTimer[i][1] = d->bonus_rand_timer[i * 2 + 1];
-		bonusFrames[i] = d->bonus_frames[i];
-		bonusSObjects[i] = d->bonus_sobjects[i];
-	}
-	for (int i = 0; i < LIERO_TEXTURE_COUNT; ++i)
-		textures[i] = d->textures[i];
-	for (int i = 0; i < 4; ++i)
-	{
-		colorAnim[i].from = d->color_anim[i * 2];
-		colorAnim[i].to = d->color_anim[i * 2 + 1];
-	}
-	for (int i = 0; i < 256; ++i)
-		materials[i].flags = d->materials[i];
-	for (int on = 0; on < 2; ++on)
-	for (int k = 0; k < 7; ++k)
-		aiParams.k[on][k] = d->ai_params[on * 7 + k];
+	static_assert(sizeof(ColourAnim) == 2 * sizeof(int32_t), "ColourAnim layout");
+	static_assert(sizeof(AIParams) == 14 * sizeof(int32_t), "AIParams layout");
+	static_assert(sizeof(Material) == 1, "Material layout");
+	static_assert(sizeof(Palette) == sizeof(d->palette_colors), "Palette layout");
+	static_assert(sizeof(Font::Char) == sizeof(LieroFontChar), "Font::Char layout");
+	bonusRandTimer = reinterpret_cast<int32_t const (*)[2]>(d->bonus_rand_timer);
+	bonusFrames = d->bonus_frames;
+	bonusSObjects = d->bonus_sobjects;
+	textures = d->textures;
+	colorAnim = reinterpret_cast<ColourAnim const*>(d->color_anim);
+	materials = reinterpret_cast<Material const*>(d->materials);
+	aiParams = reinterpret_cast<AIParams const*>(d->ai_params);
+	exepal = reinterpret_cast<Palette const*>(d->palette_colors);
 
-	copySprites(smallSprites, d->small_sprites);
-	copySprites(largeSprites, d->large_sprites);
-	copySprites(textSprites, d->text_sprites);
-	for (int i = 0; i < 256; ++i)
-	{
-		exepal.entries[i].r = d->palette[i * 3];
-		exepal.entries[i].g = d->palette[i * 3 + 1];
-		exepal.entries[i].b = d->palette[i * 3 + 2];
-	}
-
-	static_assert(LIERO_TC_FONT_CHARS == 250, "Font has 250 characters");
-	font.chars.resize(LIERO_TC_FONT_CHARS);
-	for (std::size_t i = 0; i < LIERO_TC_FONT_CHARS; ++i)
-	{
-		std::copy(d->font[i].data, d->font[i].data + 56, font.chars[i].data);
-		font.chars[i].width = d->font[i].width;
-	}
+	smallSprites = SpriteSet(d->small_sprites);
+	largeSprites = SpriteSet(d->large_sprites);
+	textSprites = SpriteSet(d->text_sprites);
+	font.chars = { d->font, LIERO_TC_FONT_CHARS };
 
 	weapOrder = { d->weap_order, d->weapon_count };
-	copySprites(wormSprites, d->worm_sprites);
-	copySprites(fireConeSprites, d->fire_cone_sprites);
+	wormSprites = SpriteSet(d->worm_sprites);
+	fireConeSprites = SpriteSet(d->fire_cone_sprites);
 }
 
 Common::Common()
@@ -358,11 +308,3 @@ std::string Common::guessName() const
 
 	return cp.substr(0, p);
 }
-
-void SfxSample::createSound()
-{
-	samples.resize(originalData.size() * 2);
-	liero_sound_from_tc(originalData.data(), originalData.size(), samples.data());
-}
-
-

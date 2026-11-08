@@ -16,7 +16,7 @@ void Renderer::setRenderResolution(int x, int y)
 
 void Renderer::loadPalette(Common const& common)
 {
-	origpal = common.exepal;
+	origpal = *common.exepal;
 	pal = origpal;
 }
 

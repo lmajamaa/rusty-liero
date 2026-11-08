@@ -102,7 +102,7 @@ void blitShadowImage(Common& common, Bitmap& scr, PalIdx* mem, int x, int y, int
 // The terrain operations below are implemented in Rust
 // (rust/liero-game/src/level.rs).
 
-void blitImageOnMap(Common& common, Level& level, PalIdx* mem, int x, int y, int width, int height)
+void blitImageOnMap(Common& common, Level& level, PalIdx const* mem, int x, int y, int width, int height)
 {
 	LieroLevel v = level.view();
 	LieroLevelCommon c = common.levelCommon();
