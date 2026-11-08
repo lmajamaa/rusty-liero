@@ -17,7 +17,6 @@ use crate::level::LieroLevel;
 use crate::material::LieroMaterial;
 use crate::rand::LieroRand;
 use crate::tc::LieroTcWeapon;
-use crate::weapon::LieroWormWeapon;
 use crate::world::World;
 use crate::worm::LieroWormData;
 
@@ -45,32 +44,24 @@ pub struct SimGame {
 }
 
 unsafe extern "C" fn no_tick(_: *mut c_void) {}
+unsafe extern "C" fn no_ticks(_: *mut c_void) -> u64 {
+    0
+}
 unsafe extern "C" fn no_play(_: *mut c_void, _: i32, _: *mut c_void, _: i32) {}
 unsafe extern "C" fn not_playing(_: *mut c_void, _: *mut c_void) -> bool {
     false
 }
 unsafe extern "C" fn no_stop(_: *mut c_void, _: *mut c_void) {}
-unsafe extern "C" fn no_damage_potential(_: *mut c_void, _: i32, _: *mut LieroWormWeapon, _: i32) {}
-unsafe extern "C" fn no_damage_dealt(_: *mut c_void, _: i32, _: *mut LieroWormWeapon, _: i32, _: i32, _: bool) {}
-unsafe extern "C" fn no_shot(_: *mut c_void, _: i32, _: *mut LieroWormWeapon) {}
-unsafe extern "C" fn no_hit(_: *mut c_void, _: i32, _: *mut LieroWormWeapon, _: i32) {}
-unsafe extern "C" fn no_worm(_: *mut c_void, _: i32) {}
 
 /// `NullSoundPlayer` and the base `StatsRecorder`, and no viewports to
 /// process.
 const NO_HOOKS: LieroGameHooks = LieroGameHooks {
     ctx: null_mut(),
-    pre_tick: no_tick,
+    hires_ticks: no_ticks,
     end_tick: no_tick,
     play_sound: no_play,
     sound_playing: not_playing,
     stop_sound: no_stop,
-    damage_potential: no_damage_potential,
-    damage_dealt: no_damage_dealt,
-    shot: no_shot,
-    hit: no_hit,
-    after_death: no_worm,
-    after_spawn: no_worm,
 };
 
 impl SimGame {
@@ -125,6 +116,7 @@ impl SimGame {
         };
         fields.viewports = std::ptr::null();
         fields.viewport_count = 0;
+        fields.stats = std::ptr::null_mut();
 
         let mut g = Box::new(SimGame {
             fields,

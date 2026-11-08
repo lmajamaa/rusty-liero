@@ -146,7 +146,7 @@ bool LocalController::process()
 					uint64_t time = appHiresTicks();
 					worm.ai->process(game, worm);
 					time = appHiresTicks() - time;
-					game.statsRecorder->aiProcessTime(&worm, time);
+					game.statsRecorder->aiProcessTime(worm.index, time);
 				}
 			}
 			if(replay.get())

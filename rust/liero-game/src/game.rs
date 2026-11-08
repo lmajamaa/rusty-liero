@@ -15,8 +15,8 @@ use crate::objects::{zeroed_box, LieroBObjectList, LieroBonusList, LieroNObjectL
 use crate::math::ftoi;
 use crate::rand::LieroRand;
 use crate::tc::LieroTcData;
+use crate::stats::{LieroStats, LieroStatsWorm};
 use crate::viewport::LieroViewport;
-use crate::weapon::LieroWormWeapon;
 use crate::world::World;
 use crate::worm::{LieroWormData, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE};
 
@@ -203,6 +203,8 @@ pub struct LieroGameFields {
     pub viewport_count: i32,
     pub spectator_viewports: *const *mut LieroViewport,
     pub spectator_viewport_count: i32,
+    /// The stats the tick records, or null for none.
+    pub stats: *mut LieroStats,
 }
 
 /// Game settings, and TC constants and hacks, for the rules.
@@ -243,27 +245,64 @@ pub struct LieroGameSettings {
     pub load_change: bool,
 }
 
-/// What C++ does during a tick: sounds, stats and the viewports. `ctx` is
-/// passed back to each function. Worms are positions in the game's worms;
-/// a negative `by` is no worm.
+/// What C++ does during a tick: sounds and the viewports. `ctx` is passed
+/// back to each function.
 #[repr(C)]
 pub struct LieroGameHooks {
     pub ctx: *mut c_void,
-    /// Stats at the start of the tick.
-    pub pre_tick: unsafe extern "C" fn(ctx: *mut c_void),
-    /// Viewports and stats at the end of the tick.
+    /// The clock the stats time ticks with (`appHiresTicks`).
+    pub hires_ticks: unsafe extern "C" fn(ctx: *mut c_void) -> u64,
+    /// The viewports at the end of the tick.
     pub end_tick: unsafe extern "C" fn(ctx: *mut c_void),
     /// Plays `sound` as `id`'s (null for none), looping when `loops` isn't 0.
     pub play_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32, id: *mut c_void, loops: i32),
     pub sound_playing: unsafe extern "C" fn(ctx: *mut c_void, id: *mut c_void) -> bool,
     pub stop_sound: unsafe extern "C" fn(ctx: *mut c_void, id: *mut c_void),
-    pub damage_potential: unsafe extern "C" fn(ctx: *mut c_void, by: i32, weapon: *mut LieroWormWeapon, hp: i32),
-    pub damage_dealt:
-        unsafe extern "C" fn(ctx: *mut c_void, by: i32, weapon: *mut LieroWormWeapon, to: i32, hp: i32, has_hit: bool),
-    pub shot: unsafe extern "C" fn(ctx: *mut c_void, by: i32, weapon: *mut LieroWormWeapon),
-    pub hit: unsafe extern "C" fn(ctx: *mut c_void, by: i32, weapon: *mut LieroWormWeapon, to: i32),
-    pub after_death: unsafe extern "C" fn(ctx: *mut c_void, worm: i32),
-    pub after_spawn: unsafe extern "C" fn(ctx: *mut c_void, worm: i32),
+}
+
+/// The worms as the stats read them (`statsWorm` in C++).
+///
+/// # Safety
+/// `f`'s worms must be valid.
+pub(crate) unsafe fn stats_worms(f: &LieroGameFields) -> Vec<LieroStatsWorm> {
+    use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT};
+    let worms = std::slice::from_raw_parts(f.worms, f.worm_count.max(0) as usize);
+    worms
+        .iter()
+        .map(|gw| {
+            let w = &*gw.data;
+            let pressed = |c: u32| (w.control_states >> c) & 1 != 0;
+            LieroStatsWorm {
+                index: w.index,
+                x: ftoi(w.pos.x),
+                y: ftoi(w.pos.y),
+                visible: w.visible,
+                health: w.health,
+                lives: w.lives,
+                timer: w.timer,
+                kills: w.kills,
+                max_health: gw.max_health,
+                fire: pressed(LIERO_CONTROL_FIRE),
+                change: pressed(LIERO_CONTROL_CHANGE),
+                left: pressed(LIERO_CONTROL_LEFT),
+                right: pressed(LIERO_CONTROL_RIGHT),
+                current_weapon: w.current_weapon,
+                loading_left: w.weapons.map(|ww| ww.loading_left),
+            }
+        })
+        .collect()
+}
+
+/// The end of the game for its stats (`StatsRecorder::finish`).
+///
+/// # Safety
+/// `f`'s pointers must be valid; its stats may be null.
+#[no_mangle]
+pub unsafe extern "C" fn liero_game_stats_finish(f: &LieroGameFields) {
+    if let Some(s) = f.stats.as_mut() {
+        let worms = stats_worms(f);
+        crate::stats::liero_stats_finish(s, worms.as_ptr(), worms.len());
+    }
 }
 
 /// Getters and setters for the game's fields. SAFETY for all of them: the
@@ -623,6 +662,7 @@ mod tests {
             viewport_count: 0,
             spectator_viewports: std::ptr::null(),
             spectator_viewport_count: 0,
+            stats: std::ptr::null_mut(),
         };
         f(&fields);
     }

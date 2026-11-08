@@ -19,7 +19,11 @@ use std::ffi::c_void;
 use std::ptr::{addr_of_mut, null_mut};
 
 
-use crate::game::{Game, LieroBonusState, LieroGameHooks, LieroRect};
+use crate::game::{stats_worms, Game, LieroBonusState, LieroGameHooks, LieroRect};
+use crate::stats::{
+    liero_stats_after_death, liero_stats_after_spawn, liero_stats_damage_dealt, liero_stats_damage_potential,
+    liero_stats_hit, liero_stats_pre_tick, liero_stats_shot, liero_stats_tick, LieroStats,
+};
 use crate::level::{
     liero_level_blit_image, liero_level_correct_shadow, liero_level_draw_dirt_effect, LieroLevelCommon,
 };
@@ -353,7 +357,7 @@ impl<'a> World<'a> {
         unsafe { addr_of_mut!((*self.data()).bobjects) }
     }
 
-    // Sounds and stats, in C++.
+    // Sounds, in C++, and stats.
 
     fn play(&self, sound: i32, id: *mut c_void, loops: i32) {
         unsafe { (self.h.play_sound)(self.h.ctx, sound, id, loops) }
@@ -367,20 +371,59 @@ impl<'a> World<'a> {
         unsafe { (self.h.stop_sound)(self.h.ctx, id) }
     }
 
+    /// The stats the game records, if any.
+    fn stats(&self) -> Option<&mut LieroStats> {
+        unsafe { self.g.f.stats.as_mut() }
+    }
+
+    /// The weapon's index in the TC, or -1 for none (`weaponIndex`).
+    fn weapon_index(weapon: *mut LieroWormWeapon) -> i32 {
+        if weapon.is_null() {
+            -1
+        } else {
+            unsafe { (*((*weapon).kind as *const LieroTcWeapon)).id }
+        }
+    }
+
     fn damage_potential(&self, by: i32, weapon: *mut LieroWormWeapon, hp: i32) {
-        unsafe { (self.h.damage_potential)(self.h.ctx, by, weapon, hp) }
+        if let Some(s) = self.stats() {
+            liero_stats_damage_potential(s, by, Self::weapon_index(weapon), hp);
+        }
     }
 
     fn damage_dealt(&self, by: i32, weapon: *mut LieroWormWeapon, to: i32, hp: i32, has_hit: bool) {
-        unsafe { (self.h.damage_dealt)(self.h.ctx, by, weapon, to, hp, has_hit) }
+        if let Some(s) = self.stats() {
+            let pos = unsafe { (*self.worm(to)).pos };
+            let w = Self::weapon_index(weapon);
+            liero_stats_damage_dealt(s, by, w, to, ftoi(pos.x), ftoi(pos.y), hp, has_hit);
+        }
     }
 
     fn shot(&self, by: i32, weapon: *mut LieroWormWeapon) {
-        unsafe { (self.h.shot)(self.h.ctx, by, weapon) }
+        if let Some(s) = self.stats() {
+            liero_stats_shot(s, by, Self::weapon_index(weapon));
+        }
     }
 
     fn hit(&self, by: i32, weapon: *mut LieroWormWeapon, to: i32) {
-        unsafe { (self.h.hit)(self.h.ctx, by, weapon, to) }
+        if let Some(s) = self.stats() {
+            liero_stats_hit(s, by, Self::weapon_index(weapon), to);
+        }
+    }
+
+    /// The stats' start or end of a tick.
+    fn stats_tick(&self, end: bool) {
+        if let Some(s) = self.stats() {
+            unsafe {
+                let ticks = (self.h.hires_ticks)(self.h.ctx);
+                let worms = stats_worms(self.g.f);
+                if end {
+                    liero_stats_tick(s, ticks, worms.as_ptr(), worms.len());
+                } else {
+                    liero_stats_pre_tick(s, ticks, worms.as_ptr(), worms.len());
+                }
+            }
+        }
     }
 
     /// A worm's hurt sound: one of three, unless one of its own is playing.
@@ -1122,7 +1165,7 @@ impl<'a> World<'a> {
     /// Screen flash and viewport shake at the start of the tick.
     fn begin_tick(&self) {
         unsafe {
-            (self.h.pre_tick)(self.h.ctx);
+            self.stats_tick(false);
 
             if (*self.data()).screen_flash > 0 {
                 (*self.data()).screen_flash -= 1;
@@ -1231,6 +1274,7 @@ impl<'a> World<'a> {
         }
 
         unsafe { (self.h.end_tick)(self.h.ctx) };
+        self.stats_tick(true);
     }
 }
 
@@ -1650,12 +1694,16 @@ unsafe extern "C" fn worm_add_kill(ctx_: *mut c_void, idx: i32) {
 
 unsafe extern "C" fn worm_after_death(ctx_: *mut c_void) {
     let c = worm_ctx(ctx_);
-    (c.w.h.after_death)(c.w.h.ctx, c.i);
+    if let Some(s) = c.w.stats() {
+        liero_stats_after_death(s, c.i);
+    }
 }
 
 unsafe extern "C" fn worm_after_spawn(ctx_: *mut c_void) {
     let c = worm_ctx(ctx_);
-    (c.w.h.after_spawn)(c.w.h.ctx, c.i);
+    if let Some(s) = c.w.stats() {
+        liero_stats_after_spawn(s, c.i);
+    }
 }
 
 struct RopeContext<'a> {

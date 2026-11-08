@@ -1145,6 +1145,10 @@ typedef struct LieroGameFields {
   int32_t viewport_count;
   struct LieroViewport *const *spectator_viewports;
   int32_t spectator_viewport_count;
+  /**
+   * The stats the tick records, or null for none.
+   */
+  struct LieroStats *stats;
 } LieroGameFields;
 
 /**
@@ -1339,18 +1343,17 @@ typedef struct LieroKeys {
 } LieroKeys;
 
 /**
- * What C++ does during a tick: sounds, stats and the viewports. `ctx` is
- * passed back to each function. Worms are positions in the game's worms;
- * a negative `by` is no worm.
+ * What C++ does during a tick: sounds and the viewports. `ctx` is passed
+ * back to each function.
  */
 typedef struct LieroGameHooks {
   void *ctx;
   /**
-   * Stats at the start of the tick.
+   * The clock the stats time ticks with (`appHiresTicks`).
    */
-  void (*pre_tick)(void *ctx);
+  uint64_t (*hires_ticks)(void *ctx);
   /**
-   * Viewports and stats at the end of the tick.
+   * The viewports at the end of the tick.
    */
   void (*end_tick)(void *ctx);
   /**
@@ -1359,17 +1362,6 @@ typedef struct LieroGameHooks {
   void (*play_sound)(void *ctx, int32_t sound, void *id, int32_t loops);
   bool (*sound_playing)(void *ctx, void *id);
   void (*stop_sound)(void *ctx, void *id);
-  void (*damage_potential)(void *ctx, int32_t by, struct LieroWormWeapon *weapon, int32_t hp);
-  void (*damage_dealt)(void *ctx,
-                       int32_t by,
-                       struct LieroWormWeapon *weapon,
-                       int32_t to,
-                       int32_t hp,
-                       bool has_hit);
-  void (*shot)(void *ctx, int32_t by, struct LieroWormWeapon *weapon);
-  void (*hit)(void *ctx, int32_t by, struct LieroWormWeapon *weapon, int32_t to);
-  void (*after_death)(void *ctx, int32_t worm);
-  void (*after_spawn)(void *ctx, int32_t worm);
 } LieroGameHooks;
 
 /**
@@ -2909,6 +2901,14 @@ void liero_game_data_assign(struct LieroGameData *to, const struct LieroGameData
  * `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
  */
 void liero_game_data_free(struct LieroGameData *g);
+
+/**
+ * The end of the game for its stats (`StatsRecorder::finish`).
+ *
+ * # Safety
+ * `f`'s pointers must be valid; its stats may be null.
+ */
+void liero_game_stats_finish(const struct LieroGameFields *f);
 
 /**
  * Runs the game for one tick: C++'s `Game::processFrame`.

@@ -34,7 +34,6 @@ set(GAME_SOURCES
     src/game/math.cpp
     src/game/rand.cpp
     src/game/settings.cpp
-    src/game/stats_recorder.cpp
     src/game/text.cpp
     src/game/viewport.cpp
     src/game/weapon.cpp

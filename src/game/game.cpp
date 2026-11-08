@@ -241,6 +241,7 @@ GameView::GameView(Game& game)
 	fields.viewport_count = int32_t(viewports.size());
 	fields.spectator_viewports = spectatorViewports.data();
 	fields.spectator_viewport_count = int32_t(spectatorViewports.size());
+	fields.stats = game.statsRecorder ? game.statsRecorder->s : nullptr;
 
 	settings.game_mode = int32_t(s.gameMode);
 	settings.max_bonuses = s.maxBonuses;
@@ -299,17 +300,15 @@ Game& gameOf(void* ctx)
 	return *static_cast<Game*>(ctx);
 }
 
-void hookPreTick(void* ctx)
+uint64_t hookHiresTicks(void*)
 {
-	Game& game = gameOf(ctx);
-	game.statsRecorder->preTick(game);
+	return appHiresTicks();
 }
 
 void hookEndTick(void* ctx)
 {
 	Game& game = gameOf(ctx);
 	game.processViewports();
-	game.statsRecorder->tick(game);
 }
 
 void hookPlaySound(void* ctx, int32_t sound, void* id, int32_t loops)
@@ -327,57 +326,14 @@ void hookStopSound(void* ctx, void* id)
 	gameOf(ctx).soundPlayer->stop(id);
 }
 
-WormWeapon* wormWeapon(LieroWormWeapon* w)
-{
-	return reinterpret_cast<WormWeapon*>(w);
-}
-
-void hookDamagePotential(void* ctx, int32_t by, LieroWormWeapon* weapon, int32_t hp)
-{
-	Game& game = gameOf(ctx);
-	game.statsRecorder->damagePotential(game.wormByIdx(by), wormWeapon(weapon), hp);
-}
-
-void hookDamageDealt(void* ctx, int32_t by, LieroWormWeapon* weapon, int32_t to, int32_t hp, bool hasHit)
-{
-	Game& game = gameOf(ctx);
-	game.statsRecorder->damageDealt(game.wormByIdx(by), wormWeapon(weapon), game.worms[to], hp, hasHit);
-}
-
-void hookShot(void* ctx, int32_t by, LieroWormWeapon* weapon)
-{
-	Game& game = gameOf(ctx);
-	game.statsRecorder->shot(game.wormByIdx(by), wormWeapon(weapon));
-}
-
-void hookHit(void* ctx, int32_t by, LieroWormWeapon* weapon, int32_t to)
-{
-	Game& game = gameOf(ctx);
-	game.statsRecorder->hit(game.wormByIdx(by), wormWeapon(weapon), game.worms[to]);
-}
-
-void hookAfterDeath(void* ctx, int32_t worm)
-{
-	Game& game = gameOf(ctx);
-	game.statsRecorder->afterDeath(game.worms[worm]);
-}
-
-void hookAfterSpawn(void* ctx, int32_t worm)
-{
-	Game& game = gameOf(ctx);
-	game.statsRecorder->afterSpawn(game.worms[worm]);
-}
-
 } // namespace
 
 void Game::processFrame()
 {
 	GameView view(*this);
 	LieroGameHooks hooks = {
-		this, hookPreTick, hookEndTick,
+		this, hookHiresTicks, hookEndTick,
 		hookPlaySound, hookSoundPlaying, hookStopSound,
-		hookDamagePotential, hookDamageDealt, hookShot, hookHit,
-		hookAfterDeath, hookAfterSpawn,
 	};
 	liero_game_process_frame(&view.fields, &view.settings, &hooks);
 }
@@ -416,6 +372,12 @@ void Game::startGame()
 	}
 }
 
+void NormalStatsRecorder::finish(Game& game)
+{
+	GameView view(game);
+	liero_game_stats_finish(&view.fields);
+}
+
 bool Game::isGameOver()
 {
 	GameView view(*this);
@@ -426,13 +388,14 @@ void Game::postClone(Game& original, bool complete)
 {
 	if (!complete)
 	{
-		statsRecorder.reset(new StatsRecorder);
+		statsRecorder.reset();
 		soundPlayer.reset(new NullSoundPlayer);
 		viewports.clear();
 	}
 	else
 	{
-		statsRecorder.reset(new NormalStatsRecorder(static_cast<NormalStatsRecorder&>(*statsRecorder)));
+		if (statsRecorder)
+			statsRecorder.reset(new NormalStatsRecorder(*statsRecorder));
 
 		for (auto& vp : viewports)
 		{
