@@ -610,8 +610,8 @@ void hashSettings()
 		{
 			Fnv h;
 			std::unique_ptr<Settings> copy(s.clone());
-			copy->wormSettings[0].reset(s.wormSettings[0]->clone().release());
-			copy->wormSettings[1].reset(s.wormSettings[1]->clone().release());
+			copy->setWorm(0, std::shared_ptr<WormSettings>(s.wormSettings[0]->clone()));
+			copy->setWorm(1, std::shared_ptr<WormSettings>(s.wormSettings[1]->clone()));
 			addHash(h, copy->updateHash());
 			addSettings(h, *copy);
 			print("hash", i, h);

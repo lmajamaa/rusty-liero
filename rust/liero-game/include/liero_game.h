@@ -475,8 +475,9 @@ typedef struct LieroMixer LieroMixer;
 typedef struct LieroReplayResult LieroReplayResult;
 
 /**
- * The game's settings, without the worms', which C++ keeps apart since a
- * worm holds on to its own.
+ * The game's settings, with a reference to each player's worm settings,
+ * which the game's worms share. A clone shares them too, as C++'s
+ * `Settings::clone` did.
  */
 typedef struct LieroSettingsBox LieroSettingsBox;
 
@@ -4560,9 +4561,25 @@ struct LieroHash liero_settings_result_hash(const struct LieroSettingsResult *r)
 void liero_settings_result_free(struct LieroSettingsResult *r);
 
 /**
- * Settings with every field zero or empty; C++ then sets the defaults.
+ * Settings with every field zero or empty, and the worms' too; C++ then
+ * sets the defaults.
  */
 struct LieroSettingsBox *liero_settings_box_new(void);
+
+/**
+ * Player `i`'s worm settings, which the box holds a reference to.
+ */
+struct LieroWormSettingsBox *liero_settings_box_worm(const struct LieroSettingsBox *s, uintptr_t i);
+
+/**
+ * Makes player `i`'s worm settings `w`, taking a reference to it.
+ *
+ * # Safety
+ * `w` is a valid box.
+ */
+void liero_settings_box_set_worm(struct LieroSettingsBox *s,
+                                 uintptr_t i,
+                                 struct LieroWormSettingsBox *w);
 
 struct LieroSettingsBox *liero_settings_box_clone(const struct LieroSettingsBox *s);
 

@@ -693,14 +693,69 @@ pub struct LieroWormSettingsData {
     pub controls_ex: [u32; LIERO_MAX_CONTROL_EX],
 }
 
-/// The game's settings, without the worms', which C++ keeps apart since a
-/// worm holds on to its own.
+/// The game's settings, with a reference to each player's worm settings,
+/// which the game's worms share. A clone shares them too, as C++'s
+/// `Settings::clone` did.
 #[derive(Clone)]
 pub struct LieroSettingsBox {
     pub data: LieroSettingsData,
     pub tc: Vec<u8>,
     pub level_file: Vec<u8>,
+    pub worms: [WormSettingsRef; 2],
 }
+
+/// One reference to a worm's settings box.
+pub struct WormSettingsRef(*mut LieroWormSettingsBox);
+
+impl WormSettingsRef {
+    /// A new reference to `b`.
+    ///
+    /// # Safety
+    /// `b` is a valid box.
+    pub unsafe fn retain(b: *mut LieroWormSettingsBox) -> Self {
+        WormSettingsRef(liero_worm_settings_box_retain(b))
+    }
+
+    /// Takes over the reference `liero_worm_settings_box_new` returns.
+    fn new() -> Self {
+        WormSettingsRef(liero_worm_settings_box_new())
+    }
+
+    pub fn as_ptr(&self) -> *mut LieroWormSettingsBox {
+        self.0
+    }
+}
+
+impl Clone for WormSettingsRef {
+    fn clone(&self) -> Self {
+        // SAFETY: the reference keeps the box alive.
+        unsafe { WormSettingsRef::retain(self.0) }
+    }
+}
+
+impl Drop for WormSettingsRef {
+    fn drop(&mut self) {
+        // SAFETY: this reference isn't used again.
+        unsafe { liero_worm_settings_box_free(self.0) }
+    }
+}
+
+impl std::ops::Deref for WormSettingsRef {
+    type Target = LieroWormSettingsBox;
+    fn deref(&self) -> &LieroWormSettingsBox {
+        // SAFETY: the reference keeps the box alive.
+        unsafe { &*self.0 }
+    }
+}
+
+impl std::ops::DerefMut for WormSettingsRef {
+    fn deref_mut(&mut self) -> &mut LieroWormSettingsBox {
+        // SAFETY: as for `deref`. C++'s views of the box don't hold Rust
+        // references into it across this one's use.
+        unsafe { &mut *self.0 }
+    }
+}
+
 
 /// A worm's settings, shared by the C++ `WormSettings` that refer to them
 /// and the game's worms: each holds a reference (`_retain` and `_free`).
@@ -818,10 +873,31 @@ fn set_bytes(dest: &mut Vec<u8>, text: LieroStr) {
     *dest = unsafe { text.bytes() }.to_vec();
 }
 
-/// Settings with every field zero or empty; C++ then sets the defaults.
+/// Settings with every field zero or empty, and the worms' too; C++ then
+/// sets the defaults.
 #[no_mangle]
 pub extern "C" fn liero_settings_box_new() -> *mut LieroSettingsBox {
-    Box::into_raw(Box::new(LieroSettingsBox { data: LieroSettingsData::default(), tc: Vec::new(), level_file: Vec::new() }))
+    Box::into_raw(Box::new(LieroSettingsBox {
+        data: LieroSettingsData::default(),
+        tc: Vec::new(),
+        level_file: Vec::new(),
+        worms: [WormSettingsRef::new(), WormSettingsRef::new()],
+    }))
+}
+
+/// Player `i`'s worm settings, which the box holds a reference to.
+#[no_mangle]
+pub extern "C" fn liero_settings_box_worm(s: &LieroSettingsBox, i: usize) -> *mut LieroWormSettingsBox {
+    s.worms[i].as_ptr()
+}
+
+/// Makes player `i`'s worm settings `w`, taking a reference to it.
+///
+/// # Safety
+/// `w` is a valid box.
+#[no_mangle]
+pub unsafe extern "C" fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: *mut LieroWormSettingsBox) {
+    s.worms[i] = WormSettingsRef::retain(w);
 }
 
 #[no_mangle]
@@ -943,6 +1019,28 @@ pub unsafe extern "C" fn liero_worm_settings_box_set_name(s: &mut LieroWormSetti
 #[cfg(test)]
 mod box_tests {
     use super::*;
+
+    #[test]
+    fn a_clone_shares_the_worms() {
+        unsafe {
+            let a = liero_settings_box_new();
+            let w0 = liero_settings_box_worm(&*a, 0);
+            assert_ne!(w0, liero_settings_box_worm(&*a, 1));
+            let b = liero_settings_box_clone(&*a);
+            assert_eq!(liero_settings_box_worm(&*b, 0), w0);
+            assert_eq!((*w0).refs(), 2);
+
+            // Setting one is the box's own.
+            let w = liero_worm_settings_box_new();
+            liero_settings_box_set_worm(&mut *b, 0, w);
+            assert_eq!(((*w).refs(), (*w0).refs()), (2, 1));
+            assert_eq!(liero_settings_box_worm(&*a, 0), w0);
+            liero_worm_settings_box_free(w);
+            liero_settings_box_free(b);
+            assert_eq!((*w0).refs(), 1);
+            liero_settings_box_free(a);
+        }
+    }
 
     fn s(b: &[u8]) -> LieroStr {
         str(b)

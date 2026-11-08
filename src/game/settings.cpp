@@ -50,24 +50,20 @@ Settings::Settings(LieroSettingsBox* box)
 , map(data.map)
 , screenSync(data.screen_sync)
 {
+	for (int i = 0; i < 2; ++i)
+		wormSettings[i] = WormSettings::share(liero_settings_box_worm(box, i));
 }
 
 Settings::Settings()
 : Settings(liero_settings_box_new())
 {
-	wormSettings[0].reset(new WormSettings);
-	wormSettings[1].reset(new WormSettings);
-
 	SettingsResult r(liero_settings_default());
 	setSettings(*this, r.settings());
 }
 
 std::unique_ptr<Settings> Settings::clone() const
 {
-	std::unique_ptr<Settings> r(new Settings(liero_settings_box_clone(box)));
-	r->wormSettings[0] = wormSettings[0];
-	r->wormSettings[1] = wormSettings[1];
-	return r;
+	return std::unique_ptr<Settings>(new Settings(liero_settings_box_clone(box)));
 }
 
 Settings::~Settings()

@@ -13,7 +13,7 @@ use std::rc::Rc;
 use crate::ai::LieroWormAi;
 use crate::game::{LieroGameData, LieroGameFields, LieroGameWorm, LieroRect};
 use crate::level::LieroLevel;
-use crate::settings::{liero_worm_settings_box_free, liero_worm_settings_box_retain, LieroWormSettingsBox};
+use crate::settings::{LieroWormSettingsBox, WormSettingsRef};
 use crate::sfx::LieroSoundOut;
 use crate::stats::LieroStats;
 use crate::tc::LieroTcData;
@@ -24,14 +24,14 @@ use crate::worm::LieroWormData;
 /// A worm: its state, its settings and its bot, if any.
 pub struct LieroWorm {
     pub data: LieroWormData,
-    /// One reference, or null before the worm has settings.
-    settings: *mut LieroWormSettingsBox,
+    /// None before the worm has settings.
+    settings: Option<WormSettingsRef>,
     ai: Option<Rc<UnsafeCell<LieroWormAi>>>,
 }
 
 impl LieroWorm {
     fn new(settings: *mut LieroWormSettingsBox) -> Box<Self> {
-        let mut w = Box::new(LieroWorm { data: LieroWormData::default(), settings: std::ptr::null_mut(), ai: None });
+        let mut w = Box::new(LieroWorm { data: LieroWormData::default(), settings: None, ai: None });
         w.set_settings(settings);
         w
     }
@@ -39,33 +39,17 @@ impl LieroWorm {
     /// `Worm(Worm const&)`: the state copied as it is, rope anchor and all,
     /// with the same settings and bot.
     fn copy(&self) -> Box<Self> {
-        let mut w = Box::new(LieroWorm { data: self.data, settings: std::ptr::null_mut(), ai: self.ai.clone() });
-        w.set_settings(self.settings);
-        w
+        Box::new(LieroWorm { data: self.data, settings: self.settings.clone(), ai: self.ai.clone() })
     }
 
+    /// `s` is a valid box, or null.
     fn set_settings(&mut self, s: *mut LieroWormSettingsBox) {
-        // SAFETY: boxes passed in are valid, and `self.settings` holds a
-        // reference.
-        unsafe {
-            if !s.is_null() {
-                liero_worm_settings_box_retain(s);
-            }
-            liero_worm_settings_box_free(self.settings);
-        }
-        self.settings = s;
+        // SAFETY: the callers pass valid boxes.
+        self.settings = (!s.is_null()).then(|| unsafe { WormSettingsRef::retain(s) });
     }
 
     fn settings(&self) -> &LieroWormSettingsBox {
-        assert!(!self.settings.is_null(), "a worm without settings");
-        // SAFETY: the worm holds a reference.
-        unsafe { &*self.settings }
-    }
-}
-
-impl Drop for LieroWorm {
-    fn drop(&mut self) {
-        self.set_settings(std::ptr::null_mut());
+        self.settings.as_deref().expect("a worm without settings")
     }
 }
 
@@ -217,7 +201,7 @@ pub extern "C" fn liero_worm_data(w: &mut LieroWorm) -> *mut LieroWormData {
 /// The worm's settings box, or null.
 #[no_mangle]
 pub extern "C" fn liero_worm_settings(w: &LieroWorm) -> *mut LieroWormSettingsBox {
-    w.settings
+    w.settings.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr())
 }
 
 /// # Safety
@@ -360,7 +344,7 @@ pub unsafe extern "C" fn liero_game_view_free(v: *mut LieroGameView) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::liero_worm_settings_box_new;
+    use crate::settings::{liero_worm_settings_box_free, liero_worm_settings_box_new};
 
     fn rect(x1: i32, y1: i32, x2: i32, y2: i32) -> LieroRect {
         LieroRect { x1, y1, x2, y2 }
