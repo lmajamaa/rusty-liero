@@ -20,7 +20,6 @@
 #include "keys.hpp"
 #include "worm.hpp"
 #include "mixer/player.hpp"
-#include "controller/controller.hpp"
 
 #include <SDL.h>
 #include <cstdio>
@@ -363,9 +362,10 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 			c = pool[r(12)];
 	}
 
-	std::unique_ptr<Controller> lc(Controller::local(settings->rust(), common->tc));
-	LieroControllerData& d = lc->data();
-	LieroGame* game = lc->currentGame();
+	std::unique_ptr<LieroController, void (*)(LieroController*)> lc(
+		liero_local_controller_new(settings->rust(), common->tc), liero_controller_free);
+	LieroControllerData& d = *liero_controller_data(lc.get());
+	LieroGame* game = liero_controller_game(lc.get());
 	auto worm = [game](std::size_t i) { return liero_worm_data(liero_game_worm(game, i)); };
 
 	char name[32];
@@ -378,7 +378,7 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 		if (op < 7)
 		{
 			uint32_t key = r(8) == 0 ? DkEscape : r(8) == 0 ? r(177) : pool[r(12)];
-			lc->onKey(int(key), r(2) != 0);
+			liero_controller_on_key(lc.get(), int(key), r(2) != 0);
 		}
 		else if (op == 7)
 			d.going_to_menu = false;

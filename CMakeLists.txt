@@ -56,7 +56,6 @@ set(GAME_SOURCES
     src/game/replay.cpp
     src/game/screen.cpp
     src/game/sfx.cpp
-    src/game/controller/controller.cpp
     src/game/menu/menu.cpp
     src/game/sdlmain.cpp
 )

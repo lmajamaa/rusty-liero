@@ -8,10 +8,12 @@
 
 use std::cell::Cell;
 
+use crate::controllers::LieroController;
 use crate::keys::LieroKeys;
 use crate::rand::{liero_rand_seed, LieroRand, LIERO_RAND_DEFAULT_SEED};
 use crate::renderer::{LieroBitmapBox, LieroRenderer};
 use crate::settings::LieroSettingsBox;
+use crate::tc::LieroTc;
 
 pub struct LieroApp {
     /// For things that don't affect the game: the menus, weapon selection
@@ -33,6 +35,10 @@ pub struct LieroApp {
     /// The menus' settings (`gfx.settings`), which can be another game's
     /// than the one played.
     pub menu_settings: Option<unsafe extern "C" fn() -> *mut LieroSettingsBox>,
+    /// The TC the menus and new games use (`gfx.common`).
+    pub menu_tc: Option<unsafe extern "C" fn() -> *mut LieroTc>,
+    /// The match or replay being played, or behind the menu.
+    pub controller: Option<Box<LieroController>>,
     /// Whether the screen shows the single screen renderer, for a replay on
     /// one screen (`gfx.primaryRenderer`), rather than the play one.
     pub primary_single: bool,
@@ -40,9 +46,17 @@ pub struct LieroApp {
 
 impl LieroApp {
     /// The menus' settings.
-    pub fn menu_settings(&self) -> &mut LieroSettingsBox {
+    pub fn menu_settings(&self) -> &'static mut LieroSettingsBox {
         // SAFETY: C++ keeps the menus' settings while it runs.
         unsafe { &mut *(self.menu_settings.expect("no menu settings"))() }
+    }
+}
+
+impl LieroApp {
+    /// The menus' TC.
+    pub fn menu_tc(&self) -> *mut LieroTc {
+        // SAFETY: C++ keeps the TC while it runs.
+        unsafe { (self.menu_tc.expect("no TC"))() }
     }
 }
 
@@ -59,6 +73,8 @@ impl LieroApp {
             keys: LieroKeys::default(),
             menu_cycles: 0,
             menu_settings: None,
+            menu_tc: None,
+            controller: None,
             primary_single: false,
         }
     }
@@ -131,6 +147,29 @@ pub extern "C" fn liero_app_set_primary_single(a: &mut LieroApp, single: bool) {
 #[no_mangle]
 pub extern "C" fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
     liero_app_renderer(a, a.primary_single)
+}
+
+/// Where the app finds the menus' TC.
+#[no_mangle]
+pub extern "C" fn liero_app_set_menu_tc(a: &mut LieroApp, f: unsafe extern "C" fn() -> *mut LieroTc) {
+    a.menu_tc = Some(f);
+}
+
+/// The controller, or null.
+#[no_mangle]
+pub extern "C" fn liero_app_controller(a: &mut LieroApp) -> *mut LieroController {
+    a.controller.as_deref_mut().map_or(std::ptr::null_mut(), |c| c as *mut LieroController)
+}
+
+/// Replaces the controller with `c` (from a `_new`, or null), dropping the
+/// old one first.
+///
+/// # Safety
+/// `c` isn't used by C++ after.
+#[no_mangle]
+pub unsafe extern "C" fn liero_app_set_controller(a: &mut LieroApp, c: *mut LieroController) {
+    a.controller = None;
+    a.controller = (!c.is_null()).then(|| Box::from_raw(c));
 }
 
 #[no_mangle]

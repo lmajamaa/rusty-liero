@@ -1365,39 +1365,6 @@ typedef struct LieroAppHooks {
    */
   void (*process)(void);
   /**
-   * The controller's `focus`, `process` (false when it stops) and
-   * `unfocus` with the keys cleared.
-   */
-  void (*focus)(void);
-  bool (*run)(void);
-  void (*finish)(void);
-  /**
-   * Draws the controller on both screens, counting a menu frame when
-   * `count`.
-   */
-  void (*draw)(bool count);
-  /**
-   * Moves the screen the controller opened (`Gfx::open`) into `out`.
-   * False if it opened none.
-   */
-  bool (*take_opened)(struct LieroScreen *out);
-  /**
-   * What the controller does with that screen's result.
-   */
-  void (*then)(int32_t result);
-  /**
-   * A new controller with a new level behind the menu.
-   */
-  void (*restart)(void);
-  /**
-   * Does what the menu chose (`selection`): a `LIERO_AFTER_MENU_*`.
-   */
-  int32_t (*after_menu)(int32_t selection);
-  /**
-   * Drops the controller before quitting.
-   */
-  void (*quit)(void);
-  /**
    * The main menu screen.
    */
   struct LieroScreen (*menu_screen)(void);
@@ -2686,6 +2653,25 @@ void liero_app_set_primary_single(struct LieroApp *a, bool single);
  */
 struct LieroRenderer *liero_app_primary(struct LieroApp *a);
 
+/**
+ * Where the app finds the menus' TC.
+ */
+void liero_app_set_menu_tc(struct LieroApp *a, struct LieroTc *(*f)(void));
+
+/**
+ * The controller, or null.
+ */
+struct LieroController *liero_app_controller(struct LieroApp *a);
+
+/**
+ * Replaces the controller with `c` (from a `_new`, or null), dropping the
+ * old one first.
+ *
+ * # Safety
+ * `c` isn't used by C++ after.
+ */
+void liero_app_set_controller(struct LieroApp *a, struct LieroController *c);
+
 uint32_t *liero_app_menu_cycles(struct LieroApp *a);
 
 /**
@@ -3813,6 +3799,31 @@ void liero_level_blit_stone(const struct LieroLevel *level,
                             const uint8_t *sprite,
                             int32_t x,
                             int32_t y);
+
+/**
+ * See `LieroLevelBox::generate_from_settings`.
+ *
+ * # Safety
+ * All are valid; `exepal` holds 256 colours.
+ */
+void liero_level_box_generate_from_settings(struct LieroLevelBox *l,
+                                            const struct LieroLevelCommon *common,
+                                            const struct LieroColor *exepal,
+                                            const struct LieroSettingsBox *settings,
+                                            struct LieroRand *rand);
+
+/**
+ * See `LieroLevelBox::load`.
+ *
+ * # Safety
+ * All are valid; `exepal` holds 256 colours and `bytes` `len`.
+ */
+bool liero_level_box_load(struct LieroLevelBox *l,
+                          const struct LieroLevelCommon *common,
+                          const struct LieroColor *exepal,
+                          bool powerlevel_palette,
+                          const uint8_t *bytes,
+                          uintptr_t len);
 
 struct LieroLevelBox *liero_level_box_new(void);
 

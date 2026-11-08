@@ -22,7 +22,6 @@
 
 #include "ticks.hpp"
 
-#include "controller/controller.hpp"
 
 #include "gfx/macros.hpp"
 
@@ -51,6 +50,7 @@ Gfx::Gfx()
 	clearKeys();
 	liero_app_set_primary_single(app, false);
 	liero_app_set_menu_settings(app, []() { return gfx.settings->rust(); });
+	liero_app_set_menu_tc(app, []() { return gfx.common->tc; });
 }
 
 void Gfx::init()
@@ -734,11 +734,14 @@ int32_t selectorChoose(void* ctx, LieroStr rel, LieroStr fullPath, LieroStr name
 			gfx.prevSelectedReplayPath = toString(fullPath);
 
 			// Reset controller before opening the replay, since we may be recording it
-			gfx.controller.reset();
+			liero_app_set_controller(gfx.app, nullptr);
 
 			{
 				FsNode node = c.node(rel);
-				gfx.controller.reset(Controller::replay(node.rust(), node.fullPath(), gfx.common->tc));
+				LieroController* rc = node.rust() ? liero_replay_controller_new(node.rust(), gfx.common->tc) : nullptr;
+				if (!rc)
+					throw std::runtime_error("Could not read " + node.fullPath());
+				liero_app_set_controller(gfx.app, rc);
 			}
 			return MainMenu::MaReplay;
 
@@ -888,11 +891,6 @@ std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x, int y, boo
 	return fromFfi(liero_info_box_screen(str(text), x, y, clearScreen));
 }
 
-void Gfx::infoBox(std::string const& text, int x, int y, bool clearScreen)
-{
-	open(infoBoxScreen(text, x, y, clearScreen), [](int) { return -1; });
-}
-
 namespace
 {
 
@@ -913,147 +911,29 @@ auto guarded(F f, decltype(f()) fallback) -> decltype(f())
 	}
 }
 
-// The app's screens are in Rust (rust/liero-game/src/app_screens.rs); these
-// are the controller and the menu's choices they call.
+// The app's screens and the menu's choices are in Rust
+// (rust/liero-game/src/app_screens.rs); these are what they call in C++.
 
-// A new controller with a new level behind the menu.
-void restartApp()
+// The frame's keys go to the controller.
+struct ControllerKeys : KeySink
 {
-	Gfx& g = gfx;
-	g.controller.reset(Controller::local(g.settings->rust(), g.common->tc));
-
+	void onKey(int key, bool state) override
 	{
-		Level newLevel;
-		newLevel.generateFromSettings(*g.common, *g.settings, g.rand);
-		g.controller->swapLevel(newLevel);
+		if (LieroController* c = liero_app_controller(gfx.app))
+			liero_controller_on_key(c, key, state);
 	}
+};
 
-	liero_game_focus(g.controller->currentGame(), g.playRenderer.rust());
-	liero_game_focus(g.controller->currentGame(), g.singleScreenRenderer.rust());
-
-	// TODO: Unfocus game when necessary
-}
-
-// Does what the menu chose: quits, starts over with a new TC, or plays.
-int afterMenu(int selection)
-{
-	Gfx& g = gfx;
-	auto& settings = g.settings;
-	auto& controller = g.controller;
-
-	if(selection == MainMenu::MaNewGame)
-	{
-		std::unique_ptr<Controller> newController(Controller::local(settings->rust(), g.common->tc));
-
-		LieroLevelBox* oldBox = controller->currentLevel();
-		std::unique_ptr<Level> oldLevel(oldBox ? new Level(Level::view(oldBox)) : nullptr);
-
-		if(oldLevel
-		&& !settings->regenerateLevel
-		&& settings->randomLevel == oldLevel->oldRandomLevel
-		&& settings->levelFile == oldLevel->oldLevelFile)
-		{
-			// Take level and palette from old game
-			newController->swapLevel(*oldLevel);
-		}
-		else
-		{
-			Level newLevel;
-			newLevel.generateFromSettings(*g.common, *settings, g.rand);
-			newController->swapLevel(newLevel);
-		}
-
-		controller = std::move(newController);
-	}
-	else if(selection == MainMenu::MaResumeGame)
-	{
-		if (controller->isReplay())
-		{
-			liero_app_set_primary_single(g.app, true);
-		}
-	}
-	else if(selection == MainMenu::MaQuit) // QUIT TO OS
-	{
-		return LIERO_AFTER_MENU_QUIT;
-	}
-	else if(selection == MainMenu::MaReplay)
-	{
-		if (settings->singleScreenReplay)
-		{
-			liero_app_set_primary_single(g.app, true);
-		}
-	}
-	else if (selection == MainMenu::MaTc)
-	{
-		restartApp();
-		return LIERO_AFTER_MENU_RESTART;
-	}
-
-	return LIERO_AFTER_MENU_PLAY;
-}
-
-// What the controller does with the result of the screen it opened.
-std::function<int(int)> gameThen;
-
-void appProcess() { guarded([] { gfx.process(gfx.controller.get()); return 0; }, 0); }
-void appFocus() { guarded([] { gfx.controller->focus(); return 0; }, 0); }
-bool appRun() { return guarded([] { return gfx.controller->process(); }, false); }
-
-void appFinish()
+void appProcess()
 {
 	guarded([]
 	{
-		Gfx& g = gfx;
-		liero_app_set_primary_single(g.app, false);
-		g.controller->unfocus();
-		g.clearKeys();
+		ControllerKeys keys;
+		gfx.process(&keys);
 		return 0;
 	}, 0);
 }
 
-void appDraw(bool count)
-{
-	guarded([count]
-	{
-		Gfx& g = gfx;
-		g.playRenderer.clear();
-		g.controller->draw(g.playRenderer, false);
-		g.singleScreenRenderer.clear();
-		g.controller->draw(g.singleScreenRenderer, true);
-		if (count)
-			++g.menuCycles;
-		return 0;
-	}, 0);
-}
-
-bool appTakeOpened(LieroScreen* out)
-{
-	// What the controller opened (a message, the stats screen) comes back
-	// to the game with nothing to do.
-	if (gfx.controller && gfx.controller->takeOpened(out))
-	{
-		gameThen = nullptr;
-		return true;
-	}
-	if (!gfx.opening)
-		return false;
-	gameThen = std::move(gfx.openingThen);
-	gfx.openingThen = nullptr;
-	*out = screenToFfi(std::move(gfx.opening));
-	return true;
-}
-
-void appThen(int32_t result)
-{
-	std::function<int(int)> then = std::move(gameThen);
-	gameThen = nullptr;
-	if (then)
-		guarded([&] { return then(result); }, 0);
-}
-
-void appRestart() { guarded([] { restartApp(); return 0; }, 0); }
-int32_t appAfterMenu(int32_t selection) { return guarded([selection] { return afterMenu(selection); }, LIERO_AFTER_MENU_QUIT); }
-void appQuit() { gfx.controller.reset(); }
 LieroScreen appMenuScreen() { return screenToFfi(menuScreen()); }
 
 }
@@ -1062,15 +942,6 @@ std::unique_ptr<Screen> mainScreen()
 {
 	LieroAppHooks h;
 	h.process = appProcess;
-	h.focus = appFocus;
-	h.run = appRun;
-	h.finish = appFinish;
-	h.draw = appDraw;
-	h.take_opened = appTakeOpened;
-	h.then = appThen;
-	h.restart = appRestart;
-	h.after_menu = appAfterMenu;
-	h.quit = appQuit;
 	h.menu_screen = appMenuScreen;
 	return fromFfi(liero_main_screen(h));
 }
@@ -1139,7 +1010,7 @@ void Gfx::drawSpectatorInfo()
 	singleScreenRenderer.bmp.copy(frozenSpectatorScreen);
 	drawVersusInfo(common, singleScreenRenderer.bmp, *settings, gfx.settings->levelFile.str(), centerX, centerY);
 
-	if (controller->running())
+	if (liero_controller_running(liero_app_controller(app)))
 	{
 		common.font.drawCenteredText(singleScreenRenderer.bmp, "PAUSED", centerX, centerY + 48, 7, 2);
 	}
@@ -1170,7 +1041,8 @@ int Gfx::menuStart()
 	common.font.drawText(playRenderer.bmp, LS(Copyright2), 2, 152, 19);
 
 	int startItemId;
-	if (controller->running())
+	LieroController* controller = liero_app_controller(app);
+	if (liero_controller_running(controller))
 	{
 		mainMenu.setVisibility(MainMenu::MaResumeGame, true);
 		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaResumeGame), "RESUME GAME (F1)");
@@ -1194,9 +1066,9 @@ int Gfx::menuStart()
 
 	frozenScreen.copy(playRenderer.bmp);
 	singleScreenRenderer.clear();
-	if (controller->currentLevel())
+	if (LieroLevelBox* level = liero_controller_level(controller))
 	{
-		Level::view(controller->currentLevel()).drawMiniature(singleScreenRenderer.bmp, centerX - 126, singleScreenRenderer.renderResY - 208, 2);
+		Level::view(level).drawMiniature(singleScreenRenderer.bmp, centerX - 126, singleScreenRenderer.renderResY - 208, 2);
 	}
 	frozenSpectatorScreen.copy(singleScreenRenderer.bmp);
 

@@ -51,9 +51,14 @@ struct Key
 };
 
 struct Game;
-struct Controller;
-struct KeySink;
 struct Gfx;
+
+// Where key events go (Gfx::processEvent).
+struct KeySink
+{
+	virtual ~KeySink() {}
+	virtual void onKey(int key, bool state) = 0;
+};
 
 // A message (Gfx::infoBox) until a key is pressed.
 std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
@@ -182,23 +187,9 @@ struct Gfx
 	// F8 on the menu: the developers' random TC.
 	void randomizeTc();
 
-	// A menu item opens `screen` from its onEnter, or a controller from its
-	// focus or process; the menu or game screen pushes it, and when it closes
-	// calls `then` with its result, which for a menu item returns what onEnter
-	// would have.
-	void open(std::unique_ptr<Screen> screen, std::function<int(int)> then)
-	{
-		opening = std::move(screen);
-		openingThen = std::move(then);
-	}
-	std::unique_ptr<Screen> opening;
-	std::function<int(int)> openingThen;
 	void drawBasicMenu(/*int curSel*/);
 	void drawSpectatorInfo();
 
-	// A text box from a menu item (`open`): `then` gets whether Enter closed
-	// it and the text, and returns what onEnter would have.
-	void infoBox(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
 
 	static void preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256]);
 
@@ -294,7 +285,6 @@ struct Gfx
 	int prevMag; // Previous magnification used for drawing
 	Rect lastUpdateRect; // Last region that was updated when flipping
 	std::shared_ptr<Common> common;
-	std::unique_ptr<Controller> controller;
 
 	std::vector<Joystick> joysticks;
 

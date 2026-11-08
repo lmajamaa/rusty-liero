@@ -530,6 +530,18 @@ impl LieroTc {
     }
 }
 
+impl LieroTcData {
+    /// What levels are made with (`Common::levelCommon`).
+    pub(crate) fn level_common(&self) -> crate::level::LieroLevelCommon {
+        crate::level::LieroLevelCommon {
+            materials: self.materials.as_ptr().cast(),
+            textures: self.textures.as_ptr(),
+            large_sprites: self.large_sprites.data,
+            large_sprite_count: self.large_sprites.count,
+        }
+    }
+}
+
 impl LieroTc {
     /// F8 on the menu: the developers' random TC (`Gfx::randomizeTc`). The
     /// values come from a generator seeded with 14, as the C++ did. The

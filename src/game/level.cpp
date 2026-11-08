@@ -93,73 +93,17 @@ void Level::resize(int width_new, int height_new)
 
 bool Level::load(Common& common, Settings const& settings, ByteReader r)
 {
-	resize(LIERO_LEVEL_WIDTH, LIERO_LEVEL_HEIGHT);
-
-	//std::size_t len = f.len;
-	bool resetPalette = true;
-
-	r.get(reinterpret_cast<uint8_t*>(&data[0]), width * height);
-
-	if(/*len >= 504*350 + 10 + 256*3
-	&&*/ (settings.extensions && settings.loadPowerlevelPalette))
-	{
-		uint8_t buf[10] = {};
-		if (r.tryGet(buf, 10))
-		{
-			if(!std::memcmp("POWERLEVEL", buf, 10))
-			{
-				Palette pal;
-				pal.read(r);
-				origpal.resetPalette(pal, settings);
-
-				resetPalette = false;
-			}
-		}
-	}
-
-	LieroLevel v = view();
 	LieroLevelCommon c = common.levelCommon();
-	liero_level_update_materials(&v, &c);
-
-	if (resetPalette)
-		origpal.resetPalette(*common.exepal, settings);
-
-	return true;
+	std::vector<uint8_t> const& bytes = *r.data;
+	std::size_t pos = std::min(r.pos, bytes.size());
+	return liero_level_box_load(box, &c, reinterpret_cast<LieroColor const*>(common.exepal->entries),
+		settings.extensions && settings.loadPowerlevelPalette, bytes.data() + pos, bytes.size() - pos);
 }
 
 void Level::generateFromSettings(Common& common, Settings const& settings, Rand& rand)
 {
-	if(settings.randomLevel)
-	{
-		generateRandom(common, settings, rand);
-	}
-	else
-	{
-		std::string path = settings.levelFile.str();
-		if (path.find('.', 0) == std::string::npos)
-			path += ".LEV";
-
-		bool loaded = false;
-		try
-		{
-			loaded = load(common, settings, ByteReader(FsNode(path).read()));
-		}
-		catch (std::runtime_error&)
-		{
-			// Ignore
-		}
-
-		if (!loaded)
-			generateRandom(common, settings, rand);
-	}
-
-	oldRandomLevel = settings.randomLevel;
-	oldLevelFile = settings.levelFile.str();
-
-	if(settings.shadow)
-	{
-		makeShadow(common);
-	}
+	LieroLevelCommon c = common.levelCommon();
+	liero_level_box_generate_from_settings(box, &c, reinterpret_cast<LieroColor const*>(common.exepal->entries), settings.rust(), &rand);
 }
 
 bool Level::selectSpawn(Rand& rand, int w, int h, IVec2& selected)
