@@ -18,9 +18,9 @@
 #include "common.hpp"
 #include "stats_recorder.hpp"
 
-struct SpectatorViewport;
 struct Viewport;
 struct Worm;
+struct WormSettings;
 struct Renderer;
 
 typedef enum {
@@ -59,55 +59,70 @@ struct GameMembers
 	std::shared_ptr<Common> common;
 	std::shared_ptr<SoundPlayer> soundPlayer;
 	std::shared_ptr<Settings> settings;
-	std::shared_ptr<StatsRecorder> statsRecorder;
-
-	Level level;
-
-	std::vector<Viewport*> viewports;
-	std::vector<SpectatorViewport*> spectatorViewports;
-	std::vector<Worm*> worms;
 };
 
+struct Game;
+
+// The game as the Rust game rules see it, with the settings they take
+// (made in Rust). Pointers into the game, so it must not outlive the call
+// it is made for.
+struct GameView
+{
+	GameView(Game& game);
+	~GameView();
+	GameView(GameView const&) = delete;
+	GameView& operator=(GameView const&) = delete;
+
+	LieroGameView* view;
+	LieroGameFields fields;
+	LieroGameSettings settings;
+};
+
+// Rust owns the game's state, level, worms and viewports (LieroGame in
+// rust/liero-game/src/game_box.rs), and holds what GameMembers keeps;
+// `level`, `worms` and the viewport lists are views of them.
 struct Game : GameMembers
 {
 	Game(std::shared_ptr<Common> common, std::shared_ptr<Settings> settings, std::shared_ptr<SoundPlayer> soundPlayer);
-	// A copy with state of its own. It shares the worms and viewports until
-	// postClone.
-	Game(Game const& other);
-	Game& operator=(Game const& other);
+	Game(Game const&) = delete;
+	Game& operator=(Game const&) = delete;
 	~Game();
 
-	void onKey(uint32_t key, bool state);
-	void releaseControls();
+	// A copy of the game, its worms and viewports, as a replay keeps to
+	// rewind to. It shares the worms' settings and bots, and the spectator
+	// viewports.
+	std::unique_ptr<Game> clone() const;
+	// Makes this game a copy of `other`, as `clone` would.
+	void assign(Game const& other);
+
 	// Runs the game for one tick, in Rust (rust/liero-game/src/game.rs).
 	void processFrame();
+	// Runs the worms' bots for the tick, in Rust (rust/liero-game/src/ai),
+	// timing them into the stats when `timed`.
+	void processAis(bool timed);
+	// The renderer's palette from the level's and the worms' colours, in
+	// Rust (focus is the same).
 	void focus(Renderer& renderer);
 	void updateSettings(Renderer& renderer);
 
-	void createBObject(fixedvec pos, fixedvec vel);
-
 	void clearViewports();
-	void addViewport(Viewport*);
-	void addSpectatorViewport(SpectatorViewport*);
-	void processViewports();
-	void drawViewports(Renderer& renderer, GameState state, bool isReplay = false);
-	void drawSpectatorViewports(Renderer& renderer, GameState state, bool isReplay = false);
-	void clearWorms();
-	void addWorm(Worm*);
-	void resetWorms();
+	// A viewport following the worm at `wormIdx`, or showing the whole
+	// level, by `kind`.
+	Viewport* addViewport(Rect rect, int wormIdx, int levwidth, int levheight, int kind = LIERO_VIEWPORT_WORM);
+	// One of the spectator viewports, which copies of the game share.
+	void addSpectatorViewport(Rect rect, int levwidth, int levheight);
+	// A new worm with `settings`, at the end of the list.
+	Worm* addWorm(std::shared_ptr<WormSettings> settings);
+	// A new worm the game keeps without listing it, for listWorm.
+	LieroWorm* newWorm();
+	// Lists one of newWorm's worms, or an empty place for null.
+	void listWorm(LieroWorm* w);
+	// The split-screen viewports, or the spectator ones, and the palette,
+	// in Rust.
 	void draw(Renderer& renderer, GameState state, bool useSpectatorViewports, bool isReplay = false);
+	// The start sound, the blood list and the first zone, in Rust.
 	void startGame();
 	bool isGameOver();
-	void doDamage(Worm& w, int amount, int byIdx);
-	void doHealing(Worm& w, int amount);
-	void postClone(Game& original, bool complete = false);
-
-	void spawnZone();
-
-	Material pixelMat(int x, int y)
-	{
-		return common->materials[level.pixel(x, y)];
-	}
 
 	Worm* wormByIdx(int idx)
 	{
@@ -115,18 +130,37 @@ struct Game : GameMembers
 		return worms[idx];
 	}
 
+	// Plays the game's sounds on `player` from now on.
+	void setSoundPlayer(std::shared_ptr<SoundPlayer> player);
+
+	// The game in Rust.
+	LieroGame* handle() const { return g; }
+	// Remakes the views of the worms and viewports, after Rust changes them.
+	void syncViews();
 	// The game's state in Rust.
 	LieroGameData* rust() { return &data; }
 
 private:
-	// Builds the members from `members`, in place, without a temporary
-	// copy of the level.
 	template<typename... Members>
-	Game(LieroGameData* d, Members&&... members);
+	Game(LieroGame* g, Members&&... members);
+	template<typename... Members>
+	Game(LieroGame* g, LieroGameData* d, Members&&... members);
 
+	LieroGame* g;
 	LieroGameData& data;
+	std::vector<std::unique_ptr<Worm>> wormViews;
+	std::vector<std::unique_ptr<Viewport>> viewportViews;
 
 public:
+	// The game's level, which Rust owns.
+	Level level;
+	// The game's worms, with null for a replay's empty places.
+	std::vector<Worm*> worms;
+	// The split-screen viewports.
+	std::vector<Viewport*> viewports;
+	// The stats the game records.
+	std::unique_ptr<StatsRecorder> statsRecorder;
+
 	// Rust owns these (LieroGameData in rust/liero-game/src/game.rs).
 	int& screenFlash;
 	bool& gotChanged;

@@ -20,17 +20,17 @@ struct Material : LieroMaterial
 		WormM = LIERO_MATERIAL_WORM
 	};
 
-	bool dirt() { return (flags & Dirt) != 0; }
-	bool dirt2() { return (flags & Dirt2) != 0; }
-	bool rock() { return (flags & Rock) != 0; }
-	bool background() { return (flags & Background) != 0; }
-	bool seeShadow() { return (flags & SeeShadow) != 0; }
+	bool dirt() const { return (flags & Dirt) != 0; }
+	bool dirt2() const { return (flags & Dirt2) != 0; }
+	bool rock() const { return (flags & Rock) != 0; }
+	bool background() const { return (flags & Background) != 0; }
+	bool seeShadow() const { return (flags & SeeShadow) != 0; }
 
 	// Constructed
-	bool dirtRock() { return (flags & (Dirt | Dirt2 | Rock)) != 0; }
-	bool anyDirt() { return (flags & (Dirt | Dirt2)) != 0; }
-	bool dirtBack() { return (flags & (Dirt | Dirt2 | Background)) != 0; }
-	bool worm() { return (flags & WormM) != 0; }
+	bool dirtRock() const { return (flags & (Dirt | Dirt2 | Rock)) != 0; }
+	bool anyDirt() const { return (flags & (Dirt | Dirt2)) != 0; }
+	bool dirtBack() const { return (flags & (Dirt | Dirt2 | Background)) != 0; }
+	bool worm() const { return (flags & WormM) != 0; }
 };
 
 static_assert(sizeof(Material) == sizeof(LieroMaterial), "Level views pass Material arrays to Rust");

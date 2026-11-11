@@ -52,7 +52,7 @@ struct ScriptDriver : AppDriver
 	void frame() override
 	{
 		Fnv f;
-		Renderer& r = *gfx.primaryRenderer;
+		Renderer& r = gfx.primaryRenderer();
 		for (int y = 0; y < r.bmp.h; ++y)
 			f.bytes(&r.bmp.getPixel(0, y), r.bmp.w);
 		for (Color const& c : r.pal.entries)
@@ -323,11 +323,7 @@ void hashApp(std::shared_ptr<Common> common)
 
 	// Fresh menus, as the game starts with: the menu checks before this one
 	// leave items hidden and selected.
-	gfx.mainMenu = MainMenu(53, 20);
-	gfx.settingsMenu = SettingsMenu(178, 20);
-	gfx.playerMenu = PlayerMenu(178, 20);
-	gfx.hiddenMenu = HiddenMenu(178, 20);
-	gfx.curMenu = nullptr;
+	liero_menus_reset(gfx.menus);
 	gfx.settings.reset(new Settings);
 	gfx.common = common;
 	gfx.setConfigPath(root);
@@ -338,7 +334,7 @@ void hashApp(std::shared_ptr<Common> common)
 	gfx.singleScreenRenderer.init(640, 400);
 	gfx.playRenderer.loadPalette(*common);
 	gfx.singleScreenRenderer.loadPalette(*common);
-	gfx.primaryRenderer = &gfx.playRenderer;
+	liero_app_set_primary_single(gfx.app, false);
 	gfx.settings->spectatorWindow = false;
 	gfx.clearKeys();
 	gfx.loadMenus();

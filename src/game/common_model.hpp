@@ -4,7 +4,7 @@
 template<typename T>
 struct ObjectResolver
 {
-	ObjectResolver(Common& common, vector<T>& vec)
+	ObjectResolver(Common& common, TcList<T> const& vec)
 	: common(common)
 	, vec(vec)
 	{
@@ -16,52 +16,52 @@ struct ObjectResolver
 		if (v < 0)
 			ar.null(0);
 		else
-			ar.str(0, vec[v].idStr);
+			ar.str(0, vec[v].id_str);
 	}
 
 	Common& common;
-	vector<T>& vec;
+	TcList<T> const& vec;
 };
 
 template<typename Archive>
-void archive_text(Common& common, NObjectType& nobject, Archive& ar)
+void archive_text(Common& common, NObjectType const& nobject, Archive& ar)
 {
 	ar.obj(0, [&] {
-		#define I(n) ar.i32(#n, nobject.n);
-		#define B(n) ar.b(#n, nobject.n);
-		#define S(n) ar.str(#n, nobject.n);
-		#define NObj(n) ar.ref(#n, nobject.n, ObjectResolver<NObjectType>(common, common.nobjectTypes));
-		#define SObj(n) ar.ref(#n, nobject.n, ObjectResolver<SObjectType>(common, common.sobjectTypes));
+		#define I(k, f) ar.i32(#k, nobject.f);
+		#define B(k, f) ar.b(#k, nobject.f);
+		#define S(k, f) ar.str(#k, nobject.f);
+		#define NObj(k, f) ar.ref(#k, nobject.f, ObjectResolver<NObjectType>(common, common.nobjectTypes));
+		#define SObj(k, f) ar.ref(#k, nobject.f, ObjectResolver<SObjectType>(common, common.sobjectTypes));
 
-		B(wormExplode)
-		B(explGround)
-		B(wormDestroy)
-		B(drawOnMap)
-		B(affectByExplosions)
-		B(bloodTrail)
+		B(wormExplode, worm_explode)
+		B(explGround, expl_ground)
+		B(wormDestroy, worm_destroy)
+		B(drawOnMap, draw_on_map)
+		B(affectByExplosions, affect_by_explosions)
+		B(bloodTrail, blood_trail)
 
-		I(detectDistance)
-		I(gravity)
-		I(speed)
-		I(speedV)
-		I(distribution)
-		I(blowAway)
-		I(bounce)
-		I(hitDamage)
-		I(bloodOnHit)
-		I(startFrame)
-		I(numFrames)
-		I(colorBullets)
-		SObj(createOnExp)
-		I(dirtEffect)
-		I(splinterAmount)
-		I(splinterColour)
-		NObj(splinterType)
-		I(bloodTrailDelay)
-		SObj(leaveObj)
-		I(leaveObjDelay)
-		I(timeToExplo)
-		I(timeToExploV)
+		I(detectDistance, detect_distance)
+		I(gravity, gravity)
+		I(speed, speed)
+		I(speedV, speed_v)
+		I(distribution, distribution)
+		I(blowAway, blow_away)
+		I(bounce, bounce)
+		I(hitDamage, hit_damage)
+		I(bloodOnHit, blood_on_hit)
+		I(startFrame, start_frame)
+		I(numFrames, num_frames)
+		I(colorBullets, color_bullets)
+		SObj(createOnExp, create_on_exp)
+		I(dirtEffect, dirt_effect)
+		I(splinterAmount, splinter_amount)
+		I(splinterColour, splinter_colour)
+		NObj(splinterType, splinter_type)
+		I(bloodTrailDelay, blood_trail_delay)
+		SObj(leaveObj, leave_obj)
+		I(leaveObjDelay, leave_obj_delay)
+		I(timeToExplo, time_to_explo)
+		I(timeToExploV, time_to_explo_v)
 
 		#undef I
 		#undef B
@@ -72,25 +72,25 @@ void archive_text(Common& common, NObjectType& nobject, Archive& ar)
 }
 
 template<typename Archive>
-void archive_text(Common& common, SObjectType& sobject, Archive& ar)
+void archive_text(Common& common, SObjectType const& sobject, Archive& ar)
 {
 	ar.obj(0, [&] {
-		#define I(n) ar.i32(#n, sobject.n);
-		#define B(n) ar.b(#n, sobject.n);
-		#define S(n) ar.str(#n, sobject.n);
+		#define I(k, f) ar.i32(#k, sobject.f);
+		#define B(k, f) ar.b(#k, sobject.f);
+		#define S(k, f) ar.str(#k, sobject.f);
 
-		B(shadow)
-		I(startSound)
-		I(numSounds)
-		I(animDelay)
-		I(startFrame)
-		I(numFrames)
-		I(detectRange)
-		I(damage)
-		I(blowAway)
-		I(shake)
-		I(flash)
-		I(dirtEffect)
+		B(shadow, shadow)
+		I(startSound, start_sound)
+		I(numSounds, num_sounds)
+		I(animDelay, anim_delay)
+		I(startFrame, start_frame)
+		I(numFrames, num_frames)
+		I(detectRange, detect_range)
+		I(damage, damage)
+		I(blowAway, blow_away)
+		I(shake, shake)
+		I(flash, flash)
+		I(dirtEffect, dirt_effect)
 
 		#undef I
 		#undef B
@@ -99,66 +99,66 @@ void archive_text(Common& common, SObjectType& sobject, Archive& ar)
 }
 
 template<typename Archive>
-void archive_text(Common& common, Weapon& weapon, Archive& ar)
+void archive_text(Common& common, Weapon const& weapon, Archive& ar)
 {
 	ar.obj(0, [&] {
-		#define I(n) ar.i32(#n, weapon.n);
-		#define B(n) ar.b(#n, weapon.n);
-		#define S(n) ar.str(#n, weapon.n);
-		#define NObj(n) ar.ref(#n, weapon.n, ObjectResolver<NObjectType>(common, common.nobjectTypes));
-		#define SObj(n) ar.ref(#n, weapon.n, ObjectResolver<SObjectType>(common, common.sobjectTypes));
+		#define I(k, f) ar.i32(#k, weapon.f);
+		#define B(k, f) ar.b(#k, weapon.f);
+		#define S(k, f) ar.str(#k, weapon.f);
+		#define NObj(k, f) ar.ref(#k, weapon.f, ObjectResolver<NObjectType>(common, common.nobjectTypes));
+		#define SObj(k, f) ar.ref(#k, weapon.f, ObjectResolver<SObjectType>(common, common.sobjectTypes));
 
-		S(name)
+		S(name, name)
 
-		B(affectByWorm)
-		B(shadow)
-		B(laserSight)
-		B(playReloadSound)
-		B(wormExplode)
-		B(explGround)
-		B(wormCollide)
-		B(collideWithObjects)
-		B(affectByExplosions)
-		B(loopAnim)
-		I(detectDistance)
-		I(blowAway)
-		I(gravity)
-		I(launchSound)
-		I(loopSound)
-		I(exploSound)
-		I(speed)
-		I(addSpeed)
-		I(distribution)
-		I(parts)
-		I(recoil)
-		I(multSpeed)
-		I(delay)
-		I(loadingTime)
-		I(ammo)
-		I(dirtEffect)
-		I(leaveShells)
-		I(leaveShellDelay)
-		I(fireCone)
-		I(bounce)
-		I(timeToExplo)
-		I(timeToExploV)
-		I(hitDamage)
-		I(bloodOnHit)
-		I(startFrame)
-		I(numFrames)
-		I(shotType)
-		I(colorBullets)
-		I(splinterAmount)
-		I(splinterColour)
-		NObj(splinterType)
-		I(splinterScatter)
-		SObj(objTrailType)
-		I(objTrailDelay)
-		I(partTrailType)
-		NObj(partTrailObj)
-		I(partTrailDelay)
-		SObj(createOnExp)
-		B(chainExplosion)
+		B(affectByWorm, affect_by_worm)
+		B(shadow, shadow)
+		B(laserSight, laser_sight)
+		B(playReloadSound, play_reload_sound)
+		B(wormExplode, worm_explode)
+		B(explGround, expl_ground)
+		B(wormCollide, worm_collide)
+		B(collideWithObjects, collide_with_objects)
+		B(affectByExplosions, affect_by_explosions)
+		B(loopAnim, loop_anim)
+		I(detectDistance, detect_distance)
+		I(blowAway, blow_away)
+		I(gravity, gravity)
+		I(launchSound, launch_sound)
+		I(loopSound, loop_sound)
+		I(exploSound, explo_sound)
+		I(speed, speed)
+		I(addSpeed, add_speed)
+		I(distribution, distribution)
+		I(parts, parts)
+		I(recoil, recoil)
+		I(multSpeed, mult_speed)
+		I(delay, delay)
+		I(loadingTime, loading_time)
+		I(ammo, ammo)
+		I(dirtEffect, dirt_effect)
+		I(leaveShells, leave_shells)
+		I(leaveShellDelay, leave_shell_delay)
+		I(fireCone, fire_cone)
+		I(bounce, bounce)
+		I(timeToExplo, time_to_explo)
+		I(timeToExploV, time_to_explo_v)
+		I(hitDamage, hit_damage)
+		I(bloodOnHit, blood_on_hit)
+		I(startFrame, start_frame)
+		I(numFrames, num_frames)
+		I(shotType, shot_type)
+		I(colorBullets, color_bullets)
+		I(splinterAmount, splinter_amount)
+		I(splinterColour, splinter_colour)
+		NObj(splinterType, splinter_type)
+		I(splinterScatter, splinter_scatter)
+		SObj(objTrailType, obj_trail_type)
+		I(objTrailDelay, obj_trail_delay)
+		I(partTrailType, part_trail_type)
+		NObj(partTrailObj, part_trail_obj)
+		I(partTrailDelay, part_trail_delay)
+		SObj(createOnExp, create_on_exp)
+		B(chainExplosion, chain_explosion)
 
 		#undef I
 		#undef B
@@ -173,20 +173,20 @@ void archive_text(Common& common, Archive& ar)
 {
 	ar.obj("types", [&] {
 
-		ar.arr("sounds", common.sounds, [&] (SfxSample& s) {
+		ar.arr("sounds", common.sounds, [&] (SfxSample const& s) {
 			ar.str(0, s.name);
 		});
 
-		ar.arr("weapons", common.weapons, [&] (Weapon& w) {
-			ar.str(0, w.idStr);
+		ar.arr("weapons", common.weapons, [&] (Weapon const& w) {
+			ar.str(0, w.id_str);
 		});
 
-		ar.arr("nobjects", common.nobjectTypes, [&] (NObjectType& n) {
-			ar.str(0, n.idStr);
+		ar.arr("nobjects", common.nobjectTypes, [&] (NObjectType const& n) {
+			ar.str(0, n.id_str);
 		});
 
-		ar.arr("sobjects", common.sobjectTypes, [&] (SObjectType& s) {
-			ar.str(0, s.idStr);
+		ar.arr("sobjects", common.sobjectTypes, [&] (SObjectType const& s) {
+			ar.str(0, s.id_str);
 		});
 
 	});
@@ -201,22 +201,20 @@ void archive_text(Common& common, Archive& ar)
 			ar.ref("sobj", common.bonusSObjects[idx], ObjectResolver<SObjectType>(common, common.sobjectTypes));
 		});
 
-		ar.array_obj("textures", common.textures, [&] (Texture& tx) {
+		ar.array_obj("textures", TcList<Texture>(common.textures, LIERO_TEXTURE_COUNT), [&] (Texture const& tx) {
 			ar.i32("mframe", tx.m_frame);
 			ar.i32("rframe", tx.r_frame);
 			ar.i32("sframe", tx.s_frame);
 			ar.b("ndrawback", tx.n_draw_back);
 		});
 
-		ar.array_obj("colorAnim", common.colorAnim, [&] (ColourAnim& ca) {
+		ar.array_obj("colorAnim", TcList<ColourAnim>(common.colorAnim, 4), [&] (ColourAnim const& ca) {
 			ar.i32("from", ca.from);
 			ar.i32("to", ca.to);
 		});
 
-		ar.arr("materials", common.materials, [&] (Material& m) {
-			int f = m.flags;
-			ar.i32(0, f);
-			m.flags = (uint8_t)(f & 0xff);
+		ar.arr("materials", TcList<Material>(common.materials, 256), [&] (Material const& m) {
+			ar.i32(0, m.flags);
 		});
 
 		char const* names[7] = {
@@ -228,8 +226,8 @@ void archive_text(Common& common, Archive& ar)
 			for (int i = 0; i < 7; ++i)
 			{
 				ar.obj(names[i], [&] () {
-					ar.i32("on", common.aiParams.k[1][i]);
-					ar.i32("off", common.aiParams.k[0][i]);
+					ar.i32("on", common.aiParams->k[1][i]);
+					ar.i32("off", common.aiParams->k[0][i]);
 				});
 			}
 		});

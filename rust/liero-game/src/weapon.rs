@@ -4,10 +4,10 @@
 //! Results have to stay bit-identical to the C++ versions, which
 //! `tools/hashrun` checks.
 //!
-//! As in `object.rs`, C++ owns the objects and worms. Rust gets pointers to
-//! their fields and a table of C++ hooks for creating objects, hitting
-//! worms, sounds and stats, and it reads and writes fields through the
-//! pointers where the C++ did, since a hook can change them.
+//! As in `object.rs`, the code gets pointers to the fields and a table of
+//! hooks (`world.rs`) for creating objects, hitting worms, sounds and
+//! stats, and it reads and writes fields through the pointers where the C++
+//! did, since a hook can change them.
 
 use std::ffi::c_void;
 
@@ -158,8 +158,7 @@ impl LieroWeapon {
 
 /// The start of a shot: C++'s `Weapon::fire` without the object list and
 /// stats.
-#[no_mangle]
-pub extern "C" fn liero_weapon_launch(
+pub fn liero_weapon_launch(
     w: &LieroWeapon,
     rand: &mut LieroRand,
     angle: i32,
@@ -203,8 +202,7 @@ pub struct LieroWormFiringHooks {
 ///
 /// # Safety
 /// The pointers in `worm` must be valid for the call.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_fire(
+pub unsafe fn liero_worm_fire(
     worm: &LieroWormFiring,
     w: &LieroWeapon,
     rand: *mut LieroRand,
@@ -260,8 +258,7 @@ pub unsafe extern "C" fn liero_worm_fire(
 ///
 /// # Safety
 /// The pointers in `worm` must be valid for the call.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_process_weapons(
+pub unsafe fn liero_worm_process_weapons(
     worm: &LieroWormFiring,
     current: &LieroWeapon,
     loading_time_percent: i32,
@@ -387,8 +384,7 @@ impl LieroWObjectEnv {
 /// The field pointers, views and `rand` must be valid for the call. The
 /// hooks may change them, or free the object (after which this returns
 /// without touching it).
-#[no_mangle]
-pub unsafe extern "C" fn liero_wobject_process(
+pub unsafe fn liero_wobject_process(
     obj: &LieroWObjectFields,
     w: &LieroWeapon,
     env: &LieroWObjectEnv,
@@ -567,8 +563,7 @@ pub struct LieroBlowUpHooks {
 ///
 /// # Safety
 /// The views and `rand` must be valid for the call.
-#[no_mangle]
-pub unsafe extern "C" fn liero_wobject_blow_up(
+pub unsafe fn liero_wobject_blow_up(
     w: &LieroWeapon,
     pos: LieroIVec2,
     vel: LieroIVec2,

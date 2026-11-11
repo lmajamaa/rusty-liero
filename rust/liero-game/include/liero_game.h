@@ -178,6 +178,31 @@
 #define LIERO_MAIN_TC 9
 
 /**
+ * The main menu's item ids (`MainMenu`).
+ */
+#define LIERO_MAIN_RESUME_GAME 0
+
+#define LIERO_MAIN_NEW_GAME 1
+
+/**
+ * What choosing a replay closes the menu with.
+ */
+#define LIERO_MAIN_REPLAY 8
+
+/**
+ * The file selectors C++ opens (`LieroMenusHooks::open_selector`).
+ */
+#define LIERO_SELECTOR_LEVEL 0
+
+#define LIERO_SELECTOR_PROFILE 1
+
+#define LIERO_SELECTOR_REPLAY 2
+
+#define LIERO_SELECTOR_OPTIONS 3
+
+#define LIERO_SELECTOR_TC 4
+
+/**
  * Number of entries in the cos/sin table: a full turn in 128 steps.
  */
 #define LIERO_COS_SIN_ENTRIES 128
@@ -403,19 +428,35 @@ typedef enum LieroTickKind {
 typedef struct LieroApp LieroApp;
 
 /**
+ * A bitmap that owns its pixels, which `view` points to.
+ */
+typedef struct LieroBitmapBox LieroBitmapBox;
+
+/**
+ * A controller (`Controller`).
+ */
+typedef struct LieroController LieroController;
+
+/**
  * A replay file being written.
  */
 typedef struct LieroDeflateOut LieroDeflateOut;
 
 /**
- * A predictive AI for C++'s `FollowAI` to own.
- */
-typedef struct LieroFollowAi LieroFollowAi;
-
-/**
  * A file node for C++'s `FsNode` to own.
  */
 typedef struct LieroFsNode LieroFsNode;
+
+/**
+ * The game.
+ */
+typedef struct LieroGame LieroGame;
+
+/**
+ * The game as the tick, the bots and the viewports see it, with the
+ * lists it points to.
+ */
+typedef struct LieroGameView LieroGameView;
 
 /**
  * A level. C++ holds a pointer to it, and its fields refer to `data`.
@@ -428,18 +469,35 @@ typedef struct LieroLevelBox LieroLevelBox;
 typedef struct LieroMenuBox LieroMenuBox;
 
 /**
+ * The menus (`Gfx`'s `mainMenu`, `settingsMenu`, `playerMenu`,
+ * `hiddenMenu` and `curMenu`).
+ */
+typedef struct LieroMenus LieroMenus;
+
+/**
  * The mixer's channels and time. Opaque to C++.
  */
 typedef struct LieroMixer LieroMixer;
 
 /**
- * What a replay call gives back. C++ copies out what it needs and frees it.
+ * A bitmap to draw on, with its palettes.
  */
-typedef struct LieroReplayResult LieroReplayResult;
+typedef struct LieroRenderer LieroRenderer;
 
 /**
- * The game's settings, without the worms', which C++ keeps apart since a
- * worm holds on to its own.
+ * A replay being played (`ReplayReader`).
+ */
+typedef struct LieroReplayReader LieroReplayReader;
+
+/**
+ * A replay being recorded (`ReplayWriter`).
+ */
+typedef struct LieroReplayWriter LieroReplayWriter;
+
+/**
+ * The game's settings, with a reference to each player's worm settings,
+ * which the game's worms share. A clone shares them too, as C++'s
+ * `Settings::clone` did.
  */
 typedef struct LieroSettingsBox LieroSettingsBox;
 
@@ -466,110 +524,22 @@ typedef struct LieroTc LieroTc;
  */
 typedef struct LieroWeapsel LieroWeapsel;
 
+/**
+ * A worm: its state, its settings and its bot, if any.
+ */
+typedef struct LieroWorm LieroWorm;
+
+/**
+ * A worm's bot, as its `controller` setting picks it: the original
+ * game's (1) or the predictive one (2).
+ */
+typedef struct LieroWormAi LieroWormAi;
+
+/**
+ * A worm's settings, shared by the C++ `WormSettings` that refer to them
+ * and the game's worms: each holds a reference (`_retain` and `_free`).
+ */
 typedef struct LieroWormSettingsBox LieroWormSettingsBox;
-
-/**
- * What the AI reads of a game.
- */
-typedef struct LieroAiGame {
-  uint32_t game_mode;
-  int32_t holder_idx;
-  int32_t contender_idx;
-  int32_t contender_frames;
-  /**
-   * The middle of the zone (`rect.center_x()` and `center_y()`).
-   */
-  int32_t zone_center[2];
-  int32_t last_killed_idx;
-  int32_t ai_frames;
-  int32_t ai_mutations;
-  bool ai_traces;
-} LieroAiGame;
-
-/**
- * A worm weapon, as the AI reads it.
- */
-typedef struct LieroAiWeapon {
-  int32_t ammo;
-  int32_t delay_left;
-  int32_t loading_left;
-  /**
-   * The weapon type's loading time and ammo.
-   */
-  int32_t loading_time;
-  int32_t max_ammo;
-} LieroAiWeapon;
-
-/**
- * What the AI reads of a worm.
- */
-typedef struct LieroAiWorm {
-  int32_t index;
-  int32_t pos[2];
-  int32_t aiming_angle;
-  int32_t direction;
-  bool visible;
-  bool ready;
-  int32_t health;
-  int32_t lives;
-  /**
-   * The health worms start with, from the worm's settings.
-   */
-  int32_t settings_health;
-  int32_t current_weapon;
-  struct LieroAiWeapon weapons[5];
-  bool rope_out;
-  int32_t steerable_count;
-  int32_t steerable_sum[2];
-  uint32_t control_states;
-} LieroAiWorm;
-
-/**
- * Material flags of one palette index or level pixel. C++'s `Material`
- * inherits from this struct and keeps its tests inline, because the
- * renderer and AI call them for every pixel.
- */
-typedef struct LieroMaterial {
-  uint8_t flags;
-} LieroMaterial;
-
-/**
- * A game's level, for the AI to find paths and obstacles in.
- */
-typedef struct LieroAiLevel {
-  const uint8_t *data;
-  uintptr_t len;
-  int32_t width;
-  int32_t height;
-  /**
-   * The TC's 256 materials.
-   */
-  const struct LieroMaterial *materials;
-} LieroAiLevel;
-
-/**
- * What the predictive AI calls back into C++ for. A game is a `Game*`:
- * the one the AI is in, or a copy from `clone_game`.
- */
-typedef struct LieroAiHooks {
-  /**
-   * A copy of the game with no sounds, stats or viewports, and
-   * `quickSim` on.
-   */
-  void *(*clone_game)(void *game);
-  /**
-   * Frees a copy and its worms.
-   */
-  void (*free_game)(void *game);
-  void (*process_frame)(void *game);
-  void (*game)(void *game, struct LieroAiGame *out);
-  /**
-   * The worm at `place` in the game's list.
-   */
-  void (*worm)(void *game, int32_t place, struct LieroAiWorm *out);
-  void (*set_controls)(void *game, int32_t place, uint32_t controls);
-  void (*level)(void *game, struct LieroAiLevel *out);
-} LieroAiHooks;
 
 /**
  * Generator state. C++'s `Rand` inherits from this struct, so the state stays
@@ -591,108 +561,115 @@ typedef struct LieroAiTrace {
 } LieroAiTrace;
 
 /**
- * What the bot reads of its worm.
+ * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
  */
-typedef struct LieroDumbAiWorm {
-  int32_t pos[2];
-  bool visible;
+typedef struct LieroIVec2 {
+  int32_t x;
+  int32_t y;
+} LieroIVec2;
+
+/**
+ * The ninja rope, laid out like C++'s `Ninjarope`.
+ */
+typedef struct LieroNinjarope {
+  bool out;
+  bool attached;
+  /**
+   * The worm the rope is attached to, or null.
+   */
+  void *anchor;
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  int32_t length;
+  int32_t cur_len;
+} LieroNinjarope;
+
+/**
+ * A worm's weapon slot, laid out like C++'s `WormWeapon`.
+ */
+typedef struct LieroWormWeapon {
+  /**
+   * The C++ `Weapon`.
+   */
+  const void *kind;
+  int32_t ammo;
+  int32_t delay_left;
+  int32_t loading_left;
+} LieroWormWeapon;
+
+/**
+ * A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
+ * it (`liero_worm_data_new`), except its settings and AI.
+ */
+typedef struct LieroWormData {
+  struct LieroIVec2 pos;
+  struct LieroIVec2 vel;
+  /**
+   * Where the respawn camera is, in pixels.
+   */
+  struct LieroIVec2 logic_respawn;
+  int32_t hotspot_x;
+  int32_t hotspot_y;
+  /**
+   * Fixed-point, 0 to 128.
+   */
   int32_t aiming_angle;
-  int32_t direction;
+  int32_t aiming_speed;
+  bool able_to_jump;
+  bool able_to_dig;
+  bool key_change_pressed;
+  bool movable;
+  bool animate;
+  bool visible;
+  bool ready;
+  /**
+   * Whether the worm has a flag.
+   */
+  bool flag;
+  bool make_sight_green;
+  int32_t health;
+  int32_t lives;
+  int32_t kills;
+  /**
+   * Time as 'it' in Game of Tag.
+   */
+  int32_t timer;
+  int32_t killed_timer;
+  int32_t current_frame;
+  int32_t flags;
+  struct LieroNinjarope ninjarope;
+  int32_t current_weapon;
+  int32_t last_killed_by_idx;
+  int32_t fire_cone;
+  int32_t leave_shell_timer;
+  /**
+   * 0 or 1.
+   */
+  int32_t index;
+  /**
+   * Indexed by `RF_*`.
+   */
   int32_t reacts[4];
-  bool rope_out;
-  bool rope_attached;
+  struct LieroWormWeapon weapons[LIERO_SELECTABLE_WEAPONS];
+  /**
+   * 0 is left, 1 is right.
+   */
+  int32_t direction;
+  /**
+   * One bit per `LIERO_CONTROL_*`: the controls the game sees, those of
+   * the last tick, and the ones the player holds (`LocalController`).
+   */
   uint32_t control_states;
+  uint32_t prev_control_states;
+  uint32_t clean_control_states;
+  int32_t steerable_sum_x;
+  int32_t steerable_sum_y;
+  int32_t steerable_count;
   /**
-   * The current weapon's fuse, its random part, speed and gravity.
+   * Where the worm's stats are drawn.
    */
-  int32_t time_to_explo;
-  int32_t time_to_explo_v;
-  int32_t speed;
-  int32_t gravity;
-} LieroDumbAiWorm;
-
-/**
- * A tick's outcome.
- */
-typedef struct LieroTick {
-  enum LieroTickKind kind;
-  /**
-   * The tick drew a frame for the host to show.
-   */
-  bool shown;
-  /**
-   * For `TickClose`.
-   */
-  int32_t result;
-} LieroTick;
-
-/**
- * A screen, owned by the stack once pushed.
- */
-typedef struct LieroScreen {
-  void *data;
-  /**
-   * Runs one step and fills in what happens next, and `next` for
-   * `TickPush` and `TickReplace`.
-   */
-  void (*tick)(void *data, struct LieroTick *out, struct LieroScreen *next);
-  /**
-   * The screen opened on top of this one closed with `result`.
-   */
-  void (*resume)(void *data, int32_t result);
-  /**
-   * Frees the screen, when it closes or the stack is cleared.
-   */
-  void (*free)(void *data);
-} LieroScreen;
-
-/**
- * What the app's screens call in C++.
- */
-typedef struct LieroAppHooks {
-  /**
-   * Reads the frame's events, passing keys to the controller
-   * (`Gfx::process(controller)`).
-   */
-  void (*process)(void);
-  /**
-   * The controller's `focus`, `process` (false when it stops) and
-   * `unfocus` with the keys cleared.
-   */
-  void (*focus)(void);
-  bool (*run)(void);
-  void (*finish)(void);
-  /**
-   * Draws the controller on both screens, counting a menu frame when
-   * `count`.
-   */
-  void (*draw)(bool count);
-  /**
-   * Moves the screen the controller opened (`Gfx::open`) into `out`.
-   * False if it opened none.
-   */
-  bool (*take_opened)(struct LieroScreen *out);
-  /**
-   * What the controller does with that screen's result.
-   */
-  void (*then)(int32_t result);
-  /**
-   * A new controller with a new level behind the menu.
-   */
-  void (*restart)(void);
-  /**
-   * Does what the menu chose (`selection`): a `LIERO_AFTER_MENU_*`.
-   */
-  int32_t (*after_menu)(int32_t selection);
-  /**
-   * Drops the controller before quitting.
-   */
-  void (*quit)(void);
-  /**
-   * The main menu screen.
-   */
-  struct LieroScreen (*menu_screen)(void);
-} LieroAppHooks;
+  int32_t stats_x;
+} LieroWormData;
 
 /**
  * Text from C++: `len` bytes from `ptr`.
@@ -703,38 +680,24 @@ typedef struct LieroStr {
 } LieroStr;
 
 /**
- * A controller's state.
+ * A worm, as the game rules see it.
  */
-typedef struct LieroControllerData {
+typedef struct LieroGameWorm {
+  struct LieroWormData *data;
   /**
-   * `LIERO_STATE_*`.
+   * The worm's full health (`settings->health`).
    */
-  int32_t state;
+  int32_t max_health;
   /**
-   * 0 is black, `LIERO_FADE_SHOWN` fully shown.
+   * The worm's bot, if any (null for a human).
    */
-  int32_t fade_value;
+  struct LieroWormAi *ai;
   /**
-   * Fading out to the menu.
+   * The worm's name and colour, from its settings.
    */
-  bool going_to_menu;
-  /**
-   * Game ticks per frame, or with `inverse_frame_skip`, frames per tick.
-   */
-  int32_t frame_skip;
-  bool inverse_frame_skip;
-  /**
-   * Frames the controller has run.
-   */
-  int32_t cycles;
-} LieroControllerData;
-
-/**
- * Which DOS keys are down.
- */
-typedef struct LieroKeys {
-  bool down[LIERO_MAX_DOS_KEY];
-} LieroKeys;
+  struct LieroStr name;
+  int32_t color;
+} LieroGameWorm;
 
 /**
  * Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
@@ -794,27 +757,6 @@ typedef struct LieroBonusList {
   uint32_t free_list[4];
   uintptr_t count;
 } LieroBonusList;
-
-/**
- * Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
- */
-typedef struct LieroIVec2 {
-  int32_t x;
-  int32_t y;
-} LieroIVec2;
-
-/**
- * A worm's weapon slot, laid out like C++'s `WormWeapon`.
- */
-typedef struct LieroWormWeapon {
-  /**
-   * The C++ `Weapon`.
-   */
-  const void *kind;
-  int32_t ammo;
-  int32_t delay_left;
-  int32_t loading_left;
-} LieroWormWeapon;
 
 /**
  * A weapon object, laid out like C++'s `WObject`.
@@ -955,105 +897,13 @@ typedef struct LieroGameData {
 } LieroGameData;
 
 /**
- * The ninja rope, laid out like C++'s `Ninjarope`.
+ * Material flags of one palette index or level pixel. C++'s `Material`
+ * inherits from this struct and keeps its tests inline, because the
+ * renderer and AI call them for every pixel.
  */
-typedef struct LieroNinjarope {
-  bool out;
-  bool attached;
-  /**
-   * The worm the rope is attached to, or null.
-   */
-  void *anchor;
-  struct LieroIVec2 pos;
-  struct LieroIVec2 vel;
-  int32_t length;
-  int32_t cur_len;
-} LieroNinjarope;
-
-/**
- * A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
- * it (`liero_worm_data_new`), except its settings and AI.
- */
-typedef struct LieroWormData {
-  struct LieroIVec2 pos;
-  struct LieroIVec2 vel;
-  /**
-   * Where the respawn camera is, in pixels.
-   */
-  struct LieroIVec2 logic_respawn;
-  int32_t hotspot_x;
-  int32_t hotspot_y;
-  /**
-   * Fixed-point, 0 to 128.
-   */
-  int32_t aiming_angle;
-  int32_t aiming_speed;
-  bool able_to_jump;
-  bool able_to_dig;
-  bool key_change_pressed;
-  bool movable;
-  bool animate;
-  bool visible;
-  bool ready;
-  /**
-   * Whether the worm has a flag.
-   */
-  bool flag;
-  bool make_sight_green;
-  int32_t health;
-  int32_t lives;
-  int32_t kills;
-  /**
-   * Time as 'it' in Game of Tag.
-   */
-  int32_t timer;
-  int32_t killed_timer;
-  int32_t current_frame;
-  int32_t flags;
-  struct LieroNinjarope ninjarope;
-  int32_t current_weapon;
-  int32_t last_killed_by_idx;
-  int32_t fire_cone;
-  int32_t leave_shell_timer;
-  /**
-   * 0 or 1.
-   */
-  int32_t index;
-  /**
-   * Indexed by `RF_*`.
-   */
-  int32_t reacts[4];
-  struct LieroWormWeapon weapons[LIERO_SELECTABLE_WEAPONS];
-  /**
-   * 0 is left, 1 is right.
-   */
-  int32_t direction;
-  /**
-   * One bit per `LIERO_CONTROL_*`: the controls the game sees, those of
-   * the last tick, and the ones the player holds (`LocalController`).
-   */
-  uint32_t control_states;
-  uint32_t prev_control_states;
-  uint32_t clean_control_states;
-  int32_t steerable_sum_x;
-  int32_t steerable_sum_y;
-  int32_t steerable_count;
-  /**
-   * Where the worm's stats are drawn.
-   */
-  int32_t stats_x;
-} LieroWormData;
-
-/**
- * A worm, as the game rules see it.
- */
-typedef struct LieroGameWorm {
-  struct LieroWormData *data;
-  /**
-   * The worm's full health (`settings->health`).
-   */
-  int32_t max_health;
-} LieroGameWorm;
+typedef struct LieroMaterial {
+  uint8_t flags;
+} LieroMaterial;
 
 /**
  * View of a C++ `Level`'s pixels: `data` holds the palette index of each
@@ -1067,6 +917,289 @@ typedef struct LieroLevel {
   int32_t height;
 } LieroLevel;
 
+typedef struct LieroTcWeapon {
+  /**
+   * Its index in the TC's weapons.
+   */
+  int32_t id;
+  struct LieroStr name;
+  struct LieroStr id_str;
+  int32_t detect_distance;
+  bool affect_by_worm;
+  int32_t blow_away;
+  int32_t gravity;
+  bool shadow;
+  bool laser_sight;
+  int32_t launch_sound;
+  int32_t loop_sound;
+  int32_t explo_sound;
+  int32_t speed;
+  int32_t add_speed;
+  int32_t distribution;
+  int32_t parts;
+  int32_t recoil;
+  int32_t mult_speed;
+  int32_t delay;
+  int32_t loading_time;
+  int32_t ammo;
+  int32_t create_on_exp;
+  int32_t dirt_effect;
+  int32_t leave_shells;
+  int32_t leave_shell_delay;
+  bool play_reload_sound;
+  bool worm_explode;
+  bool expl_ground;
+  bool worm_collide;
+  int32_t fire_cone;
+  bool collide_with_objects;
+  bool affect_by_explosions;
+  int32_t bounce;
+  int32_t time_to_explo;
+  int32_t time_to_explo_v;
+  int32_t hit_damage;
+  int32_t blood_on_hit;
+  int32_t start_frame;
+  int32_t num_frames;
+  bool loop_anim;
+  int32_t shot_type;
+  int32_t color_bullets;
+  int32_t splinter_amount;
+  int32_t splinter_colour;
+  int32_t splinter_type;
+  int32_t splinter_scatter;
+  int32_t obj_trail_type;
+  int32_t obj_trail_delay;
+  int32_t part_trail_type;
+  int32_t part_trail_obj;
+  int32_t part_trail_delay;
+  bool chain_explosion;
+} LieroTcWeapon;
+
+typedef struct LieroTcNObject {
+  int32_t id;
+  struct LieroStr id_str;
+  int32_t detect_distance;
+  int32_t gravity;
+  int32_t speed;
+  int32_t speed_v;
+  int32_t distribution;
+  int32_t blow_away;
+  int32_t bounce;
+  int32_t hit_damage;
+  bool worm_explode;
+  bool expl_ground;
+  bool worm_destroy;
+  int32_t blood_on_hit;
+  int32_t start_frame;
+  int32_t num_frames;
+  bool draw_on_map;
+  int32_t color_bullets;
+  int32_t create_on_exp;
+  bool affect_by_explosions;
+  int32_t dirt_effect;
+  int32_t splinter_amount;
+  int32_t splinter_colour;
+  int32_t splinter_type;
+  bool blood_trail;
+  int32_t blood_trail_delay;
+  int32_t leave_obj;
+  int32_t leave_obj_delay;
+  int32_t time_to_explo;
+  int32_t time_to_explo_v;
+} LieroTcNObject;
+
+typedef struct LieroTcSObject {
+  int32_t id;
+  struct LieroStr id_str;
+  int32_t start_sound;
+  int32_t num_sounds;
+  int32_t anim_delay;
+  int32_t start_frame;
+  int32_t num_frames;
+  int32_t detect_range;
+  int32_t damage;
+  int32_t blow_away;
+  bool shadow;
+  int32_t shake;
+  int32_t flash;
+  int32_t dirt_effect;
+} LieroTcSObject;
+
+typedef struct LieroTcSound {
+  struct LieroStr name;
+  /**
+   * Signed 8-bit samples.
+   */
+  const uint8_t *data;
+  uintptr_t len;
+  /**
+   * False when the WAV file had another format: the game has no sound.
+   */
+  bool valid;
+  /**
+   * The 16-bit samples the mixer plays, twice as many as `len`
+   * (`SfxSample::createSound`). They stay put while a sound plays.
+   */
+  const int16_t *samples;
+  uintptr_t sample_count;
+} LieroTcSound;
+
+/**
+ * A palette entry, laid out like C++'s `Color`. Components are 0 to 63 in
+ * `Palette`, 0 to 255 once activated.
+ */
+typedef struct LieroColor {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+  uint8_t unused;
+} LieroColor;
+
+/**
+ * A dirt effect: how explosions and digging change the terrain. C++ uses it
+ * as `Texture` in `Common::textures`.
+ */
+typedef struct LieroTexture {
+  /**
+   * Draws dirt onto background instead of removing dirt.
+   */
+  bool n_draw_back;
+  /**
+   * Large sprite used as the mask.
+   */
+  int32_t m_frame;
+  /**
+   * First large sprite used as the dirt texture...
+   */
+  int32_t s_frame;
+  /**
+   * ...of this many, picked at random.
+   */
+  int32_t r_frame;
+} LieroTexture;
+
+typedef struct LieroTcSprites {
+  const uint8_t *data;
+  int32_t width;
+  int32_t height;
+  int32_t count;
+} LieroTcSprites;
+
+typedef struct LieroTcFontChar {
+  /**
+   * 7x8 pixels, row-major: 8 where set.
+   */
+  uint8_t data[56];
+  int32_t width;
+} LieroTcFontChar;
+
+/**
+ * Everything `Common` gets from a TC.
+ */
+typedef struct LieroTcData {
+  const struct LieroTcWeapon *weapons;
+  uintptr_t weapon_count;
+  const struct LieroTcNObject *nobjects;
+  uintptr_t nobject_count;
+  const struct LieroTcSObject *sobjects;
+  uintptr_t sobject_count;
+  const struct LieroTcSound *sounds;
+  uintptr_t sound_count;
+  /**
+   * In the order of `LIERO_CDEFS`, `LIERO_SDEFS` and `LIERO_HDEFS`.
+   */
+  const int32_t *constants;
+  uintptr_t constant_count;
+  const struct LieroStr *texts;
+  uintptr_t text_count;
+  const bool *hacks;
+  uintptr_t hack_count;
+  /**
+   * 6-bit VGA palette, red, green and blue for each of 256 entries.
+   */
+  uint8_t palette[768];
+  /**
+   * The same palette as the game's `Palette` holds it (`Common::exepal`).
+   */
+  struct LieroColor palette_colors[256];
+  /**
+   * (from, to) for each of 4 colour animations.
+   */
+  int32_t color_anim[8];
+  uint8_t materials[256];
+  struct LieroTexture textures[LIERO_TEXTURE_COUNT];
+  /**
+   * [bonus * 2 + (0 = timer, 1 = timerV)].
+   */
+  int32_t bonus_rand_timer[4];
+  int32_t bonus_sobjects[2];
+  int32_t bonus_frames[2];
+  /**
+   * [(0 = off, 1 = on) * 7 + key].
+   */
+  int32_t ai_params[14];
+  struct LieroTcSprites small_sprites;
+  struct LieroTcSprites large_sprites;
+  struct LieroTcSprites text_sprites;
+  struct LieroTcFontChar font[LIERO_TC_FONT_CHARS];
+  /**
+   * Precomputed: weapon indexes sorted by name, and the worm and fire cone
+   * sprites facing both ways (`Common::precompute`).
+   */
+  const int32_t *weap_order;
+  struct LieroTcSprites worm_sprites;
+  struct LieroTcSprites fire_cone_sprites;
+} LieroTcData;
+
+/**
+ * A viewport's state. Rust owns it, and the fields of C++'s `Viewport`
+ * refer to it (`liero_viewport_new`).
+ */
+typedef struct LieroViewport {
+  /**
+   * Top left of what is shown, in level coordinates.
+   */
+  int32_t x;
+  int32_t y;
+  /**
+   * Fixed point.
+   */
+  int32_t shake;
+  int32_t max_x;
+  int32_t max_y;
+  int32_t center_x;
+  int32_t center_y;
+  int32_t worm_idx;
+  /**
+   * Where the kill message is, -8 when hidden.
+   */
+  int32_t banner_y;
+  /**
+   * Where on screen the viewport is.
+   */
+  struct LieroRect rect;
+  /**
+   * Used for shaking and for the laser sight.
+   */
+  struct LieroRand rand;
+  /**
+   * `LIERO_VIEWPORT_WORM`, or `LIERO_VIEWPORT_SPECTATOR` for a
+   * `SpectatorViewport`, which a single-screen replay also shows in the
+   * split-screen list.
+   */
+  int32_t kind;
+} LieroViewport;
+
+/**
+ * A mixer with every channel free. Free it with `liero_mixer_free`.
+ * Where a game's sounds go: a mixer, or none (`SoundPlayer`), and a
+ * function told of each sound started (the hash run's app driver).
+ */
+typedef struct LieroSoundOut {
+  struct LieroMixer *mixer;
+  void (*report)(int32_t sound);
+} LieroSoundOut;
+
 /**
  * The game state the rules read and change. `worms` has `worm_count`
  * entries in the order of C++'s `Game::worms`; worm numbers (killers,
@@ -1077,6 +1210,25 @@ typedef struct LieroGameFields {
   int32_t worm_count;
   struct LieroGameData *game;
   struct LieroLevel level;
+  /**
+   * The TC. Only the tick reads it, so the rules may leave it null.
+   */
+  const struct LieroTcData *tc;
+  /**
+   * The viewports, whose shake and death banners the tick moves.
+   */
+  struct LieroViewport *const *viewports;
+  int32_t viewport_count;
+  struct LieroViewport *const *spectator_viewports;
+  int32_t spectator_viewport_count;
+  /**
+   * The stats the tick records, or null for none.
+   */
+  struct LieroStats *stats;
+  /**
+   * Where its sounds go.
+   */
+  struct LieroSoundOut sound;
 } LieroGameFields;
 
 /**
@@ -1120,64 +1272,182 @@ typedef struct LieroGameSettings {
   bool bonus_only_health;
   bool bonus_only_weapon;
   bool bonus_disable;
+  /**
+   * Blood amount, in percent.
+   */
+  int32_t blood;
+  bool shadow;
+  /**
+   * Weapon loading time, in percent.
+   */
+  int32_t loading_time;
+  /**
+   * Whether weapons can be changed while loading.
+   */
+  bool load_change;
 } LieroGameSettings;
 
 /**
- * A new bonus's fields, as `set_bonus` copies them into C++'s `Bonus`.
+ * The AI's settings (`Settings::aiFrames`, `aiMutations`, `aiTraces`).
  */
-typedef struct LieroBonusState {
-  int32_t x;
-  int32_t y;
-  int32_t vel_y;
-  int32_t frame;
-  int32_t timer;
-  int32_t weapon;
-} LieroBonusState;
+typedef struct LieroAiSettings {
+  int32_t frames;
+  int32_t mutations;
+  bool traces;
+} LieroAiSettings;
 
 /**
- * What C++ does during a tick. `ctx` is passed back to each function.
+ * What the tick takes from C++: the clock, and whether to move the
+ * viewports. `ctx` is passed back to `hires_ticks`.
  */
 typedef struct LieroGameHooks {
   void *ctx;
   /**
-   * Stats, screen flash and viewport shake at the start of the tick.
+   * The clock the stats time ticks with (`appHiresTicks`).
    */
-  void (*begin_tick)(void *ctx);
-  void (*process_bonuses)(void *ctx);
+  uint64_t (*hires_ticks)(void *ctx);
   /**
-   * Moves the viewports' death banners, every other tick.
+   * Whether the tick ends by processing the viewports, which the AI's
+   * copies of the game don't.
    */
-  void (*update_banners)(void *ctx);
-  void (*process_sobjects)(void *ctx);
-  void (*process_wobjects)(void *ctx);
-  void (*process_nobjects)(void *ctx);
-  void (*process_bobjects)(void *ctx);
-  /**
-   * How many bonuses there are.
-   */
-  int32_t (*bonus_count)(void *ctx);
-  /**
-   * A new bonus, or null when the list is full.
-   */
-  void *(*new_bonus)(void *ctx);
-  /**
-   * Sets the fields of a bonus from `new_bonus`.
-   */
-  void (*set_bonus)(void *ctx, void *bonus, const struct LieroBonusState *state);
-  /**
-   * `SObjectType::create` for sobject type `kind`, owned by nobody.
-   */
-  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
-  /**
-   * `Worm::process` and `Ninjarope::process` for worm `i`.
-   */
-  void (*process_worm)(void *ctx, int32_t i);
-  void (*process_rope)(void *ctx, int32_t i);
-  /**
-   * Viewports, the control states replays compare against, and stats.
-   */
-  void (*end_tick)(void *ctx);
+  bool process_viewports;
 } LieroGameHooks;
+
+/**
+ * Which DOS keys are down.
+ */
+typedef struct LieroKeys {
+  bool down[LIERO_MAX_DOS_KEY];
+} LieroKeys;
+
+/**
+ * A tick's outcome.
+ */
+typedef struct LieroTick {
+  enum LieroTickKind kind;
+  /**
+   * The tick drew a frame for the host to show.
+   */
+  bool shown;
+  /**
+   * For `TickClose`.
+   */
+  int32_t result;
+} LieroTick;
+
+/**
+ * A screen, owned by the stack once pushed.
+ */
+typedef struct LieroScreen {
+  void *data;
+  /**
+   * Runs one step and fills in what happens next, and `next` for
+   * `TickPush` and `TickReplace`.
+   */
+  void (*tick)(void *data, struct LieroTick *out, struct LieroScreen *next);
+  /**
+   * The screen opened on top of this one closed with `result`.
+   */
+  void (*resume)(void *data, int32_t result);
+  /**
+   * Frees the screen, when it closes or the stack is cleared.
+   */
+  void (*free)(void *data);
+} LieroScreen;
+
+/**
+ * What the app's screens call in C++.
+ */
+typedef struct LieroAppHooks {
+  /**
+   * Reads the frame's events, passing keys to the controller
+   * (`Gfx::process(controller)`).
+   */
+  void (*process)(void);
+  /**
+   * The main menu screen.
+   */
+  struct LieroScreen (*menu_screen)(void);
+} LieroAppHooks;
+
+/**
+ * A controller's state.
+ */
+typedef struct LieroControllerData {
+  /**
+   * `LIERO_STATE_*`.
+   */
+  int32_t state;
+  /**
+   * 0 is black, `LIERO_FADE_SHOWN` fully shown.
+   */
+  int32_t fade_value;
+  /**
+   * Fading out to the menu.
+   */
+  bool going_to_menu;
+  /**
+   * Game ticks per frame, or with `inverse_frame_skip`, frames per tick.
+   */
+  int32_t frame_skip;
+  bool inverse_frame_skip;
+  /**
+   * Frames the controller has run.
+   */
+  int32_t cycles;
+} LieroControllerData;
+
+/**
+ * One character of the bitmap font, laid out like `Font::Char`: 7 x 8
+ * pixels, non-zero where the character is, and how far to move after it.
+ */
+typedef struct LieroFontChar {
+  uint8_t data[56];
+  int32_t width;
+} LieroFontChar;
+
+/**
+ * The game font, `Font` in C++.
+ */
+typedef struct LieroFont {
+  const struct LieroFontChar *chars;
+  uintptr_t count;
+} LieroFont;
+
+/**
+ * A sprite in the TC, `Sprite` in C++.
+ */
+typedef struct LieroSprite {
+  const uint8_t *mem;
+  int32_t width;
+  int32_t height;
+  int32_t pitch;
+} LieroSprite;
+
+/**
+ * What the stats screen draws with, besides the stats.
+ */
+typedef struct LieroStatsScene {
+  struct LieroFont font;
+  /**
+   * Each worm facing the middle: `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
+   */
+  struct LieroSprite worm_sprites[2];
+  struct LieroStr names[2];
+  int32_t game_mode;
+  struct LieroStr game_mode_name;
+  /**
+   * The TC's weapon names, by index.
+   */
+  const struct LieroStr *weapon_names;
+  uintptr_t weapon_count;
+  int32_t render_res_x;
+  int32_t render_res_y;
+  /**
+   * `gvl::hires_ticks_per_sec()`, for the AI's processing time.
+   */
+  uint64_t ticks_per_sec;
+} LieroStatsScene;
 
 /**
  * View of a C++ `Bitmap`: `h` rows of `pitch` bytes, of which the first
@@ -1191,26 +1461,6 @@ typedef struct LieroBitmap {
   int32_t pitch;
   struct LieroRect clip;
 } LieroBitmap;
-
-/**
- * A palette entry, laid out like C++'s `Color`. Components are 0 to 63 in
- * `Palette`, 0 to 255 once activated.
- */
-typedef struct LieroColor {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
-  uint8_t unused;
-} LieroColor;
-
-/**
- * One character of the bitmap font, laid out like `Font::Char`: 7 x 8
- * pixels, non-zero where the character is, and how far to move after it.
- */
-typedef struct LieroFontChar {
-  uint8_t data[56];
-  int32_t width;
-} LieroFontChar;
 
 /**
  * What C++ does after a key on an item.
@@ -1295,29 +1545,6 @@ typedef struct LieroWormKeys {
    */
   uint32_t *clean;
 } LieroWormKeys;
-
-/**
- * A dirt effect: how explosions and digging change the terrain. C++ uses it
- * as `Texture` in `Common::textures`.
- */
-typedef struct LieroTexture {
-  /**
-   * Draws dirt onto background instead of removing dirt.
-   */
-  bool n_draw_back;
-  /**
-   * Large sprite used as the mask.
-   */
-  int32_t m_frame;
-  /**
-   * First large sprite used as the dirt texture...
-   */
-  int32_t s_frame;
-  /**
-   * ...of this many, picked at random.
-   */
-  int32_t r_frame;
-} LieroTexture;
 
 /**
  * View of the TC's tables in C++'s `Common` that level code reads.
@@ -1416,14 +1643,6 @@ typedef struct LieroMenuSearch {
 } LieroMenuSearch;
 
 /**
- * The game font, `Font` in C++.
- */
-typedef struct LieroFont {
-  const struct LieroFontChar *chars;
-  uintptr_t count;
-} LieroFont;
-
-/**
  * Draws what a menu adds after item `item` (a position in the item list).
  */
 typedef struct LieroMenuHooks {
@@ -1451,428 +1670,101 @@ typedef struct LieroMenuItemSpec {
  */
 typedef struct LieroMenuScreenHooks {
   /**
-   * The menu's box, which stays put while the screen is up.
+   * The menus, which outlive the screen.
    */
-  struct LieroMenuBox *(*menu)(int32_t kind);
-  /**
-   * The menu taking the keys (`Gfx::curMenu`), and changing it.
-   */
-  int32_t (*cur)(void);
-  void (*set_cur)(int32_t kind);
-  /**
-   * Blacks out the palettes before the first frame.
-   */
-  void (*clear_palettes)(void);
-  /**
-   * Sets the menus up (`Gfx::menuStart`) and returns the item F1 picks.
-   */
-  int32_t (*start)(void);
-  /**
-   * `Gfx::menuFade(true)`, for the fade-out.
-   */
-  void (*fade_out)(void);
-  /**
-   * The screen's fade level, and setting it.
-   */
-  int32_t (*fade_value)(void);
-  void (*set_fade_value)(int32_t v);
+  struct LieroMenus *menus;
   /**
    * In the browser, saves liero.cfg when the settings changed.
    */
   void (*save_settings_if_changed)(void);
   /**
-   * Draws the menus over the frozen screen.
-   */
-  void (*draw)(void);
-  /**
-   * The menu's `onEnter` and `onLeftRight` on its selected item.
-   */
-  int32_t (*enter)(int32_t kind);
-  bool (*left_right)(int32_t kind, int32_t dir);
-  /**
-   * Moves the screen the last `enter` opened (`Gfx::open`) into `out`.
-   * False if it opened none.
-   */
-  bool (*take_opened)(struct LieroScreen *out);
-  /**
-   * What the item that opened it does with the screen's result; returns
-   * what the item's `onEnter` would have.
-   */
-  int32_t (*then)(int32_t result);
-  /**
-   * Shows player `player`'s menu (`Gfx::playerSettings`).
-   */
-  void (*player_settings)(int32_t player);
-  /**
-   * Shows the options menu (`Gfx::openHiddenMenu`).
-   */
-  void (*open_hidden_menu)(void);
-  /**
    * F8: the developers' random TC.
    */
   void (*randomize_tc)(void);
-  /**
-   * Lets go of left and right, so they act once (`resetLeftRight`).
-   */
-  void (*release_left_right)(void);
 } LieroMenuScreenHooks;
 
 /**
- * Constants for bonuses, from the TC (`LC(Bonus...)` in C++).
+ * What the menus call in C++.
  */
-typedef struct LieroBonusConstants {
-  int32_t gravity;
-  int32_t bounce_mul;
-  int32_t bounce_div;
-} LieroBonusConstants;
+typedef struct LieroMenusHooks {
+  /**
+   * The settings the menus change, and a player's.
+   */
+  struct LieroSettingsBox *(*settings)(void);
+  struct LieroWormSettingsBox *(*worm_settings)(int32_t player);
+  const struct LieroTcData *(*tc)(void);
+  /**
+   * Frames the menu has shown, for how fast held keys step a number.
+   */
+  uint32_t (*menu_cycles)(void);
+  /**
+   * The window's double size, and setting it or full screen. These don't
+   * update the options menu, which does it itself.
+   */
+  bool *(*double_res)(void);
+  void (*set_double_res)(bool on);
+  void (*set_fullscreen)(bool on);
+  /**
+   * A file selector (`LIERO_SELECTOR_*`), for `player`'s profile; an
+   * empty screen if listing its folder threw.
+   */
+  struct LieroScreen (*open_selector)(int32_t kind, int32_t player);
+  /**
+   * Switches to the TC the TC selector loaded, if it loaded one.
+   */
+  bool (*take_chosen_tc)(void);
+  /**
+   * The setup file loaded or saved last, and saving the setup as
+   * `name`.cfg. False if it threw.
+   */
+  struct LieroStr (*settings_path)(void);
+  bool (*save_options)(struct LieroStr name);
+  /**
+   * Saves `player`'s profile as Profiles/`name`.lpf. False if it threw.
+   */
+  bool (*save_profile_as)(int32_t player, struct LieroStr name);
+} LieroMenusHooks;
 
 /**
- * Pointers to the fields of one C++ `NObject`.
+ * A renderer's palettes and size, which C++'s `Renderer` refers to.
  */
-typedef struct LieroNObjectFields {
-  struct LieroIVec2 *pos;
-  struct LieroIVec2 *vel;
-  int32_t *time_left;
-  int32_t *cur_frame;
-} LieroNObjectFields;
+typedef struct LieroRendererData {
+  /**
+   * The palette shown.
+   */
+  struct LieroColor pal[256];
+  /**
+   * The palette `pal` is made from.
+   */
+  struct LieroColor origpal[256];
+  int32_t fade_value;
+  /**
+   * The size drawn at, which `set_render_resolution` sets.
+   */
+  int32_t render_res_x;
+  int32_t render_res_y;
+} LieroRendererData;
 
 /**
- * The parts of a `NObjectType` that its physics uses.
+ * How a replay call ended, for C++ to throw as its replay code did.
  */
-typedef struct LieroNObjectType {
-  int32_t gravity;
-  int32_t bounce;
-  int32_t hit_damage;
-  bool expl_ground;
-  bool blood_trail;
-  int32_t blood_trail_delay;
-  int32_t start_frame;
-  int32_t num_frames;
-  bool draw_on_map;
-  int32_t leave_obj;
-  int32_t leave_obj_delay;
-  int32_t time_to_explo;
-  int32_t create_on_exp;
-  int32_t dirt_effect;
-  int32_t splinter_amount;
-  int32_t splinter_colour;
-  int32_t splinter_type;
-} LieroNObjectType;
-
-/**
- * Everything else `NObject::process` reads from the game.
- */
-typedef struct LieroNObjectEnv {
-  struct LieroLevel level;
-  struct LieroLevelCommon common;
-  struct LieroRand *rand;
-  int32_t cycles;
-  bool shadow;
-} LieroNObjectEnv;
-
-/**
- * What C++ does for an `NObject`. `ctx` is passed back to each function.
- */
-typedef struct LieroNObjectHooks {
-  void *ctx;
+typedef struct LieroReplayOutcome {
+  enum LieroReplayStatus status;
   /**
-   * `Game::createBObject`.
+   * For `CheckError`, the `gvl::archive_check_error` message; for
+   * `ReadError`, what the reader threw at the end of its bytes.
    */
-  void (*create_bobject)(void *ctx, struct LieroIVec2 pos, struct LieroIVec2 vel);
+  struct LieroStr message;
   /**
-   * `SObjectType::create` for sobject type `kind`, owned like the object.
+   * The replay ended (a frame).
    */
-  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
+  bool end;
   /**
-   * `NObjectType::create2` for nobject type `kind`, owned like the object.
+   * The frame read settings, so the game needs `updateSettings`, which
+   * C++ calls before throwing a checksum error.
    */
-  void (*create_nobject2)(void *ctx,
-                          int32_t kind,
-                          int32_t angle,
-                          struct LieroIVec2 vel,
-                          struct LieroIVec2 pos,
-                          int32_t color);
-  /**
-   * Draws the object's current frame onto the level at (x, y), with the
-   * shadow corrected.
-   */
-  void (*draw_on_map)(void *ctx, int32_t x, int32_t y);
-  /**
-   * The worm loop in `NObject::process`: hurts the worms the object hits
-   * and may free it. Returns true when it should explode.
-   */
-  bool (*hit_worms)(void *ctx);
-  /**
-   * Frees the object if it is still in use.
-   */
-  void (*free)(void *ctx);
-} LieroNObjectHooks;
-
-/**
- * Pointers to a worm's position and velocity.
- */
-typedef struct LieroWormMotion {
-  struct LieroIVec2 *pos;
-  struct LieroIVec2 *vel;
-} LieroWormMotion;
-
-/**
- * Constants for the ninja rope, from the TC (`LC(NR...)` in C++).
- */
-typedef struct LieroNinjaropeConstants {
-  int32_t force_shl_x;
-  int32_t force_div_x;
-  int32_t force_shl_y;
-  int32_t force_div_y;
-  int32_t force_len_shl;
-  int32_t attach_length;
-  int32_t gravity;
-} LieroNinjaropeConstants;
-
-/**
- * What C++ does for the ninja rope. `ctx` is passed back to each function.
- */
-typedef struct LieroNinjaropeHooks {
-  void *ctx;
-  /**
-   * The first worm other than the owner that (x, y) hits, or null.
-   */
-  void *(*find_anchor)(void *ctx, int32_t x, int32_t y);
-  /**
-   * Where worm `worm` keeps its position and velocity.
-   */
-  struct LieroWormMotion (*worm_motion)(void *worm);
-  /**
-   * `NObjectType::create2` for nobject type `kind`, owned by the owner.
-   */
-  void (*create_nobject2)(void *ctx,
-                          int32_t kind,
-                          int32_t angle,
-                          struct LieroIVec2 vel,
-                          struct LieroIVec2 pos,
-                          int32_t color);
-} LieroNinjaropeHooks;
-
-typedef struct LieroWormSettings {
-  int32_t health;
-  uint32_t controller;
-  uint32_t controls[LIERO_MAX_CONTROL];
-  uint32_t weapons[5];
-  struct LieroStr name;
-  int32_t rgb[3];
-  bool random_name;
-  int32_t color;
-  uint32_t controls_ex[LIERO_MAX_CONTROL_EX];
-} LieroWormSettings;
-
-typedef struct LieroSettings {
-  bool record_replays;
-  bool load_powerlevel_palette;
-  int32_t blood_particle_max;
-  int32_t ai_frames;
-  int32_t ai_mutations;
-  bool ai_traces;
-  int32_t ai_parallels;
-  bool fullscreen;
-  int32_t zone_timeout;
-  uint32_t select_bot_weapons;
-  bool allow_viewing_spawn_point;
-  bool single_screen_replay;
-  bool spectator_window;
-  struct LieroStr tc;
-  uint32_t weap_table[40];
-  int32_t max_bonuses;
-  int32_t blood;
-  int32_t time_to_lose;
-  int32_t flags_to_win;
-  uint32_t game_mode;
-  bool shadow;
-  bool load_change;
-  bool names_on_bonuses;
-  bool regenerate_level;
-  int32_t lives;
-  int32_t loading_time;
-  bool random_level;
-  struct LieroStr level_file;
-  bool map;
-  bool screen_sync;
-  struct LieroWormSettings worms[2];
-} LieroSettings;
-
-/**
- * The `Game` fields a replay stores, apart from the settings, worms,
- * viewports and level.
- */
-typedef struct LieroReplayGameFields {
-  int32_t cycles;
-  bool got_changed;
-  /**
-   * `lastKilledIdx`: a worm's `index`.
-   */
-  int32_t last_killed;
-  int32_t screen_flash;
-  uint32_t rand_x;
-  uint32_t rand_c;
-} LieroReplayGameFields;
-
-/**
- * A worm weapon's state.
- */
-typedef struct LieroReplayWeapon {
-  int32_t ammo;
-  int32_t delay_left;
-  /**
-   * The weapon's index in the TC.
-   */
-  int32_t weapon;
-  int32_t loading_left;
-} LieroReplayWeapon;
-
-/**
- * What a replay stores of a `Worm`, in the archive's order. Worms refer to
- * each other by their place in the list of worms passed or returned, or -1.
- */
-typedef struct LieroReplayWorm {
-  int32_t pos[2];
-  int32_t vel[2];
-  int32_t logic_respawn[2];
-  int32_t hotspot[2];
-  int32_t aiming_angle;
-  int32_t aiming_speed;
-  bool able_to_jump;
-  bool able_to_dig;
-  bool key_change_pressed;
-  bool movable;
-  bool animate;
-  bool visible;
-  bool ready;
-  bool flag;
-  bool make_sight_green;
-  int32_t health;
-  int32_t lives;
-  int32_t kills;
-  int32_t timer;
-  int32_t killed_timer;
-  int32_t current_frame;
-  int32_t flags;
-  /**
-   * The worm the rope is attached to.
-   */
-  int32_t rope_anchor;
-  bool rope_attached;
-  int32_t rope_cur_len;
-  int32_t rope_length;
-  bool rope_out;
-  int32_t rope_vel[2];
-  int32_t rope_pos[2];
-  int32_t current_weapon;
-  /**
-   * `lastKilledByIdx`: a worm's `index`, not its place in the list.
-   */
-  int32_t last_killed_by;
-  int32_t fire_cone;
-  int32_t leave_shell_timer;
-  int32_t index;
-  int32_t reacts[4];
-  struct LieroReplayWeapon weapons[5];
-  int32_t direction;
-  uint32_t control_states;
-  uint32_t prev_control_states;
-} LieroReplayWorm;
-
-/**
- * What a replay stores of a `Viewport`.
- */
-typedef struct LieroReplayViewport {
-  int32_t x;
-  int32_t y;
-  int32_t shake;
-  int32_t max_x;
-  int32_t max_y;
-  int32_t center_x;
-  int32_t center_y;
-  /**
-   * The followed worm's `index`.
-   */
-  int32_t worm_idx;
-  int32_t banner_y;
-  int32_t rect[4];
-} LieroReplayViewport;
-
-/**
- * A game for `liero_replay_write_start`, pointing at C++'s data.
- */
-typedef struct LieroReplayGameIn {
-  struct LieroSettings settings;
-  struct LieroReplayGameFields fields;
-  /**
-   * The game's worms, in order, and their settings.
-   */
-  const struct LieroReplayWorm *worms;
-  const struct LieroWormSettings *worm_settings;
-  uintptr_t worm_count;
-  const struct LieroReplayViewport *viewports;
-  uintptr_t viewport_count;
-  uint32_t level_width;
-  uint32_t level_height;
-  /**
-   * `level_width * level_height` pixels.
-   */
-  const uint8_t *level_pixels;
-  /**
-   * 768 bytes.
-   */
-  const uint8_t *level_palette;
-} LieroReplayGameIn;
-
-/**
- * What a frame writes or reads of a worm.
- */
-typedef struct LieroReplayFrameWorm {
-  int32_t index;
-  uint32_t control_states;
-  uint32_t prev_control_states;
-  /**
-   * Whether the worm's settings changed since they were last written.
-   */
-  bool settings_expired;
-  struct LieroWormSettings settings;
-} LieroReplayFrameWorm;
-
-/**
- * Bytes for the binary readers. `get` returns the next byte, or -1 when
- * the C++ reader throws, which C++ keeps to rethrow.
- */
-typedef struct LieroByteSource {
-  void *ctx;
-  int32_t (*get)(void *ctx);
-} LieroByteSource;
-
-/**
- * A game read by `liero_replay_read_start`, pointing into the result.
- */
-typedef struct LieroReplayGameOut {
-  int32_t version;
-  struct LieroSettings settings;
-  struct LieroReplayGameFields fields;
-  /**
-   * Every worm read: the game's worms and any only referred to.
-   */
-  const struct LieroReplayWorm *worms;
-  const struct LieroWormSettings *worm_settings;
-  uintptr_t worm_count;
-  /**
-   * The game's worms in order, as places in `worms`, or -1.
-   */
-  const int32_t *list;
-  uintptr_t list_len;
-  const struct LieroReplayViewport *viewports;
-  uintptr_t viewport_count;
-  uint32_t level_width;
-  uint32_t level_height;
-  const uint8_t *level_pixels;
-  const uint8_t *level_palette;
-} LieroReplayGameOut;
+  bool settings_changed;
+} LieroReplayOutcome;
 
 /**
  * An event as a Rust screen sees it. C++ has already passed it to
@@ -1963,6 +1855,35 @@ typedef struct LieroScreenHost {
    * another menu is up (`Gfx::drawBasicMenu`).
    */
   void (*draw_basic_menu)(void);
+  /**
+   * The app draws: the screen, the frozen screen, the font, filling the
+   * screen, the menu palette, the menu fade and the basic menu come from
+   * the Rust app (`app_menus.rs`) instead of the functions above. Tests
+   * leave it off.
+   */
+  bool app_drawing;
+  /**
+   * The time, in seconds since 1970 (`appTime`).
+   */
+  int64_t (*time)(void);
+  /**
+   * The stats' clock, in nanoseconds (`appHiresTicks`).
+   */
+  uint64_t (*hires_ticks)(void);
+  /**
+   * `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in UTC under
+   * the app driver and local time otherwise. Writes at most `cap` bytes
+   * and returns how many.
+   */
+  uintptr_t (*replay_time)(int64_t t, uint8_t *out, uintptr_t cap);
+  /**
+   * The config folder, or null.
+   */
+  const struct LieroFsNode *(*config_node)(void);
+  /**
+   * Where the games' sounds go (`DefaultSoundPlayer::out`).
+   */
+  struct LieroSoundOut (*sound)(void);
 } LieroScreenHost;
 
 /**
@@ -2052,6 +1973,61 @@ typedef struct LieroSelectorHooks {
    */
   void (*free)(void *ctx);
 } LieroSelectorHooks;
+
+typedef struct LieroWormSettings {
+  int32_t health;
+  uint32_t controller;
+  uint32_t controls[LIERO_MAX_CONTROL];
+  uint32_t weapons[5];
+  struct LieroStr name;
+  int32_t rgb[3];
+  bool random_name;
+  int32_t color;
+  uint32_t controls_ex[LIERO_MAX_CONTROL_EX];
+} LieroWormSettings;
+
+typedef struct LieroSettings {
+  bool record_replays;
+  bool load_powerlevel_palette;
+  int32_t blood_particle_max;
+  int32_t ai_frames;
+  int32_t ai_mutations;
+  bool ai_traces;
+  int32_t ai_parallels;
+  bool fullscreen;
+  int32_t zone_timeout;
+  uint32_t select_bot_weapons;
+  bool allow_viewing_spawn_point;
+  bool single_screen_replay;
+  bool spectator_window;
+  struct LieroStr tc;
+  uint32_t weap_table[40];
+  int32_t max_bonuses;
+  int32_t blood;
+  int32_t time_to_lose;
+  int32_t flags_to_win;
+  uint32_t game_mode;
+  bool shadow;
+  bool load_change;
+  bool names_on_bonuses;
+  bool regenerate_level;
+  int32_t lives;
+  int32_t loading_time;
+  bool random_level;
+  struct LieroStr level_file;
+  bool map;
+  bool screen_sync;
+  struct LieroWormSettings worms[2];
+} LieroSettings;
+
+/**
+ * Bytes for the binary readers. `get` returns the next byte, or -1 when
+ * the C++ reader throws, which C++ keeps to rethrow.
+ */
+typedef struct LieroByteSource {
+  void *ctx;
+  int32_t (*get)(void *ctx);
+} LieroByteSource;
 
 /**
  * A gash value (`gvl::gash::value_type`).
@@ -2227,256 +2203,21 @@ typedef struct LieroStatsWorm {
 } LieroStatsWorm;
 
 /**
- * A sprite in the TC, `Sprite` in C++.
+ * What a draw needs besides the game: the settings the tick doesn't use,
+ * and the screen.
  */
-typedef struct LieroSprite {
-  const uint8_t *mem;
-  int32_t width;
-  int32_t height;
-  int32_t pitch;
-} LieroSprite;
-
-/**
- * What the stats screen draws with, besides the stats.
- */
-typedef struct LieroStatsScene {
-  struct LieroFont font;
-  /**
-   * Each worm facing the middle: `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
-   */
-  struct LieroSprite worm_sprites[2];
-  struct LieroStr names[2];
-  int32_t game_mode;
-  struct LieroStr game_mode_name;
-  /**
-   * The TC's weapon names, by index.
-   */
-  const struct LieroStr *weapon_names;
-  uintptr_t weapon_count;
+typedef struct LieroDrawSettings {
+  bool names_on_bonuses;
+  bool allow_viewing_spawn_point;
+  bool map;
   int32_t render_res_x;
   int32_t render_res_y;
   /**
-   * `gvl::hires_ticks_per_sec()`, for the AI's processing time.
+   * The game is running (`StateGame`), not paused or over.
    */
-  uint64_t ticks_per_sec;
-} LieroStatsScene;
-
-typedef struct LieroTcWeapon {
-  struct LieroStr name;
-  struct LieroStr id_str;
-  int32_t detect_distance;
-  bool affect_by_worm;
-  int32_t blow_away;
-  int32_t gravity;
-  bool shadow;
-  bool laser_sight;
-  int32_t launch_sound;
-  int32_t loop_sound;
-  int32_t explo_sound;
-  int32_t speed;
-  int32_t add_speed;
-  int32_t distribution;
-  int32_t parts;
-  int32_t recoil;
-  int32_t mult_speed;
-  int32_t delay;
-  int32_t loading_time;
-  int32_t ammo;
-  int32_t create_on_exp;
-  int32_t dirt_effect;
-  int32_t leave_shells;
-  int32_t leave_shell_delay;
-  bool play_reload_sound;
-  bool worm_explode;
-  bool expl_ground;
-  bool worm_collide;
-  int32_t fire_cone;
-  bool collide_with_objects;
-  bool affect_by_explosions;
-  int32_t bounce;
-  int32_t time_to_explo;
-  int32_t time_to_explo_v;
-  int32_t hit_damage;
-  int32_t blood_on_hit;
-  int32_t start_frame;
-  int32_t num_frames;
-  bool loop_anim;
-  int32_t shot_type;
-  int32_t color_bullets;
-  int32_t splinter_amount;
-  int32_t splinter_colour;
-  int32_t splinter_type;
-  int32_t splinter_scatter;
-  int32_t obj_trail_type;
-  int32_t obj_trail_delay;
-  int32_t part_trail_type;
-  int32_t part_trail_obj;
-  int32_t part_trail_delay;
-  bool chain_explosion;
-} LieroTcWeapon;
-
-typedef struct LieroTcNObject {
-  struct LieroStr id_str;
-  int32_t detect_distance;
-  int32_t gravity;
-  int32_t speed;
-  int32_t speed_v;
-  int32_t distribution;
-  int32_t blow_away;
-  int32_t bounce;
-  int32_t hit_damage;
-  bool worm_explode;
-  bool expl_ground;
-  bool worm_destroy;
-  int32_t blood_on_hit;
-  int32_t start_frame;
-  int32_t num_frames;
-  bool draw_on_map;
-  int32_t color_bullets;
-  int32_t create_on_exp;
-  bool affect_by_explosions;
-  int32_t dirt_effect;
-  int32_t splinter_amount;
-  int32_t splinter_colour;
-  int32_t splinter_type;
-  bool blood_trail;
-  int32_t blood_trail_delay;
-  int32_t leave_obj;
-  int32_t leave_obj_delay;
-  int32_t time_to_explo;
-  int32_t time_to_explo_v;
-} LieroTcNObject;
-
-typedef struct LieroTcSObject {
-  struct LieroStr id_str;
-  int32_t start_sound;
-  int32_t num_sounds;
-  int32_t anim_delay;
-  int32_t start_frame;
-  int32_t num_frames;
-  int32_t detect_range;
-  int32_t damage;
-  int32_t blow_away;
-  bool shadow;
-  int32_t shake;
-  int32_t flash;
-  int32_t dirt_effect;
-} LieroTcSObject;
-
-typedef struct LieroTcSound {
-  struct LieroStr name;
-  /**
-   * Signed 8-bit samples.
-   */
-  const uint8_t *data;
-  uintptr_t len;
-  /**
-   * False when the WAV file had another format: the game has no sound.
-   */
-  bool valid;
-} LieroTcSound;
-
-typedef struct LieroTcSprites {
-  const uint8_t *data;
-  int32_t width;
-  int32_t height;
-  int32_t count;
-} LieroTcSprites;
-
-typedef struct LieroTcFontChar {
-  /**
-   * 7x8 pixels, row-major: 8 where set.
-   */
-  uint8_t data[56];
-  int32_t width;
-} LieroTcFontChar;
-
-/**
- * Everything `Common` gets from a TC.
- */
-typedef struct LieroTcData {
-  const struct LieroTcWeapon *weapons;
-  uintptr_t weapon_count;
-  const struct LieroTcNObject *nobjects;
-  uintptr_t nobject_count;
-  const struct LieroTcSObject *sobjects;
-  uintptr_t sobject_count;
-  const struct LieroTcSound *sounds;
-  uintptr_t sound_count;
-  /**
-   * In the order of `LIERO_CDEFS`, `LIERO_SDEFS` and `LIERO_HDEFS`.
-   */
-  const int32_t *constants;
-  uintptr_t constant_count;
-  const struct LieroStr *texts;
-  uintptr_t text_count;
-  const bool *hacks;
-  uintptr_t hack_count;
-  /**
-   * 6-bit VGA palette, red, green and blue for each of 256 entries.
-   */
-  uint8_t palette[768];
-  /**
-   * (from, to) for each of 4 colour animations.
-   */
-  int32_t color_anim[8];
-  uint8_t materials[256];
-  struct LieroTexture textures[LIERO_TEXTURE_COUNT];
-  /**
-   * [bonus * 2 + (0 = timer, 1 = timerV)].
-   */
-  int32_t bonus_rand_timer[4];
-  int32_t bonus_sobjects[2];
-  int32_t bonus_frames[2];
-  /**
-   * [(0 = off, 1 = on) * 7 + key].
-   */
-  int32_t ai_params[14];
-  struct LieroTcSprites small_sprites;
-  struct LieroTcSprites large_sprites;
-  struct LieroTcSprites text_sprites;
-  struct LieroTcFontChar font[LIERO_TC_FONT_CHARS];
-  /**
-   * Precomputed: weapon indexes sorted by name, and the worm and fire cone
-   * sprites facing both ways (`Common::precompute`).
-   */
-  const int32_t *weap_order;
-  struct LieroTcSprites worm_sprites;
-  struct LieroTcSprites fire_cone_sprites;
-} LieroTcData;
-
-/**
- * A viewport's state. Rust owns it, and the fields of C++'s `Viewport`
- * refer to it (`liero_viewport_new`).
- */
-typedef struct LieroViewport {
-  /**
-   * Top left of what is shown, in level coordinates.
-   */
-  int32_t x;
-  int32_t y;
-  /**
-   * Fixed point.
-   */
-  int32_t shake;
-  int32_t max_x;
-  int32_t max_y;
-  int32_t center_x;
-  int32_t center_y;
-  int32_t worm_idx;
-  /**
-   * Where the kill message is, -8 when hidden.
-   */
-  int32_t banner_y;
-  /**
-   * Where on screen the viewport is.
-   */
-  struct LieroRect rect;
-  /**
-   * Used for shaking and for the laser sight.
-   */
-  struct LieroRand rand;
-} LieroViewport;
+  bool state_game;
+  bool is_replay;
+} LieroDrawSettings;
 
 /**
  * One of a worm's weapon slots.
@@ -2531,9 +2272,11 @@ typedef struct LieroViewWorm {
   int32_t steerable_sum_x;
   int32_t steerable_sum_y;
   /**
-   * The worm has an AI, which may draw debug output.
+   * Where the worm's predictive bot's plans went, with `aiTraces` on,
+   * drawn as debug output.
    */
-  bool has_ai;
+  const struct LieroAiTrace *traces;
+  uintptr_t trace_count;
 } LieroViewWorm;
 
 /**
@@ -2620,22 +2363,6 @@ typedef struct LieroSpriteSet {
 } LieroSpriteSet;
 
 /**
- * What C++ draws. `ctx` is passed back.
- */
-typedef struct LieroViewportHooks {
-  void *ctx;
-  /**
-   * Lets the AI of worm `worm` (a position in `LieroScene::worms`) draw its
-   * debug output, clipped to `clip`.
-   */
-  void (*draw_ai_debug)(void *ctx,
-                        int32_t worm,
-                        int32_t offs_x,
-                        int32_t offs_y,
-                        struct LieroRect clip);
-} LieroViewportHooks;
-
-/**
  * Everything a viewport draws. Lists are in C++'s order, which decides what
  * is drawn on top.
  */
@@ -2719,230 +2446,7 @@ typedef struct LieroScene {
    */
   bool state_game;
   bool is_replay;
-  struct LieroViewportHooks hooks;
 } LieroScene;
-
-/**
- * How a new weapon object starts, from `Weapon::fire`.
- */
-typedef struct LieroLaunch {
-  struct LieroIVec2 vel;
-  int32_t cur_frame;
-  int32_t time_left;
-} LieroLaunch;
-
-/**
- * The parts of a C++ `Weapon` that Rust uses.
- */
-typedef struct LieroWeapon {
-  int32_t id;
-  int32_t detect_distance;
-  bool affect_by_worm;
-  int32_t blow_away;
-  int32_t gravity;
-  int32_t explo_sound;
-  int32_t speed;
-  int32_t add_speed;
-  int32_t distribution;
-  int32_t parts;
-  int32_t recoil;
-  int32_t mult_speed;
-  int32_t delay;
-  int32_t loading_time;
-  int32_t ammo;
-  int32_t create_on_exp;
-  int32_t dirt_effect;
-  int32_t leave_shells;
-  int32_t leave_shell_delay;
-  bool play_reload_sound;
-  bool expl_ground;
-  int32_t fire_cone;
-  bool collide_with_objects;
-  int32_t bounce;
-  int32_t time_to_explo;
-  int32_t time_to_explo_v;
-  int32_t start_frame;
-  int32_t num_frames;
-  bool loop_anim;
-  int32_t shot_type;
-  int32_t color_bullets;
-  int32_t splinter_amount;
-  int32_t splinter_colour;
-  int32_t splinter_type;
-  int32_t splinter_scatter;
-  int32_t obj_trail_type;
-  int32_t obj_trail_delay;
-  int32_t part_trail_type;
-  int32_t part_trail_obj;
-  int32_t part_trail_delay;
-  /**
-   * Non-zero when the launch sound loops while firing.
-   */
-  int32_t loop_sound;
-  bool laser_sight;
-} LieroWeapon;
-
-/**
- * Pointers to the fields of a C++ `Worm` that firing and reloading use.
- */
-typedef struct LieroWormFiring {
-  struct LieroIVec2 *pos;
-  struct LieroIVec2 *vel;
-  /**
-   * Fixed-point, 0 to 128.
-   */
-  int32_t aiming_angle;
-  int32_t *fire_cone;
-  int32_t *leave_shell_timer;
-  /**
-   * All five weapon slots.
-   */
-  struct LieroWormWeapon *weapons;
-  int32_t current_weapon;
-} LieroWormFiring;
-
-/**
- * What C++ does when a worm fires or reloads.
- */
-typedef struct LieroWormFiringHooks {
-  void *ctx;
-  /**
-   * The weapon's launch sound, looping or not.
-   */
-  void (*launch_sound)(void *ctx);
-  /**
-   * `Weapon::fire` for the current weapon: one part of a shot.
-   */
-  void (*fire_part)(void *ctx,
-                    int32_t angle,
-                    struct LieroIVec2 vel,
-                    int32_t speed,
-                    struct LieroIVec2 pos);
-  /**
-   * Plays sound `sound`.
-   */
-  void (*play_sound)(void *ctx, int32_t sound);
-  /**
-   * `NObjectType::create1` for nobject type `kind`, owned by the worm.
-   */
-  void (*create_nobject1)(void *ctx,
-                          int32_t kind,
-                          struct LieroIVec2 vel,
-                          struct LieroIVec2 pos,
-                          int32_t color);
-} LieroWormFiringHooks;
-
-/**
- * Pointers to the fields of one C++ `WObject`.
- */
-typedef struct LieroWObjectFields {
-  struct LieroIVec2 *pos;
-  struct LieroIVec2 *vel;
-  int32_t *cur_frame;
-  int32_t *time_left;
-} LieroWObjectFields;
-
-/**
- * Everything else weapon objects read from the game.
- */
-typedef struct LieroWObjectEnv {
-  struct LieroLevel level;
-  struct LieroLevelCommon common;
-  struct LieroRand *rand;
-  int32_t cycles;
-  bool shadow;
-  /**
-   * `LC(SplinterLarpaVelDiv)` and `LC(SplinterCracklerVelDiv)`.
-   */
-  int32_t larpa_vel_div;
-  int32_t crackler_vel_div;
-} LieroWObjectEnv;
-
-/**
- * What C++ does for a `WObject`. `ctx` is passed back to each function.
- */
-typedef struct LieroWObjectHooks {
-  void *ctx;
-  /**
-   * Whether the owner is steering the object: visible and holding up.
-   */
-  bool (*owner_steers)(void *ctx);
-  /**
-   * `SObjectType::create` for sobject type `kind`, owned like the object.
-   */
-  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
-  /**
-   * `NObjectType::create1` for nobject type `kind`, owned like the object.
-   */
-  void (*create_nobject1)(void *ctx,
-                          int32_t kind,
-                          struct LieroIVec2 vel,
-                          struct LieroIVec2 pos,
-                          int32_t color);
-  /**
-   * `NObjectType::create2` for nobject type `kind`, owned like the object.
-   */
-  void (*create_nobject2)(void *ctx,
-                          int32_t kind,
-                          int32_t angle,
-                          struct LieroIVec2 vel,
-                          struct LieroIVec2 pos,
-                          int32_t color);
-  /**
-   * Adds `impulse` to the other objects within 2 pixels.
-   */
-  void (*push_objects)(void *ctx, struct LieroIVec2 impulse);
-  /**
-   * The worm loop in `WObject::process`: hurts the worms the object hits.
-   * Returns `LIERO_HIT_*` flags.
-   */
-  uint32_t (*hit_worms)(void *ctx);
-  /**
-   * `WObject::blowUpObject` with the owner as the cause.
-   */
-  void (*blow_up)(void *ctx);
-  /**
-   * Frees the object.
-   */
-  void (*free)(void *ctx);
-  /**
-   * Whether the object is still in use.
-   */
-  bool (*used)(void *ctx);
-} LieroWObjectHooks;
-
-/**
- * What C++ does when a weapon object blows up.
- */
-typedef struct LieroBlowUpHooks {
-  void *ctx;
-  /**
-   * `SObjectType::create` for sobject type `kind` at (x, y), caused by
-   * the exploding object.
-   */
-  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
-  /**
-   * Plays sound `sound`.
-   */
-  void (*play_sound)(void *ctx, int32_t sound);
-  /**
-   * `NObjectType::create1` for nobject type `kind`.
-   */
-  void (*create_nobject1)(void *ctx,
-                          int32_t kind,
-                          struct LieroIVec2 vel,
-                          struct LieroIVec2 pos,
-                          int32_t color);
-  /**
-   * `NObjectType::create2` for nobject type `kind`.
-   */
-  void (*create_nobject2)(void *ctx,
-                          int32_t kind,
-                          int32_t angle,
-                          struct LieroIVec2 vel,
-                          struct LieroIVec2 pos,
-                          int32_t color);
-} LieroBlowUpHooks;
 
 /**
  * What the weapon options screen shows and edits.
@@ -2989,12 +2493,22 @@ typedef struct LieroWeapselEnv {
    * `gfx.rand`, which the menus use.
    */
   struct LieroRand *rand;
+  /**
+   * The weapons the worms are given, and the menus' sounds, which play
+   * on `sound`.
+   */
+  const struct LieroTcData *tc;
+  struct LieroSoundOut sound;
 } LieroWeapselEnv;
 
 /**
  * A worm choosing weapons.
  */
 typedef struct LieroWeapselWorm {
+  /**
+   * The worm in the viewport.
+   */
+  struct LieroWormData *worm;
   /**
    * `WormSettings::weapons`, which the menu changes in place.
    */
@@ -3031,251 +2545,6 @@ typedef struct LieroWeapselSpec {
   struct LieroStr done;
 } LieroWeapselSpec;
 
-/**
- * What C++ does for weapon selection. `menu` is a position in the menu list.
- */
-typedef struct LieroWeapselHooks {
-  void *ctx;
-  /**
-   * `Worm::pressed`.
-   */
-  bool (*pressed)(void *ctx, int32_t menu, uint32_t control);
-  /**
-   * `Worm::release`.
-   */
-  void (*release)(void *ctx, int32_t menu, uint32_t control);
-  /**
-   * `Worm::pressedOnce`: whether it was pressed, then clears it.
-   */
-  bool (*pressed_once)(void *ctx, int32_t menu, uint32_t control);
-  void (*play_sound)(void *ctx, int32_t sound);
-  /**
-   * Gives the worm weapon `weapon` in `slot`.
-   */
-  void (*set_weapon)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
-  /**
-   * Starts the worm with weapon `weapon` in `slot`, empty, and its first
-   * weapon current.
-   */
-  void (*init_weapon)(void *ctx, int32_t menu, int32_t slot, int32_t weapon);
-} LieroWeapselHooks;
-
-/**
- * Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
- */
-typedef struct LieroWormConstants {
-  int32_t min_bounce_up;
-  int32_t min_bounce_down;
-  int32_t min_bounce_left;
-  int32_t min_bounce_right;
-  int32_t worm_gravity;
-  int32_t walk_vel_left;
-  int32_t max_vel_left;
-  int32_t walk_vel_right;
-  int32_t max_vel_right;
-  int32_t jump_force;
-  int32_t max_aim_vel_left;
-  int32_t aim_acc_left;
-  int32_t max_aim_vel_right;
-  int32_t aim_acc_right;
-  int32_t nr_initial_length;
-  int32_t nr_min_length;
-  int32_t nr_max_length;
-  int32_t nr_throw_vel_x;
-  int32_t nr_throw_vel_y;
-  int32_t nr_pull_vel;
-  int32_t nr_release_vel;
-  int32_t worm_fric_mult;
-  int32_t worm_fric_div;
-  int32_t worm_min_spawn_dist_last;
-  int32_t worm_min_spawn_dist_enemy;
-  int32_t worm_spawn_rect_x;
-  int32_t worm_spawn_rect_y;
-  int32_t worm_spawn_rect_w;
-  int32_t worm_spawn_rect_h;
-  int32_t aim_fric_mult;
-  int32_t aim_fric_div;
-  int32_t aim_max_right;
-  int32_t aim_min_right;
-  int32_t aim_max_left;
-  int32_t aim_min_left;
-  int32_t bonus_explode_risk;
-  int32_t bonus_health_var;
-  int32_t bonus_min_health;
-  /**
-   * 1-based id of the weapon that always has a laser sight.
-   */
-  int32_t laser_weapon;
-  int32_t fall_damage_right;
-  int32_t fall_damage_down;
-  int32_t worm_float_level;
-  int32_t worm_float_power;
-  /**
-   * The TC's hacks (`H[...]`).
-   */
-  bool fall_damage;
-  bool worm_float;
-  bool bonus_reload_only;
-  bool air_jump;
-  bool multi_jump;
-  bool signed_recoil;
-} LieroWormConstants;
-
-/**
- * Everything else `Worm::process` reads from the game.
- */
-typedef struct LieroWormEnv {
-  struct LieroLevel level;
-  struct LieroLevelCommon common;
-  /**
-   * The game's state: its random numbers, and the 'it' of Game of Tag.
-   */
-  struct LieroGameData *game;
-  int32_t cycles;
-  /**
-   * `LIERO_GAME_*`.
-   */
-  int32_t game_mode;
-  /**
-   * Blood amount, in percent.
-   */
-  int32_t blood;
-  /**
-   * Weapon loading time, in percent.
-   */
-  int32_t loading_time;
-  /**
-   * Whether weapons can be changed while loading.
-   */
-  bool load_change;
-  bool shadow;
-  /**
-   * Worms don't respawn in quick simulations.
-   */
-  bool quick_sim;
-  /**
-   * `Settings::wormAnimTab`: frame offsets for the walking animation.
-   */
-  int32_t anim_tab[4];
-} LieroWormEnv;
-
-/**
- * A bonus from `bonus_next`.
- */
-typedef struct LieroBonusRef {
-  /**
-   * False when there are no more bonuses.
-   */
-  bool found;
-  int32_t x;
-  int32_t y;
-  /**
-   * 0 is a weapon, 1 is health.
-   */
-  int32_t frame;
-  int32_t weapon;
-} LieroBonusRef;
-
-/**
- * A steerable weapon object from `steerable_next`.
- */
-typedef struct LieroSteerable {
-  /**
-   * The object's frame, which is its direction; null when there are no
-   * more objects.
-   */
-  int32_t *cur_frame;
-  struct LieroIVec2 pos;
-} LieroSteerable;
-
-/**
- * What C++ does for a worm. `ctx` is passed back to each function.
- */
-typedef struct LieroWormHooks {
-  void *ctx;
-  /**
-   * The hooks for `liero_worm_fire` and `liero_worm_process_weapons`.
-   * Their `play_sound` and `create_nobject1` are used for the worm too.
-   */
-  const struct LieroWormFiringHooks *firing;
-  /**
-   * The weapon a slot's `kind` points to.
-   */
-  struct LieroWeapon (*weapon)(void *ctx, const void *kind);
-  /**
-   * Puts weapon `weapon` (an index into the TC's weapons) with full
-   * ammo in slot `slot`.
-   */
-  void (*give_weapon)(void *ctx, int32_t slot, int32_t weapon);
-  /**
-   * Starts going through the bonuses.
-   */
-  void (*bonuses_begin)(void *ctx);
-  /**
-   * The next bonus.
-   */
-  struct LieroBonusRef (*bonus_next)(void *ctx);
-  /**
-   * Frees the bonus `bonus_next` returned last.
-   */
-  void (*bonus_free)(void *ctx);
-  /**
-   * `Game::doHealing` for the worm.
-   */
-  void (*heal)(void *ctx, int32_t amount);
-  /**
-   * `SObjectType::create` for sobject type `kind`, owned by the worm.
-   */
-  void (*create_sobject)(void *ctx, int32_t kind, int32_t x, int32_t y);
-  /**
-   * `NObjectType::create2` for nobject type `kind`, owned by the worm.
-   */
-  void (*create_nobject2)(void *ctx,
-                          int32_t kind,
-                          int32_t angle,
-                          struct LieroIVec2 vel,
-                          struct LieroIVec2 pos,
-                          int32_t color);
-  /**
-   * Plays sound `sound` as the worm's own sound.
-   */
-  void (*play_worm_sound)(void *ctx, int32_t sound);
-  /**
-   * Whether the worm's own sound is playing.
-   */
-  bool (*worm_sound_playing)(void *ctx);
-  /**
-   * Stops the current weapon's looping sound.
-   */
-  void (*stop_loop_sound)(void *ctx);
-  /**
-   * Whether (x, y) hits the other worm (`checkForWormHit`).
-   */
-  bool (*worm_hit)(void *ctx, int32_t x, int32_t y);
-  /**
-   * Starts going through the worm's objects of its current weapon.
-   */
-  void (*steerables_begin)(void *ctx);
-  /**
-   * The next of them.
-   */
-  struct LieroSteerable (*steerable_next)(void *ctx);
-  /**
-   * Sets `pos` to the other worm's position, in pixels, and returns
-   * true, when there are exactly two worms.
-   */
-  bool (*enemy_pos)(void *ctx, struct LieroIVec2 *pos);
-  /**
-   * Gives worm `idx` a kill.
-   */
-  void (*add_kill)(void *ctx, int32_t idx);
-  /**
-   * Stats after the worm died and after it respawned.
-   */
-  void (*after_death)(void *ctx);
-  void (*after_spawn)(void *ctx);
-} LieroWormHooks;
-
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -3288,57 +2557,109 @@ extern "C" {
 const char *liero_game_version(void);
 
 /**
- * A new predictive AI with `candidates` plans (`aiParallels`). `testing`
- * also tries changing to loading weapons; the game gives it to the first
- * worm's AI.
+ * The bot for `controller`, or null for a human (0). The predictive one
+ * has `candidates` plans (`aiParallels`); `testing` also tries changing
+ * to loading weapons, which the game gives the first worm's.
  */
-struct LieroFollowAi *liero_follow_ai_new(uintptr_t candidates, bool testing);
+struct LieroWormAi *liero_worm_ai_new(uint32_t controller, uintptr_t candidates, bool testing);
 
 /**
  * # Safety
- * `ai` must come from `liero_follow_ai_new`, or be null.
+ * `ai` must come from `liero_worm_ai_new`, or be null.
  */
-void liero_follow_ai_free(struct LieroFollowAi *ai);
+void liero_worm_ai_free(struct LieroWormAi *ai);
 
 /**
- * One tick for the worm at `place` in `game`: the controls to press.
+ * The bot's own generator, which C++ can seed.
+ */
+struct LieroRand *liero_worm_ai_rand(struct LieroWormAi *ai);
+
+/**
+ * The positions the predictive bot's last plans passed through, with
+ * `aiTraces` on, for C++ to draw. Valid until the next tick.
+ */
+const struct LieroAiTrace *liero_worm_ai_traces(const struct LieroWormAi *ai, uintptr_t *count);
+
+/**
+ * A hash of the predictive bot's whole state, for the hash run; 0 for
+ * the original one.
+ */
+uint64_t liero_worm_ai_hash(const struct LieroWormAi *ai);
+
+/**
+ * One tick of the worms' bots, as `LocalController` ran them: from the
+ * first worm on even cycles and the second on odd ones, each setting its
+ * worm's controls. With `hooks`, each bot's time goes into the game's
+ * stats, if any.
  *
  * # Safety
- * The hooks must work on `game` and on the copies they make of it.
+ * The pointers in `game` and `settings` must be valid for the call, and
+ * the worms' bots must come from `liero_worm_ai_new`, or be null.
  */
-uint32_t liero_follow_ai_process(struct LieroFollowAi *ai,
-                                 void *game,
-                                 int32_t place,
-                                 const struct LieroAiHooks *hooks);
+void liero_game_process_ais(const struct LieroGameFields *game,
+                            const struct LieroGameSettings *settings,
+                            const struct LieroAiSettings *ai_settings,
+                            const struct LieroGameHooks *hooks);
 
 /**
- * The AI's own generator, which C++ can seed.
+ * The app, at a fixed address.
  */
-struct LieroRand *liero_follow_ai_rand(struct LieroFollowAi *ai);
+struct LieroApp *liero_app(void);
+
+struct LieroRand *liero_app_rand(struct LieroApp *a);
 
 /**
- * The positions the last tick's plans passed through, with `aiTraces` on,
- * for C++ to draw. Valid until the next tick.
+ * The play renderer, or with `single`, the single screen one.
  */
-const struct LieroAiTrace *liero_follow_ai_traces(const struct LieroFollowAi *ai, uintptr_t *count);
+struct LieroRenderer *liero_app_renderer(struct LieroApp *a, bool single);
 
 /**
- * A hash of the AI's whole state, for the hash run.
+ * The frozen play screen, or with `spectator`, the spectator one.
  */
-uint64_t liero_follow_ai_hash(const struct LieroFollowAi *ai);
+struct LieroBitmapBox *liero_app_frozen(struct LieroApp *a, bool spectator);
+
+struct LieroKeys *liero_app_keys(struct LieroApp *a);
 
 /**
- * One tick of the original bot: the worm's controls after it. `others`
- * are the other worms' positions, `k` the TC's `aiParams`.
+ * Where the app finds the menus' settings.
+ */
+void liero_app_set_menu_settings(struct LieroApp *a, struct LieroSettingsBox *(*f)(void));
+
+/**
+ * Shows the single screen renderer, or the play one.
+ */
+void liero_app_set_primary_single(struct LieroApp *a, bool single);
+
+/**
+ * The renderer the screen shows.
+ */
+struct LieroRenderer *liero_app_primary(struct LieroApp *a);
+
+/**
+ * Where the app finds the menus' TC.
+ */
+void liero_app_set_menu_tc(struct LieroApp *a, struct LieroTc *(*f)(void));
+
+/**
+ * The menus the app draws.
+ */
+void liero_app_set_menus(struct LieroApp *a, struct LieroMenus *menus);
+
+/**
+ * The controller, or null.
+ */
+struct LieroController *liero_app_controller(struct LieroApp *a);
+
+/**
+ * Replaces the controller with `c` (from a `_new`, or null), dropping the
+ * old one first.
  *
  * # Safety
- * `others` must point to `count` positions.
+ * `c` isn't used by C++ after.
  */
-uint32_t liero_dumb_ai_process(struct LieroRand *rand,
-                               const struct LieroDumbAiWorm *worm,
-                               const int32_t (*others)[2],
-                               uintptr_t count,
-                               const int32_t (*k)[2][7]);
+void liero_app_set_controller(struct LieroApp *a, struct LieroController *c);
+
+uint32_t *liero_app_menu_cycles(struct LieroApp *a);
 
 /**
  * The app's first screen.
@@ -3403,6 +2724,122 @@ bool liero_controller_in_game(const struct LieroControllerData *c);
  * inverted, and the frame is counted.
  */
 void liero_controller_process(struct LieroControllerData *c, struct LieroKeys *keys);
+
+/**
+ * A local match with the settings' two players (`LocalController`).
+ *
+ * # Safety
+ * `settings` and `tc` have references.
+ */
+struct LieroController *liero_local_controller_new(struct LieroSettingsBox *settings,
+                                                   struct LieroTc *tc);
+
+/**
+ * A replay of `node`, played with `tc` (`ReplayController`), or null if
+ * it can't be read.
+ *
+ * # Safety
+ * `tc` has a reference, which the controller keeps while it lives.
+ */
+struct LieroController *liero_replay_controller_new(const struct LieroFsNode *node,
+                                                    struct LieroTc *tc);
+
+/**
+ * # Safety
+ * `c` comes from a `_new` here, or is null, and isn't used again.
+ */
+void liero_controller_free(struct LieroController *c);
+
+/**
+ * What the controllers share, at a fixed address.
+ */
+struct LieroControllerData *liero_controller_data(struct LieroController *c);
+
+/**
+ * A key went down or up: the worms' controls, or Escape to the menu.
+ *
+ * # Safety
+ * `c` is valid.
+ */
+void liero_controller_on_key(struct LieroController *c, int32_t key, bool state);
+
+/**
+ * The menu opened.
+ *
+ * # Safety
+ * `c` is valid.
+ */
+void liero_controller_unfocus(struct LieroController *c);
+
+/**
+ * The menu closed to the game.
+ *
+ * # Safety
+ * `c` is valid.
+ */
+void liero_controller_focus(struct LieroController *c);
+
+/**
+ * One frame: false once the controller is done and back to the menu.
+ *
+ * # Safety
+ * `c` is valid.
+ */
+bool liero_controller_run(struct LieroController *c);
+
+/**
+ * Draws the game on `r`, the split screen or with `spectators` the
+ * spectator one.
+ *
+ * # Safety
+ * `c` and `r` are valid.
+ */
+void liero_controller_draw(struct LieroController *c, struct LieroRenderer *r, bool spectators);
+
+/**
+ * Whether a game is on, for the menu to offer to resume it.
+ */
+bool liero_controller_running(const struct LieroController *c);
+
+bool liero_controller_is_replay(const struct LieroController *c);
+
+/**
+ * The level behind the menu, or null.
+ */
+struct LieroLevelBox *liero_controller_level(struct LieroController *c);
+
+/**
+ * The game, or null before a replay starts.
+ */
+struct LieroGame *liero_controller_game(struct LieroController *c);
+
+/**
+ * Moves the screen the controller opened into `out`; false if none.
+ *
+ * # Safety
+ * `out` is valid.
+ */
+bool liero_controller_take_opened(struct LieroController *c, struct LieroScreen *out);
+
+/**
+ * What the stats screen draws `g`'s game with, on `r`; `names` are the
+ * TC's weapons' names, which outlive the scene.
+ *
+ * # Safety
+ * The game has its TC and its first two worms; `names` points to `count`.
+ */
+struct LieroStatsScene liero_game_stats_scene(struct LieroGame *g,
+                                              const struct LieroRenderer *r,
+                                              const struct LieroStr *names,
+                                              uintptr_t count);
+
+/**
+ * `Game::focus`: `r`'s palette from the level's and the worms' colours.
+ *
+ * # Safety
+ * `r` is valid.
+ */
+void liero_game_focus(struct LieroGame *g, struct LieroRenderer *r);
 
 /**
  * Starts writing a compressed file at `node`. Null if it can't be created.
@@ -3524,6 +2961,14 @@ void liero_game_data_assign(struct LieroGameData *to, const struct LieroGameData
 void liero_game_data_free(struct LieroGameData *g);
 
 /**
+ * The end of the game for its stats (`StatsRecorder::finish`).
+ *
+ * # Safety
+ * `f`'s pointers must be valid; its stats may be null.
+ */
+void liero_game_stats_finish(const struct LieroGameFields *f);
+
+/**
  * Runs the game for one tick: C++'s `Game::processFrame`.
  *
  * # Safety
@@ -3532,30 +2977,6 @@ void liero_game_data_free(struct LieroGameData *g);
 void liero_game_process_frame(const struct LieroGameFields *game,
                               const struct LieroGameSettings *settings,
                               const struct LieroGameHooks *hooks);
-
-/**
- * Hurts worm `target` (a position in `game.worms`) by `amount`, caused by
- * worm `by_idx` or -1: `Game::doDamage`.
- *
- * # Safety
- * See above.
- */
-void liero_game_damage(const struct LieroGameFields *game,
-                       const struct LieroGameSettings *settings,
-                       int32_t target,
-                       int32_t amount,
-                       int32_t by_idx);
-
-/**
- * Heals worm `target` by `amount`: `Game::doHealing`.
- *
- * # Safety
- * See above.
- */
-void liero_game_heal(const struct LieroGameFields *game,
-                     const struct LieroGameSettings *settings,
-                     int32_t target,
-                     int32_t amount);
 
 /**
  * Moves Holdazone's zone: `Game::spawnZone`.
@@ -3567,6 +2988,17 @@ void liero_game_spawn_zone(const struct LieroGameFields *game,
                            const struct LieroGameSettings *settings);
 
 /**
+ * `Game::startGame`: the start sound, the blood list made
+ * `blood_particle_max` long, and in Holdazone the first zone.
+ *
+ * # Safety
+ * The pointers in `game` and `settings` are valid.
+ */
+void liero_game_start(const struct LieroGameFields *game,
+                      const struct LieroGameSettings *settings,
+                      int32_t blood_particle_max);
+
+/**
  * Whether the game has ended: `Game::isGameOver`.
  *
  * # Safety
@@ -3574,6 +3006,173 @@ void liero_game_spawn_zone(const struct LieroGameFields *game,
  */
 bool liero_game_is_over(const struct LieroGameFields *game,
                         const struct LieroGameSettings *settings);
+
+/**
+ * A new game with no worms or viewports (`Game::Game`).
+ */
+struct LieroGame *liero_game_new(void);
+
+/**
+ * # Safety
+ * `g` comes from `liero_game_new` or `_clone`, or is null, and isn't used
+ * again.
+ */
+void liero_game_free(struct LieroGame *g);
+
+/**
+ * A copy of the game, as a replay keeps to rewind to.
+ */
+struct LieroGame *liero_game_clone(const struct LieroGame *g);
+
+/**
+ * Makes `to` a copy of `from` (rewinding a replay). `to`'s old worms are
+ * kept, as ropes copied before may be anchored to them.
+ */
+void liero_game_assign(struct LieroGame *to, const struct LieroGame *from);
+
+/**
+ * `Game::draw`; see `LieroGame::draw`.
+ *
+ * # Safety
+ * See `LieroGame::draw`.
+ */
+void liero_game_draw(struct LieroGame *g,
+                     struct LieroRenderer *r,
+                     int32_t state,
+                     bool spectators,
+                     bool is_replay);
+
+/**
+ * Sets what the game is played with: the settings, the TC (or null) and
+ * where its sounds go. The game and its copies keep references to the
+ * settings and the TC.
+ *
+ * # Safety
+ * `settings` and `tc` have references, or are null.
+ */
+void liero_game_set_context(struct LieroGame *g,
+                            struct LieroSettingsBox *settings,
+                            struct LieroTc *tc,
+                            struct LieroSoundOut sound);
+
+/**
+ * The game's level, at a fixed address.
+ */
+struct LieroLevelBox *liero_game_level(struct LieroGame *g);
+
+/**
+ * The game's settings box.
+ */
+struct LieroSettingsBox *liero_game_settings(const struct LieroGame *g);
+
+/**
+ * The game's state, at a fixed address.
+ */
+struct LieroGameData *liero_game_data(struct LieroGame *g);
+
+/**
+ * The game's stats, at a fixed address.
+ */
+struct LieroStats *liero_game_stats(struct LieroGame *g);
+
+/**
+ * A new worm with `settings` (which may be null for now), which the game
+ * keeps but doesn't list.
+ *
+ * # Safety
+ * `settings` is a valid box, or null.
+ */
+struct LieroWorm *liero_game_new_worm(struct LieroGame *g, struct LieroWormSettingsBox *settings);
+
+/**
+ * Adds `w`, one of the game's worms, or an empty place for null, to the
+ * end of the game's list (`Game::addWorm`).
+ */
+void liero_game_list_worm(struct LieroGame *g, struct LieroWorm *w);
+
+uintptr_t liero_game_worm_count(const struct LieroGame *g);
+
+/**
+ * The game's worm `i`, or null for an empty place.
+ */
+struct LieroWorm *liero_game_worm(const struct LieroGame *g, uintptr_t i);
+
+struct LieroWormData *liero_worm_data(struct LieroWorm *w);
+
+/**
+ * The worm's settings box, or null.
+ */
+struct LieroWormSettingsBox *liero_worm_settings(const struct LieroWorm *w);
+
+/**
+ * # Safety
+ * `s` is a valid box, or null.
+ */
+void liero_worm_set_settings(struct LieroWorm *w, struct LieroWormSettingsBox *s);
+
+/**
+ * Gives the worm the bot for `controller`, or none for a human (0). See
+ * `liero_worm_ai_new`.
+ */
+void liero_worm_set_ai(struct LieroWorm *w,
+                       uint32_t controller,
+                       uintptr_t candidates,
+                       bool testing);
+
+/**
+ * The worm's bot, or null.
+ */
+struct LieroWormAi *liero_worm_ai(const struct LieroWorm *w);
+
+/**
+ * Adds a viewport (`Game::addViewport`, or `addSpectatorViewport` with
+ * `spectator_list`), at a fixed address.
+ */
+struct LieroViewport *liero_game_add_viewport(struct LieroGame *g,
+                                              struct LieroRect rect,
+                                              int32_t worm_idx,
+                                              int32_t level_width,
+                                              int32_t level_height,
+                                              int32_t kind,
+                                              bool spectator_list);
+
+/**
+ * `Game::clearViewports`.
+ */
+void liero_game_clear_viewports(struct LieroGame *g);
+
+uintptr_t liero_game_viewport_count(const struct LieroGame *g, bool spectator_list);
+
+struct LieroViewport *liero_game_viewport(struct LieroGame *g, bool spectator_list, uintptr_t i);
+
+/**
+ * The palette the game starts from (`Game::updateSettings`): the level's,
+ * with the first two worms' colours from their settings.
+ *
+ * # Safety
+ * `origpal` and `level_pal` hold 256 entries, and the listed worms have
+ * settings.
+ */
+void liero_game_origpal(const struct LieroGame *g,
+                        struct LieroColor *origpal,
+                        const struct LieroColor *level_pal);
+
+/**
+ * The game's fields and settings, valid while the game's worms, viewports
+ * and settings stay and the view isn't freed. The game has its settings
+ * and TC (`liero_game_set_context`).
+ */
+struct LieroGameView *liero_game_view_new(struct LieroGame *g);
+
+const struct LieroGameFields *liero_game_view_fields(const struct LieroGameView *v);
+
+const struct LieroGameSettings *liero_game_view_settings(const struct LieroGameView *v);
+
+/**
+ * # Safety
+ * `v` comes from `liero_game_view_new`, or is null, and isn't used again.
+ */
+void liero_game_view_free(struct LieroGameView *v);
 
 /**
  * Fills a rectangle, clipped: `fillRect`.
@@ -3920,6 +3519,22 @@ void liero_palette_rotate_from(struct LieroColor *pal,
                                uint32_t dist);
 
 /**
+ * The palette a game shows (`Game::draw`): `origpal` with the TC's four
+ * colour animations at `cycles`, faded by `fade` and lit up by the
+ * screen flash.
+ *
+ * # Safety
+ * `pal` and `origpal` hold 256 entries, and the animations' ranges are in
+ * them.
+ */
+void liero_game_palette(struct LieroColor *pal,
+                        const struct LieroColor *origpal,
+                        const int32_t (*color_anim)[8],
+                        int32_t cycles,
+                        int32_t fade,
+                        int32_t screen_flash);
+
+/**
  * Worm `i`'s colours from its settings' colour index and `rgb`:
  * `Palette::setWormColour`.
  *
@@ -4173,45 +3788,29 @@ void liero_level_blit_stone(const struct LieroLevel *level,
                             int32_t y);
 
 /**
- * Draws a `width` x `height` image onto the level.
+ * See `LieroLevelBox::generate_from_settings`.
  *
  * # Safety
- * See `LieroLevel` and `LieroLevelCommon`; `image` must point to
- * `width * height` bytes.
+ * All are valid; `exepal` holds 256 colours.
  */
-void liero_level_blit_image(const struct LieroLevel *level,
-                            const struct LieroLevelCommon *common,
-                            const uint8_t *image,
-                            int32_t x,
-                            int32_t y,
-                            int32_t width,
-                            int32_t height);
+void liero_level_box_generate_from_settings(struct LieroLevelBox *l,
+                                            const struct LieroLevelCommon *common,
+                                            const struct LieroColor *exepal,
+                                            const struct LieroSettingsBox *settings,
+                                            struct LieroRand *rand);
 
 /**
- * Applies dirt effect `dirt_effect` (0 to 8) at (x, y).
+ * See `LieroLevelBox::load`.
  *
  * # Safety
- * See `LieroLevel` and `LieroLevelCommon`.
+ * All are valid; `exepal` holds 256 colours and `bytes` `len`.
  */
-void liero_level_draw_dirt_effect(const struct LieroLevel *level,
-                                  const struct LieroLevelCommon *common,
-                                  struct LieroRand *rand,
-                                  int32_t dirt_effect,
-                                  int32_t x,
-                                  int32_t y);
-
-/**
- * Corrects shadows in the rectangle from (x1, y1) to (x2, y2), excluded.
- *
- * # Safety
- * See `LieroLevel` and `LieroLevelCommon`.
- */
-void liero_level_correct_shadow(const struct LieroLevel *level,
-                                const struct LieroLevelCommon *common,
-                                int32_t x1,
-                                int32_t y1,
-                                int32_t x2,
-                                int32_t y2);
+bool liero_level_box_load(struct LieroLevelBox *l,
+                          const struct LieroLevelCommon *common,
+                          const struct LieroColor *exepal,
+                          bool powerlevel_palette,
+                          const uint8_t *bytes,
+                          uintptr_t len);
 
 struct LieroLevelBox *liero_level_box_new(void);
 
@@ -4607,6 +4206,59 @@ void liero_menu_box_draw(struct LieroMenuBox *b,
  */
 struct LieroScreen liero_menu_screen(struct LieroMenuScreenHooks hooks);
 
+/**
+ * The menus, empty (`Menu(x, y)` for each).
+ */
+struct LieroMenus *liero_menus_new(struct LieroMenusHooks hooks);
+
+/**
+ * # Safety
+ * `m` came from `liero_menus_new` and isn't used after.
+ */
+void liero_menus_free(struct LieroMenus *m);
+
+/**
+ * Empties the menus, as they were made, keeping their addresses.
+ */
+void liero_menus_reset(struct LieroMenus *m);
+
+/**
+ * Adds the menus' items (`Gfx::loadMenus`).
+ */
+void liero_menus_load(struct LieroMenus *m);
+
+struct LieroMenuBox *liero_menus_box(struct LieroMenus *m, int32_t kind);
+
+int32_t liero_menus_cur(const struct LieroMenus *m);
+
+void liero_menus_set_cur(struct LieroMenus *m, int32_t kind);
+
+void liero_menus_player_settings(struct LieroMenus *m, int32_t player);
+
+void liero_menus_open_hidden(struct LieroMenus *m);
+
+void liero_menus_update_items(struct LieroMenus *m, int32_t kind);
+
+bool liero_menus_left_right(struct LieroMenus *m, int32_t kind, int32_t dir);
+
+/**
+ * Enter on `kind`'s selected item. A screen it opened is dropped: the menu
+ * checks only press items that open none.
+ */
+int32_t liero_menus_enter(struct LieroMenus *m, int32_t kind);
+
+/**
+ * # Safety
+ * See `LieroBitmap`.
+ */
+void liero_menus_draw(struct LieroMenus *m,
+                      int32_t kind,
+                      const struct LieroBitmap *scr,
+                      const struct LieroFont *font,
+                      bool disabled,
+                      int32_t x,
+                      bool show_disabled_selection);
+
 int32_t liero_vector_length(int32_t x, int32_t y);
 
 /**
@@ -4616,99 +4268,6 @@ int32_t liero_vector_length(int32_t x, int32_t y);
  * `out` must point to 128 writable `LieroIVec2`s.
  */
 void liero_cos_sin_table(struct LieroIVec2 *out);
-
-/**
- * Moves blood particle `obj` one tick: C++'s `BObject::process`. Returns
- * false when C++ should free it.
- *
- * # Safety
- * See `LieroLevel` and `LieroLevelCommon`.
- */
-bool liero_bobject_process(struct LieroBObject *obj,
-                           const struct LieroLevel *level,
-                           const struct LieroLevelCommon *common,
-                           struct LieroRand *rand,
-                           int32_t gravity);
-
-/**
- * Moves a bonus box one tick: falling, bouncing on the ground and counting
- * down `timer`. Returns true when the timer ran out, so C++ explodes it.
- * `x` is fixed-point and must be inside the level.
- *
- * # Safety
- * See `LieroLevel`.
- */
-bool liero_bonus_process(int32_t x,
-                         int32_t *y,
-                         int32_t *vel_y,
-                         int32_t *timer,
-                         const struct LieroLevel *level,
-                         const struct LieroBonusConstants *constants);
-
-/**
- * Advances an explosion's animation one tick. Returns true when the
- * animation is over, so C++ frees the object.
- */
-bool liero_sobject_animate(int32_t *cur_frame,
-                           int32_t *anim_delay,
-                           int32_t type_anim_delay,
-                           int32_t num_frames);
-
-/**
- * Pushes a worm at fixed-point `pos` away from an explosion at (x, y), as
- * `SObjectType::create` does. A worm already moving at 2 pixels per tick or
- * more on an axis isn't pushed on that axis. Returns false when the worm is
- * out of range; otherwise sets `power_sum`, which sets the damage.
- */
-bool liero_explosion_push_worm(struct LieroIVec2 pos,
-                               struct LieroIVec2 *vel,
-                               int32_t x,
-                               int32_t y,
-                               int32_t range,
-                               int32_t blow_away,
-                               int32_t *power_sum);
-
-/**
- * The damage an explosion does to a worm, from `power_sum`.
- */
-int32_t liero_explosion_damage(int32_t damage, int32_t power_sum, int32_t range);
-
-/**
- * Pushes an object that explosions affect away from an explosion at
- * (x, y). Returns whether it was in range (for chain explosions).
- */
-bool liero_explosion_push_object(struct LieroIVec2 pos,
-                                 struct LieroIVec2 *vel,
-                                 int32_t x,
-                                 int32_t y,
-                                 int32_t range,
-                                 int32_t blow_away);
-
-/**
- * Moves a non-weapon object one tick: C++'s `NObject::process`.
- *
- * # Safety
- * The field pointers, views and `rand` must be valid for the call. The
- * hooks may change them (but not free their memory).
- */
-void liero_nobject_process(const struct LieroNObjectFields *obj,
-                           const struct LieroNObjectType *t,
-                           const struct LieroNObjectEnv *env,
-                           const struct LieroNObjectHooks *hooks);
-
-/**
- * Moves a worm's ninja rope one tick: C++'s `Ninjarope::process`.
- *
- * # Safety
- * All pointers must be valid for the call, and `owner` must be the
- * rope's worm.
- */
-void liero_ninjarope_process(struct LieroNinjarope *rope,
-                             struct LieroWormMotion owner,
-                             const struct LieroLevel *level,
-                             struct LieroRand *rand,
-                             const struct LieroNinjaropeConstants *constants,
-                             const struct LieroNinjaropeHooks *hooks);
 
 /**
  * `BObjectList::resize`.
@@ -4728,138 +4287,145 @@ uint32_t liero_rand_range(struct LieroRand *rand, uint32_t min, uint32_t max);
 
 double liero_rand_double_below(struct LieroRand *rand, double max);
 
+struct LieroBitmapBox *liero_bitmap_box_new(void);
+
 /**
- * Starts a replay of `version` with the game in `g`: the bytes to write,
- * and the settings and worm settings to copy back. With an `OutOfRange`
- * status, C++ writes the bytes before throwing, as it had written them.
+ * # Safety
+ * `b` comes from `liero_bitmap_box_new`, or is null, and isn't used again.
+ */
+void liero_bitmap_box_free(struct LieroBitmapBox *b);
+
+/**
+ * The bitmap's fields, at a fixed address. Its pixels move when it's
+ * reallocated.
+ */
+struct LieroBitmap *liero_bitmap_box_view(struct LieroBitmapBox *b);
+
+void liero_bitmap_box_alloc(struct LieroBitmapBox *b, int32_t w, int32_t h, int32_t pitch);
+
+/**
+ * # Safety
+ * Both are valid; they may be the same.
+ */
+void liero_bitmap_box_copy(struct LieroBitmapBox *to, const struct LieroBitmapBox *from);
+
+struct LieroRenderer *liero_renderer_new(void);
+
+/**
+ * # Safety
+ * `r` comes from `liero_renderer_new`, or is null, and isn't used again.
+ */
+void liero_renderer_free(struct LieroRenderer *r);
+
+struct LieroRendererData *liero_renderer_data(struct LieroRenderer *r);
+
+struct LieroBitmapBox *liero_renderer_bitmap(struct LieroRenderer *r);
+
+void liero_renderer_set_render_resolution(struct LieroRenderer *r, int32_t x, int32_t y);
+
+void liero_renderer_clear(struct LieroRenderer *r);
+
+void liero_renderer_load_palette(struct LieroRenderer *r, const struct LieroTcData *tc);
+
+/**
+ * Starts writing a replay at `node`, or null if it can't be created.
+ */
+struct LieroReplayWriter *liero_replay_writer_new(const struct LieroFsNode *node);
+
+/**
+ * Ends the replay and closes the file.
  *
  * # Safety
- * The pointers in `g` must hold what their counts say.
+ * `w` comes from `liero_replay_writer_new`, or is null, and isn't used
+ * again.
  */
-struct LieroReplayResult *liero_replay_write_start(const struct LieroReplayGameIn *g,
-                                                   int32_t version);
+void liero_replay_writer_free(struct LieroReplayWriter *w);
 
 /**
- * A frame of a replay of `version`. `worms` are the game's worms in order.
- * The result has the bytes to write, and what settings were written
- * (`liero_replay_result_touched`), which change as for
- * `liero_replay_write_start`.
+ * The version to write, before `liero_replay_writer_begin`; the hash run
+ * writes old ones.
+ */
+void liero_replay_writer_set_version(struct LieroReplayWriter *w, int32_t version);
+
+/**
+ * `beginRecord`: writes the game as it is, with its settings, level and
+ * the TC's weapons. The game and settings must stay while the writer
+ * records them. Writing changes the settings as `write_start` says; with
+ * an `OutOfRange` outcome, what was written stays.
  *
  * # Safety
- * `worms` must point to `count` worms.
+ * The game has its settings and TC (`liero_game_set_context`).
  */
-struct LieroReplayResult *liero_replay_write_frame(int32_t version,
-                                                   const struct LieroSettings *settings,
-                                                   bool settings_expired,
-                                                   const struct LieroReplayFrameWorm *worms,
-                                                   uintptr_t count,
-                                                   int32_t cycles,
-                                                   uint32_t checksum);
+struct LieroReplayOutcome liero_replay_writer_begin(struct LieroReplayWriter *w,
+                                                    struct LieroGame *game);
 
 /**
- * The end of a replay.
- */
-struct LieroReplayResult *liero_replay_write_end(void);
-
-/**
- * The checksum of the game's generator and worms' positions and
- * velocities.
+ * `recordFrame`: the game's controls this tick, and any settings that
+ * changed since they were written (a worm's only with more than three
+ * worms).
  *
  * # Safety
- * `worms` must point to `count` arrays of x, y, velocity x and y.
+ * The game and settings `liero_replay_writer_begin` had are still valid.
  */
-uint32_t liero_replay_checksum(uint32_t rand_x, const int32_t (*worms)[4], uintptr_t count);
+void liero_replay_writer_frame(struct LieroReplayWriter *w);
 
 /**
- * Reads a replay's header and game from `source`. With an Ok status,
- * `liero_replay_result_game` has the game.
+ * The game lost focus (the menu opened): remembers the settings' hashes.
  *
  * # Safety
- * `source` must be callable as `LieroByteSource` says.
+ * As for `liero_replay_writer_frame`, once recording has begun.
  */
-struct LieroReplayResult *liero_replay_read_start(const struct LieroByteSource *source);
+void liero_replay_writer_unfocus(struct LieroReplayWriter *w);
 
 /**
- * Reads a frame's headers and control changes for a replay of `version`.
- * `worms` are the game's worms in order. Whatever the status, the result
- * has each worm's controls (`liero_replay_result_frame_state`) and the
- * settings that were read, even partly (`liero_replay_result_touched`), for
- * C++ to copy back.
+ * The game has focus again: settings that changed are written with the
+ * next frame.
  *
  * # Safety
- * `source` must be callable as `LieroByteSource` says, and `worms` point to
- * `count` worms.
+ * As for `liero_replay_writer_unfocus`.
  */
-struct LieroReplayResult *liero_replay_read_frame(const struct LieroByteSource *source,
-                                                  int32_t version,
-                                                  const struct LieroSettings *settings,
-                                                  const struct LieroReplayFrameWorm *worms,
-                                                  uintptr_t count);
+void liero_replay_writer_focus(struct LieroReplayWriter *w);
 
 /**
- * Reads and checks the checksum after a frame, when `cycles` is on one.
+ * Reads and inflates the replay at `node`, or null if it can't be read.
+ */
+struct LieroReplayReader *liero_replay_reader_new(const struct LieroFsNode *node);
+
+/**
+ * # Safety
+ * `r` comes from `liero_replay_reader_new`, or is null, and isn't used
+ * again.
+ */
+void liero_replay_reader_free(struct LieroReplayReader *r);
+
+/**
+ * How far playback has read, to go back to with `_set_pos`.
+ */
+uintptr_t liero_replay_reader_pos(const struct LieroReplayReader *r);
+
+void liero_replay_reader_set_pos(struct LieroReplayReader *r, uintptr_t pos);
+
+/**
+ * `beginPlayback`: reads the game the replay starts with into `game`, a
+ * new one with no worms or viewports, and its new settings and level.
+ * They must stay while the reader plays them. On an error they are left
+ * as they were.
  *
  * # Safety
- * `source` must be callable as `LieroByteSource` says.
+ * The game has its settings and TC (`liero_game_set_context`).
  */
-struct LieroReplayResult *liero_replay_read_checksum(const struct LieroByteSource *source,
-                                                     int32_t cycles,
-                                                     uint32_t actual);
-
-enum LieroReplayStatus liero_replay_result_status(const struct LieroReplayResult *r);
+struct LieroReplayOutcome liero_replay_reader_begin(struct LieroReplayReader *r,
+                                                    struct LieroGame *game);
 
 /**
- * The `gvl::archive_check_error` message for a `CheckError`.
- */
-struct LieroStr liero_replay_result_message(const struct LieroReplayResult *r);
-
-/**
- * The bytes to write.
- */
-struct LieroStr liero_replay_result_bytes(const struct LieroReplayResult *r);
-
-/**
- * The game read by `liero_replay_read_start`, or null.
- */
-const struct LieroReplayGameOut *liero_replay_result_game(const struct LieroReplayResult *r);
-
-/**
- * The game's settings after a write or frame read.
- */
-const struct LieroSettings *liero_replay_result_settings(const struct LieroReplayResult *r);
-
-/**
- * Worm `i`'s settings after a write or frame read.
- */
-const struct LieroWormSettings *liero_replay_result_worm_settings(const struct LieroReplayResult *r,
-                                                                  uintptr_t i);
-
-/**
- * Whether a frame changed or wrote the game's settings (0) or worm
- * `i - 1`'s.
- */
-bool liero_replay_result_touched(const struct LieroReplayResult *r, uintptr_t i);
-
-/**
- * Worm `i`'s controls after a frame read.
- */
-uint32_t liero_replay_result_frame_state(const struct LieroReplayResult *r, uintptr_t i);
-
-/**
- * Whether a frame read found the end of the replay.
- */
-bool liero_replay_result_end(const struct LieroReplayResult *r);
-
-/**
- * Whether a frame read read the game's or a worm's settings.
- */
-bool liero_replay_result_settings_changed(const struct LieroReplayResult *r);
-
-/**
+ * `playbackFrame` without the renderer: sets the worms' controls for the
+ * tick and any settings the frame changes, then checks the checksum due.
+ * What was read stays, even when the frame broke off.
+ *
  * # Safety
- * `r` must come from a `liero_replay_*` call, or be null.
+ * The game and settings `liero_replay_reader_begin` had are still valid.
  */
-void liero_replay_result_free(struct LieroReplayResult *r);
+struct LieroReplayOutcome liero_replay_reader_frame(struct LieroReplayReader *r);
 
 /**
  * Sets the functions Rust screens call. Only the first call counts.
@@ -4982,27 +4548,24 @@ struct LieroSettingsResult *liero_settings_load(const struct LieroSettings *s,
 bool liero_settings_save(const struct LieroSettings *s, const struct LieroFsNode *node);
 
 /**
- * Reads a profile from `node` over `ws`: Ok, or ReadError if it ends
- * early, with the worm settings as far as they were read. Null if the
- * file can't be read.
- *
- * # Safety
- * `ws`'s name must be valid.
+ * Loads a profile from `node` over the settings, keeping their colour,
+ * and remembers the profile (`WormSettings::loadProfile`). False, with
+ * nothing changed, if the file can't be read. A profile that ends early
+ * or fails its checkpoint is loaded as far as it was read, with its
+ * colour: `status` says so, and C++ threw before putting the colour back.
  */
-struct LieroSettingsResult *liero_worm_settings_load_profile(const struct LieroWormSettings *ws,
-                                                             int32_t replay_version,
-                                                             const struct LieroFsNode *node);
+bool liero_worm_settings_box_load_profile(struct LieroWormSettingsBox *s,
+                                          const struct LieroFsNode *node,
+                                          enum LieroSettingsStatus *status);
 
 /**
- * Writes `ws` to `node` as a profile, with the worm settings after writing
- * it. Null, with nothing changed, if the file can't be written.
- *
- * # Safety
- * `ws`'s name must be valid.
+ * Saves the settings to `node` as a profile, in the current replay
+ * version's archive, and remembers the profile
+ * (`WormSettings::saveProfile`). False, with nothing changed, if the file
+ * can't be written.
  */
-struct LieroSettingsResult *liero_worm_settings_save_profile(const struct LieroWormSettings *ws,
-                                                             int32_t replay_version,
-                                                             const struct LieroFsNode *node);
+bool liero_worm_settings_box_save_profile(struct LieroWormSettingsBox *s,
+                                          const struct LieroFsNode *node);
 
 /**
  * Reads the settings archive over `s`: Ok, ReadError or CheckError.
@@ -5104,15 +4667,34 @@ struct LieroHash liero_settings_result_hash(const struct LieroSettingsResult *r)
 void liero_settings_result_free(struct LieroSettingsResult *r);
 
 /**
- * Settings with every field zero or empty; C++ then sets the defaults.
+ * Settings with every field zero or empty, and the worms' too; C++ then
+ * sets the defaults.
  */
 struct LieroSettingsBox *liero_settings_box_new(void);
+
+/**
+ * Player `i`'s worm settings, which the box holds a reference to.
+ */
+struct LieroWormSettingsBox *liero_settings_box_worm(const struct LieroSettingsBox *s, uintptr_t i);
+
+/**
+ * Makes player `i`'s worm settings `w`, taking a reference to it.
+ *
+ * # Safety
+ * `w` is a valid box.
+ */
+void liero_settings_box_set_worm(struct LieroSettingsBox *s,
+                                 uintptr_t i,
+                                 struct LieroWormSettingsBox *w);
 
 struct LieroSettingsBox *liero_settings_box_clone(const struct LieroSettingsBox *s);
 
 /**
+ * Gives up a reference to `s` (from `liero_settings_box_new` or `_clone`,
+ * or a game's), freeing it with the last.
+ *
  * # Safety
- * `s` comes from `liero_settings_box_new` or `_clone` and isn't used again.
+ * `s` has a reference, or is null, and this reference isn't used again.
  */
 void liero_settings_box_free(struct LieroSettingsBox *s);
 
@@ -5151,11 +4733,30 @@ struct LieroWormSettingsBox *liero_worm_settings_box_new(void);
 struct LieroWormSettingsBox *liero_worm_settings_box_clone(const struct LieroWormSettingsBox *s);
 
 /**
+ * Another reference to `s`, which is freed when the last one is.
+ *
  * # Safety
- * `s` comes from `liero_worm_settings_box_new` or `_clone` and isn't used
- * again.
+ * `s` comes from `liero_worm_settings_box_new` or `_clone` and hasn't been
+ * freed.
+ */
+struct LieroWormSettingsBox *liero_worm_settings_box_retain(struct LieroWormSettingsBox *s);
+
+/**
+ * Drops a reference to `s`, freeing it with the last one.
+ *
+ * # Safety
+ * `s` comes from `liero_worm_settings_box_new`, `_clone` or `_retain`, or
+ * is null, and that reference isn't used again.
  */
 void liero_worm_settings_box_free(struct LieroWormSettingsBox *s);
+
+/**
+ * A new node for the settings' profile, or null with none.
+ */
+struct LieroFsNode *liero_worm_settings_box_profile(const struct LieroWormSettingsBox *s);
+
+void liero_worm_settings_box_set_profile(struct LieroWormSettingsBox *s,
+                                         const struct LieroFsNode *node);
 
 /**
  * The plain fields, which stay where they are for the box's life.
@@ -5183,9 +4784,6 @@ void liero_worm_settings_box_set_name(struct LieroWormSettingsBox *s, struct Lie
  */
 void liero_sound_from_tc(const uint8_t *data, uintptr_t len, int16_t *out);
 
-/**
- * A mixer with every channel free. Free it with `liero_mixer_free`.
- */
 struct LieroMixer *liero_mixer_new(void);
 
 /**
@@ -5228,22 +4826,6 @@ void liero_mixer_set_volume(struct LieroMixer *m, void *id, double volume);
  * `out` must point to `frames` samples.
  */
 void liero_mixer_mix(struct LieroMixer *m, int16_t *out, uintptr_t frames);
-
-/**
- * New, empty stats. Free them with `liero_stats_free`.
- */
-struct LieroStats *liero_stats_new(void);
-
-/**
- * A copy of `s`, for a copy of the game. Free it with `liero_stats_free`.
- */
-struct LieroStats *liero_stats_clone(const struct LieroStats *s);
-
-/**
- * # Safety
- * `s` must come from `liero_stats_new` or `liero_stats_clone`, or be null.
- */
-void liero_stats_free(struct LieroStats *s);
 
 struct LieroStatsView liero_stats_view(const struct LieroStats *s);
 
@@ -5326,6 +4908,15 @@ struct LieroScreen liero_stats_presenter_screen(const struct LieroStats *stats,
                                                 const struct LieroStatsScene *scene);
 
 /**
+ * F8's random TC (`LieroTc::randomize`). What `liero_tc_data` points to
+ * changes in place.
+ *
+ * # Safety
+ * `tc` must come from `liero_tc_load`.
+ */
+void liero_tc_randomize(struct LieroTc *tc, uint32_t shuffle_seed);
+
+/**
  * Loads the TC in `node` (`Common::load`). Always returns a TC to free with
  * `liero_tc_free`; `liero_tc_error` says whether loading failed.
  */
@@ -5368,6 +4959,20 @@ void liero_time_to_string(int32_t sec, uint8_t *out);
  * `out` must hold 10 bytes.
  */
 void liero_time_to_string_ex(int32_t ms, bool force_hours, bool force_minutes, uint8_t *out);
+
+/**
+ * Draws viewport `vp` on `scr` (`Viewport::draw` and
+ * `SpectatorViewport::draw`, by its kind).
+ *
+ * # Safety
+ * The pointers in `game` and `settings` are valid, and `vp` is one of the
+ * game's viewports.
+ */
+void liero_game_draw_viewport(const struct LieroGameFields *game,
+                              const struct LieroGameSettings *settings,
+                              const struct LieroDrawSettings *draw,
+                              struct LieroViewport *vp,
+                              const struct LieroBitmap *scr);
 
 /**
  * See `LieroViewport::new`.
@@ -5418,73 +5023,6 @@ void liero_viewport_draw(struct LieroViewport *vp,
                          const struct LieroBitmap *scr);
 
 /**
- * The start of a shot: C++'s `Weapon::fire` without the object list and
- * stats.
- */
-struct LieroLaunch liero_weapon_launch(const struct LieroWeapon *w,
-                                       struct LieroRand *rand,
-                                       int32_t angle,
-                                       struct LieroIVec2 vel,
-                                       int32_t speed);
-
-/**
- * Fires the worm's current weapon `w`: C++'s `Worm::fire`.
- * `signed_recoil` is the TC's hack that makes recoils of 128 and more
- * negative.
- *
- * # Safety
- * The pointers in `worm` must be valid for the call.
- */
-void liero_worm_fire(const struct LieroWormFiring *worm,
-                     const struct LieroWeapon *w,
-                     struct LieroRand *rand,
-                     bool signed_recoil,
-                     const struct LieroWormFiringHooks *hooks);
-
-/**
- * Counts down weapon delays and reloads, the fire cone and the shell
- * casing timer: C++'s `Worm::processWeapons`. `current` is the current
- * weapon's type and `loading_time_percent` the game's loading time
- * setting.
- *
- * # Safety
- * The pointers in `worm` must be valid for the call.
- */
-void liero_worm_process_weapons(const struct LieroWormFiring *worm,
-                                const struct LieroWeapon *current,
-                                int32_t loading_time_percent,
-                                struct LieroRand *rand,
-                                const struct LieroWormFiringHooks *hooks);
-
-/**
- * Moves a weapon object one tick: C++'s `WObject::process`, after the
- * remote-explosion check.
- *
- * # Safety
- * The field pointers, views and `rand` must be valid for the call. The
- * hooks may change them, or free the object (after which this returns
- * without touching it).
- */
-void liero_wobject_process(const struct LieroWObjectFields *obj,
-                           const struct LieroWeapon *w,
-                           const struct LieroWObjectEnv *env,
-                           const struct LieroWObjectHooks *hooks);
-
-/**
- * The effects of a weapon object blowing up at `pos` with `vel`: C++'s
- * `WObject::blowUpObject` after it freed the object. Uses `env.level`,
- * `env.common`, `env.rand` and `env.shadow`.
- *
- * # Safety
- * The views and `rand` must be valid for the call.
- */
-void liero_wobject_blow_up(const struct LieroWeapon *w,
-                           struct LieroIVec2 pos,
-                           struct LieroIVec2 vel,
-                           const struct LieroWObjectEnv *env,
-                           const struct LieroBlowUpHooks *hooks);
-
-/**
  * The weapon options screen. It edits `spec.weap_table` in place, which
  * must outlive it; the rest of `spec` is copied.
  *
@@ -5511,15 +5049,14 @@ void liero_weapsel_choose(uint32_t *weapons,
 /**
  * Starts weapon selection (`WeaponSelection::WeaponSelection`): each
  * worm's menu below its viewport's centre, with its starting weapons,
- * which the worm is given.
+ * which the worm is given, empty, with its first weapon current.
  *
  * # Safety
  * `spec`'s pointers are valid for their counts, and see `LieroWeapselEnv`.
- * The worms' `weapons` outlive the selection.
+ * The worms and their `weapons` outlive the selection.
  */
 struct LieroWeapsel *liero_weapsel_new(const struct LieroWeapselSpec *spec,
-                                       const struct LieroWeapselEnv *env,
-                                       const struct LieroWeapselHooks *hooks);
+                                       const struct LieroWeapselEnv *env);
 
 /**
  * # Safety
@@ -5537,6 +5074,20 @@ struct LieroMenuBox *liero_weapsel_menu(struct LieroWeapsel *ws, int32_t i);
 bool liero_weapsel_ready(const struct LieroWeapsel *ws, int32_t i);
 
 /**
+ * Gives each worm its chosen weapons, loaded, with the first current
+ * (`WeaponSelection::finalize`, `Worm::initWeapons`), and releases their
+ * controls.
+ *
+ * # Safety
+ * `worms` holds `count` valid worms, each with its settings' 5 weapon
+ * numbers in `weapons`, and `tc` is valid.
+ */
+void liero_weapsel_finalize(struct LieroWormData *const *worms,
+                            const uint32_t *const *weapons,
+                            int32_t count,
+                            const struct LieroTcData *tc);
+
+/**
  * One frame of weapon selection: `WeaponSelection::processFrame`. Each
  * worm not ready changes the selected weapon with left and right, moves
  * with up and down, and picks random weapons or finishes with fire.
@@ -5545,9 +5096,7 @@ bool liero_weapsel_ready(const struct LieroWeapsel *ws, int32_t i);
  * # Safety
  * See `LieroWeapselEnv`.
  */
-bool liero_weapsel_process(struct LieroWeapsel *ws,
-                           const struct LieroWeapselEnv *env,
-                           const struct LieroWeapselHooks *hooks);
+bool liero_weapsel_process(struct LieroWeapsel *ws, const struct LieroWeapselEnv *env);
 
 /**
  * The split-screen weapon selection over the frozen game: the title, each
@@ -5574,6 +5123,53 @@ void liero_weapsel_draw_spectator(struct LieroWeapsel *ws,
                                   const struct LieroBitmap *scr,
                                   const struct LieroFont *font);
 
+/**
+ * Starts weapon selection for `game`'s split-screen viewports' worms
+ * (`WeaponSelection::WeaponSelection`): bots that don't choose take random
+ * weapons, or their own, as the settings say.
+ *
+ * # Safety
+ * The game has its context, and outlives the selection; each viewport's
+ * worm is listed and has settings.
+ */
+struct LieroWeapsel *liero_weapsel_start(struct LieroGame *game);
+
+/**
+ * `processFrame` for a selection started from a game.
+ *
+ * # Safety
+ * See `liero_weapsel_start`.
+ */
+bool liero_weapsel_process_game(struct LieroWeapsel *ws);
+
+/**
+ * `finalize` for a selection started from a game: gives each of the
+ * game's worms the weapons its settings chose.
+ *
+ * # Safety
+ * See `liero_weapsel_start`; every listed worm has settings.
+ */
+void liero_weapsel_finish(struct LieroWeapsel *ws);
+
+/**
+ * Hides the menus (the game went behind the menu), or shows them again.
+ */
+void liero_weapsel_set_focused(struct LieroWeapsel *ws, bool focused);
+
+/**
+ * `WeaponSelection::draw` for a selection started from a game: on the
+ * spectator screen, who plays whom and the level, and on the play screen
+ * the frozen game, with the menus over it while focused. The palette
+ * changes are the app's renderers', whichever `r` is.
+ *
+ * # Safety
+ * See `liero_weapsel_start`; `r` is valid.
+ */
+void liero_weapsel_draw_game(struct LieroWeapsel *ws,
+                             struct LieroRenderer *r,
+                             int32_t state,
+                             bool spectators);
+
 struct LieroWormData *liero_worm_data_new(void);
 
 /**
@@ -5593,19 +5189,6 @@ void liero_worm_data_free(struct LieroWormData *w);
  * `direction`, without the walking animation: `Worm::angleFrame`.
  */
 int32_t liero_worm_angle_frame(int32_t aiming_angle, int32_t direction);
-
-/**
- * Runs a worm for one tick: C++'s `Worm::process`.
- *
- * # Safety
- * `worm`, the views and the pointers in `env` must be valid for the call.
- * The hooks may change them (but not free their memory).
- */
-void liero_worm_process(struct LieroWormData *worm,
-                        int32_t max_health,
-                        const struct LieroWormConstants *constants,
-                        const struct LieroWormEnv *env,
-                        const struct LieroWormHooks *hooks);
 
 #ifdef __cplusplus
 }  // extern "C"

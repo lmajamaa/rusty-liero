@@ -15,7 +15,6 @@
 #include "worm.hpp"
 #include "weapsel.hpp"
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "filesystem.hpp"
 #include "gfx.hpp"
 #include "math.hpp"
@@ -58,7 +57,7 @@ uint64_t hashFrame(Game& game, Renderer& split, Renderer& spectator)
 namespace
 {
 
-int wormIndex(Worm const* w)
+int wormIndex(LieroWormData const* w)
 {
 	return w ? w->index : -1;
 }
@@ -208,7 +207,7 @@ void setWeapons(Common& common, WormSettings& ws, char const* const* names)
 		ws.weapons[j] = 0;
 		for (std::size_t k = 0; k < common.weapOrder.size(); ++k)
 		{
-			if (common.weapons[common.weapOrder[k]].name == names[j])
+			if (tcString(common.weapons[common.weapOrder[k]].name) == names[j])
 				ws.weapons[j] = int(k) + 1;
 		}
 		if (ws.weapons[j] == 0)
@@ -227,7 +226,7 @@ std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, i
 	settings->gameMode = gameMode;
 	for (int i = 0; i < 2; ++i)
 	{
-		settings->wormSettings[i]->controller = 1; // DumbLieroAI
+		settings->wormSettings[i]->controller = 1; // The original bot
 		if (weapons)
 			setWeapons(*common, *settings->wormSettings[i], weapons);
 	}
@@ -247,20 +246,17 @@ std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, i
 	// The same setup as LocalController.
 	for (int i = 0; i < 2; ++i)
 	{
-		Worm* worm = new Worm();
-		worm->settings = settings->wormSettings[i];
+		Worm* worm = game.addWorm(settings->wormSettings[i]);
 		worm->health = worm->settings->health;
 		worm->index = i;
 		worm->statsX = i == 0 ? 0 : 218;
-		DumbLieroAI* ai = new DumbLieroAI();
-		ai->rand.seed(seed * 104729 + i);
-		worm->ai.reset(ai);
-		game.addWorm(worm);
+		worm->setAi(1, 0, false);
+		liero_rand_seed(liero_worm_ai_rand(worm->ai()), seed * 104729 + i);
 	}
 
-	game.addViewport(new Viewport(Rect(0, 0, 158, 158), 0, 504, 350));
-	game.addViewport(new Viewport(Rect(160, 0, 158+160, 158), 1, 504, 350));
-	game.addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
+	game.addViewport(Rect(0, 0, 158, 158), 0, 504, 350);
+	game.addViewport(Rect(160, 0, 158+160, 158), 1, 504, 350);
+	game.addSpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350);
 
 	{
 		Level newLevel;
@@ -281,13 +277,8 @@ std::unique_ptr<Game> setUpGame(std::shared_ptr<Common> common, uint32_t seed, i
 
 void botTick(Game& game)
 {
-	// The same order as LocalController::process.
-	int phase = game.cycles % 2;
-	for (std::size_t i = 0; i < game.worms.size(); ++i)
-	{
-		Worm& worm = *game.worms[(i + phase) % game.worms.size()];
-		worm.ai->process(game, worm);
-	}
+	// As LocalController::process, untimed.
+	game.processAis(false);
 }
 
 namespace
@@ -425,6 +416,7 @@ int hashRun(int argc, char* argv[])
 	hashSfxAndInput(common);
 	hashApp(common);
 	hashLevelFiles(common);
+	hashRandomTc();
 
 	return 0;
 }

@@ -21,27 +21,13 @@ int Menu::add(MenuItem const& item, int pos, bool count)
 	return liero_menu_box_add(box, &spec, pos, count);
 }
 
-namespace
+static void noOverlay(void*, int32_t, int32_t, int32_t, bool, bool)
 {
-
-struct OverlayContext
-{
-	Menu& menu;
-	Common& common;
-};
-
-void hookDrawOverlay(void* ctx, int32_t item, int32_t x, int32_t y, bool selected, bool disabled)
-{
-	OverlayContext& c = *static_cast<OverlayContext*>(ctx);
-	c.menu.drawItemOverlay(c.common, item, x, y, selected, disabled);
-}
-
 }
 
 void Menu::draw(Common& common, Renderer& renderer, bool disabled, int x, bool showDisabledSelection)
 {
-	OverlayContext ctx = { *this, common };
-	LieroMenuHooks hooks = { &ctx, hookDrawOverlay };
+	LieroMenuHooks hooks = { nullptr, noOverlay };
 	LieroBitmap scr = renderer.bmp.view();
 	LieroFont font = common.font.view();
 	liero_menu_box_draw(box, &scr, &font, &hooks, disabled, x, showDisabledSelection);

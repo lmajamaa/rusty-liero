@@ -66,10 +66,15 @@ void Sfx::deinit()
 #endif
 }
 
-void Sfx::play(Common& common, int sound, void* id, int loops)
+void sfxReport(int32_t sound)
 {
 	if (gfx.driver)
 		gfx.driver->sound(sound);
+}
+
+void Sfx::play(Common& common, int sound, void* id, int loops)
+{
+	sfxReport(sound);
 #if !DISABLE_SOUND
 	if(!initialized)
 		return;

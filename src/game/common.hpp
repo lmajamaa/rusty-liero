@@ -9,10 +9,9 @@
 #include "material.hpp"
 #include "gfx/palette.hpp"
 #include "gfx/sprite.hpp"
+#include "tclist.hpp"
 #include <string>
 #include <memory>
-extern "C" {
-}
 
 // A dirt effect, defined in Rust (rust/liero-game/src/level.rs). Its fields
 // were at 1C208 (n_draw_back), 1C1EA (m_frame), 1C1F4 (s_frame) and 1C1FE
@@ -37,39 +36,19 @@ struct Texts
 
 struct ColourAnim
 {
-	int from;
-	int to;
+	int32_t from;
+	int32_t to;
 };
 
 struct AIParams
 {
-	int k[2][7]; // 0x1AEEE, contiguous words
+	int32_t k[2][7]; // 0x1AEEE, contiguous words
 };
 
-struct SfxSample
-{
-	SfxSample()
-	: loaded(false)
-	{
-	}
-
-	SfxSample(std::string name, int length)
-	: name(std::move(name)), loaded(true), originalData(length)
-	{
-	}
-
-	// Makes the samples the mixer plays from originalData, in Rust
-	// (liero_sound_from_tc).
-	void createSound();
-
-	std::string name;
-	// Whether the TC had this sound. One it didn't plays silently.
-	bool loaded;
-	std::vector<uint8_t> originalData;
-	// 16-bit samples, twice as many as originalData. The mixer plays them
-	// in place, so they must not change while a sound is playing.
-	std::vector<int16_t> samples;
-};
+// A sound of the TC, with the samples the mixer plays (in Rust,
+// rust/liero-game/src/tc.rs). One the TC didn't have isn't valid and plays
+// silently.
+typedef LieroTcSound SfxSample;
 
 struct Bitmap;
 struct FsNode;
@@ -79,10 +58,9 @@ using std::vector;
 struct Common
 {
 	Common();
-
-	~Common()
-	{
-	}
+	~Common();
+	Common(Common const&) = delete;
+	Common& operator=(Common const&) = delete;
 
 	static int fireConeOffset[2][7][2];
 
@@ -91,55 +69,60 @@ struct Common
 
 	std::string guessName() const;
 
-	PalIdx* wormSprite(int f, int dir, int w)
+	PalIdx const* wormSprite(int f, int dir, int w) const
 	{
 		return wormSprites.spritePtr(f + dir*7*3 + w*2*7*3);
 	}
 
-	Sprite wormSpriteObj(int f, int dir, int w)
+	Sprite wormSpriteObj(int f, int dir, int w) const
 	{
 		return wormSprites[f + dir*7*3 + w*2*7*3];
 	}
 
-	PalIdx* fireConeSprite(int f, int dir)
+	PalIdx const* fireConeSprite(int f, int dir) const
 	{
 		return fireConeSprites.spritePtr(f + dir*7);
 	}
 
+	// The TC, loaded in Rust (rust/liero-game/src/tc.rs), which owns what
+	// the lists and tables below point to.
+	LieroTc* tc = nullptr;
+
 	// Computed
 	Texts texts;
-	vector<int> weapOrder;
+	TcList<int32_t> weapOrder;
 	SpriteSet wormSprites;
 	SpriteSet fireConeSprites;
 
-	Material materials[256];
-	Texture textures[LIERO_TEXTURE_COUNT];
-	vector<Weapon> weapons;
-	vector<SObjectType> sobjectTypes;
-	vector<NObjectType> nobjectTypes;
-	int bonusRandTimer[2][2];
-	int bonusSObjects[2];
-	AIParams aiParams;
-	ColourAnim colorAnim[4];
-	int bonusFrames[2];
+	Material const* materials = nullptr;
+	Texture const* textures = nullptr;
+	TcList<Weapon> weapons;
+	TcList<SObjectType> sobjectTypes;
+	TcList<NObjectType> nobjectTypes;
+	int32_t const (*bonusRandTimer)[2] = nullptr;
+	int32_t const* bonusSObjects = nullptr;
+	AIParams const* aiParams = nullptr;
+	ColourAnim const* colorAnim = nullptr;
+	int32_t const* bonusFrames = nullptr;
 	SpriteSet smallSprites;
 	SpriteSet largeSprites;
 
 	// The tables the Rust level code reads.
 	LieroLevelCommon levelCommon()
 	{
-		LieroLevelCommon c = { materials, textures, largeSprites.data.data(), largeSprites.count };
+		LieroLevelCommon c = { materials, textures, largeSprites.data, largeSprites.count };
 		return c;
 	}
 
 	SpriteSet textSprites;
-	Palette exepal;
+	Palette const* exepal = nullptr;
 	Font font;
-	vector<SfxSample> sounds;
+	TcList<SfxSample> sounds;
 
-	int32_t C[MaxC];
-	std::string S[MaxS];
-	bool H[MaxH];
+	// The constants, texts and hacks, in the order of the C, S and H enums.
+	int32_t const* C = nullptr;
+	LieroStr const* S = nullptr;
+	bool const* H = nullptr;
 };
 
 #endif // UUID_9E238CFB9F074A3A432E22AE5B8EE5FB

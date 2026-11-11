@@ -14,8 +14,8 @@ struct Rand;
 
 // The game's settings. Rust owns them (LieroSettingsBox in
 // rust/liero-game/src/settings.rs); the fields here refer to its. The fields
-// and their defaults match liero_data::settings::Settings. The worms'
-// settings are apart, since each worm holds on to its own.
+// and their defaults match liero_data::settings::Settings. The box holds
+// the players' worm settings too, which the game's worms share.
 struct Settings
 {
 	static bool const extensions = true;
@@ -55,7 +55,7 @@ struct Settings
 	std::string text();
 	// The gash of the settings archive (see archive below). Writing the archive
 	// sets the TC name to the default, since the archive has none.
-	SettingsHash& updateHash();
+	SettingsHash updateHash();
 
 	static void generateName(WormSettings& ws, Rand& rand);
 
@@ -108,9 +108,14 @@ public:
 	bool& map;
 	bool& screenSync;
 
+	// Views of the players' worm settings; setWorm changes them.
 	std::shared_ptr<WormSettings> wormSettings[2];
 
-	SettingsHash hash;
+	void setWorm(int i, std::shared_ptr<WormSettings> const& ws)
+	{
+		liero_settings_box_set_worm(box, i, ws->rust());
+		wormSettings[i] = WormSettings::share(liero_settings_box_worm(box, i));
+	}
 };
 
 // The settings in a replay, without the worms, which replays store with each

@@ -2,40 +2,42 @@
 #define LIERO_WEAPSEL_HPP
 
 #include "game.hpp"
-#include "menu/menu.hpp"
 #include "gfx/renderer.hpp"
 
-struct Game;
-
-// Weapon selection before a game. Its menus and which worms are ready are in
-// Rust (LieroWeapsel, rust/liero-game/src/weapsel.rs).
+// Weapon selection before a game, in Rust (LieroWeapsel,
+// rust/liero-game/src/weapsel.rs).
 struct WeaponSelection
 {
-	WeaponSelection(Game& game);
-	~WeaponSelection();
+	WeaponSelection(Game& game)
+	: box(liero_weapsel_start(game.handle()))
+	{
+	}
+
+	~WeaponSelection()
+	{
+		liero_weapsel_free(box);
+	}
 
 	WeaponSelection(WeaponSelection const&) = delete;
 	WeaponSelection& operator=(WeaponSelection const&) = delete;
 
-	void draw(Renderer& renderer, GameState state, bool useSpectatorViewports);
-	void drawNormalViewports(Renderer& renderer, GameState state);
-	void drawSpectatorViewports(Renderer& renderer, GameState state);
-	bool processFrame();
-	void finalize();
+	void draw(Renderer& renderer, GameState state, bool useSpectatorViewports)
+	{
+		liero_weapsel_draw_game(box, renderer.rust(), state, useSpectatorViewports);
+	}
 
-	void focus();
-	void unfocus();
+	bool processFrame() { return liero_weapsel_process_game(box); }
+	// Gives the worms their weapons and releases their controls.
+	void finalize() { liero_weapsel_finish(box); }
+
+	void focus() { liero_weapsel_set_focused(box, true); }
+	void unfocus() { liero_weapsel_set_focused(box, false); }
 
 	int menuCount() const { return liero_weapsel_menu_count(box); }
 	LieroMenuBox* menu(int i) { return liero_weapsel_menu(box, i); }
 	bool isReady(int i) const { return liero_weapsel_ready(box, i); }
 
-	Game& game;
 	LieroWeapsel* box;
-	bool cachedBackground, cachedSpectatorBackground;
-	bool focused;
 };
-
-//void selectWeapons(Game& game);
 
 #endif // LIERO_WEAPSEL_HPP

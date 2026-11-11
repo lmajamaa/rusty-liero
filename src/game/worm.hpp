@@ -15,7 +15,7 @@
 
 struct Worm;
 struct Game;
-struct Weapon;
+#include "weapon.hpp"
 
 struct Ninjarope
 {
@@ -30,12 +30,11 @@ struct Ninjarope
 
 	bool out;            //Is the ninjarope out?
 	bool attached;
-	Worm* anchor;			// If non-zero, the worm the ninjarope is attached to
+	LieroWormData* anchor;	// If non-zero, the worm the ninjarope is attached to
 	fixedvec pos, vel; //Ninjarope props
 	// Not needed as far as I can tell: fixed forceX, forceY;
 	int length, curLen;
 
-	void process(Worm& owner, Game& game);
 };
 
 /*
@@ -93,6 +92,12 @@ struct WormSettings : WormSettingsExtensions
 	WormSettings(WormSettings const&) = delete;
 	WormSettings& operator=(WormSettings const&) = delete;
 
+	// Another view of `box`, which it shares.
+	static std::shared_ptr<WormSettings> share(LieroWormSettingsBox* box)
+	{
+		return std::shared_ptr<WormSettings>(new WormSettings(liero_worm_settings_box_retain(box)));
+	}
+
 	// A copy of the settings, without the profile they came from. The game
 	// shares a worm's settings; only the hash run copies them.
 	std::unique_ptr<WormSettings> clone() const
@@ -105,7 +110,7 @@ struct WormSettings : WormSettingsExtensions
 		liero_worm_settings_box_free(box);
 	}
 
-	SettingsHash& updateHash();
+	SettingsHash updateHash();
 
 	void saveProfile(FsNode node);
 	void loadProfile(FsNode node);
@@ -147,9 +152,10 @@ public:
 
 	int32_t& color;
 
-	FsNode profileNode;
-
-	SettingsHash hash;
+	// The profile the settings were last loaded from or saved to, which the
+	// Rust box keeps.
+	FsNode profileNode() const { return FsNode::adopt(liero_worm_settings_box_profile(box)); }
+	void setProfileNode(FsNode const& node) { liero_worm_settings_box_set_profile(box, node.rust()); }
 };
 
 // A worm's settings in a replay of `replayVersion`, or in a profile.
@@ -175,22 +181,8 @@ inline std::vector<uint8_t> writeWormArchive(WormSettings& ws, int replayVersion
 struct Viewport;
 struct Renderer;
 
-struct WormAI
-{
-	virtual void process(Game& game, Worm& worm) = 0;
-
-	virtual void drawDebug(Game& game, Worm const& worm, Renderer& renderer, int offsX, int offsY)
-	{
-	}
-};
-
-struct DumbLieroAI : WormAI
-{
-	void process(Game& game, Worm& worm);
-
-	Rand rand;
-};
-
+// A view of one of the game's worms, which Rust owns with its settings and
+// bot (LieroWorm, rust/liero-game/src/game_box.rs).
 struct Worm
 {
 	enum
@@ -264,25 +256,10 @@ struct Worm
 		uint32_t istate;
 	};
 
-	Worm()
-	: Worm(liero_worm_data_new())
-	{
-	}
+	explicit Worm(LieroWorm* w);
 
-	// A copy with state of its own, sharing the settings and AI.
-	Worm(Worm const& other)
-	: Worm(liero_worm_data_clone(&other.data))
-	{
-		settings = other.settings;
-		ai = other.ai;
-	}
-
+	Worm(Worm const&) = delete;
 	Worm& operator=(Worm const&) = delete;
-
-	~Worm()
-	{
-		liero_worm_data_free(&data);
-	}
 
 	bool pressed(Control control) const
 	{
@@ -321,16 +298,14 @@ struct Worm
 		return 129 + index * 4;
 	}
 
-	// Runs the worm for one tick, in Rust (rust/liero-game/src/worm.rs).
-	void process(Game& game);
-	void initWeapons(Game& game);
 	int angleFrame() const;
 
 	// The worm's state in Rust.
 	LieroWormData* rust() { return &data; }
 
 private:
-	explicit Worm(LieroWormData* d);
+
+	Worm(LieroWorm* w, LieroWormData* d);
 
 	LieroWormData& data;
 
@@ -392,13 +367,29 @@ public:
 	// Data for LocalController
 	ControlState& cleanControlStates; // This contains the real state of real and extended controls
 
-	std::shared_ptr<WormSettings> settings; // !CLONING
+	// The worm in Rust.
+	LieroWorm* handle;
 
-	std::shared_ptr<WormAI> ai;
+	// A view of the worm's settings, shared with the worm.
+	std::shared_ptr<WormSettings> settings;
+
+	void setSettings(std::shared_ptr<WormSettings> s)
+	{
+		liero_worm_set_settings(handle, s->rust());
+		settings = s;
+	}
+
+	// Gives the worm the bot `controller` picks (in rust/liero-game/src/ai),
+	// or none for a human.
+	void setAi(uint32_t controller, int candidates, bool testing)
+	{
+		liero_worm_set_ai(handle, controller, candidates, testing);
+	}
+
+	LieroWormAi* ai() const { return liero_worm_ai(handle); }
+
 };
 
-bool checkForWormHit(Game& game, int x, int y, int dist, Worm* ownWorm);
-bool checkForSpecWormHit(Game& game, int x, int y, int dist, Worm& w);
 int sqrVectorLength(int x, int y);
 
 

@@ -23,7 +23,6 @@ struct Bonus : ExactObjectListBase
 	int timer;
 	int weapon;
 
-	void process(Game& game);
 };
 
 #endif // LIERO_BONUS_HPP

@@ -3,18 +3,20 @@
 //! has each frame's control changes, settings changes and a checksum every
 //! 15 seconds.
 //!
-//! C++ keeps the parts tied to its objects: the deflate streams around the
-//! bytes, creating the `Game`, `Worm`s and `Viewport`s a replay starts with,
-//! and noticing settings changes. For each read or write it passes views of
-//! what it has and copies back what the result holds, as for settings.
+//! `replay_file.rs` reads and writes replay files with these, on the game
+//! itself.
 //!
 //! gvl's archive writes a worm as a number the first time it comes up, with
 //! the whole worm after it; later the number alone refers back to it. So a
 //! worm can appear inside another one, as its rope's anchor or as the worm
 //! that last killed it, before it appears in the game's list of worms.
 
-use crate::settings::{settings_from, settings_view, str, worm_from, worm_view, Hooked, LieroByteSource, LieroSettings, LieroWormSettings};
-use crate::text::LieroStr;
+use crate::game::LieroRect;
+use crate::math::LieroIVec2;
+use crate::tc::{LieroTcData, LieroTcWeapon};
+use crate::viewport::LieroViewport;
+use crate::worm::LieroWormData;
+use std::ffi::c_void;
 use liero_data::settings::{self as data, ArchiveError, In, Out, ReadError, Settings, Source, WormSettings};
 use std::collections::HashMap;
 
@@ -364,8 +366,7 @@ pub fn write_start(game: &mut Game, version: i32) -> (Vec<u8>, Result<(), Replay
     (gw.w.0, r)
 }
 
-/// What a frame writes or reads of a worm.
-#[repr(C)]
+/// What a frame writes or reads of a worm, beside its settings.
 #[derive(Clone, Copy)]
 pub struct LieroReplayFrameWorm {
     pub index: i32,
@@ -373,7 +374,6 @@ pub struct LieroReplayFrameWorm {
     pub prev_control_states: u32,
     /// Whether the worm's settings changed since they were last written.
     pub settings_expired: bool,
-    pub settings: LieroWormSettings,
 }
 
 /// The checksum a replay stores every 15 seconds (`fastGameChecksum`).
@@ -708,110 +708,7 @@ pub fn read_checksum<S: Source + ?Sized>(src: &mut S, cycles: i32, actual: u32) 
     Ok(())
 }
 
-// ---- C interface ----
-
-/// A game for `liero_replay_write_start`, pointing at C++'s data.
-#[repr(C)]
-pub struct LieroReplayGameIn {
-    pub settings: LieroSettings,
-    pub fields: LieroReplayGameFields,
-    /// The game's worms, in order, and their settings.
-    pub worms: *const LieroReplayWorm,
-    pub worm_settings: *const LieroWormSettings,
-    pub worm_count: usize,
-    pub viewports: *const LieroReplayViewport,
-    pub viewport_count: usize,
-    pub level_width: u32,
-    pub level_height: u32,
-    /// `level_width * level_height` pixels.
-    pub level_pixels: *const u8,
-    /// 768 bytes.
-    pub level_palette: *const u8,
-}
-
-/// A game read by `liero_replay_read_start`, pointing into the result.
-#[repr(C)]
-pub struct LieroReplayGameOut {
-    pub version: i32,
-    pub settings: LieroSettings,
-    pub fields: LieroReplayGameFields,
-    /// Every worm read: the game's worms and any only referred to.
-    pub worms: *const LieroReplayWorm,
-    pub worm_settings: *const LieroWormSettings,
-    pub worm_count: usize,
-    /// The game's worms in order, as places in `worms`, or -1.
-    pub list: *const i32,
-    pub list_len: usize,
-    pub viewports: *const LieroReplayViewport,
-    pub viewport_count: usize,
-    pub level_width: u32,
-    pub level_height: u32,
-    pub level_pixels: *const u8,
-    pub level_palette: *const u8,
-}
-
-/// What a replay call gives back. C++ copies out what it needs and frees it.
-pub struct LieroReplayResult {
-    status: LieroReplayStatus,
-    message: &'static str,
-    bytes: Vec<u8>,
-    game: Option<(i32, Game)>,
-    game_view: Option<LieroReplayGameOut>,
-    worm_fields: Vec<LieroReplayWorm>,
-    worm_views: Vec<LieroWormSettings>,
-    settings: Option<Settings>,
-    settings_view: Option<LieroSettings>,
-    frame: FrameRead,
-    /// For a frame: the game's settings, then each worm's, that were read or
-    /// written.
-    touched: Vec<bool>,
-    frame_worms: Vec<LieroReplayFrameWorm>,
-    worm_settings: Vec<WormSettings>,
-}
-
-impl LieroReplayResult {
-    fn new() -> Self {
-        LieroReplayResult {
-            status: LieroReplayStatus::Ok,
-            message: "",
-            bytes: Vec::new(),
-            game: None,
-            game_view: None,
-            worm_fields: Vec::new(),
-            worm_views: Vec::new(),
-            settings: None,
-            settings_view: None,
-            frame: FrameRead::default(),
-            touched: Vec::new(),
-            frame_worms: Vec::new(),
-            worm_settings: Vec::new(),
-        }
-    }
-
-    fn error(mut self, r: Result<(), ReplayError>) -> Self {
-        (self.status, self.message) = match r {
-            Ok(()) => (LieroReplayStatus::Ok, ""),
-            Err(ReplayError::Read) => (LieroReplayStatus::ReadError, ""),
-            Err(ReplayError::Check(m)) => (LieroReplayStatus::CheckError, m),
-            Err(ReplayError::OutOfRange) => (LieroReplayStatus::OutOfRange, ""),
-        };
-        self
-    }
-
-    /// Settings and worm settings for C++ to copy back, with their views,
-    /// which point only into the heap, so the result can still move.
-    fn settings(mut self, settings: Settings, worms: Vec<WormSettings>) -> Self {
-        self.settings = Some(settings);
-        self.settings_view = self.settings.as_ref().map(settings_view);
-        self.worm_settings = worms;
-        self.worm_views = self.worm_settings.iter().map(worm_view).collect();
-        self
-    }
-
-    fn finish(self) -> *mut LieroReplayResult {
-        Box::into_raw(Box::new(self))
-    }
-}
+// ---- The game's worms and viewports, as replays hold them ----
 
 unsafe fn slice<'a, T>(p: *const T, len: usize) -> &'a [T] {
     if len == 0 || p.is_null() {
@@ -821,233 +718,169 @@ unsafe fn slice<'a, T>(p: *const T, len: usize) -> &'a [T] {
     }
 }
 
-/// Starts a replay of `version` with the game in `g`: the bytes to write,
-/// and the settings and worm settings to copy back. With an `OutOfRange`
-/// status, C++ writes the bytes before throwing, as it had written them.
-///
-/// # Safety
-/// The pointers in `g` must hold what their counts say.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_write_start(g: &LieroReplayGameIn, version: i32) -> *mut LieroReplayResult {
-    let fields = slice(g.worms, g.worm_count);
-    let settings = slice(g.worm_settings, g.worm_count);
-    let mut game = Game {
-        settings: settings_from(&g.settings),
-        fields: g.fields,
-        worms: fields.iter().zip(settings).map(|(&f, s)| Worm { fields: f, settings: worm_from(s) }).collect(),
-        list: (0..g.worm_count as i32).collect(),
-        viewports: slice(g.viewports, g.viewport_count).to_vec(),
-        level: Level {
-            width: g.level_width,
-            height: g.level_height,
-            pixels: slice(g.level_pixels, (g.level_width * g.level_height) as usize).to_vec(),
-            palette: slice(g.level_palette, 768).try_into().unwrap_or([0; 768]),
-        },
-    };
-    let (bytes, r) = write_start(&mut game, version);
-    let mut res = LieroReplayResult::new().error(r);
-    res.bytes = bytes;
-    let worms = game.worms.into_iter().map(|w| w.settings).collect();
-    res.settings(game.settings, worms).finish()
+/// Weapon `kind`'s place among the TC's weapons, by address, as C++ took
+/// it (`w.type - &common.weapons[0]`).
+fn weapon_place(kind: *const c_void, tc: &LieroTcData) -> i32 {
+    ((kind as isize).wrapping_sub(tc.weapons as isize) / std::mem::size_of::<LieroTcWeapon>() as isize) as i32
 }
 
-/// A frame of a replay of `version`. `worms` are the game's worms in order.
-/// The result has the bytes to write, and what settings were written
-/// (`liero_replay_result_touched`), which change as for
-/// `liero_replay_write_start`.
+/// A worm as replays hold it (`wormFields`). Its rope's anchor is the
+/// anchor's place among the game's `worms`, or -1.
 ///
 /// # Safety
-/// `worms` must point to `count` worms.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_write_frame(
-    version: i32,
-    settings: &LieroSettings,
-    settings_expired: bool,
-    worms: *const LieroReplayFrameWorm,
+/// `worms` holds `count` worms, which may be null.
+pub unsafe fn liero_replay_worm_of(
+    worm: &LieroWormData,
+    worms: *const *mut LieroWormData,
     count: usize,
-    cycles: i32,
-    checksum: u32,
-) -> *mut LieroReplayResult {
+    tc: &LieroTcData,
+) -> LieroReplayWorm {
     let worms = slice(worms, count);
-    // Converting the settings only when they're written keeps frames cheap.
-    let mut s = if settings_expired { settings_from(settings) } else { Settings::default() };
-    let mut ws: Vec<_> = worms
-        .iter()
-        .map(|f| (*f, if f.settings_expired && count > 3 { worm_from(&f.settings) } else { WormSettings::default() }))
-        .collect();
-    let (bytes, game_written, worms_written) = write_frame(version, &mut s, settings_expired, &mut ws, cycles, checksum);
-    let mut res = LieroReplayResult::new();
-    res.bytes = bytes;
-    res.touched = std::iter::once(game_written).chain(worms_written).collect();
-    res.settings(s, ws.into_iter().map(|(_, w)| w).collect()).finish()
+    let anchor = worm.ninjarope.anchor as *mut LieroWormData;
+    let rope = &worm.ninjarope;
+    LieroReplayWorm {
+        pos: [worm.pos.x, worm.pos.y],
+        vel: [worm.vel.x, worm.vel.y],
+        logic_respawn: [worm.logic_respawn.x, worm.logic_respawn.y],
+        hotspot: [worm.hotspot_x, worm.hotspot_y],
+        aiming_angle: worm.aiming_angle,
+        aiming_speed: worm.aiming_speed,
+        able_to_jump: worm.able_to_jump,
+        able_to_dig: worm.able_to_dig,
+        key_change_pressed: worm.key_change_pressed,
+        movable: worm.movable,
+        animate: worm.animate,
+        visible: worm.visible,
+        ready: worm.ready,
+        flag: worm.flag,
+        make_sight_green: worm.make_sight_green,
+        health: worm.health,
+        lives: worm.lives,
+        kills: worm.kills,
+        timer: worm.timer,
+        killed_timer: worm.killed_timer,
+        current_frame: worm.current_frame,
+        flags: worm.flags,
+        // The game's ropes only attach to its own worms.
+        rope_anchor: if anchor.is_null() {
+            -1
+        } else {
+            worms.iter().position(|&w| w == anchor).map_or(-1, |i| i as i32)
+        },
+        rope_attached: rope.attached,
+        rope_cur_len: rope.cur_len,
+        rope_length: rope.length,
+        rope_out: rope.out,
+        rope_vel: [rope.vel.x, rope.vel.y],
+        rope_pos: [rope.pos.x, rope.pos.y],
+        current_weapon: worm.current_weapon,
+        last_killed_by: worm.last_killed_by_idx,
+        fire_cone: worm.fire_cone,
+        leave_shell_timer: worm.leave_shell_timer,
+        index: worm.index,
+        reacts: worm.reacts,
+        weapons: worm.weapons.map(|w| LieroReplayWeapon {
+            ammo: w.ammo,
+            delay_left: w.delay_left,
+            weapon: weapon_place(w.kind, tc),
+            loading_left: w.loading_left,
+        }),
+        direction: worm.direction,
+        control_states: worm.control_states,
+        prev_control_states: worm.prev_control_states,
+    }
 }
 
-/// The end of a replay.
-#[no_mangle]
-pub extern "C" fn liero_replay_write_end() -> *mut LieroReplayResult {
-    let mut res = LieroReplayResult::new();
-    res.bytes = write_end();
-    res.finish()
-}
-
-/// The checksum of the game's generator and worms' positions and
-/// velocities.
+/// Sets a worm from a replay's (`setWormFields`). Its rope's anchor is one
+/// of `all`, every worm the replay has. Weapons aren't checked, as in C++.
 ///
 /// # Safety
-/// `worms` must point to `count` arrays of x, y, velocity x and y.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_checksum(rand_x: u32, worms: *const [i32; 4], count: usize) -> u32 {
-    checksum(rand_x, slice(worms, count))
-}
-
-/// Reads a replay's header and game from `source`. With an Ok status,
-/// `liero_replay_result_game` has the game.
-///
-/// # Safety
-/// `source` must be callable as `LieroByteSource` says.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_read_start(source: &LieroByteSource) -> *mut LieroReplayResult {
-    let mut src = Hooked(source);
-    let game = match read_start(&mut src) {
-        Ok(game) => game,
-        Err(e) => return LieroReplayResult::new().error(Err(e)).finish(),
-    };
-    // Box first: the view points at the palette, which is inline.
-    let mut res = Box::new(LieroReplayResult::new());
-    res.worm_fields = game.1.worms.iter().map(|w| w.fields).collect();
-    res.worm_views = game.1.worms.iter().map(|w| worm_view(&w.settings)).collect();
-    res.game = Some(game);
-    let (version, g) = res.game.as_ref().unwrap();
-    let view = LieroReplayGameOut {
-        version: *version,
-        settings: settings_view(&g.settings),
-        fields: g.fields,
-        worms: res.worm_fields.as_ptr(),
-        worm_settings: res.worm_views.as_ptr(),
-        worm_count: res.worm_fields.len(),
-        list: g.list.as_ptr(),
-        list_len: g.list.len(),
-        viewports: g.viewports.as_ptr(),
-        viewport_count: g.viewports.len(),
-        level_width: g.level.width,
-        level_height: g.level.height,
-        level_pixels: g.level.pixels.as_ptr(),
-        level_palette: g.level.palette.as_ptr(),
-    };
-    res.game_view = Some(view);
-    Box::into_raw(res)
-}
-
-/// Reads a frame's headers and control changes for a replay of `version`.
-/// `worms` are the game's worms in order. Whatever the status, the result
-/// has each worm's controls (`liero_replay_result_frame_state`) and the
-/// settings that were read, even partly (`liero_replay_result_touched`), for
-/// C++ to copy back.
-///
-/// # Safety
-/// `source` must be callable as `LieroByteSource` says, and `worms` point to
-/// `count` worms.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_read_frame(
-    source: &LieroByteSource,
-    version: i32,
-    settings: &LieroSettings,
-    worms: *const LieroReplayFrameWorm,
+/// `all` holds `count` worms.
+pub unsafe fn liero_replay_worm_set(
+    worm: &mut LieroWormData,
+    f: &LieroReplayWorm,
+    all: *const *mut LieroWormData,
     count: usize,
-) -> *mut LieroReplayResult {
-    let mut src = Hooked(source);
-    let frame_worms = slice(worms, count);
-    let mut s = settings_from(settings);
-    let mut ws: Vec<_> = frame_worms.iter().map(|f| (*f, worm_from(&f.settings))).collect();
-    let mut touched = vec![false; 1 + count];
-    let r = read_frame(&mut src, version, &mut s, &mut ws, &mut touched);
-    let mut res = LieroReplayResult::new();
-    match r {
-        Ok(frame) => res.frame = frame,
-        Err(e) => res = res.error(Err(e)),
+    tc: &LieroTcData,
+) {
+    let all = slice(all, count);
+    worm.pos = LieroIVec2 { x: f.pos[0], y: f.pos[1] };
+    worm.vel = LieroIVec2 { x: f.vel[0], y: f.vel[1] };
+    worm.logic_respawn = LieroIVec2 { x: f.logic_respawn[0], y: f.logic_respawn[1] };
+    worm.hotspot_x = f.hotspot[0];
+    worm.hotspot_y = f.hotspot[1];
+    worm.aiming_angle = f.aiming_angle;
+    worm.aiming_speed = f.aiming_speed;
+    worm.able_to_jump = f.able_to_jump;
+    worm.able_to_dig = f.able_to_dig;
+    worm.key_change_pressed = f.key_change_pressed;
+    worm.movable = f.movable;
+    worm.animate = f.animate;
+    worm.visible = f.visible;
+    worm.ready = f.ready;
+    worm.flag = f.flag;
+    worm.make_sight_green = f.make_sight_green;
+    worm.health = f.health;
+    worm.lives = f.lives;
+    worm.kills = f.kills;
+    worm.timer = f.timer;
+    worm.killed_timer = f.killed_timer;
+    worm.current_frame = f.current_frame;
+    worm.flags = f.flags;
+
+    let rope = &mut worm.ninjarope;
+    rope.anchor = if f.rope_anchor < 0 { std::ptr::null_mut() } else { all[f.rope_anchor as usize].cast() };
+    rope.attached = f.rope_attached;
+    rope.cur_len = f.rope_cur_len;
+    rope.length = f.rope_length;
+    rope.out = f.rope_out;
+    rope.vel = LieroIVec2 { x: f.rope_vel[0], y: f.rope_vel[1] };
+    rope.pos = LieroIVec2 { x: f.rope_pos[0], y: f.rope_pos[1] };
+    worm.current_weapon = f.current_weapon;
+    worm.last_killed_by_idx = f.last_killed_by;
+    worm.fire_cone = f.fire_cone;
+    worm.leave_shell_timer = f.leave_shell_timer;
+    worm.index = f.index;
+    worm.reacts = f.reacts;
+    for (w, r) in worm.weapons.iter_mut().zip(&f.weapons) {
+        w.ammo = r.ammo;
+        w.delay_left = r.delay_left;
+        w.kind = tc.weapons.wrapping_offset(r.weapon as isize).cast();
+        w.loading_left = r.loading_left;
     }
-    res.touched = touched;
-    res.frame_worms = ws.iter().map(|(f, _)| *f).collect();
-    res.settings(s, ws.into_iter().map(|(_, w)| w).collect()).finish()
+    worm.direction = f.direction;
+    worm.control_states = f.control_states;
+    worm.prev_control_states = f.prev_control_states;
 }
 
-/// Reads and checks the checksum after a frame, when `cycles` is on one.
-///
-/// # Safety
-/// `source` must be callable as `LieroByteSource` says.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_read_checksum(source: &LieroByteSource, cycles: i32, actual: u32) -> *mut LieroReplayResult {
-    let mut src = Hooked(source);
-    LieroReplayResult::new().error(read_checksum(&mut src, cycles, actual)).finish()
-}
-
-#[no_mangle]
-pub extern "C" fn liero_replay_result_status(r: &LieroReplayResult) -> LieroReplayStatus {
-    r.status
-}
-
-/// The `gvl::archive_check_error` message for a `CheckError`.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_message(r: &LieroReplayResult) -> LieroStr {
-    str(r.message.as_bytes())
-}
-
-/// The bytes to write.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_bytes(r: &LieroReplayResult) -> LieroStr {
-    str(&r.bytes)
-}
-
-/// The game read by `liero_replay_read_start`, or null.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_game(r: &LieroReplayResult) -> *const LieroReplayGameOut {
-    r.game_view.as_ref().map_or(std::ptr::null(), |g| g as *const _)
-}
-
-/// The game's settings after a write or frame read.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_settings(r: &LieroReplayResult) -> *const LieroSettings {
-    r.settings_view.as_ref().map_or(std::ptr::null(), |s| s as *const _)
-}
-
-/// Worm `i`'s settings after a write or frame read.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_worm_settings(r: &LieroReplayResult, i: usize) -> *const LieroWormSettings {
-    r.worm_views.get(i).map_or(std::ptr::null(), |s| s as *const _)
-}
-
-/// Whether a frame changed or wrote the game's settings (0) or worm
-/// `i - 1`'s.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_touched(r: &LieroReplayResult, i: usize) -> bool {
-    r.touched.get(i).copied().unwrap_or(false)
-}
-
-/// Worm `i`'s controls after a frame read.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_frame_state(r: &LieroReplayResult, i: usize) -> u32 {
-    r.frame_worms.get(i).map_or(0, |f| f.control_states)
-}
-
-/// Whether a frame read found the end of the replay.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_end(r: &LieroReplayResult) -> bool {
-    r.frame.end
-}
-
-/// Whether a frame read read the game's or a worm's settings.
-#[no_mangle]
-pub extern "C" fn liero_replay_result_settings_changed(r: &LieroReplayResult) -> bool {
-    r.frame.settings_changed
-}
-
-/// # Safety
-/// `r` must come from a `liero_replay_*` call, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_result_free(r: *mut LieroReplayResult) {
-    if !r.is_null() {
-        drop(Box::from_raw(r));
+/// A split-screen viewport as replays hold it (`viewportFields`).
+pub fn liero_replay_viewport_of(vp: &LieroViewport) -> LieroReplayViewport {
+    LieroReplayViewport {
+        x: vp.x,
+        y: vp.y,
+        shake: vp.shake,
+        max_x: vp.max_x,
+        max_y: vp.max_y,
+        center_x: vp.center_x,
+        center_y: vp.center_y,
+        worm_idx: vp.worm_idx,
+        banner_y: vp.banner_y,
+        rect: [vp.rect.x1, vp.rect.y1, vp.rect.x2, vp.rect.y2],
     }
+}
+
+/// Sets a viewport from a replay's (`setViewportFields`).
+pub fn liero_replay_viewport_set(vp: &mut LieroViewport, f: &LieroReplayViewport) {
+    vp.x = f.x;
+    vp.y = f.y;
+    vp.shake = f.shake;
+    vp.max_x = f.max_x;
+    vp.max_y = f.max_y;
+    vp.center_x = f.center_x;
+    vp.center_y = f.center_y;
+    vp.worm_idx = f.worm_idx;
+    vp.banner_y = f.banner_y;
+    vp.rect = LieroRect { x1: f.rect[0], y1: f.rect[1], x2: f.rect[2], y2: f.rect[3] };
 }
 
 #[cfg(test)]
@@ -1256,7 +1089,7 @@ mod tests {
 
     fn frame_worm(index: i32, state: u32, prev: u32, expired: bool) -> (LieroReplayFrameWorm, WormSettings) {
         let ws = WormSettings { name: format!("w{index}").into_bytes(), ..Default::default() };
-        let f = LieroReplayFrameWorm { index, control_states: state, prev_control_states: prev, settings_expired: expired, settings: worm_view(&ws) };
+        let f = LieroReplayFrameWorm { index, control_states: state, prev_control_states: prev, settings_expired: expired };
         (f, ws)
     }
 
@@ -1341,37 +1174,5 @@ mod tests {
         assert_eq!(checksum(5, &worms), c);
         assert_eq!(read_checksum(&mut Bytes::new(&[]), 1049, 0), Ok(()));
         assert_eq!(read_checksum(&mut Bytes::new(&[0, 0, 0, 1]), 2100, 2), Err(ReplayError::Check("Replay has desynced")));
-    }
-
-    #[test]
-    fn the_interface_reads_a_game_and_points_into_it() {
-        struct Data<'a>(Bytes<'a>);
-        unsafe extern "C" fn get(ctx: *mut std::ffi::c_void) -> i32 {
-            let d = &mut *(ctx as *mut Data);
-            d.0.get().map_or(-1, i32::from)
-        }
-        let mut g = game(vec![worm(0), worm(1)]);
-        let (bytes, _) = write_start(&mut g, 3);
-        let mut data = Data(Bytes::new(&bytes));
-        let source = LieroByteSource { ctx: &mut data as *mut Data as *mut _, get };
-        unsafe {
-            let r = liero_replay_read_start(&source);
-            assert_eq!(liero_replay_result_status(&*r), LieroReplayStatus::Ok);
-            let out = &*liero_replay_result_game(&*r);
-            assert_eq!(out.version, 3);
-            assert_eq!(slice(out.list, out.list_len), &[0, 1]);
-            assert_eq!(slice(out.worms, out.worm_count)[1], g.worms[1].fields);
-            assert_eq!(worm_from(&*out.worm_settings.add(1)).name, b"worm 1");
-            assert_eq!(slice(out.level_palette, 768), g.level.palette.as_slice());
-            assert_eq!(slice(out.level_pixels, 6), g.level.pixels.as_slice());
-            liero_replay_result_free(r);
-
-            let mut short = Data(Bytes::new(&bytes[..10]));
-            let source = LieroByteSource { ctx: &mut short as *mut Data as *mut _, get };
-            let r = liero_replay_read_start(&source);
-            assert_eq!(liero_replay_result_status(&*r), LieroReplayStatus::ReadError);
-            assert!(liero_replay_result_game(&*r).is_null());
-            liero_replay_result_free(r);
-        }
     }
 }

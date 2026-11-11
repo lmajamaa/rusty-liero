@@ -28,6 +28,7 @@ void botTick(Game& game);
 // of what they show. See hashmenus.cpp.
 void hashMenus(std::shared_ptr<Common> common);
 void hashTc(Common& common);
+void hashRandomTc();
 // Hashes settings written, read and broken in every format. See
 // hashsettings.cpp.
 void hashSettings();

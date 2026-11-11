@@ -6,13 +6,17 @@
 //! (see README).
 
 pub mod ai;
+pub mod app;
+pub mod app_menus;
 pub mod app_screens;
 pub mod boxes;
 pub mod controller;
+pub mod controllers;
 pub mod cpp_sort;
 pub mod deflate;
 pub mod fs;
 pub mod game;
+pub mod game_box;
 pub mod gfx;
 pub mod item;
 pub mod keys;
@@ -20,22 +24,28 @@ pub mod level;
 pub mod material;
 pub mod menu;
 pub mod menu_screen;
+pub mod menus;
 pub mod math;
 pub mod object;
 pub mod objects;
 pub mod rand;
+pub mod renderer;
 pub mod replay;
+pub mod replay_file;
 pub mod screen;
 pub mod selector;
 pub mod settings;
+pub mod shared;
 pub mod sfx;
 pub mod stats;
 pub mod tc;
 pub mod text;
+pub mod scene;
 pub mod viewport;
 pub mod weapon;
 pub mod weapon_options;
 pub mod weapsel;
+pub mod world;
 pub mod worm;
 
 use std::ffi::c_char;

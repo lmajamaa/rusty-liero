@@ -20,7 +20,6 @@
 #include "keys.hpp"
 #include "worm.hpp"
 #include "mixer/player.hpp"
-#include "controller/localController.hpp"
 
 #include <SDL.h>
 #include <cstdio>
@@ -38,12 +37,12 @@ void hashSamples(Common& common)
 {
 	for (std::size_t i = 0; i < common.sounds.size(); ++i)
 	{
-		SfxSample& s = common.sounds[i];
+		SfxSample const& s = common.sounds[i];
 		Fnv f;
-		f.add(s.loaded);
-		if (s.loaded)
+		f.add(s.valid);
+		if (s.valid)
 		{
-			std::size_t n = s.originalData.size() * 2;
+			std::size_t n = s.sample_count;
 			f.add(uint32_t(n));
 			for (std::size_t j = 0; j < n; ++j)
 				f.add(int32_t(s.samples[j]));
@@ -61,20 +60,20 @@ void hashBuffer(Fnv& f, int16_t const* buf, int n)
 
 void mixerScript(Common& common, uint32_t seed, int steps)
 {
-	std::vector<std::vector<int16_t> const*> sounds;
-	for (SfxSample& s : common.sounds)
-		if (s.loaded)
-			sounds.push_back(&s.samples);
+	std::vector<TcList<int16_t>> sounds;
+	for (SfxSample const& s : common.sounds)
+		if (s.valid)
+			sounds.push_back(TcList<int16_t>(s.samples, s.sample_count));
 
 	// A full-scale square wave, which clips as soon as two play at once.
 	std::vector<int16_t> square(300);
 	for (int i = 0; i < 300; ++i)
 		square[i] = (i / 25) % 2 ? 32767 : -32768;
-	sounds.push_back(&square);
+	sounds.push_back(TcList<int16_t>(square.data(), square.size()));
 	std::vector<int16_t> one { -32768 };
-	sounds.push_back(&one);
+	sounds.push_back(TcList<int16_t>(one.data(), one.size()));
 	std::vector<int16_t> two { 12345, -23456 };
-	sounds.push_back(&two);
+	sounds.push_back(TcList<int16_t>(two.data(), two.size()));
 
 	// Ids are only compared, never followed.
 	void* ids[] = { 0, (void*)16, (void*)32, (void*)48, (void*)64, (void*)80 };
@@ -93,10 +92,10 @@ void mixerScript(Common& common, uint32_t seed, int steps)
 		uint32_t op = r(10);
 		if (op < 4)
 		{
-			std::vector<int16_t> const& snd = *sounds[r(uint32_t(sounds.size()))];
+			TcList<int16_t> const& snd = sounds[r(uint32_t(sounds.size()))];
 			uint32_t time = uint32_t(liero_mixer_now(m) + int32_t(r(6000)) - 3000);
 			uint32_t flags = r(4) == 0 ? LIERO_SOUND_LOOP : LIERO_SOUND_NORMAL;
-			void* ret = liero_mixer_add(m, snd.data(), snd.size(), time, id, flags);
+			void* ret = liero_mixer_add(m, snd.items, snd.size(), time, id, flags);
 			f.add(ret == id);
 			f.add(ret != 0);
 		}
@@ -126,7 +125,7 @@ void soundGame(std::shared_ptr<Common> common, char const* name, uint32_t seed, 
 	std::unique_ptr<Game> gamePtr = setUpGame(common, seed, gameMode, weapons);
 	Game& game = *gamePtr;
 	LieroMixer* m = liero_mixer_new();
-	game.soundPlayer.reset(new RecordSoundPlayer(*common, m));
+	game.setSoundPlayer(std::make_shared<RecordSoundPlayer>(*common, m));
 
 	game.startGame();
 
@@ -151,7 +150,7 @@ void soundGame(std::shared_ptr<Common> common, char const* name, uint32_t seed, 
 			break;
 	}
 
-	game.soundPlayer.reset(new NullSoundPlayer);
+	game.setSoundPlayer(std::make_shared<NullSoundPlayer>());
 	liero_mixer_free(m);
 }
 
@@ -194,7 +193,7 @@ void hashKeyMap()
 	print("keys-map", SDL_NUM_SCANCODES / 64, f.h);
 }
 
-struct KeyRecorder : Controller
+struct KeyRecorder : KeySink
 {
 	Fnv f;
 
@@ -203,15 +202,6 @@ struct KeyRecorder : Controller
 		f.add(key);
 		f.add(state);
 	}
-
-	void unfocus() {}
-	void focus() {}
-	bool process() { return true; }
-	void draw(Renderer&, bool) {}
-	bool running() { return false; }
-	Level* currentLevel() { return 0; }
-	Game* currentGame() { return 0; }
-	void swapLevel(Level&) {}
 };
 
 void hashKeyState(Fnv& f)
@@ -372,8 +362,11 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 			c = pool[r(12)];
 	}
 
-	// LocalController holds a Game by value, too big for the wasm stack.
-	std::unique_ptr<LocalController> lc(new LocalController(common, settings));
+	std::unique_ptr<LieroController, void (*)(LieroController*)> lc(
+		liero_local_controller_new(settings->rust(), common->tc), liero_controller_free);
+	LieroControllerData& d = *liero_controller_data(lc.get());
+	LieroGame* game = liero_controller_game(lc.get());
+	auto worm = [game](std::size_t i) { return liero_worm_data(liero_game_worm(game, i)); };
 
 	char name[32];
 	std::snprintf(name, sizeof(name), "keys-controls-%u", seed);
@@ -385,10 +378,10 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 		if (op < 7)
 		{
 			uint32_t key = r(8) == 0 ? DkEscape : r(8) == 0 ? r(177) : pool[r(12)];
-			lc->onKey(int(key), r(2) != 0);
+			liero_controller_on_key(lc.get(), int(key), r(2) != 0);
 		}
 		else if (op == 7)
-			lc->goingToMenu = false;
+			d.going_to_menu = false;
 		else if (op == 8)
 		{
 			// The frame skip keys, maybe with ctrl.
@@ -397,24 +390,24 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 				SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL, SDL_SCANCODE_A };
 			for (int i = 0; i < 3; ++i)
 				gfx.setKey(SDLToDOSKey(keys[r(8)]), r(2) != 0);
-			lc->CommonController::process();
+			liero_controller_process(&d, &gfx.dosKeys);
 		}
 		else
 		{
-			Worm& w = *lc->game.worms[r(2)];
-			w.controlStates.istate = r(128);
+			LieroWormData* w = worm(r(2));
+			w->control_states = r(128);
 		}
 
-		for (Worm* w : lc->game.worms)
+		for (std::size_t i = 0; i < liero_game_worm_count(game); ++i)
 		{
-			f.add(w->controlStates.pack());
-			f.add(w->cleanControlStates.pack());
+			f.add(worm(i)->control_states);
+			f.add(worm(i)->clean_control_states);
 		}
-		f.add(lc->fadeValue);
-		f.add(lc->goingToMenu);
-		f.add(lc->frameSkip);
-		f.add(lc->inverseFrameSkip);
-		f.add(lc->cycles);
+		f.add(d.fade_value);
+		f.add(d.going_to_menu);
+		f.add(d.frame_skip);
+		f.add(d.inverse_frame_skip);
+		f.add(d.cycles);
 		for (bool k : gfx.dosKeys.down)
 			f.add(k);
 

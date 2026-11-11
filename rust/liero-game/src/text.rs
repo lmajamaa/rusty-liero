@@ -12,6 +12,11 @@ pub struct LieroStr {
 }
 
 impl LieroStr {
+    /// A view of `b`, valid while it is.
+    pub fn of(b: &[u8]) -> LieroStr {
+        LieroStr { ptr: b.as_ptr(), len: b.len() }
+    }
+
     /// # Safety
     /// `ptr` must point to `len` bytes that live as long as the result is used.
     pub unsafe fn bytes(&self) -> &[u8] {

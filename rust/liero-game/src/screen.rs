@@ -142,6 +142,23 @@ pub struct LieroScreenHost {
     /// The frozen screen with the main menu over it, greyed out while
     /// another menu is up (`Gfx::drawBasicMenu`).
     pub draw_basic_menu: Option<unsafe extern "C" fn()>,
+    /// The app draws: the screen, the frozen screen, the font, filling the
+    /// screen, the menu palette, the menu fade and the basic menu come from
+    /// the Rust app (`app_menus.rs`) instead of the functions above. Tests
+    /// leave it off.
+    pub app_drawing: bool,
+    /// The time, in seconds since 1970 (`appTime`).
+    pub time: Option<unsafe extern "C" fn() -> i64>,
+    /// The stats' clock, in nanoseconds (`appHiresTicks`).
+    pub hires_ticks: Option<unsafe extern "C" fn() -> u64>,
+    /// `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in UTC under
+    /// the app driver and local time otherwise. Writes at most `cap` bytes
+    /// and returns how many.
+    pub replay_time: Option<unsafe extern "C" fn(t: i64, out: *mut u8, cap: usize) -> usize>,
+    /// The config folder, or null.
+    pub config_node: Option<unsafe extern "C" fn() -> *const crate::fs::LieroFsNode>,
+    /// Where the games' sounds go (`DefaultSoundPlayer::out`).
+    pub sound: Option<unsafe extern "C" fn() -> crate::sfx::LieroSoundOut>,
 }
 
 static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
@@ -184,23 +201,42 @@ impl Host {
         Some(b)
     }
     pub fn screen(&self) -> Option<LieroBitmap> {
+        if self.0.app_drawing {
+            return Some(crate::app::app().play.bmp.view());
+        }
         Self::bitmap(self.0.screen)
     }
     pub fn frozen(&self) -> Option<LieroBitmap> {
+        if self.0.app_drawing {
+            return Some(crate::app::app().frozen.view());
+        }
         Self::bitmap(self.0.frozen)
     }
     pub fn font(&self) -> Option<LieroFont> {
+        if self.0.app_drawing {
+            return Some(crate::app::app().font());
+        }
         let f = self.0.font?;
         let mut font = LieroFont { chars: std::ptr::null(), count: 0 };
         unsafe { f(&mut font) };
         Some(font)
     }
     pub fn fill_screen(&self, color: u8) {
+        if self.0.app_drawing {
+            // SAFETY: the bitmap is the app's.
+            unsafe { crate::gfx::liero_gfx_fill(&crate::app::app().play.bmp.view(), color) };
+            return;
+        }
         if let Some(f) = self.0.fill_screen {
             unsafe { f(color) }
         }
     }
     pub fn menu_palette(&self) {
+        if self.0.app_drawing {
+            let a = crate::app::app();
+            a.play.data.pal = a.tc_data().palette_colors;
+            return;
+        }
         if let Some(f) = self.0.menu_palette {
             unsafe { f() }
         }
@@ -214,6 +250,10 @@ impl Host {
         self.0.test_key.is_some_and(|f| unsafe { f(scancode) })
     }
     pub fn draw_basic_menu(&self) {
+        if self.0.app_drawing {
+            crate::app_menus::draw_basic_menu();
+            return;
+        }
         if let Some(f) = self.0.draw_basic_menu {
             unsafe { f() }
         }
@@ -234,9 +274,34 @@ impl Host {
         self.0.ticks.map_or(0, |f| unsafe { f() })
     }
     pub fn menu_fade(&self) {
+        if self.0.app_drawing {
+            crate::app_menus::menu_fade(false);
+            return;
+        }
         if let Some(f) = self.0.menu_fade {
             unsafe { f() }
         }
+    }
+    pub fn time(&self) -> i64 {
+        self.0.time.map_or(0, |f| unsafe { f() })
+    }
+    pub fn hires_ticks(&self) -> u64 {
+        self.0.hires_ticks.map_or(0, |f| unsafe { f() })
+    }
+    pub fn replay_time(&self, t: i64) -> Vec<u8> {
+        let Some(f) = self.0.replay_time else {
+            return Vec::new();
+        };
+        let mut buf = vec![0; 512];
+        let n = unsafe { f(t, buf.as_mut_ptr(), buf.len()) };
+        buf.truncate(n.min(512));
+        buf
+    }
+    pub fn config_node(&self) -> *const crate::fs::LieroFsNode {
+        self.0.config_node.map_or(std::ptr::null(), |f| unsafe { f() })
+    }
+    pub fn sound(&self) -> crate::sfx::LieroSoundOut {
+        self.0.sound.map_or(crate::sfx::LieroSoundOut::NONE, |f| unsafe { f() })
     }
 }
 
@@ -321,7 +386,7 @@ impl LieroScreen {
         LieroScreen { data: std::ptr::null_mut(), tick: None, resume: None, free: None }
     }
 
-    unsafe fn release(self) {
+    pub(crate) unsafe fn release(self) {
         if let Some(free) = self.free {
             free(self.data);
         }

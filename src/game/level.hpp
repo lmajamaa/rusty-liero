@@ -53,6 +53,9 @@ struct Level
 	Level(Level const& other);
 	Level& operator=(Level const& other);
 	~Level();
+	// A view of `box`, which someone else owns (the game's level).
+	static Level view(LieroLevelBox* box) { return Level(box, false); }
+	Level(Level&& other);
 
 	bool load(Common& common, Settings const& settings, ByteReader r);
 	void generateDirtPattern(Common& common, Rand& rand);
@@ -138,12 +141,13 @@ struct Level
 	LieroLevelBox* rust() const { return box; }
 
 private:
-	explicit Level(LieroLevelBox* box);
+	Level(LieroLevelBox* box, bool owned);
 
 	static LieroStr getOldLevelFile(void const* b) { return liero_level_box_old_level_file(static_cast<LieroLevelBox const*>(b)); }
 	static void setOldLevelFile(void* b, LieroStr s) { liero_level_box_set_old_level_file(static_cast<LieroLevelBox*>(b), s); }
 
 	LieroLevelBox* box;
+	bool owned;
 	LieroLevelData& level;
 
 public:

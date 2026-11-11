@@ -5,10 +5,10 @@
 
 #include "game.hpp"
 #include "stats_recorder.hpp"
-#include "controller/stats_presenter.hpp"
 #include "gfx/renderer.hpp"
 
 #include <cstdio>
+#include <vector>
 
 namespace
 {
@@ -78,7 +78,10 @@ void hashStatsScreen(char const* name, Game& game, Renderer& renderer)
 	NormalStatsRecorder& recorder = static_cast<NormalStatsRecorder&>(*game.statsRecorder);
 	Bitmap bg;
 	bg.copy(renderer.bmp);
-	StatsScreen screen(recorder, game, renderer);
+	std::vector<LieroStr> weaponNames;
+	for (auto const& w : game.common->weapons)
+		weaponNames.push_back(w.name);
+	LieroStatsScreen* screen = liero_stats_screen_new(recorder.s, renderer.renderResX);
 
 	double const panes[] = { 0, -1, 1, 0.37, -0.81 };
 	double const offsets[] = { 0, -35.5, -140, -400, -1200 };
@@ -88,7 +91,11 @@ void hashStatsScreen(char const* name, Game& game, Renderer& renderer)
 		for (double offset : offsets)
 		{
 			renderer.bmp.copy(bg);
-			screen.draw(pane, offset);
+			// As the stats screen draws itself.
+			LieroStatsScene scene = liero_game_stats_scene(game.handle(), renderer.rust(), weaponNames.data(), weaponNames.size());
+			LieroBitmap v = renderer.bmp.view();
+			liero_stats_screen_draw(screen, recorder.s, &scene, &v, pane, offset);
+			renderer.pal = *game.common->exepal;
 
 			Fnv f;
 			for (int y = 0; y < renderer.bmp.h; ++y)
@@ -102,4 +109,5 @@ void hashStatsScreen(char const* name, Game& game, Renderer& renderer)
 			std::printf("%s-statsview %d %016llx\n", name, n++, (unsigned long long)f.h);
 		}
 	}
+	liero_stats_screen_free(screen);
 }

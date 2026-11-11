@@ -15,20 +15,16 @@
 #include <cstdint>
 
 #include "menuItem.hpp"
-#include "itemBehavior.hpp"
-
-#include "integerBehavior.hpp"
-#include "booleanSwitchBehavior.hpp"
-#include "timeBehavior.hpp"
-#include "enumBehavior.hpp"
+#include <liero_game.h>
 
 struct Common;
 struct Gfx;
 
 // A menu: its state and items are in Rust (LieroMenuBox,
 // rust/liero-game/src/menu.rs), along with selection, scrolling, searching
-// and drawing. Items are referred to by index. What each item does is the
-// ItemBehavior the menu gives for it.
+// and drawing. Items are referred to by index. What the main menus' items
+// do is in Rust too (rust/liero-game/src/menus.rs); a Menu made from one of
+// their boxes doesn't own it.
 struct Menu
 {
 	Menu(bool centered = false)
@@ -52,44 +48,30 @@ struct Menu
 		return *this;
 	}
 
-	virtual ~Menu()
+	// A menu on `box`, which it frees when `owned`.
+	Menu(LieroMenuBox* box, bool owned)
+	: box(box)
+	, owned(owned)
+	, s(*liero_menu_box_state(box))
+	, itemHeight(s.item_height)
+	, valueOffsetX(s.value_offset_x)
+	, x(s.x)
+	, y(s.y)
+	, height(s.height)
+	, topItem(s.top_item)
+	, bottomItem(s.bottom_item)
+	, visibleItemCount(s.visible_item_count)
+	, centered(s.centered)
 	{
-		liero_menu_box_free(box);
+	}
+
+	~Menu()
+	{
+		if (owned)
+			liero_menu_box_free(box);
 	}
 
 	void draw(Common& common, Renderer& renderer, bool disabled, int x = -1, bool showDisabledSelection = false);
-
-	virtual void drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled)
-	{
-		// Nothing by default
-	}
-
-	virtual ItemBehavior* getItemBehavior(Common& common, int item)
-	{
-		// Dummy item behavior by default
-		return new ItemBehavior;
-	}
-
-	virtual void onUpdate()
-	{
-		// Nothing by default
-	}
-
-	bool onLeftRight(Common& common, int dir)
-	{
-		int s = selection();
-		if (!isSelectionValid()) return false;
-		std::unique_ptr<ItemBehavior> b(getItemBehavior(common, s));
-		return b->onLeftRight(*this, s, dir);
-	}
-
-	int onEnter(Common& common)
-	{
-		int s = selection();
-		if (!isSelectionValid()) return false;
-		std::unique_ptr<ItemBehavior> b(getItemBehavior(common, s));
-		return b->onEnter(*this, s);
-	}
 
 	void onKeys(SDL_Keysym* begin, SDL_Keysym* end, bool contains = false)
 	{
@@ -101,18 +83,6 @@ struct Menu
 	{
 		for (; begin != end; ++begin)
 			liero_menu_box_on_key(box, begin->sym, begin->scancode, contains, time);
-	}
-
-	void updateItems(Common& common)
-	{
-		for(int i = 0; i < itemCount(); ++i)
-		{
-			std::unique_ptr<ItemBehavior> b(getItemBehavior(common, i));
-
-			b->onUpdate(*this, i);
-		}
-
-		onUpdate();
 	}
 
 	void place(int newX, int newY)
@@ -192,6 +162,7 @@ struct Menu
 	void scroll(int amount) { liero_menu_box_scroll(box, amount); }
 
 	LieroMenuBox* box;
+	bool owned;
 	LieroMenu& s;
 
 	int& itemHeight;
@@ -210,17 +181,7 @@ struct Menu
 
 private:
 	explicit Menu(LieroMenuBox* box)
-	: box(box)
-	, s(*liero_menu_box_state(box))
-	, itemHeight(s.item_height)
-	, valueOffsetX(s.value_offset_x)
-	, x(s.x)
-	, y(s.y)
-	, height(s.height)
-	, topItem(s.top_item)
-	, bottomItem(s.bottom_item)
-	, visibleItemCount(s.visible_item_count)
-	, centered(s.centered)
+	: Menu(box, true)
 	{
 	}
 

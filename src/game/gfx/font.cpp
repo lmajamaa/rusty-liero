@@ -14,13 +14,13 @@ static_assert(offsetof(Font::Char, width) == offsetof(LieroFontChar, width), "Fo
 void Font::drawChar(Bitmap& scr, unsigned char c, int x, int y, int color, int size)
 {
 	LieroBitmap v = scr.view();
-	liero_font_draw_char(&v, reinterpret_cast<LieroFontChar const*>(chars.data()), chars.size(), c, x, y, uint8_t(color), size);
+	liero_font_draw_char(&v, reinterpret_cast<LieroFontChar const*>(chars.items), chars.size(), c, x, y, uint8_t(color), size);
 }
 
 void Font::drawText(Bitmap& scr, char const* str, std::size_t len, int x, int y, int color, int size)
 {
 	LieroBitmap v = scr.view();
-	liero_font_draw_text(&v, reinterpret_cast<LieroFontChar const*>(chars.data()), chars.size(),
+	liero_font_draw_text(&v, reinterpret_cast<LieroFontChar const*>(chars.items), chars.size(),
 		reinterpret_cast<uint8_t const*>(str), len, x, y, uint8_t(color), size);
 }
 
@@ -32,6 +32,6 @@ void Font::drawFramedText(Bitmap& scr, std::string const& text, int x, int y, in
 
 int Font::getDims(char const* str, std::size_t len, int* height)
 {
-	return liero_font_get_dims(reinterpret_cast<LieroFontChar const*>(chars.data()), chars.size(),
+	return liero_font_get_dims(reinterpret_cast<LieroFontChar const*>(chars.items), chars.size(),
 		reinterpret_cast<uint8_t const*>(str), len, height);
 }

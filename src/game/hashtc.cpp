@@ -6,6 +6,8 @@
 #include "hashrun.hpp"
 
 #include "common_model.hpp"
+#include "filesystem.hpp"
+#include "gfx.hpp"
 
 #include <cstdio>
 #include <string>
@@ -98,7 +100,7 @@ struct TomlWriter
 	}
 
 	template<typename A, typename F>
-	void arr(char const* name, A& arr, F func)
+	void arr(char const* name, A const& arr, F func)
 	{
 		f(name);
 		*this << '[';
@@ -114,7 +116,7 @@ struct TomlWriter
 	}
 
 	template<typename A, typename F>
-	void array_obj(char const* name, A& arr, F func)
+	void array_obj(char const* name, A const& arr, F func)
 	{
 		beginf(name);
 		for (auto& e : arr)
@@ -143,7 +145,12 @@ struct TomlWriter
 		resolver.v2r(*this, v);
 	}
 
-	void str(char const* name, std::string& s)
+	void str(char const* name, LieroStr s)
+	{
+		str(name, tcString(s));
+	}
+
+	void str(char const* name, std::string const& s)
 	{
 		f(name);
 		*this << '"';
@@ -177,8 +184,8 @@ void addSprites(Fnv& h, SpriteSet const& ss)
 	h.add(int32_t(ss.height));
 	h.add(int32_t(ss.spriteSize));
 	h.add(int32_t(ss.count));
-	h.add(uint32_t(ss.data.size()));
-	h.bytes(ss.data.data(), ss.data.size());
+	h.add(uint32_t(ss.size()));
+	h.bytes(ss.data, ss.size());
 }
 
 } // namespace
@@ -197,7 +204,7 @@ void hashTc(Common& common)
 		TomlWriter ar;
 		archive_text(common, weapon, ar);
 		ar.h.add(int32_t(weapon.id));
-		ar.h.bytes((uint8_t const*)weapon.idStr.data(), weapon.idStr.size());
+		ar.h.bytes(weapon.id_str.ptr, weapon.id_str.len);
 		print("tc-weapon", (int)i, ar.h);
 	}
 
@@ -207,7 +214,7 @@ void hashTc(Common& common)
 		TomlWriter ar;
 		archive_text(common, nobject, ar);
 		ar.h.add(int32_t(nobject.id));
-		ar.h.bytes((uint8_t const*)nobject.idStr.data(), nobject.idStr.size());
+		ar.h.bytes(nobject.id_str.ptr, nobject.id_str.len);
 		print("tc-nobject", (int)i, ar.h);
 	}
 
@@ -217,7 +224,7 @@ void hashTc(Common& common)
 		TomlWriter ar;
 		archive_text(common, sobject, ar);
 		ar.h.add(int32_t(sobject.id));
-		ar.h.bytes((uint8_t const*)sobject.idStr.data(), sobject.idStr.size());
+		ar.h.bytes(sobject.id_str.ptr, sobject.id_str.len);
 		print("tc-sobject", (int)i, ar.h);
 	}
 
@@ -225,10 +232,10 @@ void hashTc(Common& common)
 	{
 		auto& s = common.sounds[i];
 		Fnv h;
-		h.bytes((uint8_t const*)s.name.data(), s.name.size());
-		h.add(uint32_t(s.originalData.size()));
-		h.bytes(s.originalData.data(), s.originalData.size());
-		h.add(s.loaded);
+		h.bytes(s.name.ptr, s.name.len);
+		h.add(uint32_t(s.len));
+		h.bytes(s.data, s.len);
+		h.add(s.valid);
 		print("tc-sound", (int)i, h);
 	}
 
@@ -237,7 +244,7 @@ void hashTc(Common& common)
 		addSprites(h, common.smallSprites);
 		addSprites(h, common.largeSprites);
 		addSprites(h, common.textSprites);
-		for (auto const& c : common.exepal.entries)
+		for (auto const& c : common.exepal->entries)
 		{
 			h.add(uint32_t(c.r));
 			h.add(uint32_t(c.g));
@@ -266,5 +273,31 @@ void hashTc(Common& common)
 		addSprites(h, common.wormSprites);
 		addSprites(h, common.fireConeSprites);
 		print("tc-computed", 0, h);
+	}
+}
+
+// F8's random TC, on a TC of its own. Only the weapons and special objects:
+// the order the other objects get their values in was shuffled with
+// std::random_device in the C++.
+void hashRandomTc()
+{
+	std::shared_ptr<Common> common(new Common());
+	common->load(FsNode(std::string("TC/openliero")));
+	std::shared_ptr<Common> old = gfx.common;
+	gfx.common = common;
+	gfx.randomizeTc();
+	gfx.common = old;
+
+	for (std::size_t i = 0; i < common->weapons.size(); ++i)
+	{
+		TomlWriter ar;
+		archive_text(*common, common->weapons[i], ar);
+		print("tc-random-weapon", (int)i, ar.h);
+	}
+	for (std::size_t i = 0; i < common->sobjectTypes.size(); ++i)
+	{
+		TomlWriter ar;
+		archive_text(*common, common->sobjectTypes[i], ar);
+		print("tc-random-sobject", (int)i, ar.h);
 	}
 }

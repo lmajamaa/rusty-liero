@@ -1,44 +1,51 @@
 #ifndef UUID_FB823C685B8D47570B89508CD25CC4A6
 #define UUID_FB823C685B8D47570B89508CD25CC4A6
 
-#include <vector>
+#include <cstddef>
+#include <liero_game.h>
 #include <cstdio>
 #include <cassert>
 #include "color.hpp"
 
 struct Sprite
 {
-	PalIdx* mem;
+	PalIdx const* mem;
 	int width, height, pitch;
 };
 
+// Sprites of the TC, which Rust owns (rust/liero-game/src/tc.rs): `count`
+// sprites of `width` x `height` palette indices.
 struct SpriteSet
 {
 	SpriteSet()
-	: width(0), height(0), spriteSize(0), count(0)
 	{
 	}
 
-	std::vector<PalIdx> data;
-	int width;
-	int height;
-	int spriteSize;
-	int count;
+	SpriteSet(LieroTcSprites const& s)
+	: data(s.data), width(s.width), height(s.height), spriteSize(s.width * s.height), count(s.count)
+	{
+	}
 
-	PalIdx* spritePtr(int frame)
+	PalIdx const* data = nullptr;
+	int width = 0;
+	int height = 0;
+	int spriteSize = 0;
+	int count = 0;
+
+	std::size_t size() const { return std::size_t(spriteSize) * count; }
+
+	PalIdx const* spritePtr(int frame) const
 	{
 		assert(frame >= 0 && frame < count);
 		return &data[frame*spriteSize];
 	}
 
-	Sprite operator[](int frame)
+	Sprite operator[](int frame) const
 	{
 		assert(frame >= 0 && frame < count);
 		Sprite s = {&data[frame*spriteSize], width, height, width};
 		return s;
 	}
-
-	void allocate(int width, int height, int count);
 };
 
 #endif // UUID_FB823C685B8D47570B89508CD25CC4A6

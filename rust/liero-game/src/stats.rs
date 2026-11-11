@@ -844,27 +844,6 @@ unsafe fn worms<'a>(worms: *const LieroStatsWorm, count: usize) -> &'a [LieroSta
     }
 }
 
-/// New, empty stats. Free them with `liero_stats_free`.
-#[no_mangle]
-pub extern "C" fn liero_stats_new() -> *mut LieroStats {
-    Box::into_raw(Box::default())
-}
-
-/// A copy of `s`, for a copy of the game. Free it with `liero_stats_free`.
-#[no_mangle]
-pub extern "C" fn liero_stats_clone(s: &LieroStats) -> *mut LieroStats {
-    Box::into_raw(Box::new(s.clone()))
-}
-
-/// # Safety
-/// `s` must come from `liero_stats_new` or `liero_stats_clone`, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_stats_free(s: *mut LieroStats) {
-    if !s.is_null() {
-        drop(Box::from_raw(s));
-    }
-}
-
 #[no_mangle]
 pub extern "C" fn liero_stats_view(s: &LieroStats) -> LieroStatsView {
     s.view()

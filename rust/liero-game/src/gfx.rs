@@ -778,6 +778,32 @@ pub unsafe extern "C" fn liero_palette_rotate_from(
     }
 }
 
+/// The palette a game shows (`Game::draw`): `origpal` with the TC's four
+/// colour animations at `cycles`, faded by `fade` and lit up by the
+/// screen flash.
+///
+/// # Safety
+/// `pal` and `origpal` hold 256 entries, and the animations' ranges are in
+/// them.
+#[no_mangle]
+pub unsafe extern "C" fn liero_game_palette(
+    pal: *mut LieroColor,
+    origpal: *const LieroColor,
+    color_anim: &[i32; 8],
+    cycles: i32,
+    fade: i32,
+    screen_flash: i32,
+) {
+    std::ptr::copy_nonoverlapping(origpal, pal, 256);
+    for a in color_anim.chunks(2) {
+        liero_palette_rotate_from(pal, origpal, a[0], a[1], (cycles >> 3) as u32);
+    }
+    liero_palette_fade(pal, fade);
+    if screen_flash > 0 {
+        liero_palette_light_up(pal, screen_flash);
+    }
+}
+
 /// Worm `i`'s colours from its settings' colour index and `rgb`:
 /// `Palette::setWormColour`.
 ///
@@ -923,6 +949,25 @@ pub unsafe extern "C" fn liero_font_get_dims(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_games_palette_animates_fades_and_flashes() {
+        let mut orig = [LieroColor::default(); 256];
+        for (i, c) in orig.iter_mut().enumerate() {
+            *c = LieroColor { r: (i % 64) as u8, g: 32, b: 0, unused: 0 };
+        }
+        let anims = [10, 12, 20, 21, 0, 0, 0, 0];
+        let mut pal = [LieroColor::default(); 256];
+        unsafe {
+            // Tick 8 rotates each range by one.
+            liero_game_palette(pal.as_mut_ptr(), orig.as_ptr(), &anims, 8, 32, 0);
+            assert_eq!([pal[10].r, pal[11].r, pal[12].r, pal[20].r, pal[21].r, pal[30].r], [12, 10, 11, 21, 20, 30]);
+            liero_game_palette(pal.as_mut_ptr(), orig.as_ptr(), &anims, 0, 16, 0);
+            assert_eq!((pal[30].r, pal[30].g), (15, 16));
+            liero_game_palette(pal.as_mut_ptr(), orig.as_ptr(), &anims, 0, 32, 16);
+            assert_eq!((pal[30].r, pal[30].g), (46, 47));
+        }
+    }
 
     struct Bmp {
         px: Vec<u8>,

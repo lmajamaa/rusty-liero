@@ -15,8 +15,7 @@
 #include "gfx/bitmap.hpp"
 #include "gfx/renderer.hpp"
 #include "menu/menu.hpp"
-#include "menu/hiddenMenu.hpp"
-#include "menu/mainMenu.hpp"
+#include "menu/menuIds.hpp"
 #include "rand.hpp"
 #include "keys.hpp"
 #include "settings.hpp"
@@ -28,16 +27,11 @@
 #include <functional>
 #include <memory>
 
-// The level name, "A vs B" and the worms' colours, as the spectator window
-// shows them in the menus and weapon selection. The name is taken from
-// `levelFileForName`, which weapon selection takes from other settings.
-void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::string const& levelFileForName, int centerX, int centerY);
-
 // A message in a box centred on (x, y), as `Gfx::infoBox` shows it.
 void drawInfoBox(Common& common, Bitmap& bmp, std::string const& text, int x, int y);
 
-// The text being typed, `str`, in a box at (x, y) over `frozen`, as
-// `inputStringScreen` shows it.
+// The text being typed, `str`, in a box at (x, y) over `frozen`, as the
+// text box shows it.
 void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const& str, int x, int y, bool centered);
 
 struct Key
@@ -52,96 +46,17 @@ struct Key
 };
 
 struct Game;
-struct Controller;
 struct Gfx;
 
-struct PlayerMenu : Menu
+// Where key events go (Gfx::processEvent).
+struct KeySink
 {
-	PlayerMenu(int x, int y)
-	: Menu(x, y)
-	{
-	}
-
-	enum
-	{
-		PlName,
-		PlHealth,
-		PlRed, PlGreen, PlBlue,
-		PlUp,
-		PlDown,
-		PlLeft,
-		PlRight,
-		PlFire,
-		PlChange,
-		PlJump,
-		PlDig,
-		PlWeap0,
-		PlController = PlWeap0 + 5,
-		PlSaveProfile,
-		PlSaveProfileAs,
-		PlLoadProfile,
-		PlLoadedProfile,
-	};
-
-	virtual void drawItemOverlay(Common& common, int item, int x, int y, bool selected, bool disabled);
-
-	virtual ItemBehavior* getItemBehavior(Common& common, int item);
-
-	std::shared_ptr<WormSettings> ws;
+	virtual ~KeySink() {}
+	virtual void onKey(int key, bool state) = 0;
 };
-
-struct SettingsMenu : Menu
-{
-	enum
-	{
-		SiGameMode,
-		SiLives,
-		SiTimeToLose, // Extra
-		SiTimeToWin,
-		SiZoneTimeout,
-		SiFlagsToWin, // Extra
-		SiLoadingTimes,
-		SiMaxBonuses,
-		SiNamesOnBonuses,
-		SiMap,
-		SiAmountOfBlood,
-		SiLevel,
-		SiRegenerateLevel,
-		SiWeaponOptions,
-		LoadOptions,
-		SaveOptions,
-		LoadChange,
-	};
-
-	SettingsMenu(int x, int y)
-	: Menu(x, y)
-	{
-	}
-
-	virtual ItemBehavior* getItemBehavior(Common& common, int item);
-
-	virtual void onUpdate();
-};
-
-
-// The file selectors and weapon options (gfx.cpp). The TC selector puts the
-// TC chosen in `chosen`. The replay selector closes with MainMenu::MaReplay
-// when one is chosen, -1 if not.
-std::unique_ptr<Screen> selectLevelScreen();
-std::unique_ptr<Screen> selectProfileScreen(WormSettings& ws);
-std::unique_ptr<Screen> selectReplayScreen();
-std::unique_ptr<Screen> selectOptionsScreen();
-std::unique_ptr<Screen> selectTcScreen(std::shared_ptr<std::unique_ptr<Common>> chosen);
-std::unique_ptr<Screen> weaponOptionsScreen();
 
 // A message (Gfx::infoBox) until a key is pressed.
 std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
-// Waits for a key, joystick button or stick move and closes with its key.
-// Unless `extended`, keys only the extended controls have are passed over.
-std::unique_ptr<Screen> keyChoiceScreen(bool extended);
-// Typing into a box at (x, y) over the frozen screen; `*text` is the start
-// and, when Enter closes it with 1, what was typed. Escape closes it with 0.
-std::unique_ptr<Screen> inputStringScreen(std::shared_ptr<std::string> text, std::size_t maxLen, int x, int y, bool digitsOnly = false);
 
 struct Joystick {
 	SDL_GameController *sdlGameController;
@@ -171,9 +86,13 @@ struct AppDriver
 	virtual void sound(int id) {}
 };
 
+// The app. Rust owns what it keeps besides the SDL windows (LieroApp in
+// rust/liero-game/src/app.rs); the fields here refer to it.
 struct Gfx
 {
 	Gfx();
+
+	LieroApp* app = liero_app();
 
 	AppDriver* driver = nullptr;
 	bool pollEvent(SDL_Event& ev);
@@ -185,13 +104,10 @@ struct Gfx
 	void onWindowResize(Uint32 windowId);
 	void loadMenus();
 
-	void process(Controller* controller = 0);
+	void process(KeySink* controller = 0);
 	// draws a given surface onto an SDL texture/renderer, using a given Renderer
 	void draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer);
 	void flip();
-	// The menus' palette for the next frame: fading in, cycling, the worms'
-	// colours.
-	void menuFade(bool quitting = false);
 
 	void clearKeys();
 
@@ -243,8 +159,9 @@ struct Gfx
 
 	std::string getKeyName(uint32_t key);
 	void setSpectatorFullscreen(bool newFullscreen);
-	void setFullscreen(bool newFullscreen);
-	void setDoubleRes(bool newDoubleRes);
+	// `updateMenu`: show the change in the options menu.
+	void setFullscreen(bool newFullscreen, bool updateMenu = true);
+	void setDoubleRes(bool newDoubleRes, bool updateMenu = true);
 
 	void saveSettings(FsNode node);
 	bool loadSettings(FsNode node);
@@ -254,39 +171,12 @@ struct Gfx
 	// loop, since a closed tab never reaches the save at the end of main.
 	void saveSettingsIfChanged();
 
-	void processEvent(SDL_Event& ev, Controller* controller = 0);
+	void processEvent(SDL_Event& ev, KeySink* controller = 0);
 
-	// The main menu's setup (rust/liero-game/src/menu_screen.rs runs the
-	// menu), which returns the item F1 picks.
-	int menuStart();
 	// F8 on the menu: the developers' random TC.
 	void randomizeTc();
 
-	// A menu item opens `screen` from its onEnter, or a controller from its
-	// focus or process; the menu or game screen pushes it, and when it closes
-	// calls `then` with its result, which for a menu item returns what onEnter
-	// would have.
-	void open(std::unique_ptr<Screen> screen, std::function<int(int)> then)
-	{
-		opening = std::move(screen);
-		openingThen = std::move(then);
-	}
-	std::unique_ptr<Screen> opening;
-	std::function<int(int)> openingThen;
-	void drawBasicMenu(/*int curSel*/);
-	void drawSpectatorInfo();
-	void playerSettings(int player);
-	void openHiddenMenu();
 
-	// A text box from a menu item (`open`): `then` gets whether Enter closed
-	// it and the text, and returns what onEnter would have.
-	void openInputString(std::string const& text, std::size_t maxLen, int x, int y, std::function<int(bool, std::string const&)> then, bool digitsOnly = false);
-	// A number box: Enter puts the number typed, kept within min and max, in
-	// `dest`. Then `then` runs.
-	void openInputInteger(int& dest, int min, int max, std::size_t maxLen, int x, int y, std::function<void()> then);
-	// Opens a message from a controller; the game screen shows it once the
-	// controller's focus or process returns.
-	void infoBox(std::string const& text, int x = 320/2, int y = 200/2, bool clearScreen = true);
 
 	static void preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256]);
 
@@ -317,35 +207,39 @@ struct Gfx
 	}
 
 	// PRNG for things that don't affect the game
-	Rand rand;
+	Rand& rand = static_cast<Rand&>(*liero_app_rand(app));
 
 	// renders everything for actual play
-	Renderer playRenderer;
+	Renderer playRenderer{liero_app_renderer(app, false)};
 	// renders everything on a single screen, for single screen replay and
 	// the spectator window
-	Renderer singleScreenRenderer;
+	Renderer singleScreenRenderer{liero_app_renderer(app, true)};
 
 	// the renderer currently in use by the primary window. Usually
 	// playRenderer, but is singleScreenRenderer if watching a replay in
-	// single screen mode.
-	Renderer* primaryRenderer;
+	// single screen mode. Rust keeps which (liero_app_set_primary_single).
+	Renderer& primaryRenderer()
+	{
+		return liero_app_primary(app) == singleScreenRenderer.rust() ? singleScreenRenderer : playRenderer;
+	}
 
 	FsNode configNode;
 	FsNode tcNode;
 	// liero.cfg as saveSettingsIfChanged last read or wrote it.
 	std::string savedSettingsText;
 
-	MainMenu mainMenu;
-	SettingsMenu settingsMenu;
-	PlayerMenu playerMenu;
-	HiddenMenu hiddenMenu;
+	// The menus, in Rust, and views of them.
+	LieroMenus* menus;
+	Menu mainMenu;
+	Menu settingsMenu;
+	Menu playerMenu;
+	Menu hiddenMenu;
 
-	Menu* curMenu;
 	std::string prevSelectedReplayPath;
 	FsNode settingsNode; // Currently loaded settings file. TODO: This is only used for display. We could just remember the name.
 	std::shared_ptr<Settings> settings;
 
-	LieroKeys dosKeys;
+	LieroKeys& dosKeys = *liero_app_keys(app);
 	// the window to render into
 	SDL_Window* sdlWindow = NULL;
 	// the window to render the spectator view into
@@ -364,21 +258,20 @@ struct Gfx
 	SDL_Surface* sdlSpectatorDrawSurface = NULL;
 	// when the menu is open, the ongoing game on the screen is paused and
 	// stored in this bitmap
-	Bitmap frozenScreen;
+	Bitmap frozenScreen{liero_app_frozen(app, false)};
 	// when the menu is open, the ongoing game on the spectator screen is
 	// paused and stored in this bitmap
-	Bitmap frozenSpectatorScreen;
+	Bitmap frozenSpectatorScreen{liero_app_frozen(app, true)};
 
 	bool running;
 	bool spectatorFullscreen, doubleRes;
 
 	Uint32 lastFrame;
-	unsigned menuCycles;
+	uint32_t& menuCycles = *liero_app_menu_cycles(app);
 	int windowW, windowH;
 	int prevMag; // Previous magnification used for drawing
 	Rect lastUpdateRect; // Last region that was updated when flipping
 	std::shared_ptr<Common> common;
-	std::unique_ptr<Controller> controller;
 
 	std::vector<Joystick> joysticks;
 

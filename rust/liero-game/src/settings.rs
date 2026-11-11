@@ -374,45 +374,49 @@ pub unsafe extern "C" fn liero_settings_save(s: &LieroSettings, node: &LieroFsNo
     node.0.write(&data::write_text(&settings_from(s)))
 }
 
-/// Reads a profile from `node` over `ws`: Ok, or ReadError if it ends
-/// early, with the worm settings as far as they were read. Null if the
-/// file can't be read.
-///
-/// # Safety
-/// `ws`'s name must be valid.
+/// Loads a profile from `node` over the settings, keeping their colour,
+/// and remembers the profile (`WormSettings::loadProfile`). False, with
+/// nothing changed, if the file can't be read. A profile that ends early
+/// or fails its checkpoint is loaded as far as it was read, with its
+/// colour: `status` says so, and C++ threw before putting the colour back.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_load_profile(
-    ws: &LieroWormSettings,
-    replay_version: i32,
-    node: &LieroFsNode,
-) -> *mut LieroSettingsResult {
-    let Some(d) = node.0.read() else { return std::ptr::null_mut() };
-    let mut worm = worm_from(ws);
-    let status = archive_status(data::read_worm(&mut worm, replay_version, &mut Bytes::new(&d)));
-    LieroSettingsResult::new(status).worm(worm).finish()
+pub extern "C" fn liero_worm_settings_box_load_profile(
+    s: &mut LieroWormSettingsBox,
+    node: Option<&LieroFsNode>,
+    status: &mut LieroSettingsStatus,
+) -> bool {
+    let Some(node) = node else { return false };
+    let Some(d) = node.0.read() else { return false };
+    let mut worm = s.worm();
+    *status = archive_status(data::read_worm(&mut worm, crate::replay::LIERO_REPLAY_VERSION, &mut Bytes::new(&d)));
+    let color = s.data.color;
+    s.profile = Some(node.0.clone());
+    s.set_worm(&worm);
+    if matches!(status, LieroSettingsStatus::Ok) {
+        s.data.color = color;
+    }
+    true
 }
 
-/// Writes `ws` to `node` as a profile, with the worm settings after writing
-/// it. Null, with nothing changed, if the file can't be written.
-///
-/// # Safety
-/// `ws`'s name must be valid.
+/// Saves the settings to `node` as a profile, in the current replay
+/// version's archive, and remembers the profile
+/// (`WormSettings::saveProfile`). False, with nothing changed, if the file
+/// can't be written.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_save_profile(
-    ws: &LieroWormSettings,
-    replay_version: i32,
-    node: &LieroFsNode,
-) -> *mut LieroSettingsResult {
+pub extern "C" fn liero_worm_settings_box_save_profile(s: &mut LieroWormSettingsBox, node: Option<&LieroFsNode>) -> bool {
+    let Some(node) = node else { return false };
     // Opened before the archive is made, as `toOctetWriter` was.
     if node.0.prepare_write().is_none() {
-        return std::ptr::null_mut();
+        return false;
     }
-    let mut worm = worm_from(ws);
-    let bytes = data::write_worm(&mut worm, replay_version);
+    let mut worm = s.worm();
+    let bytes = data::write_worm(&mut worm, crate::replay::LIERO_REPLAY_VERSION);
     if !node.0.write(&bytes) {
-        return std::ptr::null_mut();
+        return false;
     }
-    LieroSettingsResult::new(LieroSettingsStatus::Ok).worm(worm).finish()
+    s.profile = Some(node.0.clone());
+    s.set_worm(&worm);
+    true
 }
 
 /// Reads the settings archive over `s`: Ok, ReadError or CheckError.
@@ -689,19 +693,235 @@ pub struct LieroWormSettingsData {
     pub controls_ex: [u32; LIERO_MAX_CONTROL_EX],
 }
 
-/// The game's settings, without the worms', which C++ keeps apart since a
-/// worm holds on to its own.
+/// The game's settings, with a reference to each player's worm settings,
+/// which the game's worms share. A clone shares them too, as C++'s
+/// `Settings::clone` did.
 #[derive(Clone)]
 pub struct LieroSettingsBox {
     pub data: LieroSettingsData,
     pub tc: Vec<u8>,
     pub level_file: Vec<u8>,
+    pub worms: [WormSettingsRef; 2],
 }
 
-#[derive(Clone, Default)]
+/// One reference to a worm's settings box.
+pub struct WormSettingsRef(*mut LieroWormSettingsBox);
+
+impl WormSettingsRef {
+    /// A new reference to `b`.
+    ///
+    /// # Safety
+    /// `b` is a valid box.
+    pub unsafe fn retain(b: *mut LieroWormSettingsBox) -> Self {
+        WormSettingsRef(liero_worm_settings_box_retain(b))
+    }
+
+    /// Takes over the reference `liero_worm_settings_box_new` returns.
+    fn new() -> Self {
+        WormSettingsRef(liero_worm_settings_box_new())
+    }
+
+    pub fn as_ptr(&self) -> *mut LieroWormSettingsBox {
+        self.0
+    }
+}
+
+impl Clone for WormSettingsRef {
+    fn clone(&self) -> Self {
+        // SAFETY: the reference keeps the box alive.
+        unsafe { WormSettingsRef::retain(self.0) }
+    }
+}
+
+impl Drop for WormSettingsRef {
+    fn drop(&mut self) {
+        // SAFETY: this reference isn't used again.
+        unsafe { liero_worm_settings_box_free(self.0) }
+    }
+}
+
+impl std::ops::Deref for WormSettingsRef {
+    type Target = LieroWormSettingsBox;
+    fn deref(&self) -> &LieroWormSettingsBox {
+        // SAFETY: the reference keeps the box alive.
+        unsafe { &*self.0 }
+    }
+}
+
+impl std::ops::DerefMut for WormSettingsRef {
+    fn deref_mut(&mut self) -> &mut LieroWormSettingsBox {
+        // SAFETY: as for `deref`. C++'s views of the box don't hold Rust
+        // references into it across this one's use.
+        unsafe { &mut *self.0 }
+    }
+}
+
+impl LieroSettingsBox {
+    /// The settings as the formats read and write them, with the worms'.
+    pub(crate) fn settings(&self) -> Settings {
+        let mut s = data_settings(self);
+        s.worms = [self.worms[0].worm(), self.worms[1].worm()];
+        s
+    }
+
+    /// Sets the settings and the worms' from `s`.
+    pub(crate) fn set_settings(&mut self, s: &Settings) {
+        let v = settings_view(s);
+        let d = &mut self.data;
+        d.record_replays = v.record_replays;
+        d.load_powerlevel_palette = v.load_powerlevel_palette;
+        d.blood_particle_max = v.blood_particle_max;
+        d.ai_frames = v.ai_frames;
+        d.ai_mutations = v.ai_mutations;
+        d.ai_traces = v.ai_traces;
+        d.ai_parallels = v.ai_parallels;
+        d.fullscreen = v.fullscreen;
+        d.zone_timeout = v.zone_timeout;
+        d.select_bot_weapons = v.select_bot_weapons;
+        d.allow_viewing_spawn_point = v.allow_viewing_spawn_point;
+        d.single_screen_replay = v.single_screen_replay;
+        d.spectator_window = v.spectator_window;
+        d.weap_table = v.weap_table;
+        d.max_bonuses = v.max_bonuses;
+        d.blood = v.blood;
+        d.time_to_lose = v.time_to_lose;
+        d.flags_to_win = v.flags_to_win;
+        d.game_mode = v.game_mode;
+        d.shadow = v.shadow;
+        d.load_change = v.load_change;
+        d.names_on_bonuses = v.names_on_bonuses;
+        d.regenerate_level = v.regenerate_level;
+        d.lives = v.lives;
+        d.loading_time = v.loading_time;
+        d.random_level = v.random_level;
+        d.map = v.map;
+        d.screen_sync = v.screen_sync;
+        self.tc = s.ext.tc.clone();
+        self.level_file = s.level_file.clone();
+        // The game's settings first: a worm's can be one of these, which
+        // the caller may set after.
+        self.worms[0].set_worm(&s.worms[0]);
+        self.worms[1].set_worm(&s.worms[1]);
+    }
+}
+
+/// The settings without the worms', which are left as the defaults.
+fn data_settings(b: &LieroSettingsBox) -> Settings {
+    let d = &b.data;
+    let w = worm_view(&WormSettings::default());
+    let v = LieroSettings {
+        record_replays: d.record_replays,
+        load_powerlevel_palette: d.load_powerlevel_palette,
+        blood_particle_max: d.blood_particle_max,
+        ai_frames: d.ai_frames,
+        ai_mutations: d.ai_mutations,
+        ai_traces: d.ai_traces,
+        ai_parallels: d.ai_parallels,
+        fullscreen: d.fullscreen,
+        zone_timeout: d.zone_timeout,
+        select_bot_weapons: d.select_bot_weapons,
+        allow_viewing_spawn_point: d.allow_viewing_spawn_point,
+        single_screen_replay: d.single_screen_replay,
+        spectator_window: d.spectator_window,
+        tc: str(&b.tc),
+        weap_table: d.weap_table,
+        max_bonuses: d.max_bonuses,
+        blood: d.blood,
+        time_to_lose: d.time_to_lose,
+        flags_to_win: d.flags_to_win,
+        game_mode: d.game_mode,
+        shadow: d.shadow,
+        load_change: d.load_change,
+        names_on_bonuses: d.names_on_bonuses,
+        regenerate_level: d.regenerate_level,
+        lives: d.lives,
+        loading_time: d.loading_time,
+        random_level: d.random_level,
+        level_file: str(&b.level_file),
+        map: d.map,
+        screen_sync: d.screen_sync,
+        worms: [w, w],
+    };
+    // SAFETY: the strings are the box's and the default worm's, which live
+    // through the call.
+    unsafe { settings_from(&v) }
+}
+
+
+/// A worm's settings, shared by the C++ `WormSettings` that refer to them
+/// and the game's worms: each holds a reference (`_retain` and `_free`).
 pub struct LieroWormSettingsBox {
     pub data: LieroWormSettingsData,
     pub name: Vec<u8>,
+    /// The profile they were last loaded from or saved to, if any. A clone
+    /// starts without one, as a new `WormSettings` did.
+    pub profile: Option<crate::fs::Node>,
+    refs: usize,
+}
+
+impl LieroWormSettingsBox {
+    #[cfg(test)]
+    pub(crate) fn refs(&self) -> usize {
+        self.refs
+    }
+}
+
+impl Default for LieroWormSettingsBox {
+    fn default() -> Self {
+        LieroWormSettingsBox { data: LieroWormSettingsData::default(), name: Vec::new(), profile: None, refs: 1 }
+    }
+}
+
+impl LieroWormSettingsBox {
+    /// The settings as the archives read and write them.
+    pub(crate) fn worm(&self) -> WormSettings {
+        let d = &self.data;
+        let view = LieroWormSettings {
+            health: d.health,
+            controller: d.controller,
+            controls: d.controls,
+            weapons: d.weapons,
+            name: str(&self.name),
+            rgb: d.rgb,
+            random_name: d.random_name,
+            color: d.color,
+            controls_ex: d.controls_ex,
+        };
+        // SAFETY: the name is this box's.
+        unsafe { worm_from(&view) }
+    }
+
+    pub(crate) fn set_worm(&mut self, w: &WormSettings) {
+        let v = worm_view(w);
+        self.data = LieroWormSettingsData {
+            health: v.health,
+            controller: v.controller,
+            controls: v.controls,
+            weapons: v.weapons,
+            rgb: v.rgb,
+            random_name: v.random_name,
+            color: v.color,
+            controls_ex: v.controls_ex,
+        };
+        self.name = w.name.clone();
+    }
+
+    /// The profile's file, if there is one (a null node isn't one).
+    pub(crate) fn profile_path(&self) -> Option<Vec<u8>> {
+        self.profile.as_ref().filter(|n| !n.is_null()).map(|n| n.full_path().to_vec())
+    }
+
+    /// Saves the settings over their profile (the menus' "save profile").
+    pub(crate) fn save_to_profile(&mut self) -> bool {
+        let node = self.profile.clone().map(crate::fs::LieroFsNode);
+        liero_worm_settings_box_save_profile(self, node.as_ref())
+    }
+}
+
+impl Clone for LieroWormSettingsBox {
+    fn clone(&self) -> Self {
+        LieroWormSettingsBox { data: self.data, name: self.name.clone(), profile: None, refs: 1 }
+    }
 }
 
 impl Default for LieroSettingsData {
@@ -744,23 +964,47 @@ fn set_bytes(dest: &mut Vec<u8>, text: LieroStr) {
     *dest = unsafe { text.bytes() }.to_vec();
 }
 
-/// Settings with every field zero or empty; C++ then sets the defaults.
+/// Settings with every field zero or empty, and the worms' too; C++ then
+/// sets the defaults.
 #[no_mangle]
 pub extern "C" fn liero_settings_box_new() -> *mut LieroSettingsBox {
-    Box::into_raw(Box::new(LieroSettingsBox { data: LieroSettingsData::default(), tc: Vec::new(), level_file: Vec::new() }))
+    crate::shared::new_shared(LieroSettingsBox {
+        data: LieroSettingsData::default(),
+        tc: Vec::new(),
+        level_file: Vec::new(),
+        worms: [WormSettingsRef::new(), WormSettingsRef::new()],
+    })
+}
+
+/// Player `i`'s worm settings, which the box holds a reference to.
+#[no_mangle]
+pub extern "C" fn liero_settings_box_worm(s: &LieroSettingsBox, i: usize) -> *mut LieroWormSettingsBox {
+    s.worms[i].as_ptr()
+}
+
+/// Makes player `i`'s worm settings `w`, taking a reference to it.
+///
+/// # Safety
+/// `w` is a valid box.
+#[no_mangle]
+pub unsafe extern "C" fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: *mut LieroWormSettingsBox) {
+    s.worms[i] = WormSettingsRef::retain(w);
 }
 
 #[no_mangle]
 pub extern "C" fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSettingsBox {
-    Box::into_raw(Box::new(s.clone()))
+    crate::shared::new_shared(s.clone())
 }
 
+/// Gives up a reference to `s` (from `liero_settings_box_new` or `_clone`,
+/// or a game's), freeing it with the last.
+///
 /// # Safety
-/// `s` comes from `liero_settings_box_new` or `_clone` and isn't used again.
+/// `s` has a reference, or is null, and this reference isn't used again.
 #[no_mangle]
 pub unsafe extern "C" fn liero_settings_box_free(s: *mut LieroSettingsBox) {
     if !s.is_null() {
-        drop(Box::from_raw(s));
+        crate::shared::release_shared(s);
     }
 }
 
@@ -807,14 +1051,44 @@ pub extern "C" fn liero_worm_settings_box_clone(s: &LieroWormSettingsBox) -> *mu
     Box::into_raw(Box::new(s.clone()))
 }
 
+/// Another reference to `s`, which is freed when the last one is.
+///
 /// # Safety
-/// `s` comes from `liero_worm_settings_box_new` or `_clone` and isn't used
-/// again.
+/// `s` comes from `liero_worm_settings_box_new` or `_clone` and hasn't been
+/// freed.
+#[no_mangle]
+pub unsafe extern "C" fn liero_worm_settings_box_retain(s: *mut LieroWormSettingsBox) -> *mut LieroWormSettingsBox {
+    (*s).refs += 1;
+    s
+}
+
+/// Drops a reference to `s`, freeing it with the last one.
+///
+/// # Safety
+/// `s` comes from `liero_worm_settings_box_new`, `_clone` or `_retain`, or
+/// is null, and that reference isn't used again.
 #[no_mangle]
 pub unsafe extern "C" fn liero_worm_settings_box_free(s: *mut LieroWormSettingsBox) {
     if !s.is_null() {
-        drop(Box::from_raw(s));
+        (*s).refs -= 1;
+        if (*s).refs == 0 {
+            drop(Box::from_raw(s));
+        }
     }
+}
+
+/// A new node for the settings' profile, or null with none.
+#[no_mangle]
+pub extern "C" fn liero_worm_settings_box_profile(s: &LieroWormSettingsBox) -> *mut LieroFsNode {
+    match &s.profile {
+        Some(n) => Box::into_raw(Box::new(LieroFsNode(n.clone()))),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn liero_worm_settings_box_set_profile(s: &mut LieroWormSettingsBox, node: Option<&LieroFsNode>) {
+    s.profile = node.map(|n| n.0.clone());
 }
 
 /// The plain fields, which stay where they are for the box's life.
@@ -839,6 +1113,28 @@ pub unsafe extern "C" fn liero_worm_settings_box_set_name(s: &mut LieroWormSetti
 #[cfg(test)]
 mod box_tests {
     use super::*;
+
+    #[test]
+    fn a_clone_shares_the_worms() {
+        unsafe {
+            let a = liero_settings_box_new();
+            let w0 = liero_settings_box_worm(&*a, 0);
+            assert_ne!(w0, liero_settings_box_worm(&*a, 1));
+            let b = liero_settings_box_clone(&*a);
+            assert_eq!(liero_settings_box_worm(&*b, 0), w0);
+            assert_eq!((*w0).refs(), 2);
+
+            // Setting one is the box's own.
+            let w = liero_worm_settings_box_new();
+            liero_settings_box_set_worm(&mut *b, 0, w);
+            assert_eq!(((*w).refs(), (*w0).refs()), (2, 1));
+            assert_eq!(liero_settings_box_worm(&*a, 0), w0);
+            liero_worm_settings_box_free(w);
+            liero_settings_box_free(b);
+            assert_eq!((*w0).refs(), 1);
+            liero_settings_box_free(a);
+        }
+    }
 
     fn s(b: &[u8]) -> LieroStr {
         str(b)
@@ -871,6 +1167,77 @@ mod box_tests {
             assert_eq!((*c).data.health, 7);
             liero_worm_settings_box_free(w);
             liero_worm_settings_box_free(c);
+        }
+    }
+
+    #[test]
+    fn profiles_are_remembered() {
+        // Relative, as the game's nodes take paths: under the crate's target.
+        let dir = std::path::PathBuf::from(format!("target/liero-profile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("p.lpf");
+        let path_bytes = path.to_str().unwrap().as_bytes().to_vec();
+        let w = liero_worm_settings_box_new();
+        unsafe {
+            let w = &mut *w;
+            assert!(!w.save_to_profile(), "no profile to save over");
+            w.name = b"WORMY".to_vec();
+            w.data.health = 50;
+            w.data.color = 3;
+
+            let node = crate::fs::liero_fs_node_new(s(&path_bytes));
+            let path_bytes = (*node).0.full_path().to_vec();
+            assert!(liero_worm_settings_box_save_profile(w, Some(&*node)));
+            assert_eq!(w.profile_path(), Some(path_bytes.clone()));
+
+            w.profile = None;
+            w.data.health = 1;
+            w.data.color = 9;
+            let mut status = LieroSettingsStatus::Failed;
+            assert!(liero_worm_settings_box_load_profile(w, Some(&*node), &mut status));
+            assert!(matches!(status, LieroSettingsStatus::Ok));
+            assert_eq!((w.data.health, w.data.color, &w.name[..]), (50, 9, &b"WORMY"[..]), "the colour stays");
+            assert_eq!(w.profile_path(), Some(path_bytes.clone()));
+
+            w.data.health = 2;
+            assert!(w.save_to_profile(), "saved over the profile");
+            w.data.health = 3;
+            assert!(liero_worm_settings_box_load_profile(w, Some(&*node), &mut status));
+            assert_eq!(w.data.health, 2);
+
+            let missing = crate::fs::liero_fs_node_new(s(b"/no/such/dir/x.lpf"));
+            assert!(!liero_worm_settings_box_load_profile(w, Some(&*missing), &mut status));
+            assert!(!liero_worm_settings_box_save_profile(w, None));
+            assert_eq!(w.profile_path(), Some(path_bytes), "unchanged by failures");
+            crate::fs::liero_fs_node_free(node);
+            crate::fs::liero_fs_node_free(missing);
+            liero_worm_settings_box_free(w);
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn shared_until_the_last_reference() {
+        let w = liero_worm_settings_box_new();
+        unsafe {
+            let node = crate::fs::liero_fs_node_new(s(b"a/b.lpf"));
+            liero_worm_settings_box_set_profile(&mut *w, Some(&*node));
+            let again = liero_worm_settings_box_retain(w);
+            liero_worm_settings_box_free(w);
+            (*liero_worm_settings_box_data(&mut *again)).health = 3;
+            assert_eq!((*again).refs, 1);
+            assert!(!liero_worm_settings_box_profile(&*again).is_null());
+            let c = liero_worm_settings_box_clone(&*again);
+            assert!(liero_worm_settings_box_profile(&*c).is_null(), "a clone has no profile");
+            assert_eq!((*c).data.health, 3);
+            assert_eq!((*again).profile_path().as_deref(), Some((*node).0.full_path()));
+            (*again).profile = Some(crate::fs::Node::default());
+            assert_eq!((*again).profile_path(), None, "a null node isn't a profile");
+            liero_worm_settings_box_set_profile(&mut *again, None);
+            assert!(liero_worm_settings_box_profile(&*again).is_null(), "cleared");
+            liero_worm_settings_box_free(again);
+            liero_worm_settings_box_free(c);
+            crate::fs::liero_fs_node_free(node);
         }
     }
 }

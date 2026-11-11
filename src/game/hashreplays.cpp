@@ -9,7 +9,6 @@
 #include "replay.hpp"
 #include "settings.hpp"
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "filesystem.hpp"
 #include "mixer/player.hpp"
 #include "gfx/renderer.hpp"
@@ -145,7 +144,7 @@ void recordGame(std::shared_ptr<Common> common, FsNode const& node, uint32_t see
 {
 	std::unique_ptr<Game> game;
 	std::unique_ptr<ReplayWriter> replay(new ReplayWriter(node));
-	replay->context.replayVersion = version;
+	replay->setVersion(version);
 	if (startTick == 0)
 	{
 		game = setUpGame(common, seed, gameMode, nullptr);
@@ -190,7 +189,7 @@ Bytes settingsArchive(Settings const& settings)
 Bytes wormSettingsArchive(WormSettings const& ws)
 {
 	std::unique_ptr<WormSettings> copy(ws.clone());
-	return writeWormArchive(*copy, GameSerializationContext().replayVersion);
+	return writeWormArchive(*copy, myReplayVersion);
 }
 
 void putU32(Bytes& b, uint32_t v)
@@ -268,19 +267,18 @@ void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& 
 		game->clearViewports();
 		game->worms[0]->statsX = 0;
 		game->worms[1]->statsX = 218;
-		game->addSpectatorViewport(new SpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350));
-		game->addViewport(new Viewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350));
-		game->addViewport(new Viewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350));
+		game->addSpectatorViewport(Rect(0, 0, 504 + 68, 350), 504, 350);
+		game->addViewport(Rect(0, 0, 158, 158), game->worms[0]->index, 504, 350);
+		game->addViewport(Rect(160, 0, 158+160, 158), game->worms[1]->index, 504, 350);
 		game->startGame();
 		game->focus(renderer);
 
 		// What R rewinds to in ReplayController.
 		std::unique_ptr<Game> initialGame;
-		ByteReader initialReader = reader.reader;
+		std::size_t initialPos = reader.pos();
 		if (rewindAt > 0)
 		{
-			initialGame.reset(new Game(*game));
-			initialGame->postClone(*game, true);
+			initialGame = game->clone();
 		}
 
 		while (ticks < maxTicks)
@@ -296,9 +294,8 @@ void hashReplay(std::shared_ptr<Common> common, char const* name, FsNode const& 
 			{
 				// As R in ReplayController::process: back to the start, then
 				// play to here again, which has to give the same game.
-				*game = *initialGame;
-				game->postClone(*initialGame, true);
-				reader.reader = initialReader;
+				game->assign(*initialGame);
+				reader.setPos(initialPos);
 				int t = 0;
 				while (t < rewindAt && reader.playbackFrame(renderer))
 				{

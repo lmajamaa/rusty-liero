@@ -159,7 +159,9 @@ enum
 #undef DEFENUMH
 
 #define LC(name) (common.C[C##name])
-#define LS(name) (common.S[S##name])
+// A TC text as a std::string, and as it is in Rust.
+#define LS(name) (tcString(common.S[S##name]))
+#define LSV(name) (common.S[S##name])
 
 
 // TODO: Move these to Common

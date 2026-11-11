@@ -1,11 +1,11 @@
-// Games between the predictive bots (FollowAI, ai/predictive_ai.cpp), which
-// the main hash games don't use: they play DumbLieroAI, which is much
-// cheaper. Each FollowAI tick simulates hundreds of frames on copies of the
+// Games between the predictive bots (rust/liero-game/src/ai/predictive.rs), which
+// the main hash games don't use: they play the original bot, which is much
+// cheaper. Each predictive tick simulates hundreds of frames on copies of the
 // game, so these games are short and most turn the AI's search down.
 //
 // Besides the game state, they hash the AI's own state: its candidate
 // plans and their scores, the learnt transition model, the path-finding
-// cells and the positions it traced (liero_follow_ai_hash, which hashes
+// cells and the positions it traced (liero_worm_ai_hash, which hashes
 // them in the order the C++ did).
 
 #include "hashrun.hpp"
@@ -13,9 +13,7 @@
 #include "game.hpp"
 #include "worm.hpp"
 #include "viewport.hpp"
-#include "spectatorviewport.hpp"
 #include "gfx/renderer.hpp"
-#include "ai/predictive_ai.hpp"
 
 #include <cstdio>
 
@@ -59,14 +57,12 @@ void runAiGame(std::shared_ptr<Common> common, AiConfig const& config, int inter
 	settings.aiTraces = config.aiTraces;
 
 	// As createAi makes them for controller 2.
-	FollowAI* ais[2];
 	for (int i = 0; i < 2; ++i)
 	{
 		Worm& worm = *game.worms[i];
 		worm.settings->controller = 2;
-		ais[i] = new FollowAI(settings.aiParallels, worm.index == 0);
-		liero_rand_seed(liero_follow_ai_rand(ais[i]->ai), config.seed * 31 + i);
-		worm.ai.reset(ais[i]);
+		worm.setAi(2, settings.aiParallels, worm.index == 0);
+		liero_rand_seed(liero_worm_ai_rand(worm.ai()), config.seed * 31 + i);
 	}
 
 	game.startGame();
@@ -96,7 +92,7 @@ void runAiGame(std::shared_ptr<Common> common, AiConfig const& config, int inter
 			std::printf("%s %d %016llx%s\n", config.name, tick, (unsigned long long)hashGame(game), over ? " end" : "");
 			std::printf("%s-controls %d %016llx\n", config.name, tick, (unsigned long long)controls.h);
 			for (int i = 0; i < 2; ++i)
-				std::printf("%s-ai%d %d %016llx\n", config.name, i, tick, (unsigned long long)liero_follow_ai_hash(ais[i]->ai));
+				std::printf("%s-ai%d %d %016llx\n", config.name, i, tick, (unsigned long long)liero_worm_ai_hash(game.worms[i]->ai()));
 			std::printf("%s %d %016llx frame\n", config.name, tick, (unsigned long long)hashFrame(game, split, spectator));
 		}
 		if (over)

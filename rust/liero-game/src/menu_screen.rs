@@ -3,11 +3,12 @@
 //! chosen (`MenuScreen` and `Gfx::menuStep` in C++). It closes with the item
 //! chosen.
 //!
-//! The menus' items and what they do stay in C++ for now
-//! (`LieroMenuScreenHooks`): an item may open a screen, and the screen goes
-//! on where it stopped when that one closes.
+//! The menus and their items are `LieroMenus` (`menus.rs`): an item may
+//! open a screen, and the screen goes on where it stopped when that one
+//! closes. The app sets the menus up and draws them (`app_menus.rs`);
+//! saving the settings and F8's random TC are C++ (`LieroMenuScreenHooks`).
 
-use crate::menu::LieroMenuBox;
+use crate::menus::LieroMenus;
 use crate::screen::{Host, LieroScreen, Screen, Tick};
 
 const SCANCODE_RETURN: u32 = 40;
@@ -51,41 +52,12 @@ pub const LIERO_MAIN_TC: i32 = 9;
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroMenuScreenHooks {
-    /// The menu's box, which stays put while the screen is up.
-    pub menu: unsafe extern "C" fn(kind: i32) -> *mut LieroMenuBox,
-    /// The menu taking the keys (`Gfx::curMenu`), and changing it.
-    pub cur: unsafe extern "C" fn() -> i32,
-    pub set_cur: unsafe extern "C" fn(kind: i32),
-    /// Blacks out the palettes before the first frame.
-    pub clear_palettes: unsafe extern "C" fn(),
-    /// Sets the menus up (`Gfx::menuStart`) and returns the item F1 picks.
-    pub start: unsafe extern "C" fn() -> i32,
-    /// `Gfx::menuFade(true)`, for the fade-out.
-    pub fade_out: unsafe extern "C" fn(),
-    /// The screen's fade level, and setting it.
-    pub fade_value: unsafe extern "C" fn() -> i32,
-    pub set_fade_value: unsafe extern "C" fn(v: i32),
+    /// The menus, which outlive the screen.
+    pub menus: *mut LieroMenus,
     /// In the browser, saves liero.cfg when the settings changed.
     pub save_settings_if_changed: unsafe extern "C" fn(),
-    /// Draws the menus over the frozen screen.
-    pub draw: unsafe extern "C" fn(),
-    /// The menu's `onEnter` and `onLeftRight` on its selected item.
-    pub enter: unsafe extern "C" fn(kind: i32) -> i32,
-    pub left_right: unsafe extern "C" fn(kind: i32, dir: i32) -> bool,
-    /// Moves the screen the last `enter` opened (`Gfx::open`) into `out`.
-    /// False if it opened none.
-    pub take_opened: unsafe extern "C" fn(out: *mut LieroScreen) -> bool,
-    /// What the item that opened it does with the screen's result; returns
-    /// what the item's `onEnter` would have.
-    pub then: unsafe extern "C" fn(result: i32) -> i32,
-    /// Shows player `player`'s menu (`Gfx::playerSettings`).
-    pub player_settings: unsafe extern "C" fn(player: i32),
-    /// Shows the options menu (`Gfx::openHiddenMenu`).
-    pub open_hidden_menu: unsafe extern "C" fn(),
     /// F8: the developers' random TC.
     pub randomize_tc: unsafe extern "C" fn(),
-    /// Lets go of left and right, so they act once (`resetLeftRight`).
-    pub release_left_right: unsafe extern "C" fn(),
 }
 
 /// Where a pass stopped for a screen an item opened.
@@ -131,17 +103,22 @@ struct MenuScreen {
 }
 
 impl MenuScreen {
-    fn menu(&self, kind: i32) -> &mut LieroMenuBox {
-        // SAFETY: C++'s menus outlive the screen.
-        unsafe { &mut *(self.h.menu)(kind) }
+    fn menus(&self) -> &mut LieroMenus {
+        // SAFETY: C++'s menus outlive the screen, and only it uses them
+        // while it runs.
+        unsafe { &mut *self.h.menus }
+    }
+
+    fn menu(&self, kind: i32) -> &mut crate::menu::LieroMenuBox {
+        self.menus().box_of(kind)
     }
 
     fn cur(&self) -> i32 {
-        unsafe { (self.h.cur)() }
+        self.menus().cur()
     }
 
     fn set_cur(&self, kind: i32) {
-        unsafe { (self.h.set_cur)(kind) }
+        self.menus().set_cur(kind)
     }
 
     fn move_main_to(&self, id: i32) {
@@ -172,9 +149,8 @@ impl MenuScreen {
     /// Enter on `kind`'s item. Returns the screen it opened, if any; else
     /// whether the menu closes at once.
     fn enter(&mut self, kind: i32, how: Use) -> Result<bool, LieroScreen> {
-        let r = unsafe { (self.h.enter)(kind) };
-        let mut opened = LieroScreen::empty();
-        if unsafe { (self.h.take_opened)(&mut opened) } {
+        let (r, opened) = self.menus().enter(kind);
+        if let Some(opened) = opened {
             self.how = how;
             return Err(opened);
         }
@@ -204,10 +180,8 @@ impl MenuScreen {
         }
 
         if self.part == Part::Top {
-            unsafe {
-                (h.save_settings_if_changed)();
-                (h.draw)();
-            }
+            unsafe { (h.save_settings_if_changed)() };
+            crate::app_menus::draw_menus();
 
             if host.test_key_once(SCANCODE_ESCAPE) {
                 if self.cur() == LIERO_MENU_MAIN {
@@ -232,10 +206,10 @@ impl MenuScreen {
                     let s = self.main_selected_id();
                     match s {
                         LIERO_MAIN_SETTINGS => self.set_cur(LIERO_MENU_SETTINGS),
-                        LIERO_MAIN_PLAYER1_SETTINGS | LIERO_MAIN_PLAYER2_SETTINGS => unsafe {
-                            (h.player_settings)(s - LIERO_MAIN_PLAYER1_SETTINGS)
-                        },
-                        LIERO_MAIN_ADVANCED => unsafe { (h.open_hidden_menu)() },
+                        LIERO_MAIN_PLAYER1_SETTINGS | LIERO_MAIN_PLAYER2_SETTINGS => {
+                            self.menus().player_settings(s - LIERO_MAIN_PLAYER1_SETTINGS)
+                        }
+                        LIERO_MAIN_ADVANCED => self.menus().open_hidden(),
                         LIERO_MAIN_REPLAYS => {
                             enter!(cur, Use::Select, Part::AfterEnter);
                         }
@@ -265,7 +239,7 @@ impl MenuScreen {
             }
             if host.test_key_once(SCANCODE_F2) {
                 self.move_main_to(LIERO_MAIN_ADVANCED);
-                unsafe { (h.open_hidden_menu)() };
+                self.menus().open_hidden();
             }
             if host.test_key_once(SCANCODE_F3) {
                 self.set_cur(LIERO_MENU_MAIN);
@@ -276,11 +250,11 @@ impl MenuScreen {
 
         if host.test_key_once(SCANCODE_F5) {
             self.move_main_to(LIERO_MAIN_PLAYER1_SETTINGS);
-            unsafe { (h.player_settings)(0) };
+            self.menus().player_settings(0);
         }
         if host.test_key_once(SCANCODE_F6) {
             self.move_main_to(LIERO_MAIN_PLAYER2_SETTINGS);
-            unsafe { (h.player_settings)(1) };
+            self.menus().player_settings(1);
         }
         if host.test_key_once(SCANCODE_F7) {
             self.move_main_to(LIERO_MAIN_SETTINGS);
@@ -291,8 +265,11 @@ impl MenuScreen {
         }
 
         for (key, dir) in [(SCANCODE_LEFT, -1), (SCANCODE_RIGHT, 1)] {
-            if host.test_key(key) && !unsafe { (h.left_right)(self.cur(), dir) } {
-                unsafe { (h.release_left_right)() };
+            if host.test_key(key) && !self.menus().left_right(self.cur(), dir) {
+                // Let go of them, so they act once (`resetLeftRight`).
+                let keys = &mut crate::app::app().keys;
+                crate::keys::liero_keys_release_sdl(keys, SCANCODE_LEFT as i32);
+                crate::keys::liero_keys_release_sdl(keys, SCANCODE_RIGHT as i32);
             }
         }
 
@@ -335,15 +312,14 @@ impl Screen for MenuScreen {
             host.process();
         }
 
-        let h = self.h;
         match self.phase {
             Phase::Start => {
-                unsafe { (h.clear_palettes)() };
+                crate::app_menus::clear_palettes();
                 self.phase = Phase::Setup;
                 Tick::stay(true)
             }
             Phase::Setup => {
-                self.start_item = unsafe { (h.start)() };
+                self.start_item = crate::app_menus::menu_start();
                 self.selected = -1;
                 self.phase = Phase::Menu;
                 self.run_step(host)
@@ -353,17 +329,15 @@ impl Screen for MenuScreen {
                     return self.run_step(host);
                 }
                 self.phase = Phase::FadeOut;
-                unsafe {
-                    (h.set_fade_value)(32);
-                    (h.fade_out)();
-                }
+                crate::app::app().play.data.fade_value = 32;
+                crate::app_menus::menu_fade(true);
                 Tick::stay(true)
             }
             Phase::FadeOut => {
-                let v = unsafe { (h.fade_value)() } - 1;
-                unsafe { (h.set_fade_value)(v) };
-                if v > 0 {
-                    unsafe { (h.fade_out)() };
+                let v = &mut crate::app::app().play.data.fade_value;
+                *v -= 1;
+                if *v > 0 {
+                    crate::app_menus::menu_fade(true);
                     return Tick::stay(true);
                 }
                 Tick::close(self.selected)
@@ -372,7 +346,7 @@ impl Screen for MenuScreen {
     }
 
     fn resume(&mut self, _host: &Host, result: i32) {
-        self.entered = unsafe { (self.h.then)(result) };
+        self.entered = self.menus().then(result);
         self.resumed = true;
     }
 }
