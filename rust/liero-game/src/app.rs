@@ -37,6 +37,8 @@ pub struct LieroApp {
     pub menu_settings: Option<unsafe extern "C" fn() -> *mut LieroSettingsBox>,
     /// The TC the menus and new games use (`gfx.common`).
     pub menu_tc: Option<unsafe extern "C" fn() -> *mut LieroTc>,
+    /// The menus, which C++ makes.
+    pub menus: *mut crate::menus::LieroMenus,
     /// The match or replay being played, or behind the menu.
     pub controller: Option<Box<LieroController>>,
     /// Whether the screen shows the single screen renderer, for a replay on
@@ -75,6 +77,7 @@ impl LieroApp {
             menu_settings: None,
             menu_tc: None,
             controller: None,
+            menus: std::ptr::null_mut(),
             primary_single: false,
         }
     }
@@ -153,6 +156,12 @@ pub extern "C" fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
 #[no_mangle]
 pub extern "C" fn liero_app_set_menu_tc(a: &mut LieroApp, f: unsafe extern "C" fn() -> *mut LieroTc) {
     a.menu_tc = Some(f);
+}
+
+/// The menus the app draws.
+#[no_mangle]
+pub extern "C" fn liero_app_set_menus(a: &mut LieroApp, menus: *mut crate::menus::LieroMenus) {
+    a.menus = menus;
 }
 
 /// The controller, or null.

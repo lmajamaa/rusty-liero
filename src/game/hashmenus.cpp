@@ -25,6 +25,24 @@
 namespace
 {
 
+// The level name, "A vs B" and the worms' colours, as the spectator window
+// shows them in the menus and weapon selection (in Rust, app_menus.rs). The
+// name is taken from `levelFileForName`.
+void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::string const& levelFileForName, int centerX, int centerY)
+{
+	std::string level = settings.levelFile.empty()
+		? LS(LevelRandom)
+		: LS(LevelIs1) + getBasename(getLeaf(levelFileForName)) + LS(LevelIs2);
+
+	LieroBitmap scr = bmp.view();
+	LieroFont font = common.font.view();
+	WormSettings const& a = *settings.wormSettings[0];
+	WormSettings const& b = *settings.wormSettings[1];
+	auto str = [](std::string const& t) { LieroStr r = { reinterpret_cast<uint8_t const*>(t.data()), t.size() }; return r; };
+	liero_menu_draw_versus(&scr, &font, str(level), a.name.view(), b.name.view(), a.color, b.color, centerX, centerY);
+}
+
+
 void hashString(Fnv& f, std::string const& s)
 {
 	f.add(uint32_t(s.size()));

@@ -142,6 +142,11 @@ pub struct LieroScreenHost {
     /// The frozen screen with the main menu over it, greyed out while
     /// another menu is up (`Gfx::drawBasicMenu`).
     pub draw_basic_menu: Option<unsafe extern "C" fn()>,
+    /// The app draws: the screen, the frozen screen, the font, filling the
+    /// screen, the menu palette, the menu fade and the basic menu come from
+    /// the Rust app (`app_menus.rs`) instead of the functions above. Tests
+    /// leave it off.
+    pub app_drawing: bool,
     /// The time, in seconds since 1970 (`appTime`).
     pub time: Option<unsafe extern "C" fn() -> i64>,
     /// The stats' clock, in nanoseconds (`appHiresTicks`).
@@ -196,23 +201,42 @@ impl Host {
         Some(b)
     }
     pub fn screen(&self) -> Option<LieroBitmap> {
+        if self.0.app_drawing {
+            return Some(crate::app::app().play.bmp.view());
+        }
         Self::bitmap(self.0.screen)
     }
     pub fn frozen(&self) -> Option<LieroBitmap> {
+        if self.0.app_drawing {
+            return Some(crate::app::app().frozen.view());
+        }
         Self::bitmap(self.0.frozen)
     }
     pub fn font(&self) -> Option<LieroFont> {
+        if self.0.app_drawing {
+            return Some(crate::app::app().font());
+        }
         let f = self.0.font?;
         let mut font = LieroFont { chars: std::ptr::null(), count: 0 };
         unsafe { f(&mut font) };
         Some(font)
     }
     pub fn fill_screen(&self, color: u8) {
+        if self.0.app_drawing {
+            // SAFETY: the bitmap is the app's.
+            unsafe { crate::gfx::liero_gfx_fill(&crate::app::app().play.bmp.view(), color) };
+            return;
+        }
         if let Some(f) = self.0.fill_screen {
             unsafe { f(color) }
         }
     }
     pub fn menu_palette(&self) {
+        if self.0.app_drawing {
+            let a = crate::app::app();
+            a.play.data.pal = a.tc_data().palette_colors;
+            return;
+        }
         if let Some(f) = self.0.menu_palette {
             unsafe { f() }
         }
@@ -226,6 +250,10 @@ impl Host {
         self.0.test_key.is_some_and(|f| unsafe { f(scancode) })
     }
     pub fn draw_basic_menu(&self) {
+        if self.0.app_drawing {
+            crate::app_menus::draw_basic_menu();
+            return;
+        }
         if let Some(f) = self.0.draw_basic_menu {
             unsafe { f() }
         }
@@ -246,6 +274,10 @@ impl Host {
         self.0.ticks.map_or(0, |f| unsafe { f() })
     }
     pub fn menu_fade(&self) {
+        if self.0.app_drawing {
+            crate::app_menus::menu_fade(false);
+            return;
+        }
         if let Some(f) = self.0.menu_fade {
             unsafe { f() }
         }

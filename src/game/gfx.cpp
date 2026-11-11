@@ -51,6 +51,7 @@ Gfx::Gfx()
 	liero_app_set_primary_single(app, false);
 	liero_app_set_menu_settings(app, []() { return gfx.settings->rust(); });
 	liero_app_set_menu_tc(app, []() { return gfx.common->tc; });
+	liero_app_set_menus(app, menus);
 }
 
 void Gfx::init()
@@ -496,24 +497,6 @@ void Gfx::preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (
 	}
 }
 
-void Gfx::menuFade(bool quitting)
-{
-	if (playRenderer.fadeValue < 32 && !quitting)
-		++playRenderer.fadeValue;
-	if (singleScreenRenderer.fadeValue < 32 && !quitting)
-		++singleScreenRenderer.fadeValue;
-
-	++menuCycles;
-	playRenderer.pal = playRenderer.origpal;
-	playRenderer.pal.rotateFrom(playRenderer.origpal, 168, 174, menuCycles);
-	playRenderer.pal.setWormColours(*settings);
-	playRenderer.pal.fade(playRenderer.fadeValue);
-	singleScreenRenderer.pal = singleScreenRenderer.origpal;
-	singleScreenRenderer.pal.rotateFrom(singleScreenRenderer.origpal, 168, 174, menuCycles);
-	singleScreenRenderer.pal.setWormColours(*settings);
-	singleScreenRenderer.pal.fade(singleScreenRenderer.fadeValue);
-}
-
 void Gfx::draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer)
 {
 	Rect updateRect;
@@ -589,12 +572,6 @@ void Gfx::flip()
 
 	lastFrame = wantedTime;
 #endif
-}
-
-void resetLeftRight()
-{
-	gfx.releaseSDLKey(SDL_SCANCODE_LEFT);
-	gfx.releaseSDLKey(SDL_SCANCODE_RIGHT);
 }
 
 using std::string;
@@ -981,101 +958,6 @@ bool Gfx::loadSettingsLegacy(FsNode node)
 	return settings->loadLegacy(node, rand);
 }
 
-void Gfx::drawBasicMenu(/*int curSel*/)
-{
-	playRenderer.bmp.copy(frozenScreen);
-
-	mainMenu.draw(*common, playRenderer, liero_menus_cur(menus) != LIERO_MENU_MAIN, -1, true);
-}
-
-void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::string const& levelFileForName, int centerX, int centerY)
-{
-	std::string level = settings.levelFile.empty()
-		? LS(LevelRandom)
-		: LS(LevelIs1) + getBasename(getLeaf(levelFileForName)) + LS(LevelIs2);
-
-	LieroBitmap scr = bmp.view();
-	LieroFont font = common.font.view();
-	WormSettings const& a = *settings.wormSettings[0];
-	WormSettings const& b = *settings.wormSettings[1];
-	liero_menu_draw_versus(&scr, &font, str(level), a.name.view(), b.name.view(), a.color, b.color, centerX, centerY);
-}
-
-void Gfx::drawSpectatorInfo()
-{
-	Common& common = *this->common;
-	int centerX = singleScreenRenderer.renderResX / 2;
-	int centerY = singleScreenRenderer.renderResY / 4;
-
-	singleScreenRenderer.bmp.copy(frozenSpectatorScreen);
-	drawVersusInfo(common, singleScreenRenderer.bmp, *settings, gfx.settings->levelFile.str(), centerX, centerY);
-
-	if (liero_controller_running(liero_app_controller(app)))
-	{
-		common.font.drawCenteredText(singleScreenRenderer.bmp, "PAUSED", centerX, centerY + 48, 7, 2);
-	}
-	else
-	{
-		common.font.drawCenteredText(singleScreenRenderer.bmp, "SETUP", centerX, centerY + 48, 7, 2);
-	}
-}
-
-int upperCaseOnly(int k)
-{
-	k = std::toupper(k);
-
-	if((k >= 'A' && k <= 'Z')
-	|| (k == 0x8f || k == 0x8e || k == 0x99) // � �and �
-	|| (k >= '0' && k <= '9'))
-		return k;
-
-	return 0;
-}
-
-int Gfx::menuStart()
-{
-	Common& common = *this->common;
-	int centerX = singleScreenRenderer.renderResX / 2;
-
-	fillRect(playRenderer.bmp, 0, 151, 160, 7, 0);
-	common.font.drawText(playRenderer.bmp, LS(Copyright2), 2, 152, 19);
-
-	int startItemId;
-	LieroController* controller = liero_app_controller(app);
-	if (liero_controller_running(controller))
-	{
-		mainMenu.setVisibility(MainMenu::MaResumeGame, true);
-		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaResumeGame), "RESUME GAME (F1)");
-		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaNewGame), "NEW GAME");
-		startItemId = MainMenu::MaResumeGame;
-	}
-	else
-	{
-		mainMenu.setVisibility(MainMenu::MaResumeGame, false);
-		mainMenu.setItemString(mainMenu.indexFromId(MainMenu::MaNewGame), "NEW GAME (F1)");
-		startItemId = MainMenu::MaNewGame;
-	}
-
-	mainMenu.moveToFirstVisible();
-	settingsMenu.moveToFirstVisible();
-	liero_menus_update_items(menus, LIERO_MENU_SETTINGS);
-
-	playRenderer.fadeValue = 0;
-	singleScreenRenderer.fadeValue = 0;
-	liero_menus_set_cur(menus, LIERO_MENU_MAIN);
-
-	frozenScreen.copy(playRenderer.bmp);
-	singleScreenRenderer.clear();
-	if (LieroLevelBox* level = liero_controller_level(controller))
-	{
-		Level::view(level).drawMiniature(singleScreenRenderer.bmp, centerX - 126, singleScreenRenderer.renderResY - 208, 2);
-	}
-	frozenSpectatorScreen.copy(singleScreenRenderer.bmp);
-
-	menuCycles = 0;
-	return startItemId;
-}
-
 // F8 on the menu: the developers' random TC, in Rust (liero_tc_randomize).
 void Gfx::randomizeTc()
 {
@@ -1155,17 +1037,6 @@ LieroMenusHooks menusHooks()
 	return h;
 }
 
-void hookClearPalettes()
-{
-	std::memset(gfx.playRenderer.pal.entries, 0, sizeof(gfx.playRenderer.pal.entries));
-	std::memset(gfx.singleScreenRenderer.pal.entries, 0, sizeof(gfx.singleScreenRenderer.pal.entries));
-}
-
-int32_t hookStart() { return guarded([] { return gfx.menuStart(); }, 0); }
-void hookFadeOut() { gfx.menuFade(true); }
-int32_t hookFadeValue() { return gfx.playRenderer.fadeValue; }
-void hookSetFadeValue(int32_t v) { gfx.playRenderer.fadeValue = v; }
-
 void hookSaveSettingsIfChanged()
 {
 #ifdef __EMSCRIPTEN__
@@ -1173,40 +1044,14 @@ void hookSaveSettingsIfChanged()
 #endif
 }
 
-void hookDraw()
-{
-	guarded([]
-	{
-		Gfx& g = gfx;
-		g.drawBasicMenu();
-		g.drawSpectatorInfo();
-		int cur = liero_menus_cur(g.menus);
-		LieroBitmap scr = g.playRenderer.bmp.view();
-		LieroFont font = g.common->font.view();
-		if (cur == LIERO_MENU_MAIN)
-			liero_menus_draw(g.menus, LIERO_MENU_SETTINGS, &scr, &font, true, -1, false);
-		else
-			liero_menus_draw(g.menus, cur, &scr, &font, false, -1, false);
-		return 0;
-	}, 0);
-}
-
 void hookRandomizeTc() { guarded([] { gfx.randomizeTc(); return 0; }, 0); }
-void hookReleaseLeftRight() { resetLeftRight(); }
 
 std::unique_ptr<Screen> menuScreen()
 {
 	LieroMenuScreenHooks h;
 	h.menus = gfx.menus;
-	h.clear_palettes = hookClearPalettes;
-	h.start = hookStart;
-	h.fade_out = hookFadeOut;
-	h.fade_value = hookFadeValue;
-	h.set_fade_value = hookSetFadeValue;
 	h.save_settings_if_changed = hookSaveSettingsIfChanged;
-	h.draw = hookDraw;
 	h.randomize_tc = hookRandomizeTc;
-	h.release_left_right = hookReleaseLeftRight;
 	return fromFfi(liero_menu_screen(h));
 }
 

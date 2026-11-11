@@ -173,11 +173,6 @@ bool hostPollEvent(LieroEvent* out)
 void hostProcess() { gfx.process(); }
 void hostClearKeys() { gfx.clearKeys(); }
 void hostPlaySound(int32_t id) { sfx.play(*gfx.common, id); }
-void hostScreen(LieroBitmap* out) { *out = gfx.playRenderer.bmp.view(); }
-void hostFrozen(LieroBitmap* out) { *out = gfx.frozenScreen.view(); }
-void hostFont(LieroFont* out) { *out = gfx.common->font.view(); }
-void hostFillScreen(uint8_t color) { fill(gfx.playRenderer.bmp, color); }
-void hostMenuPalette() { gfx.playRenderer.pal = *gfx.common->exepal; }
 
 void hostTextInput(bool on)
 {
@@ -193,7 +188,6 @@ void hostTextInput(bool on)
 
 bool hostTestKeyOnce(uint32_t scancode) { return gfx.testSDLKeyOnce(SDL_Scancode(scancode)); }
 bool hostTestKey(uint32_t scancode) { return gfx.testSDLKey(SDL_Scancode(scancode)); }
-void hostDrawBasicMenu() { gfx.drawBasicMenu(); }
 
 size_t hostTypedKeys(LieroTypedKey* out, size_t cap)
 {
@@ -207,7 +201,6 @@ size_t hostTypedKeys(LieroTypedKey* out, size_t cap)
 }
 
 uint32_t hostTicks() { return appTicks(); }
-void hostMenuFade() { gfx.menuFade(); }
 int64_t hostTime() { return int64_t(appTime()); }
 uint64_t hostHiresTicks() { return appHiresTicks(); }
 
@@ -228,28 +221,22 @@ LieroSoundOut hostSound()
 
 void setScreenHost()
 {
-	LieroScreenHost h;
+	LieroScreenHost h = {};
 	h.poll_event = hostPollEvent;
 	h.process = hostProcess;
 	h.clear_keys = hostClearKeys;
 	h.play_sound = hostPlaySound;
-	h.screen = hostScreen;
-	h.frozen = hostFrozen;
-	h.font = hostFont;
-	h.fill_screen = hostFillScreen;
-	h.menu_palette = hostMenuPalette;
 	h.text_input = hostTextInput;
 	h.test_key_once = hostTestKeyOnce;
 	h.typed_keys = hostTypedKeys;
 	h.ticks = hostTicks;
-	h.menu_fade = hostMenuFade;
 	h.test_key = hostTestKey;
-	h.draw_basic_menu = hostDrawBasicMenu;
 	h.time = hostTime;
 	h.hires_ticks = hostHiresTicks;
 	h.replay_time = hostReplayTime;
 	h.config_node = hostConfigNode;
 	h.sound = hostSound;
+	h.app_drawing = true;
 	liero_screen_set_host(&h);
 }
 

@@ -1674,38 +1674,13 @@ typedef struct LieroMenuScreenHooks {
    */
   struct LieroMenus *menus;
   /**
-   * Blacks out the palettes before the first frame.
-   */
-  void (*clear_palettes)(void);
-  /**
-   * Sets the menus up (`Gfx::menuStart`) and returns the item F1 picks.
-   */
-  int32_t (*start)(void);
-  /**
-   * `Gfx::menuFade(true)`, for the fade-out.
-   */
-  void (*fade_out)(void);
-  /**
-   * The screen's fade level, and setting it.
-   */
-  int32_t (*fade_value)(void);
-  void (*set_fade_value)(int32_t v);
-  /**
    * In the browser, saves liero.cfg when the settings changed.
    */
   void (*save_settings_if_changed)(void);
   /**
-   * Draws the menus over the frozen screen.
-   */
-  void (*draw)(void);
-  /**
    * F8: the developers' random TC.
    */
   void (*randomize_tc)(void);
-  /**
-   * Lets go of left and right, so they act once (`resetLeftRight`).
-   */
-  void (*release_left_right)(void);
 } LieroMenuScreenHooks;
 
 /**
@@ -1880,6 +1855,13 @@ typedef struct LieroScreenHost {
    * another menu is up (`Gfx::drawBasicMenu`).
    */
   void (*draw_basic_menu)(void);
+  /**
+   * The app draws: the screen, the frozen screen, the font, filling the
+   * screen, the menu palette, the menu fade and the basic menu come from
+   * the Rust app (`app_menus.rs`) instead of the functions above. Tests
+   * leave it off.
+   */
+  bool app_drawing;
   /**
    * The time, in seconds since 1970 (`appTime`).
    */
@@ -2657,6 +2639,11 @@ struct LieroRenderer *liero_app_primary(struct LieroApp *a);
  * Where the app finds the menus' TC.
  */
 void liero_app_set_menu_tc(struct LieroApp *a, struct LieroTc *(*f)(void));
+
+/**
+ * The menus the app draws.
+ */
+void liero_app_set_menus(struct LieroApp *a, struct LieroMenus *menus);
 
 /**
  * The controller, or null.

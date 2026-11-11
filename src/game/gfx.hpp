@@ -27,11 +27,6 @@
 #include <functional>
 #include <memory>
 
-// The level name, "A vs B" and the worms' colours, as the spectator window
-// shows them in the menus and weapon selection. The name is taken from
-// `levelFileForName`, which weapon selection takes from other settings.
-void drawVersusInfo(Common& common, Bitmap& bmp, Settings const& settings, std::string const& levelFileForName, int centerX, int centerY);
-
 // A message in a box centred on (x, y), as `Gfx::infoBox` shows it.
 void drawInfoBox(Common& common, Bitmap& bmp, std::string const& text, int x, int y);
 
@@ -113,9 +108,6 @@ struct Gfx
 	// draws a given surface onto an SDL texture/renderer, using a given Renderer
 	void draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer);
 	void flip();
-	// The menus' palette for the next frame: fading in, cycling, the worms'
-	// colours.
-	void menuFade(bool quitting = false);
 
 	void clearKeys();
 
@@ -181,14 +173,9 @@ struct Gfx
 
 	void processEvent(SDL_Event& ev, KeySink* controller = 0);
 
-	// The main menu's setup (rust/liero-game/src/menu_screen.rs runs the
-	// menu), which returns the item F1 picks.
-	int menuStart();
 	// F8 on the menu: the developers' random TC.
 	void randomizeTc();
 
-	void drawBasicMenu(/*int curSel*/);
-	void drawSpectatorInfo();
 
 
 	static void preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256]);

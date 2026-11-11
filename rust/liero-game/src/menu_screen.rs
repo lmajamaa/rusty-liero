@@ -5,8 +5,8 @@
 //!
 //! The menus and their items are `LieroMenus` (`menus.rs`): an item may
 //! open a screen, and the screen goes on where it stopped when that one
-//! closes. Setting the menus up and drawing them stay C++ for now
-//! (`LieroMenuScreenHooks`).
+//! closes. The app sets the menus up and draws them (`app_menus.rs`);
+//! saving the settings and F8's random TC are C++ (`LieroMenuScreenHooks`).
 
 use crate::menus::LieroMenus;
 use crate::screen::{Host, LieroScreen, Screen, Tick};
@@ -54,23 +54,10 @@ pub const LIERO_MAIN_TC: i32 = 9;
 pub struct LieroMenuScreenHooks {
     /// The menus, which outlive the screen.
     pub menus: *mut LieroMenus,
-    /// Blacks out the palettes before the first frame.
-    pub clear_palettes: unsafe extern "C" fn(),
-    /// Sets the menus up (`Gfx::menuStart`) and returns the item F1 picks.
-    pub start: unsafe extern "C" fn() -> i32,
-    /// `Gfx::menuFade(true)`, for the fade-out.
-    pub fade_out: unsafe extern "C" fn(),
-    /// The screen's fade level, and setting it.
-    pub fade_value: unsafe extern "C" fn() -> i32,
-    pub set_fade_value: unsafe extern "C" fn(v: i32),
     /// In the browser, saves liero.cfg when the settings changed.
     pub save_settings_if_changed: unsafe extern "C" fn(),
-    /// Draws the menus over the frozen screen.
-    pub draw: unsafe extern "C" fn(),
     /// F8: the developers' random TC.
     pub randomize_tc: unsafe extern "C" fn(),
-    /// Lets go of left and right, so they act once (`resetLeftRight`).
-    pub release_left_right: unsafe extern "C" fn(),
 }
 
 /// Where a pass stopped for a screen an item opened.
@@ -193,10 +180,8 @@ impl MenuScreen {
         }
 
         if self.part == Part::Top {
-            unsafe {
-                (h.save_settings_if_changed)();
-                (h.draw)();
-            }
+            unsafe { (h.save_settings_if_changed)() };
+            crate::app_menus::draw_menus();
 
             if host.test_key_once(SCANCODE_ESCAPE) {
                 if self.cur() == LIERO_MENU_MAIN {
@@ -281,7 +266,10 @@ impl MenuScreen {
 
         for (key, dir) in [(SCANCODE_LEFT, -1), (SCANCODE_RIGHT, 1)] {
             if host.test_key(key) && !self.menus().left_right(self.cur(), dir) {
-                unsafe { (h.release_left_right)() };
+                // Let go of them, so they act once (`resetLeftRight`).
+                let keys = &mut crate::app::app().keys;
+                crate::keys::liero_keys_release_sdl(keys, SCANCODE_LEFT as i32);
+                crate::keys::liero_keys_release_sdl(keys, SCANCODE_RIGHT as i32);
             }
         }
 
@@ -324,15 +312,14 @@ impl Screen for MenuScreen {
             host.process();
         }
 
-        let h = self.h;
         match self.phase {
             Phase::Start => {
-                unsafe { (h.clear_palettes)() };
+                crate::app_menus::clear_palettes();
                 self.phase = Phase::Setup;
                 Tick::stay(true)
             }
             Phase::Setup => {
-                self.start_item = unsafe { (h.start)() };
+                self.start_item = crate::app_menus::menu_start();
                 self.selected = -1;
                 self.phase = Phase::Menu;
                 self.run_step(host)
@@ -342,17 +329,15 @@ impl Screen for MenuScreen {
                     return self.run_step(host);
                 }
                 self.phase = Phase::FadeOut;
-                unsafe {
-                    (h.set_fade_value)(32);
-                    (h.fade_out)();
-                }
+                crate::app::app().play.data.fade_value = 32;
+                crate::app_menus::menu_fade(true);
                 Tick::stay(true)
             }
             Phase::FadeOut => {
-                let v = unsafe { (h.fade_value)() } - 1;
-                unsafe { (h.set_fade_value)(v) };
-                if v > 0 {
-                    unsafe { (h.fade_out)() };
+                let v = &mut crate::app::app().play.data.fade_value;
+                *v -= 1;
+                if *v > 0 {
+                    crate::app_menus::menu_fade(true);
                     return Tick::stay(true);
                 }
                 Tick::close(self.selected)
