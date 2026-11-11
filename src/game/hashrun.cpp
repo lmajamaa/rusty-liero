@@ -395,28 +395,49 @@ void hashLevelFiles(std::shared_ptr<Common> common)
 
 } // namespace
 
+// `--hash-run [ticks] [interval] [sections]`: `sections`, a comma-separated
+// list of the names below, runs only those (tools/hashrun/run.ts --only=).
 int hashRun(int argc, char* argv[])
 {
 	int ticks = argc > 2 ? std::atoi(argv[2]) : 30000;
 	int interval = argc > 3 ? std::atoi(argv[3]) : 100;
+	std::string only = argc > 4 ? argv[4] : "";
+	auto run = [&only](char const* name)
+	{
+		bool on = only.empty() || ("," + only + ",").find(std::string(",") + name + ",") != std::string::npos;
+		// Where its lines start, for run.ts to match them on their own.
+		if (on)
+			std::printf("hash-section %s\n", name);
+		return on;
+	};
 
 	precomputeTables();
 
 	std::shared_ptr<Common> common(new Common());
 	common->load(FsNode(std::string("TC/openliero")));
-	hashTc(*common);
+	if (run("tc"))
+		hashTc(*common);
 
-	for (RunConfig const& config : configs)
-		runGame(common, config, ticks, interval);
+	if (run("games"))
+		for (RunConfig const& config : configs)
+			runGame(common, config, ticks, interval);
 
-	hashMenus(common);
-	hashSettings();
-	hashReplays(common);
-	hashAiGames(common);
-	hashSfxAndInput(common);
-	hashApp(common);
-	hashLevelFiles(common);
-	hashRandomTc();
+	if (run("menus"))
+		hashMenus(common);
+	if (run("settings"))
+		hashSettings();
+	if (run("replays"))
+		hashReplays(common);
+	if (run("ai"))
+		hashAiGames(common);
+	if (run("input"))
+		hashSfxAndInput(common);
+	if (run("app"))
+		hashApp(common);
+	if (run("levels"))
+		hashLevelFiles(common);
+	if (run("randomtc"))
+		hashRandomTc();
 
 	return 0;
 }

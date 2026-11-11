@@ -118,6 +118,12 @@ After building the web game:
 ```bash
 docker compose run --rm web bun tools/hashrun/run.ts
 ```
+For a quick check of one part, such as a planted bug, `--only=` runs just
+those sections (`tc`, `games`, `menus`, `settings`, `replays`, `ai`, `input`,
+`app`, `levels`, `randomtc`); a full run is still the check for a commit.
+```bash
+docker compose run --rm web bun tools/hashrun/run.ts --only=app,menus
+```
 CI runs these tests and checks and builds on every pull request
 (`.github/workflows/test.yml`).
 
