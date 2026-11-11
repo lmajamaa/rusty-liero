@@ -11,7 +11,7 @@ fn tc() -> *mut LieroTc {
     tc
 }
 
-unsafe extern "C" fn menu_settings() -> *mut LieroSettingsBox {
+fn menu_settings() -> *mut LieroSettingsBox {
     thread_local! {
         static SETTINGS: *mut LieroSettingsBox = liero_settings_box_new();
     }
@@ -141,7 +141,7 @@ fn r_rewinds_a_replay_to_its_start() {
         crate::replay_file::liero_replay_writer_free(w);
         drop(c);
 
-        crate::app::liero_app_set_menu_settings(app(), menu_settings);
+        crate::app::liero_app_set_settings(app(), menu_settings());
         let mut r = Box::from_raw(liero_replay_controller_new(&node, tc));
         r.focus();
         assert_eq!(r.data.state, LIERO_STATE_GAME);

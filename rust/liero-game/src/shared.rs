@@ -41,6 +41,19 @@ impl<T> Shared<T> {
         Shared(retain_shared(p))
     }
 
+    /// Takes over the reference `p` has, as `new_shared` returns it.
+    ///
+    /// # Safety
+    /// `p` comes from `new_shared`, and that reference isn't used again.
+    pub unsafe fn adopt(p: *mut T) -> Self {
+        Shared(p)
+    }
+
+    /// A new box with one reference, held by this.
+    pub fn new(v: T) -> Self {
+        Shared(new_shared(v))
+    }
+
     pub fn as_ptr(&self) -> *mut T {
         self.0
     }

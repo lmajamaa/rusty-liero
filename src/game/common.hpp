@@ -65,6 +65,8 @@ struct Common
 	static int fireConeOffset[2][7][2];
 
 	void load(FsNode node);
+	// A view of `tc`, a loaded TC, holding a reference of its own.
+	static std::shared_ptr<Common> of(LieroTc* tc);
 	void drawTextSmall(Bitmap& scr, char const* str, int x, int y);
 
 	std::string guessName() const;
@@ -123,6 +125,10 @@ struct Common
 	int32_t const* C = nullptr;
 	LieroStr const* S = nullptr;
 	bool const* H = nullptr;
+
+private:
+	// Keeps `loaded`'s reference and points at its data.
+	void attach(LieroTc* loaded);
 };
 
 #endif // UUID_9E238CFB9F074A3A432E22AE5B8EE5FB

@@ -61,6 +61,11 @@ Settings::Settings()
 	setSettings(*this, r.settings());
 }
 
+std::shared_ptr<Settings> Settings::of(LieroSettingsBox* box)
+{
+	return std::shared_ptr<Settings>(new Settings(liero_settings_box_retain(box)));
+}
+
 std::unique_ptr<Settings> Settings::clone() const
 {
 	return std::unique_ptr<Settings>(new Settings(liero_settings_box_clone(box)));

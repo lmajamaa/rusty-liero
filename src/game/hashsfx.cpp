@@ -420,7 +420,7 @@ void hashControls(std::shared_ptr<Common> common, uint32_t seed, int steps)
 
 void hashInput(std::shared_ptr<Common> common)
 {
-	gfx.common = common;
+	gfx.setCommon(common);
 	hashKeyMap();
 	for (uint32_t seed = 1; seed <= 3; ++seed)
 		hashEvents(seed, 2000);

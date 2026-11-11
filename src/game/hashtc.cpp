@@ -283,10 +283,10 @@ void hashRandomTc()
 {
 	std::shared_ptr<Common> common(new Common());
 	common->load(FsNode(std::string("TC/openliero")));
-	std::shared_ptr<Common> old = gfx.common;
-	gfx.common = common;
+	std::shared_ptr<Common> old = gfx.common();
+	gfx.setCommon(common);
 	gfx.randomizeTc();
-	gfx.common = old;
+	gfx.setCommon(old);
 
 	for (std::size_t i = 0; i < common->weapons.size(); ++i)
 	{

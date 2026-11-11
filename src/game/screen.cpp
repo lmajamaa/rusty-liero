@@ -172,7 +172,7 @@ bool hostPollEvent(LieroEvent* out)
 
 void hostProcess() { gfx.process(); }
 void hostClearKeys() { gfx.clearKeys(); }
-void hostPlaySound(int32_t id) { sfx.play(*gfx.common, id); }
+void hostPlaySound(int32_t id) { sfx.play(*gfx.common(), id); }
 
 void hostTextInput(bool on)
 {
@@ -212,11 +212,9 @@ size_t hostReplayTime(int64_t t, uint8_t* out, size_t cap)
 	return std::strftime(reinterpret_cast<char*>(out), cap, "%Y-%m-%d %H.%M.%S", now);
 }
 
-LieroFsNode const* hostConfigNode() { return gfx.configNode.rust(); }
-
 LieroSoundOut hostSound()
 {
-	return DefaultSoundPlayer(*gfx.common).out();
+	return DefaultSoundPlayer(*gfx.common()).out();
 }
 
 void setScreenHost()
@@ -234,7 +232,6 @@ void setScreenHost()
 	h.time = hostTime;
 	h.hires_ticks = hostHiresTicks;
 	h.replay_time = hostReplayTime;
-	h.config_node = hostConfigNode;
 	h.sound = hostSound;
 	h.app_drawing = true;
 	liero_screen_set_host(&h);

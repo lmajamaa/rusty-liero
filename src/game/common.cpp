@@ -252,6 +252,19 @@ void Common::load(FsNode node)
 		liero_tc_free(loaded);
 		throw std::runtime_error("The TC's constants, texts and hacks don't match the game's");
 	}
+	attach(loaded);
+}
+
+std::shared_ptr<Common> Common::of(LieroTc* tc)
+{
+	std::shared_ptr<Common> c(new Common());
+	c->attach(liero_tc_retain(tc));
+	return c;
+}
+
+void Common::attach(LieroTc* loaded)
+{
+	LieroTcData const* d = liero_tc_data(loaded);
 	liero_tc_free(tc);
 	tc = loaded;
 

@@ -190,7 +190,7 @@
 #define LIERO_MAIN_REPLAY 8
 
 /**
- * The file selectors C++ opens (`LieroMenusHooks::open_selector`).
+ * The file selectors (`app_files::open_selector`).
  */
 #define LIERO_SELECTOR_LEVEL 0
 
@@ -1674,25 +1674,15 @@ typedef struct LieroMenuScreenHooks {
    */
   struct LieroMenus *menus;
   /**
-   * In the browser, saves liero.cfg when the settings changed.
-   */
-  void (*save_settings_if_changed)(void);
-  /**
    * F8: the developers' random TC.
    */
   void (*randomize_tc)(void);
 } LieroMenuScreenHooks;
 
 /**
- * What the menus call in C++.
+ * What the menus call in C++. The settings, TC and files are the app's.
  */
 typedef struct LieroMenusHooks {
-  /**
-   * The settings the menus change, and a player's.
-   */
-  struct LieroSettingsBox *(*settings)(void);
-  struct LieroWormSettingsBox *(*worm_settings)(int32_t player);
-  const struct LieroTcData *(*tc)(void);
   /**
    * Frames the menu has shown, for how fast held keys step a number.
    */
@@ -1704,25 +1694,6 @@ typedef struct LieroMenusHooks {
   bool *(*double_res)(void);
   void (*set_double_res)(bool on);
   void (*set_fullscreen)(bool on);
-  /**
-   * A file selector (`LIERO_SELECTOR_*`), for `player`'s profile; an
-   * empty screen if listing its folder threw.
-   */
-  struct LieroScreen (*open_selector)(int32_t kind, int32_t player);
-  /**
-   * Switches to the TC the TC selector loaded, if it loaded one.
-   */
-  bool (*take_chosen_tc)(void);
-  /**
-   * The setup file loaded or saved last, and saving the setup as
-   * `name`.cfg. False if it threw.
-   */
-  struct LieroStr (*settings_path)(void);
-  bool (*save_options)(struct LieroStr name);
-  /**
-   * Saves `player`'s profile as Profiles/`name`.lpf. False if it threw.
-   */
-  bool (*save_profile_as)(int32_t player, struct LieroStr name);
 } LieroMenusHooks;
 
 /**
@@ -1877,10 +1848,6 @@ typedef struct LieroScreenHost {
    */
   uintptr_t (*replay_time)(int64_t t, uint8_t *out, uintptr_t cap);
   /**
-   * The config folder, or null.
-   */
-  const struct LieroFsNode *(*config_node)(void);
-  /**
    * Where the games' sounds go (`DefaultSoundPlayer::out`).
    */
   struct LieroSoundOut (*sound)(void);
@@ -1900,79 +1867,6 @@ typedef struct LieroAppHost {
    */
   void (*idle)(void *data);
 } LieroAppHost;
-
-/**
- * What a selector lists and where it starts.
- */
-typedef struct LieroSelectorSpec {
-  /**
-   * The root folder's full path.
-   */
-  struct LieroStr root;
-  /**
-   * The extension of the files listed, or empty for all.
-   */
-  struct LieroStr filter;
-  /**
-   * The title, before the folder's path.
-   */
-  struct LieroStr title;
-  /**
-   * If not empty, a first item with this name chooses a random level.
-   */
-  struct LieroStr random_name;
-  /**
-   * The full path to start at, when `has_select`, and the one to start at
-   * when that one isn't there or not given, when not empty.
-   */
-  struct LieroStr select;
-  bool has_select;
-  struct LieroStr fallback;
-  /**
-   * Only the root's folders with a `tc.cfg`, chosen as files.
-   */
-  bool tcs;
-  /**
-   * Enter makes the choice sound, even on a folder.
-   */
-  bool enter_sound;
-} LieroSelectorSpec;
-
-/**
- * What a selector calls in C++. `rel` is a path below the root, its parts
- * joined with '/'.
- */
-typedef struct LieroSelectorHooks {
-  void *ctx;
-  /**
-   * Lists folder `rel`: `add(list, name, is_dir)` for each entry, with a
-   * `.zip` file as a folder without its extension.
-   */
-  void (*list)(void *ctx, struct LieroStr rel, void *list, void (*add)(void *list,
-                                                                       struct LieroStr name,
-                                                                       bool is_dir));
-  /**
-   * Whether `rel` exists.
-   */
-  bool (*exists)(void *ctx, struct LieroStr rel);
-  /**
-   * The cursor moved to file `rel`: show what it is.
-   */
-  void (*preview)(void *ctx, struct LieroStr rel);
-  /**
-   * Enter on file `rel`, whose full path is `full_path` and name `name`,
-   * or on the random level. Returns what the screen closes with.
-   */
-  int32_t (*choose)(void *ctx,
-                    struct LieroStr rel,
-                    struct LieroStr full_path,
-                    struct LieroStr name,
-                    bool random);
-  /**
-   * Frees `ctx` when the screen closes.
-   */
-  void (*free)(void *ctx);
-} LieroSelectorHooks;
 
 typedef struct LieroWormSettings {
   int32_t health;
@@ -2621,9 +2515,18 @@ struct LieroBitmapBox *liero_app_frozen(struct LieroApp *a, bool spectator);
 struct LieroKeys *liero_app_keys(struct LieroApp *a);
 
 /**
- * Where the app finds the menus' settings.
+ * The menus' settings, or null.
  */
-void liero_app_set_menu_settings(struct LieroApp *a, struct LieroSettingsBox *(*f)(void));
+struct LieroSettingsBox *liero_app_settings(struct LieroApp *a);
+
+/**
+ * Makes `s` (or none, if null) the menus' settings, taking a reference to
+ * it.
+ *
+ * # Safety
+ * `s` is a valid box, or null.
+ */
+void liero_app_set_settings(struct LieroApp *a, struct LieroSettingsBox *s);
 
 /**
  * Shows the single screen renderer, or the play one.
@@ -2636,9 +2539,17 @@ void liero_app_set_primary_single(struct LieroApp *a, bool single);
 struct LieroRenderer *liero_app_primary(struct LieroApp *a);
 
 /**
- * Where the app finds the menus' TC.
+ * The menus' TC, or null.
  */
-void liero_app_set_menu_tc(struct LieroApp *a, struct LieroTc *(*f)(void));
+struct LieroTc *liero_app_tc(struct LieroApp *a);
+
+/**
+ * Makes `tc` (or none, if null) the menus' TC, taking a reference to it.
+ *
+ * # Safety
+ * `tc` comes from `liero_tc_load` and has a reference, or is null.
+ */
+void liero_app_set_tc(struct LieroApp *a, struct LieroTc *tc);
 
 /**
  * The menus the app draws.
@@ -2660,6 +2571,57 @@ struct LieroController *liero_app_controller(struct LieroApp *a);
 void liero_app_set_controller(struct LieroApp *a, struct LieroController *c);
 
 uint32_t *liero_app_menu_cycles(struct LieroApp *a);
+
+/**
+ * Sets the config folder (`Gfx::setConfigPath`).
+ *
+ * # Safety
+ * `path` is valid.
+ */
+void liero_app_set_config_path(struct LieroApp *a, struct LieroStr path);
+
+/**
+ * Sets the folder of TCs (`Gfx::setTcPath`).
+ *
+ * # Safety
+ * `path` is valid.
+ */
+void liero_app_set_tc_path(struct LieroApp *a, struct LieroStr path);
+
+/**
+ * The TC folder `TC` in the config folder.
+ */
+void liero_app_set_tc_in_config(struct LieroApp *a);
+
+/**
+ * A new node for the config folder.
+ */
+struct LieroFsNode *liero_app_config(struct LieroApp *a);
+
+/**
+ * A new node for the folder of TCs.
+ */
+struct LieroFsNode *liero_app_tc_root(struct LieroApp *a);
+
+/**
+ * Sets the settings file the menu shows, without reading it.
+ */
+void liero_app_set_settings_node(struct LieroApp *a, const struct LieroFsNode *node);
+
+/**
+ * `LieroApp::load_settings`.
+ */
+bool liero_app_load_settings(struct LieroApp *a, const struct LieroFsNode *node, bool legacy);
+
+/**
+ * `LieroApp::save_settings`.
+ */
+bool liero_app_save_settings(struct LieroApp *a, const struct LieroFsNode *node);
+
+/**
+ * `LieroApp::mark_settings_saved`.
+ */
+void liero_app_mark_settings_saved(struct LieroApp *a);
 
 /**
  * The app's first screen.
@@ -4479,16 +4441,6 @@ bool liero_app_step(struct LieroApp *app, const struct LieroAppHost *host);
 bool liero_app_frame(struct LieroApp *app, uint32_t now_ms, const struct LieroAppHost *host);
 
 /**
- * A file selector screen.
- *
- * # Safety
- * The strings in `spec` must be valid; the hooks are called with `ctx`
- * until `free`.
- */
-struct LieroScreen liero_selector_screen(const struct LieroSelectorSpec *spec,
-                                         struct LieroSelectorHooks hooks);
-
-/**
  * The default settings, as `Settings::Settings` makes them.
  */
 struct LieroSettingsResult *liero_settings_default(void);
@@ -4686,6 +4638,15 @@ struct LieroWormSettingsBox *liero_settings_box_worm(const struct LieroSettingsB
 void liero_settings_box_set_worm(struct LieroSettingsBox *s,
                                  uintptr_t i,
                                  struct LieroWormSettingsBox *w);
+
+/**
+ * Another reference to `s`, to give up with `liero_settings_box_free`.
+ *
+ * # Safety
+ * `s` comes from `liero_settings_box_new` or `_clone` and still has a
+ * reference.
+ */
+struct LieroSettingsBox *liero_settings_box_retain(struct LieroSettingsBox *s);
 
 struct LieroSettingsBox *liero_settings_box_clone(const struct LieroSettingsBox *s);
 
@@ -4943,6 +4904,14 @@ const struct LieroTcData *liero_tc_data(const struct LieroTc *tc);
  * `tc` must come from `liero_tc_load` and not be used afterwards.
  */
 void liero_tc_free(struct LieroTc *tc);
+
+/**
+ * Another reference to `tc`, to give up with `liero_tc_free`.
+ *
+ * # Safety
+ * `tc` must come from `liero_tc_load` and still have a reference.
+ */
+struct LieroTc *liero_tc_retain(struct LieroTc *tc);
 
 /**
  * `timeToString`: writes "MM:SS" and a NUL to `out` (6 bytes).

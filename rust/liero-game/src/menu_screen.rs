@@ -6,7 +6,8 @@
 //! The menus and their items are `LieroMenus` (`menus.rs`): an item may
 //! open a screen, and the screen goes on where it stopped when that one
 //! closes. The app sets the menus up and draws them (`app_menus.rs`);
-//! saving the settings and F8's random TC are C++ (`LieroMenuScreenHooks`).
+//! saving the settings is the app's (`app_files.rs`), and F8's random TC
+//! is C++ (`LieroMenuScreenHooks`).
 
 use crate::menus::LieroMenus;
 use crate::screen::{Host, LieroScreen, Screen, Tick};
@@ -54,8 +55,6 @@ pub const LIERO_MAIN_TC: i32 = 9;
 pub struct LieroMenuScreenHooks {
     /// The menus, which outlive the screen.
     pub menus: *mut LieroMenus,
-    /// In the browser, saves liero.cfg when the settings changed.
-    pub save_settings_if_changed: unsafe extern "C" fn(),
     /// F8: the developers' random TC.
     pub randomize_tc: unsafe extern "C" fn(),
 }
@@ -180,7 +179,10 @@ impl MenuScreen {
         }
 
         if self.part == Part::Top {
-            unsafe { (h.save_settings_if_changed)() };
+            // In the browser, liero.cfg is saved when the settings change.
+            if cfg!(target_os = "emscripten") {
+                crate::app::app().save_settings_if_changed();
+            }
             crate::app_menus::draw_menus();
 
             if host.test_key_once(SCANCODE_ESCAPE) {

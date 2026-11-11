@@ -2,16 +2,13 @@
 //! screens: the folder tree, its lists, the keys and the drawing (they were
 //! `FileSelector` and the selector screens in C++).
 //!
-//! Listing a folder and what choosing a file does stay in C++ for now
-//! (`LieroSelectorHooks`): C++'s file layer also reads `.zip` files as
-//! folders, and choosing loads a level, profile, replay, options or TC.
-
-use std::ffi::c_void;
+//! What a selector lists and what choosing a file does is a `FileSource`;
+//! the app's are in `app_files.rs`.
 
 use crate::gfx::{liero_gfx_draw_rounded_box, LieroBitmap};
 use crate::menu::{LieroMenu, OwnedMenu};
 use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
-use crate::text::{LieroFont, LieroStr};
+use crate::text::LieroFont;
 
 // SDL's scancodes.
 const SCANCODE_RETURN: u32 = 40;
@@ -34,50 +31,37 @@ const PARENT_X: i32 = 28;
 const TITLE_Y: i32 = 20;
 const TITLE_COLOR: i32 = 50;
 
-/// What a selector calls in C++. `rel` is a path below the root, its parts
-/// joined with '/'.
-#[repr(C)]
-pub struct LieroSelectorHooks {
-    pub ctx: *mut c_void,
-    /// Lists folder `rel`: `add(list, name, is_dir)` for each entry, with a
-    /// `.zip` file as a folder without its extension.
-    pub list: Option<
-        unsafe extern "C" fn(
-            ctx: *mut c_void,
-            rel: LieroStr,
-            list: *mut c_void,
-            add: unsafe extern "C" fn(list: *mut c_void, name: LieroStr, is_dir: bool),
-        ),
-    >,
+/// The files a selector lists, and what choosing one does. `rel` is a path
+/// below the root, its parts joined with '/'.
+pub trait FileSource {
+    /// Folder `rel`'s entries, as (name, is a folder), with a `.zip` file
+    /// as a folder without its extension.
+    fn list(&mut self, rel: &[u8]) -> Vec<(Vec<u8>, bool)>;
     /// Whether `rel` exists.
-    pub exists: Option<unsafe extern "C" fn(ctx: *mut c_void, rel: LieroStr) -> bool>,
+    fn exists(&mut self, rel: &[u8]) -> bool;
     /// The cursor moved to file `rel`: show what it is.
-    pub preview: Option<unsafe extern "C" fn(ctx: *mut c_void, rel: LieroStr)>,
+    fn preview(&mut self, _rel: &[u8]) {}
     /// Enter on file `rel`, whose full path is `full_path` and name `name`,
     /// or on the random level. Returns what the screen closes with.
-    pub choose: Option<
-        unsafe extern "C" fn(ctx: *mut c_void, rel: LieroStr, full_path: LieroStr, name: LieroStr, random: bool) -> i32,
-    >,
-    /// Frees `ctx` when the screen closes.
-    pub free: Option<unsafe extern "C" fn(ctx: *mut c_void)>,
+    fn choose(&mut self, rel: &[u8], full_path: &[u8], name: &[u8], random: bool) -> i32;
 }
 
 /// What a selector lists and where it starts.
-#[repr(C)]
-pub struct LieroSelectorSpec {
+#[derive(Default)]
+pub struct Spec {
     /// The root folder's full path.
-    pub root: LieroStr,
+    pub root: Vec<u8>,
     /// The extension of the files listed, or empty for all.
-    pub filter: LieroStr,
+    pub filter: Vec<u8>,
     /// The title, before the folder's path.
-    pub title: LieroStr,
+    pub title: Vec<u8>,
     /// If not empty, a first item with this name chooses a random level.
-    pub random_name: LieroStr,
+    pub random_name: Vec<u8>,
     /// The full path to start at, when `has_select`, and the one to start at
     /// when that one isn't there or not given, when not empty.
-    pub select: LieroStr,
+    pub select: Vec<u8>,
     pub has_select: bool,
-    pub fallback: LieroStr,
+    pub fallback: Vec<u8>,
     /// Only the root's folders with a `tc.cfg`, chosen as files.
     pub tcs: bool,
     /// Enter makes the choice sound, even on a folder.
@@ -127,10 +111,6 @@ fn join_path(root: &[u8], leaf: &[u8]) -> Vec<u8> {
     r
 }
 
-fn lstr(b: &[u8]) -> LieroStr {
-    LieroStr { ptr: b.as_ptr(), len: b.len() }
-}
-
 /// `Menu(178, 28)` with `setHeight(14)`, as a file list is.
 fn file_list() -> OwnedMenu {
     OwnedMenu::new(LieroMenu { x: LIST_X, y: 28, height: 14, item_height: 8, ..Default::default() })
@@ -140,7 +120,7 @@ fn file_list() -> OwnedMenu {
 struct Node {
     name: Vec<u8>,
     full_path: Vec<u8>,
-    /// The path below the root, for the hooks.
+    /// The path below the root, for the source.
     rel: Vec<u8>,
     folder: bool,
     parent: Option<usize>,
@@ -150,7 +130,7 @@ struct Node {
 }
 
 struct Selector {
-    hooks: LieroSelectorHooks,
+    source: Box<dyn FileSource>,
     nodes: Vec<Node>,
     current: usize,
     filter: Vec<u8>,
@@ -164,10 +144,6 @@ struct Selector {
 }
 
 const ROOT: usize = 0;
-
-unsafe extern "C" fn add_entry(list: *mut c_void, name: LieroStr, is_dir: bool) {
-    (*(list as *mut Vec<(Vec<u8>, bool)>)).push((name.bytes().to_vec(), is_dir));
-}
 
 impl Selector {
     fn node(&mut self, name: Vec<u8>, full_path: Vec<u8>, rel: Vec<u8>, folder: bool, parent: Option<usize>) -> usize {
@@ -186,11 +162,8 @@ impl Selector {
 
     /// Lists folder `n` (`FileNode::fill`).
     fn fill(&mut self, n: usize) {
-        let mut entries: Vec<(Vec<u8>, bool)> = Vec::new();
-        if let Some(list) = self.hooks.list {
-            let rel = self.nodes[n].rel.clone();
-            unsafe { list(self.hooks.ctx, lstr(&rel), (&mut entries as *mut Vec<(Vec<u8>, bool)>).cast(), add_entry) };
-        }
+        let rel = self.nodes[n].rel.clone();
+        let entries = self.source.list(&rel);
         let mut children = Vec::new();
         for (name, is_dir) in entries {
             let full_path = join_path(&self.nodes[n].full_path, &name);
@@ -343,13 +316,11 @@ impl Selector {
 
     /// Previews the file under the cursor if it's new there.
     fn update_preview(&mut self) {
-        let Some(preview) = self.hooks.preview else {
-            return;
-        };
         let cur = self.cur_sel();
         if self.previewed != cur {
             if let Some(c) = cur.filter(|&c| Some(c) != self.random && !self.nodes[c].folder) {
-                unsafe { preview(self.hooks.ctx, lstr(&self.nodes[c].rel)) };
+                let rel = self.nodes[c].rel.clone();
+                self.source.preview(&rel);
                 self.previewed = Some(c);
             }
         }
@@ -385,11 +356,8 @@ impl Selector {
         }
         let c = self.enter()?;
         let random = Some(c) == self.random;
-        let Some(choose) = self.hooks.choose else {
-            return Some(-1);
-        };
         let n = &self.nodes[c];
-        Some(unsafe { choose(self.hooks.ctx, lstr(&n.rel), lstr(&n.full_path), lstr(&n.name), random) })
+        Some(self.source.choose(&n.rel, &n.full_path, &n.name, random))
     }
 }
 
@@ -428,32 +396,25 @@ impl Screen for Selector {
         self.shown = true;
         Tick::stay(true)
     }
-
-    fn close(&mut self, _host: &Host) {
-        if let Some(free) = self.hooks.free {
-            unsafe { free(self.hooks.ctx) };
-        }
-    }
 }
 
 impl Selector {
-    fn new(spec: &LieroSelectorSpec, hooks: LieroSelectorHooks) -> Self {
-        let b = |s: &LieroStr| unsafe { s.bytes().to_vec() };
+    fn new(spec: &Spec, source: Box<dyn FileSource>) -> Self {
         let mut sel = Selector {
-            hooks,
+            source,
             nodes: Vec::new(),
             current: ROOT,
-            filter: b(&spec.filter),
-            title: b(&spec.title),
+            filter: spec.filter.clone(),
+            title: spec.title.clone(),
             random: None,
             enter_sound: spec.enter_sound,
             previewed: None,
             shown: false,
         };
-        let root = sel.node(Vec::new(), b(&spec.root), Vec::new(), true, None);
+        let root = sel.node(Vec::new(), spec.root.clone(), Vec::new(), true, None);
         sel.fill(root);
 
-        let random_name = b(&spec.random_name);
+        let random_name = spec.random_name.clone();
         if !random_name.is_empty() {
             let r = sel.node(random_name, Vec::new(), Vec::new(), false, Some(root));
             sel.nodes[root].children.insert(0, r);
@@ -465,8 +426,7 @@ impl Selector {
             let mut kept = Vec::new();
             for c in children {
                 let cfg = join_path(&sel.nodes[c].rel, b"tc.cfg");
-                let exists = sel.hooks.exists.is_some_and(|f| unsafe { f(sel.hooks.ctx, lstr(&cfg)) });
-                if exists {
+                if sel.source.exists(&cfg) {
                     sel.nodes[c].folder = false;
                     kept.push(c);
                 }
@@ -474,8 +434,8 @@ impl Selector {
             sel.nodes[root].children = kept;
         }
 
-        let selected = spec.has_select && sel.select(&b(&spec.select));
-        let fallback = b(&spec.fallback);
+        let selected = spec.has_select && sel.select(&spec.select);
+        let fallback = spec.fallback.clone();
         if !selected && !fallback.is_empty() {
             sel.select(&fallback);
         }
@@ -484,13 +444,8 @@ impl Selector {
 }
 
 /// A file selector screen.
-///
-/// # Safety
-/// The strings in `spec` must be valid; the hooks are called with `ctx`
-/// until `free`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_selector_screen(spec: &LieroSelectorSpec, hooks: LieroSelectorHooks) -> LieroScreen {
-    into_ffi(Box::new(Selector::new(spec, hooks)))
+pub fn selector_screen(spec: &Spec, source: Box<dyn FileSource>) -> LieroScreen {
+    into_ffi(Box::new(Selector::new(spec, source)))
 }
 
 #[cfg(test)]
@@ -505,29 +460,36 @@ mod tests {
         static CHOSEN: RefCell<Vec<String>> = RefCell::new(Vec::new());
     }
 
-    unsafe extern "C" fn list(
-        _: *mut c_void,
-        rel: LieroStr,
-        out: *mut c_void,
-        add: unsafe extern "C" fn(*mut c_void, LieroStr, bool),
-    ) {
-        let rel = String::from_utf8(rel.bytes().to_vec()).unwrap();
-        let entries = TREE.with(|t| t.borrow().get(&rel).cloned().unwrap_or_default());
-        for (name, dir) in entries {
-            add(out, lstr(name.as_bytes()), dir);
+    /// The folders in `TREE`, choices going to `CHOSEN`, and with
+    /// `previews`, previews counted in `PREVIEWS`.
+    struct Tree {
+        previews: bool,
+    }
+
+    impl FileSource for Tree {
+        fn list(&mut self, rel: &[u8]) -> Vec<(Vec<u8>, bool)> {
+            let rel = String::from_utf8(rel.to_vec()).unwrap();
+            let entries = TREE.with(|t| t.borrow().get(&rel).cloned().unwrap_or_default());
+            entries.into_iter().map(|(n, d)| (n.into_bytes(), d)).collect()
         }
-    }
 
-    unsafe extern "C" fn exists(_: *mut c_void, rel: LieroStr) -> bool {
-        let rel = String::from_utf8(rel.bytes().to_vec()).unwrap();
-        let (dir, file) = rel.rsplit_once('/').unwrap_or(("", &rel));
-        TREE.with(|t| t.borrow().get(dir).is_some_and(|e| e.iter().any(|(n, _)| n == file)))
-    }
+        fn exists(&mut self, rel: &[u8]) -> bool {
+            let rel = String::from_utf8(rel.to_vec()).unwrap();
+            let (dir, file) = rel.rsplit_once('/').unwrap_or(("", &rel));
+            TREE.with(|t| t.borrow().get(dir).is_some_and(|e| e.iter().any(|(n, _)| n == file)))
+        }
 
-    unsafe extern "C" fn choose(_: *mut c_void, rel: LieroStr, full: LieroStr, name: LieroStr, random: bool) -> i32 {
-        let s = |x: LieroStr| String::from_utf8(x.bytes().to_vec()).unwrap();
-        CHOSEN.with(|c| c.borrow_mut().push(format!("{}|{}|{}|{}", s(rel), s(full), s(name), random)));
-        5
+        fn preview(&mut self, _: &[u8]) {
+            if self.previews {
+                PREVIEWS.with(|p| *p.borrow_mut() += 1);
+            }
+        }
+
+        fn choose(&mut self, rel: &[u8], full: &[u8], name: &[u8], random: bool) -> i32 {
+            let s = |x: &[u8]| String::from_utf8(x.to_vec()).unwrap();
+            CHOSEN.with(|c| c.borrow_mut().push(format!("{}|{}|{}|{}", s(rel), s(full), s(name), random)));
+            5
+        }
     }
 
     fn tree(entries: &[(&str, &[(&str, bool)])]) {
@@ -540,26 +502,19 @@ mod tests {
         CHOSEN.with(|c| c.borrow_mut().clear());
     }
 
-    fn hooks() -> LieroSelectorHooks {
-        LieroSelectorHooks {
-            ctx: std::ptr::null_mut(),
-            list: Some(list),
-            exists: Some(exists),
-            preview: None,
-            choose: Some(choose),
-            free: None,
-        }
+    fn tree_source() -> Box<dyn FileSource> {
+        Box::new(Tree { previews: false })
     }
 
-    fn spec<'a>(filter: &'a [u8], select: &'a [u8], random: &'a [u8], tcs: bool) -> LieroSelectorSpec {
-        LieroSelectorSpec {
-            root: lstr(b"/cfg"),
-            filter: lstr(filter),
-            title: lstr(b"Select:"),
-            random_name: lstr(random),
-            select: lstr(select),
+    fn spec(filter: &[u8], select: &[u8], random: &[u8], tcs: bool) -> Spec {
+        Spec {
+            root: b"/cfg".to_vec(),
+            filter: filter.to_vec(),
+            title: b"Select:".to_vec(),
+            random_name: random.to_vec(),
+            select: select.to_vec(),
             has_select: !select.is_empty(),
-            fallback: lstr(b""),
+            fallback: Vec::new(),
             tcs,
             enter_sound: false,
         }
@@ -572,14 +527,14 @@ mod tests {
     #[test]
     fn lists_folders_first_filtered_and_sorted_without_case() {
         tree(&[("", &[("b.LEV", false), ("zeta", true), ("A.lev", false), ("notes.txt", false), ("Alpha", true)])]);
-        let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), hooks());
+        let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), tree_source());
         assert_eq!(names(&mut sel, ROOT), ["Random", "Alpha", "zeta", "A", "b"]);
     }
 
     #[test]
     fn selects_a_file_in_a_subfolder_and_chooses_it() {
         tree(&[("", &[("Replays", true), ("x.lrp", false)]), ("Replays", &[("one.lrp", false), ("two.lrp", false)])]);
-        let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/two.lrp", b"", false), hooks());
+        let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/two.lrp", b"", false), tree_source());
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
         assert_eq!(sel.cur_sel().map(|c| sel.nodes[c].name.clone()), Some(b"two".to_vec()));
         assert_eq!(sel.choose(&Host(Default::default())), Some(5));
@@ -593,7 +548,7 @@ mod tests {
     #[test]
     fn enter_on_a_folder_opens_it() {
         tree(&[("", &[("Replays", true)]), ("Replays", &[("one.lrp", false)])]);
-        let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), hooks());
+        let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), tree_source());
         assert_eq!(sel.choose(&Host(Default::default())), None);
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
     }
@@ -601,7 +556,7 @@ mod tests {
     #[test]
     fn random_level_is_chosen_as_random() {
         tree(&[("", &[("a.lev", false)])]);
-        let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), hooks());
+        let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), tree_source());
         assert_eq!(sel.choose(&Host(Default::default())), Some(5));
         assert_eq!(CHOSEN.with(|c| c.borrow().clone()), ["||Random|true"]);
     }
@@ -609,7 +564,7 @@ mod tests {
     #[test]
     fn tcs_are_folders_with_a_tc_cfg_chosen_as_files() {
         tree(&[("", &[("good", true), ("bad", true)]), ("good", &[("tc.cfg", false)]), ("bad", &[])]);
-        let mut sel = Selector::new(&spec(b"", b"", b"", true), hooks());
+        let mut sel = Selector::new(&spec(b"", b"", b"", true), tree_source());
         assert_eq!(names(&mut sel, ROOT), ["good"]);
         assert_eq!(sel.choose(&Host(Default::default())), Some(5));
     }
@@ -638,10 +593,6 @@ mod tests {
         })
     }
 
-    unsafe extern "C" fn preview(_: *mut c_void, _: LieroStr) {
-        PREVIEWS.with(|p| *p.borrow_mut() += 1);
-    }
-
     fn key_host(keys: &[u32], typed_text: &[u8]) -> Host {
         KEYS.with(|k| *k.borrow_mut() = keys.to_vec());
         TYPED.with(|t| {
@@ -660,7 +611,7 @@ mod tests {
     #[test]
     fn escape_wins_over_left_and_right() {
         tree(&[("", &[("Replays", true)]), ("Replays", &[("one.lrp", false)])]);
-        let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/one.lrp", b"", false), hooks());
+        let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/one.lrp", b"", false), tree_source());
         let h = key_host(&[SCANCODE_LEFT, SCANCODE_ESCAPE], b"");
         assert!(!sel.process(&h));
         // Left wasn't read, and the folder is still open.
@@ -671,7 +622,7 @@ mod tests {
     #[test]
     fn typing_finds_names_containing_the_text() {
         tree(&[("", &[("alpha.lrp", false), ("beta.lrp", false), ("gamma.lrp", false)])]);
-        let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), hooks());
+        let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), tree_source());
         // "mm" is only inside "gamma".
         assert!(sel.process(&key_host(&[], b"mm")));
         assert_eq!(sel.cur_sel().map(|c| sel.nodes[c].name.clone()), Some(b"gamma".to_vec()));
@@ -680,9 +631,7 @@ mod tests {
     #[test]
     fn a_level_is_previewed_once_until_the_cursor_moves() {
         tree(&[("", &[("a.lev", false), ("b.lev", false)])]);
-        let mut hk = hooks();
-        hk.preview = Some(preview);
-        let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), hk);
+        let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), Box::new(Tree { previews: true }));
         PREVIEWS.with(|p| *p.borrow_mut() = 0);
         // Random is selected first: nothing to preview.
         sel.update_preview();

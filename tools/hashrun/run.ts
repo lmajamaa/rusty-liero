@@ -5,6 +5,12 @@
 //
 //   bun tools/hashrun/run.ts [dir]            # dir defaults to build/web
 //   bun tools/hashrun/run.ts [dir] --update   # rewrite expected.txt
+//   bun tools/hashrun/run.ts [dir] --only=app,menus
+//
+// --only runs just those sections (tc, games, menus, settings, replays, ai,
+// input, app, levels, randomtc) and checks that each one's lines match a run
+// of expected.txt's, for quick checks such as planted bugs. A full run is still
+// the check for a commit.
 //
 // Only regenerate expected.txt from a build whose game logic is known to be
 // right, such as the commit before a port.
@@ -16,6 +22,11 @@ const INTERVAL = 100;
 
 const args = process.argv.slice(2);
 const update = args.includes("--update");
+const only = args.find((a) => a.startsWith("--only="))?.slice("--only=".length) ?? "";
+if (update && only) {
+  console.error("--update needs a full run, without --only");
+  process.exit(1);
+}
 const dir = resolve(args.find((a) => !a.startsWith("--")) ?? "build/web");
 const expectedPath = join(import.meta.dir, "expected.txt");
 
@@ -27,7 +38,10 @@ for (const file of ["openliero.js", "openliero.wasm", "openliero.data"]) {
   }
 }
 
-const lines: string[] = await new Promise(async (done, fail) => {
+const isHash = (l: string) => /^\S+ \d+ [0-9a-f]{16}( end| frame)?$/.test(l);
+
+// The hash lines, and those of each section run.
+const output: string[] = await new Promise(async (done, fail) => {
   const out: string[] = [];
   // Emscripten's generated script uses a global Module object if one exists.
   (globalThis as any).Module = {
@@ -37,14 +51,14 @@ const lines: string[] = await new Promise(async (done, fail) => {
     onAbort: (what: unknown) => fail(new Error(`The game aborted: ${what}`)),
     onRuntimeInitialized() {
       try {
-        const status = (globalThis as any).Module.callMain(["--hash-run", String(TICKS), String(INTERVAL)]);
+        const status = (globalThis as any).Module.callMain(["--hash-run", String(TICKS), String(INTERVAL), ...(only ? [only] : [])]);
         if (status) fail(new Error(`--hash-run exited with ${status}`));
         // The first line is the game's version banner on normal runs; hash
         // lines have three fields, and a fourth for the end of a game or a
         // frame hash.
         else {
           for (const l of out) if (l.includes(" summary: ")) console.log(l);
-          done(out.filter((l) => /^\S+ \d+ [0-9a-f]{16}( end| frame)?$/.test(l)));
+          done(out.filter((l) => isHash(l) || l.startsWith("hash-section ")));
         }
       } catch (e) {
         fail(e);
@@ -59,6 +73,13 @@ const lines: string[] = await new Promise(async (done, fail) => {
   (0, eval)(await Bun.file(script).text());
 });
 
+const lines = output.filter(isHash);
+const sections: string[][] = [];
+for (const l of output) {
+  if (l.startsWith("hash-section ")) sections.push([]);
+  else sections[sections.length - 1]?.push(l);
+}
+
 if (lines.length === 0) {
   console.error("No hashes printed");
   process.exit(1);
@@ -70,7 +91,23 @@ if (update) {
   process.exit(0);
 }
 
-const expected = (await Bun.file(expectedPath).text()).trim().split("\n");
+const all = (await Bun.file(expectedPath).text()).trim().split("\n");
+let expected = all;
+if (only) {
+  // Each section's lines are a run of expected.txt, starting where its first
+  // line is.
+  expected = [];
+  for (const section of sections) {
+    if (section.length === 0) continue;
+    const start = all.indexOf(section[0]);
+    if (start < 0) {
+      console.error(`A section's first line isn't in expected.txt: ${section[0]}`);
+      console.error("The game no longer matches the original C++.");
+      process.exit(1);
+    }
+    expected.push(...all.slice(start, start + section.length));
+  }
+}
 const count = Math.max(expected.length, lines.length);
 for (let i = 0; i < count; ++i) {
   if (expected[i] !== lines[i]) {
@@ -81,4 +118,4 @@ for (let i = 0; i < count; ++i) {
     process.exit(1);
   }
 }
-console.log(`All ${lines.length} game-state and frame hashes match`);
+console.log(`All ${lines.length} game-state and frame hashes match${only ? ` (only ${only})` : ""}`);

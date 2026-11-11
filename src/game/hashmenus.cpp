@@ -101,7 +101,7 @@ struct MenuOps
 // One of the menus in Rust (rust/liero-game/src/menus.rs).
 MenuOps rustMenu(Menu& menu, int kind)
 {
-	Common& common = *gfx.common;
+	Common& common = *gfx.common();
 	return MenuOps{
 		menu,
 		[kind](int dir) { liero_menus_left_right(gfx.menus, kind, dir); },
@@ -133,7 +133,7 @@ struct Availability
 		b.kind = LieroItemKind_Enum;
 		b.flag = nullptr;
 		b.set_flag = nullptr;
-		b.value = reinterpret_cast<int32_t*>(&gfx.settings->weapTable[common.weapOrder[menu.itemId(item)]]);
+		b.value = reinterpret_cast<int32_t*>(&gfx.settings()->weapTable[common.weapOrder[menu.itemId(item)]]);
 		b.min = 0;
 		b.max = int32_t(names.size()) - 1;
 		b.step = 1;
@@ -268,12 +268,12 @@ void runMenu(char const* name, MenuOps ops, std::set<int> const& noEnter,
 void runMenus(std::shared_ptr<Common> common)
 {
 	Common& c = *common;
-	gfx.settings.reset(new Settings);
+	gfx.setSettings(std::make_shared<Settings>());
 	// The menus show the name of the loaded setup.
-	gfx.settingsNode = FsNode(std::string("config/LIERO.CFG"));
+	liero_app_set_settings_node(gfx.app, FsNode(std::string("config/LIERO.CFG")).rust());
 	for (int i = 0; i < 2; ++i)
 	{
-		WormSettings& ws = *gfx.settings->wormSettings[i];
+		WormSettings& ws = *gfx.settings()->wormSettings[i];
 		ws.name = i == 0 ? "LEFTY" : "RIGHTY";
 		ws.color = i == 0 ? 32 : 41;
 		for (int j = 0; j < 7; ++j)
@@ -321,7 +321,7 @@ void runWeaponSelection(std::shared_ptr<Common> common, char const* name, uint32
 	uint32_t controller1, uint32_t selectBotWeapons, int steps)
 {
 	std::shared_ptr<Settings> settings(new Settings);
-	gfx.settings = settings;
+	gfx.setSettings(settings);
 	settings->selectBotWeapons = selectBotWeapons;
 	Rand r(seed);
 	for (int i = 0; i < 40; ++i)
@@ -459,7 +459,7 @@ void runBoxes(Common& c)
 
 void hashMenus(std::shared_ptr<Common> common)
 {
-	gfx.common = common;
+	gfx.setCommon(common);
 	gfx.playRenderer.init(320, 200);
 	gfx.singleScreenRenderer.init(640, 400);
 	gfx.playRenderer.loadPalette(*common);

@@ -49,9 +49,70 @@ Gfx::Gfx()
 {
 	clearKeys();
 	liero_app_set_primary_single(app, false);
-	liero_app_set_menu_settings(app, []() { return gfx.settings->rust(); });
-	liero_app_set_menu_tc(app, []() { return gfx.common->tc; });
 	liero_app_set_menus(app, menus);
+}
+
+namespace
+{
+
+LieroStr lstr(std::string const& s)
+{
+	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
+	return r;
+}
+
+}
+
+std::shared_ptr<Settings> const& Gfx::settings()
+{
+	LieroSettingsBox* box = liero_app_settings(app);
+	if (!box)
+		settingsView.reset();
+	else if (!settingsView || settingsView->rust() != box)
+		settingsView = Settings::of(box);
+	return settingsView;
+}
+
+void Gfx::setSettings(std::shared_ptr<Settings> s)
+{
+	liero_app_set_settings(app, s ? s->rust() : nullptr);
+	settingsView = std::move(s);
+}
+
+std::shared_ptr<Common> const& Gfx::common()
+{
+	LieroTc* tc = liero_app_tc(app);
+	if (!tc)
+		commonView.reset();
+	else if (!commonView || commonView->tc != tc)
+		commonView = Common::of(tc);
+	return commonView;
+}
+
+void Gfx::setCommon(std::shared_ptr<Common> c)
+{
+	liero_app_set_tc(app, c ? c->tc : nullptr);
+	commonView = std::move(c);
+}
+
+void Gfx::setConfigPath(std::string const& path)
+{
+	liero_app_set_config_path(app, lstr(path));
+}
+
+FsNode Gfx::getConfigNode()
+{
+	return FsNode::adopt(liero_app_config(app));
+}
+
+void Gfx::setTcPath(std::string const& path)
+{
+	liero_app_set_tc_path(app, lstr(path));
+}
+
+FsNode Gfx::getTcNode()
+{
+	return FsNode::adopt(liero_app_tc_root(app));
 }
 
 void Gfx::init()
@@ -77,7 +138,7 @@ void Gfx::setVideoMode()
 
 #ifdef __EMSCRIPTEN__
 	// The page has one canvas, so there is no second window to show.
-	settings->spectatorWindow = false;
+	settings()->spectatorWindow = false;
 #endif
 
 	if (sdlSpectatorRenderer)
@@ -85,7 +146,7 @@ void Gfx::setVideoMode()
 		SDL_DestroyRenderer(sdlSpectatorRenderer);
 		sdlSpectatorRenderer = NULL;
 	}
-	if (settings->spectatorWindow)
+	if (settings()->spectatorWindow)
 	{
 		flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 		if (spectatorFullscreen)
@@ -133,7 +194,7 @@ void Gfx::setVideoMode()
 
 	flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 
-	if (settings->fullscreen)
+	if (settings()->fullscreen)
 	{
 		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 	}
@@ -162,7 +223,7 @@ void Gfx::setVideoMode()
 	}
 	else
 	{
-		if (settings->fullscreen)
+		if (settings()->fullscreen)
 		{
 			SDL_SetWindowFullscreen(sdlWindow, SDL_WINDOW_FULLSCREEN_DESKTOP);
 		}
@@ -244,7 +305,7 @@ void Gfx::onWindowResize(Uint32 windowID)
 			sdlSpectatorDrawSurface = NULL;
 		}
 
-		if (settings->spectatorWindow)
+		if (settings()->spectatorWindow)
 		{
 			sdlSpectatorTexture = SDL_CreateTexture(sdlSpectatorRenderer,
 			                                        SDL_PIXELFORMAT_ARGB8888,
@@ -286,12 +347,12 @@ void Gfx::setSpectatorFullscreen(bool newFullscreen)
 
 void Gfx::setFullscreen(bool newFullscreen, bool updateMenu)
 {
-	if (newFullscreen == settings->fullscreen)
+	if (newFullscreen == settings()->fullscreen)
 		return;
-	settings->fullscreen = newFullscreen;
+	settings()->fullscreen = newFullscreen;
 
 	// fullscreen will automatically set window size
-	if (!settings->fullscreen)
+	if (!settings()->fullscreen)
 	{
 		if (doubleRes)
 		{
@@ -364,7 +425,7 @@ void Gfx::processEvent(SDL_Event& ev, KeySink* controller)
 			{
 				if (SDL_GetWindowFromID(ev.key.windowID) == sdlWindow)
 				{
-					setFullscreen(!settings->fullscreen);
+					setFullscreen(!settings()->fullscreen);
 				}
 				else
 				{
@@ -478,7 +539,7 @@ std::string Gfx::getKeyName(uint32_t key)
 	int joy, button;
 	switch (liero_key_name_kind(key, &joy, &button))
 	{
-	case 0: return common->texts.keyNames[key];
+	case 0: return common()->texts.keyNames[key];
 	case 1: return "J" + toString(joy) + "_" + toString(button);
 	default: return "";
 	}
@@ -549,7 +610,7 @@ void Gfx::flip()
 	// or the single screen renderer if this is a replay and single screen replay
 	// is turned on
 	draw(*sdlDrawSurface, *sdlTexture, *sdlRenderer, primaryRenderer());
-	if (settings->spectatorWindow)
+	if (settings()->spectatorWindow)
 	{
 		draw(*sdlSpectatorDrawSurface, *sdlSpectatorTexture, *sdlSpectatorRenderer, singleScreenRenderer);
 	}
@@ -574,283 +635,13 @@ void Gfx::flip()
 #endif
 }
 
-using std::string;
-using std::vector;
-using std::pair;
-using std::shared_ptr;
-
-namespace
-{
-
-// The TC the TC selector loaded, until the menu switches to it.
-std::unique_ptr<Common> chosenTc;
-
-// The file selectors are screens in Rust (rust/liero-game/src/selector.rs).
-// What they still need from C++: listing a folder, which reads .zip files as
-// folders, and what choosing a file does.
-struct SelectorContext
-{
-	enum Kind { Level, Profile, Replay, Options, Tc };
-
-	Kind kind;
-	FsNode root;
-	WormSettings* ws = nullptr;
-
-	SelectorContext(Kind kind, FsNode root)
-	: kind(kind), root(std::move(root))
-	{
-	}
-
-	FsNode node(LieroStr rel) const
-	{
-		FsNode n = root;
-		std::string path(reinterpret_cast<char const*>(rel.ptr), rel.len);
-		std::size_t start = 0;
-		while (start < path.size())
-		{
-			std::size_t end = path.find('/', start);
-			if (end == std::string::npos)
-				end = path.size();
-			n = n / path.substr(start, end - start);
-			start = end + 1;
-		}
-		return n;
-	}
-};
-
-std::string toString(LieroStr s)
-{
-	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
-}
-
-LieroStr lstr(std::string const& s)
-{
-	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
-	return r;
-}
-
-void selectorList(void* ctx, LieroStr rel, void* list, void (*add)(void*, LieroStr, bool))
-{
-	try
-	{
-		DirectoryListing di(static_cast<SelectorContext*>(ctx)->node(rel).iter());
-		for (auto const& name : di)
-			add(list, lstr(name.name), name.isDir);
-	}
-	catch (...)
-	{
-		deferException();
-	}
-}
-
-bool selectorExists(void* ctx, LieroStr rel)
-{
-	try
-	{
-		return static_cast<SelectorContext*>(ctx)->node(rel).exists();
-	}
-	catch (...)
-	{
-		deferException();
-		return false;
-	}
-}
-
-// The level under the cursor, in miniature on the menu and the spectator
-// screen.
-void selectorPreview(void* ctx, LieroStr rel)
-{
-	Common& common = *gfx.common;
-	Level level;
-
-	try
-	{
-		if (level.load(common, *gfx.settings, ByteReader(static_cast<SelectorContext*>(ctx)->node(rel).read())))
-		{
-			int centerX = gfx.singleScreenRenderer.renderResX / 2;
-
-			level.drawMiniature(gfx.frozenScreen, 134, 162, 10);
-			level.drawMiniature(gfx.frozenSpectatorScreen, centerX - 126, gfx.singleScreenRenderer.renderResY - 208, 2);
-		}
-	}
-	catch (std::runtime_error&)
-	{
-		// Ignore
-	}
-	catch (...)
-	{
-		deferException();
-	}
-}
-
-int32_t selectorChoose(void* ctx, LieroStr rel, LieroStr fullPath, LieroStr name, bool random)
-{
-	SelectorContext& c = *static_cast<SelectorContext*>(ctx);
-	try
-	{
-		switch (c.kind)
-		{
-		case SelectorContext::Level:
-			if (random)
-			{
-				gfx.settings->randomLevel = true;
-				gfx.settings->levelFile.clear();
-			}
-			else
-			{
-				gfx.settings->randomLevel = false;
-				gfx.settings->levelFile = toString(fullPath);
-			}
-			return -1;
-
-		case SelectorContext::Profile:
-			c.ws->loadProfile(c.node(rel));
-			return -1;
-
-		case SelectorContext::Replay:
-			gfx.prevSelectedReplayPath = toString(fullPath);
-
-			// Reset controller before opening the replay, since we may be recording it
-			liero_app_set_controller(gfx.app, nullptr);
-
-			{
-				FsNode node = c.node(rel);
-				LieroController* rc = node.rust() ? liero_replay_controller_new(node.rust(), gfx.common->tc) : nullptr;
-				if (!rc)
-					throw std::runtime_error("Could not read " + node.fullPath());
-				liero_app_set_controller(gfx.app, rc);
-			}
-			return MainMenu::MaReplay;
-
-		case SelectorContext::Options:
-			gfx.loadSettings(c.node(rel));
-			return -1;
-
-		case SelectorContext::Tc:
-		{
-			std::unique_ptr<Common> common(new Common());
-			common->load(c.node(rel));
-			gfx.settings->tc = toString(name);
-			chosenTc = std::move(common);
-			return -1;
-		}
-		}
-	}
-	catch (...)
-	{
-		deferException();
-	}
-	return -1;
-}
-
-void selectorFree(void* ctx)
-{
-	delete static_cast<SelectorContext*>(ctx);
-}
-
-struct SelectorStrings
-{
-	std::string root, filter, title, randomName, select, fallback;
-};
-
-std::unique_ptr<Screen> selectorScreen(SelectorContext* ctx, SelectorStrings const& s, bool hasSelect, bool tcs, bool preview)
-{
-	LieroSelectorSpec spec;
-	spec.root = lstr(s.root);
-	spec.filter = lstr(s.filter);
-	spec.title = lstr(s.title);
-	spec.random_name = lstr(s.randomName);
-	spec.select = lstr(s.select);
-	spec.has_select = hasSelect;
-	spec.fallback = lstr(s.fallback);
-	spec.tcs = tcs;
-	spec.enter_sound = ctx->kind == SelectorContext::Level;
-
-	LieroSelectorHooks hooks;
-	hooks.ctx = ctx;
-	hooks.list = selectorList;
-	hooks.exists = selectorExists;
-	hooks.preview = preview ? selectorPreview : nullptr;
-	hooks.choose = selectorChoose;
-	hooks.free = selectorFree;
-
-	LieroScreen screen = liero_selector_screen(&spec, hooks);
-	// Listing the folders at the start may have thrown.
-	rethrowDeferred();
-	return fromFfi(screen);
-}
-
-std::unique_ptr<Screen> configSelector(SelectorContext::Kind kind, std::string const& filter, std::string const& title,
-	std::string const& select, bool hasSelect, std::string const& fallback = "", WormSettings* ws = nullptr)
-{
-	FsNode root = gfx.getConfigNode();
-	SelectorContext* ctx = new SelectorContext(kind, root);
-	ctx->ws = ws;
-	SelectorStrings s;
-	s.root = root.fullPath();
-	s.filter = filter;
-	s.title = title;
-	s.select = select;
-	s.fallback = fallback;
-	return selectorScreen(ctx, s, hasSelect, false, false);
-}
-
-}
-
-std::unique_ptr<Screen> selectLevelScreen()
-{
-	Common& common = *gfx.common;
-	FsNode root = gfx.getConfigNode();
-	SelectorStrings s;
-	s.root = root.fullPath();
-	s.filter = "LEV";
-	s.title = LS(SelLevel);
-	s.randomName = LS(Random);
-	s.select = gfx.settings->levelFile.str();
-	return selectorScreen(new SelectorContext(SelectorContext::Level, root), s, true, false, true);
-}
-
-std::unique_ptr<Screen> selectProfileScreen(WormSettings& ws)
-{
-	return configSelector(SelectorContext::Profile, "LPF", "Select profile:",
-		joinPath(gfx.getConfigNode().fullPath(), "Profiles"), true, "", &ws);
-}
-
-std::unique_ptr<Screen> selectReplayScreen()
-{
-	return configSelector(SelectorContext::Replay, "LRP", "Select replay:",
-		gfx.prevSelectedReplayPath, !gfx.prevSelectedReplayPath.empty(),
-		joinPath(gfx.getConfigNode().fullPath(), "Replays"));
-}
-
-std::unique_ptr<Screen> selectOptionsScreen()
-{
-	return configSelector(SelectorContext::Options, "CFG", "Select options:", "", false);
-}
-
-std::unique_ptr<Screen> selectTcScreen()
-{
-	FsNode root = gfx.getTcNode();
-	SelectorContext* ctx = new SelectorContext(SelectorContext::Tc, root);
-	SelectorStrings s;
-	s.root = root.fullPath();
-	s.title = "Select TC:";
-	return selectorScreen(ctx, s, false, true, false);
-}
-
-static LieroStr str(std::string const& s)
-{
-	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
-	return r;
-}
-
 // The boxes are drawn in Rust (rust/liero-game/src/menu.rs).
 
 void drawInfoBox(Common& common, Bitmap& bmp, std::string const& text, int x, int y)
 {
 	LieroBitmap scr = bmp.view();
 	LieroFont font = common.font.view();
-	liero_menu_draw_info_box(&scr, &font, str(text), x, y);
+	liero_menu_draw_info_box(&scr, &font, lstr(text), x, y);
 }
 
 void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const& text, int x, int y, bool centered)
@@ -858,14 +649,14 @@ void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const
 	LieroBitmap scr = bmp.view();
 	LieroBitmap from = frozen.view();
 	LieroFont font = common.font.view();
-	liero_menu_draw_input_box(&scr, &from, &font, str(text), x, y, centered);
+	liero_menu_draw_input_box(&scr, &from, &font, lstr(text), x, y, centered);
 }
 
 // The boxes and key choice are screens in Rust (rust/liero-game/src/boxes.rs).
 
 std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x, int y, bool clearScreen)
 {
-	return fromFfi(liero_info_box_screen(str(text), x, y, clearScreen));
+	return fromFfi(liero_info_box_screen(lstr(text), x, y, clearScreen));
 }
 
 namespace
@@ -925,44 +716,25 @@ std::unique_ptr<Screen> mainScreen()
 
 void Gfx::saveSettings(FsNode node)
 {
-	settingsNode = node;
-	settings->save(node, rand);
-}
-
-void Gfx::saveSettingsIfChanged()
-{
-	std::string text = settings->text();
-	if (text == savedSettingsText)
-		return;
-	savedSettingsText = text;
-	try
-	{
-		(configNode / "liero.cfg").write(text);
-	}
-	catch (std::runtime_error&)
-	{
-		// Not saving is no reason to stop the game.
-	}
+	if (!node.rust() || !liero_app_save_settings(app, node.rust()))
+		throw std::runtime_error("Could not write " + node.fullPath());
 }
 
 bool Gfx::loadSettings(FsNode node)
 {
-	settingsNode = node;
-	settings.reset(new Settings);
-	return settings->load(node, rand);
+	return liero_app_load_settings(app, node.rust(), false);
 }
 
 bool Gfx::loadSettingsLegacy(FsNode node)
 {
-	settings.reset(new Settings);
-	return settings->loadLegacy(node, rand);
+	return liero_app_load_settings(app, node.rust(), true);
 }
 
 // F8 on the menu: the developers' random TC, in Rust (liero_tc_randomize).
 void Gfx::randomizeTc()
 {
-	if (common->tc)
-		liero_tc_randomize(common->tc, std::random_device()());
+	if (LieroTc* tc = liero_app_tc(app))
+		liero_tc_randomize(tc, std::random_device()());
 }
 
 namespace
@@ -970,78 +742,20 @@ namespace
 
 // The menus' hooks (rust/liero-game/src/menus.rs).
 
-LieroSettingsBox* menusSettings() { return gfx.settings->rust(); }
-LieroWormSettingsBox* menusWormSettings(int32_t player) { return gfx.settings->wormSettings[player]->rust(); }
-LieroTcData const* menusTc() { return liero_tc_data(gfx.common->tc); }
 uint32_t menusMenuCycles() { return gfx.menuCycles; }
 bool* menusDoubleRes() { return &gfx.doubleRes; }
 // The options menu shows the change itself.
 void menusSetDoubleRes(bool v) { guarded([v] { gfx.setDoubleRes(v, false); return 0; }, 0); }
 void menusSetFullscreen(bool v) { guarded([v] { gfx.setFullscreen(v, false); return 0; }, 0); }
 
-LieroScreen menusOpenSelector(int32_t kind, int32_t player)
-{
-	return guarded([kind, player]
-	{
-		switch (kind)
-		{
-		case LIERO_SELECTOR_LEVEL: return screenToFfi(selectLevelScreen());
-		case LIERO_SELECTOR_PROFILE: return screenToFfi(selectProfileScreen(*gfx.settings->wormSettings[player]));
-		case LIERO_SELECTOR_REPLAY: return screenToFfi(selectReplayScreen());
-		case LIERO_SELECTOR_OPTIONS: return screenToFfi(selectOptionsScreen());
-		default: return screenToFfi(selectTcScreen());
-		}
-	}, LieroScreen{ nullptr, nullptr, nullptr, nullptr });
-}
-
-bool menusTakeChosenTc()
-{
-	if (!chosenTc)
-		return false;
-	// TODO: mixer may still be using sounds from the old common
-	gfx.common.reset(chosenTc.release());
-	return true;
-}
-
-LieroStr menusSettingsPath() { return lstr(gfx.settingsNode.fullPath()); }
-
-bool menusSaveOptions(LieroStr name)
-{
-	return guarded([name] { gfx.saveSettings(gfx.getConfigNode() / (toString(name) + ".cfg")); return true; }, false);
-}
-
-bool menusSaveProfileAs(int32_t player, LieroStr name)
-{
-	return guarded([player, name]
-	{
-		gfx.settings->wormSettings[player]->saveProfile(gfx.getConfigNode() / "Profiles" / (toString(name) + ".lpf"));
-		return true;
-	}, false);
-}
-
 LieroMenusHooks menusHooks()
 {
 	LieroMenusHooks h;
-	h.settings = menusSettings;
-	h.worm_settings = menusWormSettings;
-	h.tc = menusTc;
 	h.menu_cycles = menusMenuCycles;
 	h.double_res = menusDoubleRes;
 	h.set_double_res = menusSetDoubleRes;
 	h.set_fullscreen = menusSetFullscreen;
-	h.open_selector = menusOpenSelector;
-	h.take_chosen_tc = menusTakeChosenTc;
-	h.settings_path = menusSettingsPath;
-	h.save_options = menusSaveOptions;
-	h.save_profile_as = menusSaveProfileAs;
 	return h;
-}
-
-void hookSaveSettingsIfChanged()
-{
-#ifdef __EMSCRIPTEN__
-	guarded([] { gfx.saveSettingsIfChanged(); return 0; }, 0);
-#endif
 }
 
 void hookRandomizeTc() { guarded([] { gfx.randomizeTc(); return 0; }, 0); }
@@ -1050,7 +764,6 @@ std::unique_ptr<Screen> menuScreen()
 {
 	LieroMenuScreenHooks h;
 	h.menus = gfx.menus;
-	h.save_settings_if_changed = hookSaveSettingsIfChanged;
 	h.randomize_tc = hookRandomizeTc;
 	return fromFfi(liero_menu_screen(h));
 }

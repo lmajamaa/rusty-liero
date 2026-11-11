@@ -1,29 +1,11 @@
 use super::*;
 use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::controller::LIERO_STATE_GAME;
-use crate::fs::{LieroFsNode, Node};
+use crate::fs::Node;
 use crate::menus::{liero_menus_new, LieroMenusHooks};
-use crate::settings::{liero_settings_box_new, LieroSettingsBox, LieroWormSettingsBox};
-use crate::screen::LieroScreen;
-use crate::tc::LieroTc;
+use crate::settings::liero_settings_box_new;
+use crate::shared::Shared;
 
-thread_local! {
-    static SETTINGS: *mut LieroSettingsBox = liero_settings_box_new();
-    static TC: *mut LieroTc = crate::tc::liero_tc_load(&LieroFsNode(Node::new(b"../../TC/openliero")));
-}
-
-unsafe extern "C" fn settings() -> *mut LieroSettingsBox {
-    SETTINGS.with(|s| *s)
-}
-unsafe extern "C" fn tc() -> *mut LieroTc {
-    TC.with(|t| *t)
-}
-unsafe extern "C" fn worm_settings(player: i32) -> *mut LieroWormSettingsBox {
-    (*settings()).worms[player as usize].as_ptr()
-}
-unsafe extern "C" fn tc_data() -> *const LieroTcData {
-    crate::tc::liero_tc_data(&*tc())
-}
 unsafe extern "C" fn zero() -> u32 {
     0
 }
@@ -34,50 +16,27 @@ unsafe extern "C" fn double_res() -> *mut bool {
     ON.with(|b| b.as_ptr())
 }
 unsafe extern "C" fn set(_: bool) {}
-unsafe extern "C" fn selector(_: i32, _: i32) -> LieroScreen {
-    LieroScreen::empty()
-}
-unsafe extern "C" fn no() -> bool {
-    false
-}
-unsafe extern "C" fn path() -> LieroStr {
-    LieroStr::of(b"")
-}
-unsafe extern "C" fn save(_: LieroStr) -> bool {
-    false
-}
-unsafe extern "C" fn save_profile(_: i32, _: LieroStr) -> bool {
-    false
-}
 
 /// This thread's app with menus, the bundled TC, its screens sized, and a
 /// match that hasn't started, on a level of colour 7.
 fn set_up() -> &'static mut LieroApp {
     let a = app();
-    crate::app::liero_app_set_menu_settings(a, settings);
-    crate::app::liero_app_set_menu_tc(a, tc);
+    if a.settings.is_none() {
+        // SAFETY: the new box's reference is the app's.
+        a.settings = Some(unsafe { Shared::adopt(liero_settings_box_new()) });
+    }
+    if a.tc.is_none() {
+        a.tc = Some(crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap());
+    }
     if a.menus.is_null() {
-        let hooks = LieroMenusHooks {
-            settings,
-            worm_settings,
-            tc: tc_data,
-            menu_cycles: zero,
-            double_res,
-            set_double_res: set,
-            set_fullscreen: set,
-            open_selector: selector,
-            take_chosen_tc: no,
-            settings_path: path,
-            save_options: save,
-            save_profile_as: save_profile,
-        };
+        let hooks = LieroMenusHooks { menu_cycles: zero, double_res, set_double_res: set, set_fullscreen: set };
         let menus = liero_menus_new(hooks);
         crate::menus::liero_menus_load(unsafe { &mut *menus });
         crate::app::liero_app_set_menus(a, menus);
     }
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    let mut c = unsafe { Box::from_raw(liero_local_controller_new(settings(), tc())) };
+    let mut c = unsafe { Box::from_raw(liero_local_controller_new(a.menu_settings(), a.menu_tc())) };
     let level = unsafe { &mut *liero_controller_level(&mut c) };
     level.resize(504, 350);
     level.set_pixels(&vec![7; 504 * 350], |_| Default::default());

@@ -155,8 +155,6 @@ pub struct LieroScreenHost {
     /// the app driver and local time otherwise. Writes at most `cap` bytes
     /// and returns how many.
     pub replay_time: Option<unsafe extern "C" fn(t: i64, out: *mut u8, cap: usize) -> usize>,
-    /// The config folder, or null.
-    pub config_node: Option<unsafe extern "C" fn() -> *const crate::fs::LieroFsNode>,
     /// Where the games' sounds go (`DefaultSoundPlayer::out`).
     pub sound: Option<unsafe extern "C" fn() -> crate::sfx::LieroSoundOut>,
 }
@@ -296,9 +294,6 @@ impl Host {
         let n = unsafe { f(t, buf.as_mut_ptr(), buf.len()) };
         buf.truncate(n.min(512));
         buf
-    }
-    pub fn config_node(&self) -> *const crate::fs::LieroFsNode {
-        self.0.config_node.map_or(std::ptr::null(), |f| unsafe { f() })
     }
     pub fn sound(&self) -> crate::sfx::LieroSoundOut {
         self.0.sound.map_or(crate::sfx::LieroSoundOut::NONE, |f| unsafe { f() })

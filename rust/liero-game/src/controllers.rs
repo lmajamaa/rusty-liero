@@ -529,12 +529,10 @@ unsafe fn caught(o: &LieroReplayOutcome, read_too: bool) -> Option<String> {
 /// Starts recording a replay of `l`'s game in the config folder's Replays.
 unsafe fn start_recording(l: &mut Local) -> Result<(), String> {
     let name = replay_name(&mut l.game);
-    let config = current_host().config_node();
-    let node = config.as_ref().map(|c| c.0.go(b"Replays").go(&name));
-    let w = node.as_ref().map_or(std::ptr::null_mut(), |n| liero_replay_writer_new(&LieroFsNode(n.clone())));
+    let node = crate::app::app().files.config.go(b"Replays").go(&name);
+    let w = liero_replay_writer_new(&LieroFsNode(node.clone()));
     if w.is_null() {
-        let path = node.as_ref().map_or(Vec::new(), |n| n.full_path().to_vec());
-        return Err(format!("Could not write {}", String::from_utf8_lossy(&path)));
+        return Err(format!("Could not write {}", String::from_utf8_lossy(node.full_path())));
     }
     let mut w = Box::from_raw(w);
     let o = liero_replay_writer_begin(&mut w, &mut l.game);
