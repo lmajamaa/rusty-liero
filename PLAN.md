@@ -1,6 +1,6 @@
 # OpenLiero Web Port Plan
 
-Last updated 2026-11-06.
+Last updated 2026-11-11.
 
 ## Goal and strategy
 
@@ -9,6 +9,8 @@ The goal is OpenLiero running in the browser, with tctool still available as a c
 1. **Emscripten build of the existing C++ code.** No rewrite, just build changes and a few `#ifdef __EMSCRIPTEN__` blocks. This build becomes the reference that later phases are checked against.
 2. **Gradual port to Rust inside the same Emscripten build.** Game logic moves first, one module at a time, with replays used to confirm nothing changed.
 3. **Pure Rust on `wasm32-unknown-unknown`.** Once no C++ is left, Emscripten is dropped.
+
+A fourth phase then cleans up the Rust the port left behind: no `unsafe`, and idiomatic code.
 
 tctool runs alongside all three phases as a Rust command-line tool in `tools/tctool`. Its reading and writing are in the `rust/liero-data` crate, which the game also loads TCs with; later the same reader becomes the importer inside the browser game.
 
@@ -168,6 +170,65 @@ Once no C++ is left, the web build moves to `wasm32-unknown-unknown` with `wasm-
    What C++ keeps of the app is the shell: SDL's window, events, joysticks and sound, the window size hooks and F8's random seed.
 6. [ ] The hash run in Rust: the bot games, replays, menus, settings, sound, keys and the scripted app run hash the same lines from Rust, with `tools/hashrun/expected.txt` unchanged, so it no longer needs Emscripten. Then the C++ views and `Common` it used go.
 7. [ ] Off Emscripten: `wasm32-unknown-unknown`, with a window, framebuffer and audio crate for each build, as in the table above. Each new dependency is agreed before it's added.
+
+## Phase 4: safe, idiomatic Rust
+
+Phase 4 starts when phase 3 is done: no C++ is left and nothing calls the `liero_*` C functions. It is done when `liero-game` and `liero-data` build with `#![forbid(unsafe_code)]`, clippy is clean, and `tools/hashrun/expected.txt` hasn't changed by a line. The Rust written in phase 2 was shaped by C++ on the other side: it is correct, but it reads like C.
+
+**Where it stands** (2026-11-11, counted by `tools/rust-patterns/report.ts`; 27,896 lines of Rust):
+
+| Pattern | Count | Why it's there | What replaces it |
+| --- | --: | --- | --- |
+| `unsafe` blocks / `unsafe fn` | 475 / 569 | Nearly all follow from the rows below | Nothing |
+| `extern "C" fn`, `#[no_mangle]` | 579 / 364 | The C++ boundary and the hook tables | Plain functions and methods |
+| Raw pointer types | 773 | Views of C++ memory, field pointers, `ctx: *mut c_void` (202 `c_void`) | `&`/`&mut`, slices, indexes |
+| `#[repr(C)]` | 131 | Layouts shared with C++ | Plain structs and enums |
+| `Box::into_raw` / `from_raw` | 85 | Boxes C++ held handles to | Owned fields |
+| `slice::from_raw_parts` | 44 | Pointer-and-length views (`LieroLevel`, `LieroStr`, bitmaps) | Slices, `Vec`, `String` |
+| `Rc<UnsafeCell<T>>`, `Shared<T>` | 10 | Reference counts shared with C++ | `Rc`, or one owner |
+| `&'static mut` from a global | 5 | `app()`, the menus | An `App` passed by `&mut` |
+
+All of it is in `liero-game`; `liero-data` and `liero-tctool` have no `unsafe` today. Other habits from the port: the `Liero` prefix on 151 structs and `liero_*` free functions where methods belong, `LIERO_*` integer constants where enums belong, structs with a `found` flag where `Option` belongs, about 1,000 integer `as` casts, 170 `for i in 0..n` loops, and two copies of the TC's model (`liero-data`'s and `liero-game`'s `repr(C)` one).
+
+**Rules for every step**
+
+- Behaviour doesn't change. The hash run (in Rust since phase 3, step 6) and the unit tests pass, native and wasm, with `expected.txt` untouched. A fix to behaviour (below) is its own PR, never mixed into a cleanup.
+- One PR per step or sub-step, each checked with 5–10 bugs planted at its risky spots; a plant the hashes miss gets a unit test.
+- The counts only go down. Once phase 4 starts, the `rust-patterns` workflow fails a PR that raises any row, and reports new rows for `c_void`, `from_raw_parts`, `Box::into_raw`/`from_raw`, `UnsafeCell` and `&'static mut`.
+- Speed is measured, not assumed: the hash run's time and the browser's frame times with two predictive bots, before and after each step that touches a hot loop (drawing, the level, the AI playing copies of the game). Bounds checks and `RefCell` are the two things that could cost.
+
+**Steps**, leaves first, as in the port:
+
+1. [ ] **Guardrails.** Add `cargo clippy -- -D warnings` and `cargo fmt --check` to CI (both ship with the pinned toolchain) and fix what they find. `#![forbid(unsafe_code)]` on `liero-data` and `liero-tctool`, which can be done today. `#![deny(unsafe_op_in_unsafe_fn)]` on `liero-game`, so every unsafe operation left is in a block that can be counted and removed. Run the native tests under Miri once to see what is unsound now rather than merely unsafe: `app()` hands out more than one `&'static mut`, and `Shared`'s `DerefMut` gives `&mut` to a shared box. Miri needs a nightly toolchain, to be agreed before it's added to CI.
+2. [ ] **Delete the boundary.** Remove `#[no_mangle]` and `extern "C"` from everything nothing outside calls, the cbindgen header and its CI check, `repr(C)` where no layout is shared, and exports that only C++ used (`liero_app_rand` and the like). Mechanical, and the largest drop in the table, but the functions still take pointers afterwards.
+3. [ ] **Leaf modules**: `math`, `rand`, `material`, `keys`, `text`, `sfx`, `deflate`, `fs`. Free functions become methods (`liero_rand_seed(&mut r, s)` → `Rand::seeded(s)`), pointer-and-length pairs become slices, `LieroStr` becomes `&[u8]` or `&str`, and status returns become `Result`.
+4. [ ] **Views become borrows**: the level, bitmaps, palettes, fonts and sprites. `LieroLevel` and `LieroLevelCommon` (pointers into a `LieroLevelBox` and the TC) become `&mut Level` and `&Tc`. The renderer's per-pixel loops are the first place to measure; where bounds checks cost, slice the row once outside the loop.
+5. [ ] **Indexes for pointers**: a worm is a `WormId` into the game's pool. `list: Vec<*mut LieroWorm>` becomes `Vec<Option<WormId>>`, and a rope's anchor, an object's owner and a worm's killer become ids. Replays already write worms by number, so their code gets simpler.
+6. [ ] **The game tick**, the hard part, one PR per kind of object: blood, bonuses and explosions; non-weapon objects and the rope; weapon objects; worms. Today a hook can change any object, including the one being processed, so `world.rs` works on raw pointers and re-reads fields where the C++ did. The safe form keeps those read points: a step takes `&mut Game` and the object's index, reads and writes `game.nobjects[i]` at the same places, and calls methods on `Game` instead of going through `LieroNObjectHooks` and its `ctx`. The `Fields` wrappers (a pointer per field) and the hook tables go. `Range`, which walks a list to its sentinel through pointers, becomes an index cursor with the same order and stopping rule. Slot reuse during a step is where a plant is most likely to hide, so that's where they go.
+7. [ ] **Ownership**: `Shared<T>` and `Rc<UnsafeCell<T>>` go. The TC is never changed after loading: `Rc<Tc>`. Settings are changed by the menus and read by the game: one owner in the app, borrowed by the game for a tick, or `Rc<RefCell<_>>` if replay playback needs its own. A worm's bot and the spectator viewports, which copies of a game share as C++'s did: decide per case whether the AI's copies need them at all (they don't draw, and a copy's worms could carry no bot); `Rc<RefCell<_>>` only if they do.
+8. [ ] **Viewports, the scene, stats and replays.** The scene is a copy of the worms and objects made for each draw, a leftover of C++ owning them; draw from `&Game` instead. Stats events take `&Game` rather than copies of the worms' state.
+9. [ ] **Screens, menus and the app.** `trait Screen { fn tick(&mut self, app: &mut App, events: &[Event]) -> Transition }` with `enum Transition { Stay, Open(Box<dyn Screen>), Close(ScreenResult), Replace(Box<dyn Screen>) }`, in place of function pointers and `ctx`. A menu item's behaviour becomes an enum of the settings it edits. The `app()` global and the `thread_local!` test hooks (in 8 files) go: the entry point owns the `App` and passes it down, and tests make their own.
+10. [ ] **One model.** `liero-game`'s `LieroTcData` and settings boxes are C-shaped copies of what `liero-data` loads. The game uses `liero-data`'s types directly, with `String`/`Vec` fields, and the copying step goes.
+11. [ ] **Idioms**, module by module, now that the shapes are right: drop the `Liero` prefix, `LIERO_*` constants to enums (with explicit discriminants where a replay or hash stores the number), `found` flags and `-1` to `Option`, index loops to iterators where the body doesn't change the list, lossless `as` to `From`, and fixed-point positions behind a small newtype whose arithmetic wraps as C++'s did. Split `world.rs` (1,818 lines) and sort out `menu.rs`, `menus.rs`, `menu_screen.rs` and `app_menus.rs`. Turn on the clippy groups that earn their keep (`cast_lossless`, `needless_range_loop`, `ptr_as_ptr`); `clippy::pedantic` wholesale would fight the casts the game's arithmetic needs.
+12. [ ] **Lock it.** `#![forbid(unsafe_code)]` on `liero-game`. If the window, audio or wasm-bindgen glue from phase 3 needs `unsafe`, it lives in the small platform crate, with a `// SAFETY:` comment on each block and its count pinned by the workflow; the game crate depends on nothing unsafe of ours. Remove `reference/reference_values.cpp` and its notes if nothing can build it any more; the hashes it printed stay in the tests.
+
+**Kept as it is, on purpose.** These look unidiomatic but are the game's behaviour, and the hashes hold them:
+
+- `cpp_sort.rs`, the port of libc++'s `std::sort`, and the pairing heap in `ai/path.rs`: the order of ties decides what the stats screen shows and where a bot aims.
+- Wrapping arithmetic and truncating casts in the physics, the cos/sin table and the mixer (most of the 234 `wrapping_*` calls). They get a newtype or a comment, not a change.
+- The fixed object lists with their sentinel slot and slot reuse order, the TOML dialect's quirks, the mixer's channel id rules, and every finding listed under phase 2 as "kept".
+- Large game state on the heap (`Box<GameData>`, 74 KB), which the AI's copies rely on.
+
+**Afterwards, as behaviour changes.** Each needs its own PR and, where a hash moves, a re-recorded line with the reason: errors that panic because C++ never caught them (a replay's read error during playback, an out-of-range error while recording) become `Result`s that end in a message box; and `unwrap`/`expect` outside tests (about 160 with the tests') are audited the same way. `panic = "abort"` can stay for the wasm size.
+
+**Risks**
+
+| Risk | Effect | Fallback |
+| --- | --- | --- |
+| A safe rewrite of the tick reads a field at a different point than C++ did | Desyncs that only show in rare games | Index access at the same read points; plants at slot reuse; more seeds in the hash run for that step |
+| Bounds checks or `RefCell` slow the AI or drawing | Bots slow the game on one thread | Measure per step; hoist slices out of loops; restructure ownership instead of reaching for `RefCell` |
+| Step 7's ownership doesn't fit `Rc<RefCell<_>>` without runtime borrow panics | Panics in the menus or playback | Pass borrows down from `App` instead of sharing; settings snapshots per game |
+| A crate chosen in phase 3 forces `unsafe` at its edge | `forbid` can't cover everything | The platform crate holds it, counted and commented |
 
 ## Later: online multiplayer
 
