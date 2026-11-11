@@ -324,18 +324,18 @@ void hashApp(std::shared_ptr<Common> common)
 	// Fresh menus, as the game starts with: the menu checks before this one
 	// leave items hidden and selected.
 	liero_menus_reset(gfx.menus);
-	gfx.settings.reset(new Settings);
-	gfx.common = common;
+	gfx.setSettings(std::make_shared<Settings>());
+	gfx.setCommon(common);
 	gfx.setConfigPath(root);
 	gfx.setTcPath("TC");
-	gfx.settingsNode = FsNode(root + "/liero.cfg");
+	liero_app_set_settings_node(gfx.app, FsNode(root + "/liero.cfg").rust());
 	gfx.rand.seed(77);
 	gfx.playRenderer.init(320, 200);
 	gfx.singleScreenRenderer.init(640, 400);
 	gfx.playRenderer.loadPalette(*common);
 	gfx.singleScreenRenderer.loadPalette(*common);
 	liero_app_set_primary_single(gfx.app, false);
-	gfx.settings->spectatorWindow = false;
+	gfx.settings()->spectatorWindow = false;
 	gfx.clearKeys();
 	gfx.loadMenus();
 

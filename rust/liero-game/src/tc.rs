@@ -723,6 +723,32 @@ pub unsafe extern "C" fn liero_tc_free(tc: *mut LieroTc) {
     }
 }
 
+/// Another reference to `tc`, to give up with `liero_tc_free`.
+///
+/// # Safety
+/// `tc` must come from `liero_tc_load` and still have a reference.
+#[no_mangle]
+pub unsafe extern "C" fn liero_tc_retain(tc: *mut LieroTc) -> *mut LieroTc {
+    crate::shared::retain_shared(tc)
+}
+
+/// Loads the TC in `node` as `Common::load` did, or the message it threw:
+/// the TC can't be read, or its constants, texts and hacks aren't the
+/// game's.
+pub fn load_checked(node: &Node) -> Result<crate::shared::Shared<LieroTc>, String> {
+    let tc = crate::shared::Shared::new(load(node));
+    let Some(d) = tc.data.as_deref() else {
+        return Err(format!("Could not load the TC: {}", tc.error));
+    };
+    if d.constant_count != liero_data::exe::CONSTANT_ORDER.len()
+        || d.text_count != liero_data::exe::TEXTS.len()
+        || d.hack_count != liero_data::exe::HACKS.len()
+    {
+        return Err("The TC's constants, texts and hacks don't match the game's".into());
+    }
+    Ok(tc)
+}
+
 
 const fn str_eq(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -948,6 +974,12 @@ mod tests {
             assert_eq!(data.weapon_count, 40);
             assert_eq!(data.font[b'A' as usize].width, 5);
             liero_tc_free(tc);
+
+            assert!(load_checked(&node.0).is_ok());
+            assert_eq!(
+                load_checked(&Node::new(b"target/no-such-tc")).err().as_deref(),
+                Some("Could not load the TC: Could not read tc.cfg")
+            );
 
             let missing = LieroFsNode(Node::new(b"target/no-such-tc"));
             let tc = liero_tc_load(&missing);

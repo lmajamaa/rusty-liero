@@ -163,13 +163,10 @@ struct Gfx
 	void setFullscreen(bool newFullscreen, bool updateMenu = true);
 	void setDoubleRes(bool newDoubleRes, bool updateMenu = true);
 
+	// The settings and their files are the Rust app's (app_files.rs).
 	void saveSettings(FsNode node);
 	bool loadSettings(FsNode node);
 	bool loadSettingsLegacy(FsNode node);
-	// Writes liero.cfg in the config folder if the settings changed since it
-	// was last read or written here. The browser build calls it from the menu
-	// loop, since a closed tab never reaches the save at the end of main.
-	void saveSettingsIfChanged();
 
 	void processEvent(SDL_Event& ev, KeySink* controller = 0);
 
@@ -185,26 +182,13 @@ struct Gfx
 		uint8_t* src, int w, int h, std::size_t srcPitch,
 		uint8_t* dest, std::size_t destPitch, int mag);
 
-	void setConfigPath(std::string const& path)
-	{
-		configNode = FsNode(path);
-	}
-
-	FsNode getConfigNode()
-	{
-		return configNode;
-	}
+	// The folders are the Rust app's.
+	void setConfigPath(std::string const& path);
+	FsNode getConfigNode();
 
 	// The folder of TCs, TC in the config folder unless set.
-	void setTcPath(std::string const& path)
-	{
-		tcNode = FsNode(path);
-	}
-
-	FsNode getTcNode()
-	{
-		return tcNode;
-	}
+	void setTcPath(std::string const& path);
+	FsNode getTcNode();
 
 	// PRNG for things that don't affect the game
 	Rand& rand = static_cast<Rand&>(*liero_app_rand(app));
@@ -223,11 +207,6 @@ struct Gfx
 		return liero_app_primary(app) == singleScreenRenderer.rust() ? singleScreenRenderer : playRenderer;
 	}
 
-	FsNode configNode;
-	FsNode tcNode;
-	// liero.cfg as saveSettingsIfChanged last read or wrote it.
-	std::string savedSettingsText;
-
 	// The menus, in Rust, and views of them.
 	LieroMenus* menus;
 	Menu mainMenu;
@@ -235,9 +214,10 @@ struct Gfx
 	Menu playerMenu;
 	Menu hiddenMenu;
 
-	std::string prevSelectedReplayPath;
-	FsNode settingsNode; // Currently loaded settings file. TODO: This is only used for display. We could just remember the name.
-	std::shared_ptr<Settings> settings;
+	// The menus' settings, which the Rust app owns; loading options
+	// replaces them. A view of them, made again when they change.
+	std::shared_ptr<Settings> const& settings();
+	void setSettings(std::shared_ptr<Settings> s);
 
 	LieroKeys& dosKeys = *liero_app_keys(app);
 	// the window to render into
@@ -271,7 +251,11 @@ struct Gfx
 	int windowW, windowH;
 	int prevMag; // Previous magnification used for drawing
 	Rect lastUpdateRect; // Last region that was updated when flipping
-	std::shared_ptr<Common> common;
+
+	// The menus' TC, which the Rust app owns; choosing a TC replaces it. A
+	// view of it, made again when it changes.
+	std::shared_ptr<Common> const& common();
+	void setCommon(std::shared_ptr<Common> c);
 
 	std::vector<Joystick> joysticks;
 
@@ -279,6 +263,10 @@ struct Gfx
 
 	std::vector<std::pair<int, int>> debugPoints;
 	std::string debugInfo;
+
+private:
+	std::shared_ptr<Settings> settingsView;
+	std::shared_ptr<Common> commonView;
 };
 
 extern Gfx gfx;

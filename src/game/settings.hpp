@@ -43,6 +43,8 @@ struct Settings
 
 	// The settings in Rust, for Rust code to work on.
 	LieroSettingsBox* rust() const { return box; }
+	// A view of `box`, holding a reference of its own.
+	static std::shared_ptr<Settings> of(LieroSettingsBox* box);
 
 	// liero.cfg. Returns false if it can't be read or parsed, keeping the
 	// settings read before the error. Like the C++ reader before it, throws

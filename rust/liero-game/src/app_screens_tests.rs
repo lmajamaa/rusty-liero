@@ -21,8 +21,11 @@ unsafe extern "C" fn tc() -> *mut LieroTc {
 /// match behind the menu.
 fn set_up() -> &'static mut LieroApp {
     let a = app();
-    crate::app::liero_app_set_menu_settings(a, settings);
-    crate::app::liero_app_set_menu_tc(a, tc);
+    // SAFETY: the app takes references of its own.
+    unsafe {
+        crate::app::liero_app_set_settings(a, settings());
+        crate::app::liero_app_set_tc(a, tc());
+    }
     restart(a);
     a
 }

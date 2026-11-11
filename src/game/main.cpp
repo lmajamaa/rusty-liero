@@ -84,7 +84,7 @@ try
 
 	FsNode configNode(gfx.getConfigNode());
 	if (tcPath.empty())
-		gfx.tcNode = configNode / "TC";
+		liero_app_set_tc_in_config(gfx.app);
 	else
 		gfx.setTcPath(tcPath);
 
@@ -92,30 +92,30 @@ try
 	{
 		if (!gfx.loadSettingsLegacy(configNode / "LIERO.DAT"))
 		{
-			gfx.settings.reset(new Settings);
+			gfx.setSettings(std::make_shared<Settings>());
 			gfx.saveSettings(configNode / "liero.cfg");
 		}
 	}
 
 	if (tcSet)
-		gfx.settings->tc = tcName;
+		gfx.settings()->tc = tcName;
 #ifdef __EMSCRIPTEN__
 	// What liero.cfg holds now, so the menu only writes it on a change.
-	gfx.savedSettingsText = gfx.settings->text();
+	liero_app_mark_settings_saved(gfx.app);
 #endif
 
 	// TC loading
-	FsNode lieroRoot(gfx.getTcNode() / gfx.settings->tc.str());
+	FsNode lieroRoot(gfx.getTcNode() / gfx.settings()->tc.str());
 	std::shared_ptr<Common> common(new Common());
 	common->load(std::move(lieroRoot));
-	gfx.common = common;
+	gfx.setCommon(common);
 	gfx.playRenderer.loadPalette(*common); // This gets the palette from common
 
 	gfx.setVideoMode();
 	sfx.init();
 
 	startScreens(mainScreen(), [configNode]() {
-		gfx.settings->save(configNode / "liero.cfg", gfx.rand);
+		gfx.settings()->save(configNode / "liero.cfg", gfx.rand);
 
 		sfx.deinit();
 		SDL_Quit();

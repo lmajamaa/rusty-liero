@@ -805,6 +805,45 @@ impl LieroSettingsBox {
     }
 }
 
+impl LieroSettingsBox {
+    /// New settings with the defaults, with one reference (`new Settings`).
+    pub(crate) fn defaults() -> crate::shared::Shared<LieroSettingsBox> {
+        // SAFETY: the new box's reference is taken over.
+        let b = unsafe { crate::shared::Shared::adopt(liero_settings_box_new()) };
+        // SAFETY: nothing else has the new box.
+        unsafe { (*b.as_ptr()).set_settings(&Settings::default()) };
+        b
+    }
+
+    /// Reads liero.cfg (or LIERO.DAT, if `legacy`) from `node` over the
+    /// settings, as far as it reads (`Settings::load` and `loadLegacy`):
+    /// None if the file can't be read, else whether it read whole.
+    pub(crate) fn load(&mut self, node: &crate::fs::Node, legacy: bool) -> Option<LieroSettingsStatus> {
+        let bytes = node.read()?;
+        let mut settings = self.settings();
+        let status = if legacy {
+            if data::read_legacy(&mut settings, &bytes) {
+                LieroSettingsStatus::Ok
+            } else {
+                LieroSettingsStatus::Failed
+            }
+        } else {
+            match data::read_text(&mut settings, &bytes) {
+                Ok(()) => LieroSettingsStatus::Ok,
+                Err(TextError::Parse(_)) => LieroSettingsStatus::Failed,
+                Err(TextError::MissingKey(_)) => LieroSettingsStatus::MissingKey,
+            }
+        };
+        self.set_settings(&settings);
+        Some(status)
+    }
+
+    /// The settings as liero.cfg (`Settings::text`).
+    pub(crate) fn text(&self) -> Vec<u8> {
+        data::write_text(&self.settings())
+    }
+}
+
 /// The settings without the worms', which are left as the defaults.
 fn data_settings(b: &LieroSettingsBox) -> Settings {
     let d = &b.data;
@@ -989,6 +1028,16 @@ pub extern "C" fn liero_settings_box_worm(s: &LieroSettingsBox, i: usize) -> *mu
 #[no_mangle]
 pub unsafe extern "C" fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: *mut LieroWormSettingsBox) {
     s.worms[i] = WormSettingsRef::retain(w);
+}
+
+/// Another reference to `s`, to give up with `liero_settings_box_free`.
+///
+/// # Safety
+/// `s` comes from `liero_settings_box_new` or `_clone` and still has a
+/// reference.
+#[no_mangle]
+pub unsafe extern "C" fn liero_settings_box_retain(s: *mut LieroSettingsBox) -> *mut LieroSettingsBox {
+    crate::shared::retain_shared(s)
 }
 
 #[no_mangle]

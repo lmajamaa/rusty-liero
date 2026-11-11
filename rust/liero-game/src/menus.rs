@@ -19,7 +19,7 @@ use crate::menu::{
 };
 use crate::menu_screen::{LIERO_MENU_HIDDEN, LIERO_MENU_MAIN, LIERO_MENU_PLAYER, LIERO_MENU_SETTINGS};
 use crate::screen::{current_host, LieroScreen};
-use crate::settings::{LieroSettingsData, LieroWormSettingsData, LieroSettingsBox, LieroWormSettingsBox};
+use crate::settings::{LieroSettingsData, LieroWormSettingsData, LieroWormSettingsBox};
 use crate::tc::{c, s, LieroTcData};
 use crate::text::{LieroFont, LieroStr};
 use crate::weapon_options::{liero_weapon_options_screen, LieroWeaponOptionsSpec};
@@ -90,7 +90,7 @@ const HM_AI_PARALLELS: i32 = 11;
 const HM_ALLOW_VIEWING_SPAWN_POINT: i32 = 12;
 const HM_SINGLE_SCREEN_REPLAY: i32 = 13;
 
-/// The file selectors C++ opens (`LieroMenusHooks::open_selector`).
+/// The file selectors (`app_files::open_selector`).
 pub const LIERO_SELECTOR_LEVEL: i32 = 0;
 pub const LIERO_SELECTOR_PROFILE: i32 = 1;
 pub const LIERO_SELECTOR_REPLAY: i32 = 2;
@@ -104,14 +104,10 @@ const CONTROLLERS: [&[u8]; 3] = [b"Human", b"CPU", b"AI"];
 const WEAPON_STATES: [&[u8]; 3] = [b"Menu", b"Bonus", b"Banned"];
 const BOT_WEAPONS: [&[u8]; 3] = [b"RANDOM", b"PICK", b"KEEP"];
 
-/// What the menus call in C++.
+/// What the menus call in C++. The settings, TC and files are the app's.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroMenusHooks {
-    /// The settings the menus change, and a player's.
-    pub settings: unsafe extern "C" fn() -> *mut LieroSettingsBox,
-    pub worm_settings: unsafe extern "C" fn(player: i32) -> *mut LieroWormSettingsBox,
-    pub tc: unsafe extern "C" fn() -> *const LieroTcData,
     /// Frames the menu has shown, for how fast held keys step a number.
     pub menu_cycles: unsafe extern "C" fn() -> u32,
     /// The window's double size, and setting it or full screen. These don't
@@ -119,17 +115,6 @@ pub struct LieroMenusHooks {
     pub double_res: unsafe extern "C" fn() -> *mut bool,
     pub set_double_res: unsafe extern "C" fn(on: bool),
     pub set_fullscreen: unsafe extern "C" fn(on: bool),
-    /// A file selector (`LIERO_SELECTOR_*`), for `player`'s profile; an
-    /// empty screen if listing its folder threw.
-    pub open_selector: unsafe extern "C" fn(kind: i32, player: i32) -> LieroScreen,
-    /// Switches to the TC the TC selector loaded, if it loaded one.
-    pub take_chosen_tc: unsafe extern "C" fn() -> bool,
-    /// The setup file loaded or saved last, and saving the setup as
-    /// `name`.cfg. False if it threw.
-    pub settings_path: unsafe extern "C" fn() -> LieroStr,
-    pub save_options: unsafe extern "C" fn(name: LieroStr) -> bool,
-    /// Saves `player`'s profile as Profiles/`name`.lpf. False if it threw.
-    pub save_profile_as: unsafe extern "C" fn(player: i32, name: LieroStr) -> bool,
 }
 
 /// What an item does (`ItemBehavior` and its kinds).
@@ -275,14 +260,14 @@ impl LieroMenus {
         &mut self.menus[kind as usize].0
     }
 
-    // SAFETY, for these four: C++'s settings and TC outlive the call
-    // they're used in, and nothing else holds them meanwhile.
+    // The app's settings and TC outlive the call they're used in, and
+    // nothing else holds them meanwhile.
     fn settings<'a>(&self) -> &'a mut LieroSettingsData {
-        unsafe { &mut (*(self.h.settings)()).data }
+        &mut crate::app::app().menu_settings().data
     }
 
     fn worm<'a>(&self) -> &'a mut LieroWormSettingsBox {
-        unsafe { &mut *(self.h.worm_settings)(self.player) }
+        worm_settings(self.player)
     }
 
     fn worm_data<'a>(&self) -> &'a mut LieroWormSettingsData {
@@ -290,7 +275,7 @@ impl LieroMenus {
     }
 
     fn tc<'a>(&self) -> &'a LieroTcData {
-        unsafe { &*(self.h.tc)() }
+        crate::app::app().tc_data()
     }
 
     /// `Gfx::loadMenus`: the items, added to what the menus have.
@@ -542,7 +527,7 @@ impl LieroMenus {
             }
             Behavior::Level => self.update_level(kind, i),
             Behavior::OptionsSave => {
-                let name = base_name(unsafe { (self.h.settings_path)().bytes() });
+                let name = base_name(&crate::app_files::settings_path());
                 self.set_value(kind, i, name);
             }
             _ => {}
@@ -554,7 +539,7 @@ impl LieroMenus {
         let st = self.settings();
         let tc = self.tc();
         let (value, regen) = if !st.random_level {
-            let file = unsafe { &(*(self.h.settings)()).level_file };
+            let file = &crate::app::app().menu_settings().level_file;
             let mut v = b"\"".to_vec();
             v.extend(base_name(file));
             v.push(b'"');
@@ -661,12 +646,9 @@ impl LieroMenus {
         Some((x + self.menu(kind).m.value_offset_x + 2, y))
     }
 
-    /// A file selector, or none if listing its folder threw.
+    /// A file selector.
     fn selector(&mut self, kind: i32, then: Then, selector: i32) -> Option<LieroScreen> {
-        let screen = unsafe { (self.h.open_selector)(selector, self.player) };
-        if screen.tick.is_none() {
-            return None;
-        }
+        let screen = crate::app_files::open_selector(selector, self.player);
         Some(self.open(kind, then, screen))
     }
 
@@ -738,7 +720,7 @@ impl LieroMenus {
                 match self.value_position(kind, i) {
                     None => None,
                     Some((x, y)) => {
-                        let name = base_name(unsafe { (self.h.settings_path)().bytes() });
+                        let name = base_name(&crate::app_files::settings_path());
                         Some(self.input(kind, Then::OptionsSave { item: i as i32 }, &name, 30, x, y, false))
                     }
                 }
@@ -812,8 +794,8 @@ impl LieroMenus {
                 self.update(kind, item as usize, &b);
             }
             Then::ProfileSaveAs => {
-                if ok && !typed.is_empty() && !unsafe { (self.h.save_profile_as)(self.player, lstr(&typed)) } {
-                    return -1;
+                if ok && !typed.is_empty() {
+                    crate::app_files::save_profile_as(self.player, &typed);
                 }
                 sound();
                 self.update_items(kind);
@@ -842,8 +824,8 @@ impl LieroMenus {
                 self.update(kind, item as usize, &b);
             }
             Then::OptionsSave { item } => {
-                if ok && !typed.is_empty() && !unsafe { (self.h.save_options)(lstr(&typed)) } {
-                    return -1;
+                if ok && !typed.is_empty() {
+                    crate::app_files::save_options(&typed);
                 }
                 sound();
                 let b = self.behavior(kind, item as usize);
@@ -863,7 +845,7 @@ impl LieroMenus {
                 return result;
             }
             Then::Tc => {
-                if unsafe { (self.h.take_chosen_tc)() } {
+                if crate::app_files::take_chosen_tc() {
                     return MA_TC;
                 }
             }
@@ -908,7 +890,6 @@ impl LieroMenus {
             ids: Vec<i32>,
             kind: i32,
             scr: LieroBitmap,
-            h: LieroMenusHooks,
             player: i32,
             palette_color: i32,
         }
@@ -916,7 +897,7 @@ impl LieroMenus {
             let c = &*(ctx as *const Ctx);
             let id = c.ids[item as usize];
             if c.kind == LIERO_MENU_PLAYER && (PL_RED..=PL_BLUE).contains(&id) {
-                let ws = &(*(c.h.worm_settings)(c.player)).data;
+                let ws = &worm_settings(c.player).data;
                 liero_menu_draw_rgb_overlay(&c.scr, x, y, selected, ws.rgb[(id - PL_RED) as usize], ws.color);
             } else if c.kind == LIERO_MENU_HIDDEN && id == HM_PALETTE_SELECT {
                 liero_menu_draw_palette_overlay(&c.scr, x, y, selected, c.palette_color);
@@ -926,13 +907,18 @@ impl LieroMenus {
             ids: self.menu(kind).ids.clone(),
             kind,
             scr: *scr,
-            h: self.h,
             player: self.player,
             palette_color: self.palette_color,
         };
         let hooks = LieroMenuHooks { ctx: &ctx as *const Ctx as *mut c_void, draw_overlay: overlay };
         self.menu(kind).draw_with(scr, font, &hooks, disabled, x, show);
     }
+}
+
+/// `player`'s settings in the app's.
+fn worm_settings<'a>(player: i32) -> &'a mut LieroWormSettingsBox {
+    // SAFETY: the app's settings hold a reference to them.
+    unsafe { &mut *crate::app::app().menu_settings().worms[player as usize].as_ptr() }
 }
 
 /// C's `atoi` on digits: the leading number, saturating as a 32-bit int.
@@ -1059,25 +1045,13 @@ mod tests {
         assert_eq!(atoi(b"99999999999"), i32::MAX);
     }
 
-    use crate::settings::{liero_settings_box_new, liero_worm_settings_box_new};
     use std::cell::Cell;
 
     thread_local! {
-        static SETTINGS: Cell<*mut LieroSettingsBox> = const { Cell::new(std::ptr::null_mut()) };
-        static WORM: Cell<*mut LieroWormSettingsBox> = const { Cell::new(std::ptr::null_mut()) };
         static CYCLES: Cell<u32> = const { Cell::new(0) };
         static DOUBLE_RES: Cell<*mut bool> = const { Cell::new(std::ptr::null_mut()) };
     }
 
-    unsafe extern "C" fn settings() -> *mut LieroSettingsBox {
-        SETTINGS.get()
-    }
-    unsafe extern "C" fn worm_settings(_: i32) -> *mut LieroWormSettingsBox {
-        WORM.get()
-    }
-    unsafe extern "C" fn tc() -> *const LieroTcData {
-        panic!("the TC isn't needed here")
-    }
     unsafe extern "C" fn menu_cycles() -> u32 {
         CYCLES.get()
     }
@@ -1088,42 +1062,16 @@ mod tests {
         *DOUBLE_RES.get() = on;
     }
     unsafe extern "C" fn set_fullscreen(_: bool) {}
-    unsafe extern "C" fn open_selector(_: i32, _: i32) -> LieroScreen {
-        LieroScreen::empty()
-    }
-    unsafe extern "C" fn no() -> bool {
-        false
-    }
-    unsafe extern "C" fn path() -> LieroStr {
-        lstr(b"config/LIERO.CFG")
-    }
-    unsafe extern "C" fn save_options(_: LieroStr) -> bool {
-        true
-    }
-    unsafe extern "C" fn save_profile_as(_: i32, _: LieroStr) -> bool {
-        true
-    }
 
-    /// The menus with their items, on new settings.
+    /// The menus with their items, on the app's new settings.
     fn menus() -> LieroMenus {
-        SETTINGS.set(liero_settings_box_new());
-        WORM.set(liero_worm_settings_box_new());
+        let a = crate::app::app();
+        // SAFETY: the new box's reference is the app's.
+        a.settings = Some(unsafe { crate::shared::Shared::adopt(crate::settings::liero_settings_box_new()) });
+        a.files.settings_node = crate::fs::Node::new(b"config/LIERO.CFG");
         DOUBLE_RES.set(Box::leak(Box::new(false)));
         CYCLES.set(0);
-        let mut m = LieroMenus::new(LieroMenusHooks {
-            settings,
-            worm_settings,
-            tc,
-            menu_cycles,
-            double_res,
-            set_double_res,
-            set_fullscreen,
-            open_selector,
-            take_chosen_tc: no,
-            settings_path: path,
-            save_options,
-            save_profile_as,
-        });
+        let mut m = LieroMenus::new(LieroMenusHooks { menu_cycles, double_res, set_double_res, set_fullscreen });
         m.load();
         m
     }
