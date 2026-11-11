@@ -1,5 +1,5 @@
 //! Writes a TC folder. Port of `src/tc_tool/common_writer.cpp` and the
-//! `archive_text` functions in `src/game/common_model.hpp`.
+//! `archive_text` functions in `src/game/common_model.hpp` (since removed).
 
 use crate::model::*;
 use crate::toml_writer::Writer;
@@ -61,6 +61,24 @@ fn write(path: &Path, data: &[u8]) -> Result<(), Error> {
 }
 
 /// Object ids, for writing references between objects.
+/// The text of tc.cfg, as the C++ `archive_text` wrote it.
+pub fn tc_text(common: &Common) -> Vec<u8> {
+    tc_cfg(common)
+}
+
+/// The text of `x`'s file in `common`, whose objects its references name.
+pub fn weapon_text(common: &Common, x: &Weapon) -> Vec<u8> {
+    weapon_cfg(x, &Ids::new(common))
+}
+
+pub fn nobject_text(common: &Common, x: &NObject) -> Vec<u8> {
+    nobject_cfg(x, &Ids::new(common))
+}
+
+pub fn sobject_text(x: &SObject) -> Vec<u8> {
+    sobject_cfg(x)
+}
+
 struct Ids<'a> {
     nobjects: Vec<&'a str>,
     sobjects: Vec<&'a str>,

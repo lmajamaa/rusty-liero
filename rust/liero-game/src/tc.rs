@@ -723,6 +723,41 @@ pub unsafe extern "C" fn liero_tc_free(tc: *mut LieroTc) {
     }
 }
 
+/// Copies the named fields of `from` to `to`.
+macro_rules! copy_fields {
+    ($to:ident, $from:ident, $($f:ident),* $(,)?) => { $($to.$f = $from.$f;)* };
+}
+
+impl LieroTc {
+    /// The TC as loaded, before F8 changes the game's copies.
+    pub(crate) fn model(&self) -> Option<&Common> {
+        self.common.as_ref()
+    }
+
+    /// Weapon `i` as the game has it, F8's changes included, as the model's.
+    pub(crate) fn weapon_model(&self, i: usize) -> model::Weapon {
+        let mut m = self.common.as_ref().expect("the TC didn't load").weapons[i].clone();
+        let w = &self.weapons[i];
+        copy_fields!(m, w, detect_distance, affect_by_worm, blow_away, gravity, shadow, laser_sight, launch_sound,
+            loop_sound, explo_sound, speed, add_speed, distribution, parts, recoil, mult_speed, delay, loading_time,
+            ammo, create_on_exp, dirt_effect, leave_shells, leave_shell_delay, play_reload_sound, worm_explode,
+            expl_ground, worm_collide, fire_cone, collide_with_objects, affect_by_explosions, bounce, time_to_explo,
+            time_to_explo_v, hit_damage, blood_on_hit, start_frame, num_frames, loop_anim, shot_type, color_bullets,
+            splinter_amount, splinter_colour, splinter_type, splinter_scatter, obj_trail_type, obj_trail_delay,
+            part_trail_type, part_trail_obj, part_trail_delay, chain_explosion);
+        m
+    }
+
+    /// Special object `i` as the game has it, as the model's.
+    pub(crate) fn sobject_model(&self, i: usize) -> model::SObject {
+        let mut m = self.common.as_ref().expect("the TC didn't load").sobjects[i].clone();
+        let o = &self.sobjects[i];
+        copy_fields!(m, o, start_sound, num_sounds, anim_delay, start_frame, num_frames, detect_range, damage,
+            blow_away, shadow, shake, flash, dirt_effect);
+        m
+    }
+}
+
 /// Another reference to `tc`, to give up with `liero_tc_free`.
 ///
 /// # Safety

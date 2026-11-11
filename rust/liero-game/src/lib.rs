@@ -18,6 +18,7 @@ pub mod deflate;
 pub mod fs;
 pub mod game;
 pub mod game_box;
+pub mod hashrun;
 pub mod gfx;
 pub mod item;
 pub mod keys;

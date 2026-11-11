@@ -1,0 +1,489 @@
+//! Sound and input (`src/game/hashsfx.cpp`).
+//!
+//! Sound: the 16-bit samples made from each TC sound, a mixer driven by
+//! random adds, stops, volume changes and mixes of random lengths (sounds
+//! starting in the past and the future, more sounds than channels, looping,
+//! repeated and null ids, volumes past the mask, a full-scale square wave
+//! for clipping and sounds one and two samples long), and four bot games
+//! whose sounds are mixed 630 frames per tick, as at 44.1 kHz and 70 ticks
+//! a second.
+//!
+//! Input: the SDL scancode to DOS key mapping for every scancode, key and
+//! joystick events into the key state and a controller as `Gfx::processEvent`
+//! passes them, the key tests the menus use, key names, the local controller
+//! turning keys into worm controls and the frame skip keys.
+
+use std::ffi::c_void;
+
+use super::game::hash_game;
+use super::games::{bot_tick, set_up_game, tc_data, HOLDAZONE, HOOKS, KILL_EM_ALL, THROWERS};
+use super::{Fnv, Out};
+use crate::app::app;
+use crate::controller::liero_controller_process;
+use crate::controllers::{liero_controller_data, liero_controller_free, liero_controller_game, liero_controller_on_key, liero_local_controller_new};
+use crate::game_box::liero_game_set_context;
+use crate::keys::{
+    key_name, liero_joy_axis, liero_joy_button, liero_joy_hat, liero_joy_key, liero_key_is_extended, liero_keys_clear,
+    liero_keys_event, liero_keys_release_sdl, liero_keys_test, liero_keys_test_once, liero_keys_test_sdl,
+    liero_keys_test_sdl_once, liero_keys_toggle, liero_sdl_to_dos_key, liero_sdl_to_dos_keysym, LieroKeyChanges, LieroKeys,
+    LIERO_DK_ESCAPE, LIERO_MAX_JOY_BUTTONS,
+};
+use crate::rand::LieroRand;
+use crate::settings::LieroSettingsBox;
+use crate::sfx::{
+    liero_mixer_add, liero_mixer_free, liero_mixer_is_playing, liero_mixer_mix, liero_mixer_new, liero_mixer_now,
+    liero_mixer_set_volume, liero_mixer_stop, LieroMixer, LieroSoundOut, LIERO_SOUND_LOOP, LIERO_SOUND_NORMAL,
+};
+use crate::shared::Shared;
+use crate::tc::{LieroTc, LieroTcSound};
+
+/// # Safety
+/// `p` is valid for `n` items, or `n` is 0.
+unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
+    if n == 0 {
+        &[]
+    } else {
+        std::slice::from_raw_parts(p, n)
+    }
+}
+
+fn sounds(tc: &Shared<LieroTc>) -> &[LieroTcSound] {
+    let d = tc_data(tc);
+    // SAFETY: the TC's sounds are as many as its count.
+    unsafe { items(d.sounds, d.sound_count) }
+}
+
+fn samples(s: &LieroTcSound) -> &[i16] {
+    // SAFETY: a sound's samples are as many as its count.
+    unsafe { items(s.samples, s.sample_count) }
+}
+
+fn hash_samples(out: &mut Out, tc: &Shared<LieroTc>) {
+    for (i, s) in sounds(tc).iter().enumerate() {
+        let mut f = Fnv::default();
+        f.bool(s.valid);
+        if s.valid {
+            f.u32(s.sample_count as u32);
+            samples(s).iter().for_each(|&v| f.i32(v.into()));
+        }
+        out.hash("sfx-sample", i as i64, f);
+    }
+}
+
+fn hash_buffer(f: &mut Fnv, buf: &[i16]) {
+    f.u32(buf.len() as u32);
+    buf.iter().for_each(|&v| f.i32(v.into()));
+}
+
+fn mixer_script(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
+    let mut sounds: Vec<&[i16]> = sounds(tc).iter().filter(|s| s.valid).map(samples).collect();
+    // A full-scale square wave, which clips as soon as two play at once.
+    let square: Vec<i16> = (0..300).map(|i| if (i / 25) % 2 == 1 { 32767 } else { -32768 }).collect();
+    sounds.push(&square);
+    sounds.push(&[-32768]);
+    sounds.push(&[12345, -23456]);
+
+    // Ids are only compared, never followed.
+    let ids: [usize; 6] = [0, 16, 32, 48, 64, 80];
+    let name = format!("sfx-mixer-{seed}");
+
+    let m = liero_mixer_new();
+    // SAFETY: the mixer is new, and freed below.
+    let mixer: &mut LieroMixer = unsafe { &mut *m };
+    let mut r = LieroRand::new(seed);
+    let mut buf = vec![0i16; 5000];
+    let mut f = Fnv::default();
+    for step in 1..=steps {
+        let id = ids[r.below(ids.len() as u32) as usize] as *mut c_void;
+        let op = r.below(10);
+        if op < 4 {
+            let snd = sounds[r.below(sounds.len() as u32) as usize];
+            let time = liero_mixer_now(mixer).wrapping_add(r.below(6000) as i32).wrapping_sub(3000) as u32;
+            let flags = if r.below(4) == 0 { LIERO_SOUND_LOOP } else { LIERO_SOUND_NORMAL };
+            // SAFETY: the samples outlive the mixer.
+            let ret = unsafe { liero_mixer_add(mixer, snd.as_ptr(), snd.len(), time, id, flags) };
+            f.bool(ret == id);
+            f.bool(!ret.is_null());
+        } else if op == 4 {
+            liero_mixer_stop(mixer, id);
+        } else if op == 5 {
+            f.bool(liero_mixer_is_playing(mixer, id));
+        } else if op == 6 {
+            liero_mixer_set_volume(mixer, id, f64::from(r.below(2600)) / 1000.0);
+        } else {
+            let max = if r.below(3) == 0 { 5000 } else { 700 };
+            let n = 1 + r.below(max) as usize;
+            // SAFETY: the buffer holds `n` frames.
+            unsafe { liero_mixer_mix(mixer, buf.as_mut_ptr(), n) };
+            hash_buffer(&mut f, &buf[..n]);
+            f.i32(liero_mixer_now(mixer));
+        }
+
+        if step % 100 == 0 {
+            out.hash(&name, step.into(), f);
+        }
+    }
+    // SAFETY: the mixer isn't used again.
+    unsafe { liero_mixer_free(m) };
+}
+
+fn sound_game(out: &mut Out, tc: &Shared<LieroTc>, name: &str, seed: u32, game_mode: u32, weapons: Option<&[&str; 5]>, ticks: i32) {
+    let mut game = set_up_game(tc, seed, game_mode, weapons);
+    let m = liero_mixer_new();
+    let settings: *mut LieroSettingsBox = game.settings_box();
+    // SAFETY: the game keeps references to its settings and TC; the mixer
+    // lives until the game's sound goes back to none.
+    unsafe { liero_game_set_context(&mut game, settings, tc.as_ptr(), LieroSoundOut { mixer: m, report: None }) };
+
+    let blood = game.settings_box().data.blood_particle_max;
+    game.start(blood);
+
+    let game_name = format!("{name}-game");
+    let mut buf = [0i16; 630];
+    let mut f = Fnv::default();
+    for tick in 1..=ticks {
+        bot_tick(&mut game);
+        game.process_frame(&HOOKS);
+        // SAFETY: the buffer holds 630 frames.
+        unsafe { liero_mixer_mix(&mut *m, buf.as_mut_ptr(), buf.len()) };
+        hash_buffer(&mut f, &buf);
+
+        let over = game.is_over();
+        if over || tick % 100 == 0 {
+            out.hash(name, tick.into(), f);
+            // Sounds don't change the game.
+            out.line(&format!("{game_name} {tick} {:016x}", hash_game(&mut game)));
+        }
+        if over {
+            break;
+        }
+    }
+
+    // SAFETY: as above; the mixer is freed once the game has no sound.
+    unsafe {
+        liero_game_set_context(&mut game, settings, tc.as_ptr(), LieroSoundOut::NONE);
+        liero_mixer_free(m);
+    }
+}
+
+const LOUD: [&str; 5] = ["BIG NUKE", "MINIGUN", "CHAINGUN", "LASER", "HELLRAIDER"];
+
+fn hash_sound(out: &mut Out, tc: &Shared<LieroTc>) {
+    hash_samples(out, tc);
+    for seed in 1..=4 {
+        mixer_script(out, tc, seed, 2000);
+    }
+    sound_game(out, tc, "sfx-kill-1", 1, KILL_EM_ALL, None, 3000);
+    sound_game(out, tc, "sfx-throwers-13", 13, KILL_EM_ALL, Some(&THROWERS), 3000);
+    sound_game(out, tc, "sfx-loud-21", 21, KILL_EM_ALL, Some(&LOUD), 3000);
+    sound_game(out, tc, "sfx-zone-6", 6, HOLDAZONE, None, 3000);
+}
+
+const SDL_NUM_SCANCODES: i32 = 512;
+const SC_A: i32 = 4;
+const SC_1: i32 = 30;
+const SC_2: i32 = 31;
+const SC_5: i32 = 34;
+const SC_9: i32 = 38;
+const SC_0: i32 = 39;
+const SC_F11: i32 = 68;
+const SC_RIGHT: i32 = 79;
+const SC_LCTRL: i32 = 224;
+const SC_RCTRL: i32 = 228;
+
+fn hash_key_map(out: &mut Out) {
+    // Every scancode SDL has, in blocks, then some it doesn't.
+    for block in 0..SDL_NUM_SCANCODES / 64 {
+        let mut f = Fnv::default();
+        for sc in block * 64..block * 64 + 64 {
+            f.u32(liero_sdl_to_dos_key(sc));
+            f.u32(liero_sdl_to_dos_keysym(sc));
+        }
+        out.hash("keys-map", block.into(), f);
+    }
+    let mut f = Fnv::default();
+    for sc in [-1, -1000, 512, 513, 1000, 0x7fff_ffff] {
+        f.u32(liero_sdl_to_dos_key(sc));
+    }
+    out.hash("keys-map", (SDL_NUM_SCANCODES / 64).into(), f);
+}
+
+type JoyButtons = [bool; LIERO_MAX_JOY_BUTTONS as usize];
+
+/// What `Gfx::processEvent` keeps besides the key state: the 32 key
+/// presses it buffers until `Gfx::process` empties them, and each
+/// joystick's buttons.
+struct Events {
+    key_buf: Vec<i32>,
+    joysticks: [JoyButtons; 2],
+}
+
+/// An event, with only the fields the hash run sets.
+enum Event {
+    Key { down: bool, scancode: i32 },
+    JoyAxis { which: usize, axis: u8, value: i16 },
+    JoyHat { which: usize, value: u8 },
+    JoyButton { which: usize, button: u8, pressed: bool },
+}
+
+/// `KeyRecorder`: hashes the keys a controller is given.
+fn record(rec: &mut Fnv, key: u32, state: bool) {
+    rec.u32(key);
+    rec.bool(state);
+}
+
+fn send_keys(rec: Option<&mut Fnv>, changes: LieroKeyChanges) {
+    if let Some(rec) = rec {
+        for i in 0..changes.count as usize {
+            record(rec, changes.keys[i], changes.states[i]);
+        }
+    }
+}
+
+impl Events {
+    /// `Gfx::processEvent`, with `rec` as the controller. F11, which
+    /// toggles fullscreen, never comes.
+    fn process(&mut self, keys: &mut LieroKeys, ev: &Event, rec: Option<&mut Fnv>) {
+        match *ev {
+            Event::Key { down, scancode } => {
+                if down && self.key_buf.len() < 32 {
+                    self.key_buf.push(scancode);
+                }
+                let dos = liero_keys_event(keys, scancode, down);
+                if let Some(rec) = rec.filter(|_| dos != 0) {
+                    record(rec, dos, down);
+                }
+            }
+            // SAFETY: each joystick has its buttons.
+            Event::JoyAxis { which, axis, value } => {
+                send_keys(rec, unsafe { liero_joy_axis(self.joysticks[which].as_mut_ptr(), which as i32, axis, value) })
+            }
+            Event::JoyHat { which, value } => send_keys(rec, unsafe { liero_joy_hat(self.joysticks[which].as_mut_ptr(), which as i32, value) }),
+            Event::JoyButton { which, button, pressed } => {
+                send_keys(rec, unsafe { liero_joy_button(self.joysticks[which].as_mut_ptr(), which as i32, button, pressed) })
+            }
+        }
+    }
+}
+
+fn hash_key_state(f: &mut Fnv, keys: &LieroKeys, ev: &Events) {
+    keys.down.iter().for_each(|&k| f.bool(k));
+    for js in &ev.joysticks {
+        js.iter().for_each(|&b| f.bool(b));
+    }
+    f.u32(ev.key_buf.len() as u32);
+}
+
+fn random_scancode(r: &mut LieroRand) -> i32 {
+    loop {
+        let sc = match r.below(4) {
+            0 => r.below(SDL_NUM_SCANCODES as u32) as i32,
+            // Arrows and the keys after them
+            1 => SC_RIGHT + r.below(8) as i32,
+            _ => r.below(100) as i32,
+        };
+        // F11 toggles fullscreen, which needs a window.
+        if sc != SC_F11 {
+            return sc;
+        }
+    }
+}
+
+fn random_axis(r: &mut LieroRand) -> i16 {
+    const VALUES: [i16; 9] = [-32768, -10001, -10000, -1, 0, 1, 10000, 10001, 32767];
+    if r.below(3) == 0 {
+        return (r.below(65536) as i32 - 32768) as i16;
+    }
+    VALUES[r.below(9) as usize]
+}
+
+fn hash_events(out: &mut Out, seed: u32, steps: i32) {
+    let keys = &mut app().keys;
+    liero_keys_clear(keys);
+    let mut ev = Events { key_buf: Vec::new(), joysticks: [[false; LIERO_MAX_JOY_BUTTONS as usize]; 2] };
+
+    let name = format!("keys-events-{seed}");
+    let mut rec = Fnv::default();
+    let mut r = LieroRand::new(seed);
+    let mut f = Fnv::default();
+    for step in 1..=steps {
+        let op = r.below(12);
+        let event = match op {
+            0..=3 => {
+                let down = r.below(2) != 0;
+                Some(Event::Key { down, scancode: random_scancode(&mut r) })
+            }
+            4 => {
+                let which = r.below(2) as usize;
+                let axis = r.below(6) as u8;
+                Some(Event::JoyAxis { which, axis, value: random_axis(&mut r) })
+            }
+            5 => {
+                let which = r.below(2) as usize;
+                Some(Event::JoyHat { which, value: r.below(16) as u8 })
+            }
+            6 => {
+                // The event's type, then its fields; the button state is
+                // what counts.
+                r.below(2);
+                let which = r.below(2) as usize;
+                let button = r.below(16) as u8;
+                Some(Event::JoyButton { which, button, pressed: r.below(2) != 0 })
+            }
+            _ => {
+                let k = r.below(177);
+                let sc = random_scancode(&mut r);
+                match op {
+                    7 => f.bool(liero_keys_test_once(keys, k)),
+                    8 => {
+                        f.bool(liero_keys_test(keys, k));
+                        liero_keys_toggle(keys, k);
+                    }
+                    9 => f.bool(liero_keys_test_sdl_once(keys, sc)),
+                    10 => {
+                        f.bool(liero_keys_test_sdl(keys, sc));
+                        liero_keys_release_sdl(keys, sc);
+                    }
+                    _ => keys.set(k, r.below(2) != 0),
+                }
+                None
+            }
+        };
+
+        if let Some(e) = event {
+            let to_rec = r.below(4) != 0;
+            ev.process(keys, &e, to_rec.then_some(&mut rec));
+        }
+
+        hash_key_state(&mut f, keys, &ev);
+        f.u32(rec.0 as u32);
+        f.u32((rec.0 >> 32) as u32);
+
+        if step % 40 == 0 {
+            // The key buffer holds 32 presses until `Gfx::process` empties it.
+            ev.key_buf.drain(..).for_each(|sc| f.i32(sc));
+        }
+        if step % 100 == 0 {
+            out.hash(&name, step.into(), f);
+        }
+    }
+
+    liero_keys_clear(keys);
+}
+
+fn hash_key_names(out: &mut Out) {
+    let mut f = Fnv::default();
+    for k in 0..1200 {
+        let n = key_name(k);
+        f.u32(n.len() as u32);
+        f.bytes(&n);
+        f.bool(liero_key_is_extended(k));
+    }
+    for j in 0..4 {
+        for b in 0..LIERO_MAX_JOY_BUTTONS as i32 {
+            f.u32(liero_joy_key(j, b));
+        }
+    }
+    out.hash("keys-names", 0, f);
+}
+
+fn hash_controls(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
+    let settings = LieroSettingsBox::defaults();
+    let mut r = LieroRand::new(seed);
+    // A small pool of keys, so the two worms and their controls share some.
+    let pool: [u32; 12] = std::array::from_fn(|_| {
+        if r.below(4) == 0 {
+            let joy = r.below(2) as i32;
+            liero_joy_key(joy, r.below(32) as i32)
+        } else {
+            2 + r.below(100)
+        }
+    });
+    for ws in &settings.worms {
+        // SAFETY: nothing else has the new settings yet.
+        let ws = unsafe { &mut *ws.as_ptr() };
+        ws.data.controller = 0;
+        ws.data.controls.iter_mut().for_each(|c| *c = pool[r.below(12) as usize]);
+        ws.data.controls_ex.iter_mut().for_each(|c| *c = pool[r.below(12) as usize]);
+    }
+
+    // SAFETY: the controller keeps references to the settings and the TC,
+    // and is freed below.
+    let lc = unsafe { liero_local_controller_new(settings.as_ptr(), tc.as_ptr()) };
+    // SAFETY: the controller is new; its data and game live as long as it
+    // does.
+    let (d, game) = unsafe { (liero_controller_data(&mut *lc), &mut *liero_controller_game(&mut *lc)) };
+    let keys = &mut app().keys;
+
+    let name = format!("keys-controls-{seed}");
+    let mut f = Fnv::default();
+    for step in 1..=steps {
+        let op = r.below(10);
+        if op < 7 {
+            let key = if r.below(8) == 0 {
+                LIERO_DK_ESCAPE
+            } else if r.below(8) == 0 {
+                r.below(177)
+            } else {
+                pool[r.below(12) as usize]
+            };
+            // SAFETY: the controller is a live one.
+            unsafe { liero_controller_on_key(&mut *lc, key as i32, r.below(2) != 0) };
+        } else if op == 7 {
+            // SAFETY: the controller's data lives as long as it does.
+            unsafe { (*d).going_to_menu = false };
+        } else if op == 8 {
+            // The frame skip keys, maybe with ctrl.
+            const KEYS: [i32; 8] = [SC_0, SC_1, SC_2, SC_5, SC_9, SC_LCTRL, SC_RCTRL, SC_A];
+            for _ in 0..3 {
+                let k = liero_sdl_to_dos_key(KEYS[r.below(8) as usize]);
+                keys.set(k, r.below(2) != 0);
+            }
+            // SAFETY: as above.
+            liero_controller_process(unsafe { &mut *d }, keys);
+        } else {
+            let i = r.below(2) as usize;
+            let w = game.worm_at(i).expect("no worm");
+            w.data.control_states = r.below(128);
+        }
+
+        for w in game.listed_worms() {
+            let w = w.expect("an empty place among the game's worms");
+            f.u32(w.data.control_states);
+            f.u32(w.data.clean_control_states);
+        }
+        // SAFETY: as above.
+        let d = unsafe { &*d };
+        f.i32(d.fade_value);
+        f.bool(d.going_to_menu);
+        f.i32(d.frame_skip);
+        f.bool(d.inverse_frame_skip);
+        f.i32(d.cycles);
+        keys.down.iter().for_each(|&k| f.bool(k));
+
+        if step % 100 == 0 {
+            out.hash(&name, step.into(), f);
+        }
+    }
+
+    liero_keys_clear(keys);
+    // SAFETY: the controller isn't used again.
+    unsafe { liero_controller_free(lc) };
+}
+
+fn hash_input(out: &mut Out, tc: &Shared<LieroTc>) {
+    hash_key_map(out);
+    for seed in 1..=3 {
+        hash_events(out, seed, 2000);
+    }
+    hash_key_names(out);
+    for seed in 1..=3 {
+        hash_controls(out, tc, seed, 1000);
+    }
+}
+
+pub fn hash_sound_and_input(out: &mut Out) {
+    let tc = super::tc::bundled();
+    hash_sound(out, &tc);
+    hash_input(out, &tc);
+}

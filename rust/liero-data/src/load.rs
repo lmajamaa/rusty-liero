@@ -1,5 +1,5 @@
 //! Reads a TC folder: port of `Common::load` and the `archive_text` functions
-//! (src/game/common.cpp, src/game/common_model.hpp), giving the same data as
+//! (src/game/common.cpp, and common_model.hpp, since removed), giving the same data as
 //! the C++ did for every TC it could load.
 //!
 //! As in the C++, a sound whose WAV header isn't 8-bit mono 22050 Hz is left
