@@ -774,7 +774,9 @@ impl LieroMenus {
                 let k = result as u32;
                 if k != LIERO_DK_ESCAPE {
                     let ws = self.worm_data();
-                    if !is_extended(k) {
+                    // Dig has only an extended control (`PlDig`'s
+                    // `KeyBehavior` binds `controlsEx` twice).
+                    if !is_extended(k) && index < ws.controls.len() {
                         ws.controls[index] = k;
                     }
                     ws.controls_ex[index] = k;
@@ -1112,6 +1114,23 @@ mod tests {
         unsafe { opened.unwrap().release() };
         m.then(LIERO_DK_ESCAPE as i32);
         assert_eq!((ws.controls[1], ws.controls_ex[1]), (31, 31));
+    }
+
+    #[test]
+    fn dig_takes_any_key_into_the_extended_controls_only() {
+        let mut m = menus();
+        for player in 0..2 {
+            m.player = player;
+            select(&mut m, LIERO_MENU_PLAYER, PL_DIG);
+            let ws = m.worm_data();
+            let before = ws.controls;
+            let (_, opened) = m.enter(LIERO_MENU_PLAYER);
+            unsafe { opened.expect("key choice").release() };
+            // C, which has a DOS key.
+            assert!(!is_extended(46));
+            m.then(46);
+            assert_eq!((ws.controls, ws.controls_ex[7]), (before, 46));
+        }
     }
 
     #[test]
