@@ -15,7 +15,8 @@ use crate::rand::{LieroRand, LIERO_RAND_DEFAULT_SEED};
 use crate::renderer::{LieroBitmapBox, LieroRenderer};
 use crate::settings::LieroSettingsBox;
 use crate::shared::Shared;
-use crate::tc::LieroTc;
+use crate::tc::{tc_data, LieroTcData, SharedTc};
+use std::cell::Ref;
 
 pub struct LieroApp {
     /// For things that don't affect the game: the menus, weapon selection
@@ -37,8 +38,12 @@ pub struct LieroApp {
     /// The menus' settings (`gfx.settings`), which can be another game's
     /// than the one played. Loading options replaces them.
     pub settings: Option<Shared<LieroSettingsBox>>,
-    /// The TC the menus and new games use (`gfx.common`).
-    pub tc: Option<Shared<LieroTc>>,
+    /// The TC the menus and new games use (`gfx.common`), set with
+    /// `set_tc`.
+    tc: Option<SharedTc>,
+    /// The TC's font, which F8 doesn't change, for drawing with while
+    /// nothing borrows the TC.
+    font: Vec<crate::gfx::LieroFontChar>,
     /// The folders, the settings file and the TC chosen (`app_files.rs`).
     pub files: crate::app_files::Files,
     /// The menus, which C++ makes.
@@ -64,10 +69,35 @@ impl LieroApp {
 
 impl LieroApp {
     /// The menus' TC.
-    pub fn menu_tc(&self) -> *mut LieroTc {
-        self.tc.as_ref().expect("no TC").as_ptr()
+    pub fn menu_tc(&self) -> SharedTc {
+        self.tc.clone().expect("no TC")
+    }
+
+    /// Whether the menus have a TC yet.
+    pub fn has_tc(&self) -> bool {
+        self.tc.is_some()
+    }
+
+    /// Makes `tc` (or none) the menus' TC.
+    pub fn set_tc(&mut self, tc: Option<SharedTc>) {
+        self.font = tc.as_ref().map_or(Vec::new(), |t| tc_data(t).font.to_vec());
+        self.tc = tc;
     }
 }
+
+/// The menus' TC's font.
+pub(crate) fn menu_font() -> crate::text::LieroFont<'static> {
+    let a: &'static LieroApp = app();
+    crate::text::LieroFont { chars: &a.font }
+}
+
+/// The menus' TC's data. Panics if there's no TC.
+pub(crate) fn menu_tc_data() -> Ref<'static, LieroTcData> {
+    let a: &'static LieroApp = app();
+    tc_data(a.tc.as_ref().expect("no TC"))
+}
+
+impl LieroApp {}
 
 impl LieroApp {
     fn new() -> Self {
@@ -83,6 +113,7 @@ impl LieroApp {
             menu_cycles: 0,
             settings: None,
             tc: None,
+            font: Vec::new(),
             files: Default::default(),
             controller: None,
             menus: std::ptr::null_mut(),
@@ -144,16 +175,6 @@ pub unsafe fn liero_app_set_settings(a: &mut LieroApp, s: *mut LieroSettingsBox)
 /// The renderer the screen shows.
 pub fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
     liero_app_renderer(a, a.primary_single)
-}
-
-/// Makes `tc` (or none, if null) the menus' TC, taking a reference to it.
-///
-/// # Safety
-/// `tc` comes from `liero_tc_load` and has a reference, or is null.
-pub unsafe fn liero_app_set_tc(a: &mut LieroApp, tc: *mut LieroTc) {
-    unsafe {
-        a.tc = (!tc.is_null()).then(|| Shared::retain(tc));
-    }
 }
 
 /// The menus the app draws.

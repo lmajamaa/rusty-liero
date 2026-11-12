@@ -12,6 +12,8 @@ use crate::rand::LieroRand;
 use crate::sfx::samples_from_tc;
 use liero_data::model::{self, Common};
 use liero_data::Error;
+use std::cell::{Ref, RefCell};
+use std::rc::Rc;
 
 #[derive(Default)]
 pub struct LieroTcWeapon {
@@ -657,13 +659,10 @@ impl LieroTc {
     }
 }
 
-/// F8's random TC (`LieroTc::randomize`). What `liero_tc_data` points to
-/// changes in place.
-///
-/// # Safety
-/// `tc` must come from `liero_tc_load`.
-pub unsafe fn liero_tc_randomize(tc: &mut LieroTc, shuffle_seed: u32) {
-    tc.randomize(shuffle_seed);
+/// F8's random TC (`LieroTc::randomize`), in place: the games that share
+/// the TC, as one behind the menu does, play with it too, as in C++.
+pub fn liero_tc_randomize(tc: &RefCell<LieroTc>, shuffle_seed: u32) {
+    tc.borrow_mut().randomize(shuffle_seed);
 }
 
 /// Loads the TC in `node`, each file at its path inside it (`/` between
@@ -682,30 +681,40 @@ fn load(node: &Node) -> LieroTc {
     }
 }
 
-/// Loads the TC in `node` (`Common::load`). Always returns a TC to free with
-/// `liero_tc_free`; its `error` says whether loading failed.
-pub fn liero_tc_load(node: &Node) -> *mut LieroTc {
-    crate::shared::new_shared(load(node))
+/// A TC as the app, the controllers and the games hold it (C++'s
+/// `shared_ptr<Common>`). Only F8 changes it after loading.
+pub type SharedTc = Rc<RefCell<LieroTc>>;
+
+/// Loads the TC in `node` (`Common::load`). Always returns a TC; its
+/// `error` says whether loading failed.
+pub fn liero_tc_load(node: &Node) -> SharedTc {
+    Rc::new(RefCell::new(load(node)))
 }
 
-/// The loaded data, or null if loading failed. Valid until `liero_tc_free`.
-///
-/// # Safety
-/// `tc` must come from `liero_tc_load`.
-pub unsafe fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
-    match &tc.data {
-        Some(d) => &**d,
-        None => std::ptr::null(),
+/// The data of a TC that loaded. Panics on one that didn't.
+pub fn tc_data(tc: &RefCell<LieroTc>) -> Ref<'_, LieroTcData> {
+    Ref::map(tc.borrow(), |t| t.data().expect("the TC didn't load"))
+}
+
+impl LieroTc {
+    /// The loaded data, or none if loading failed.
+    pub fn data(&self) -> Option<&LieroTcData> {
+        self.data.as_deref()
     }
-}
 
-/// # Safety
-/// `tc` must come from `liero_tc_load` and not be used afterwards.
-pub unsafe fn liero_tc_free(tc: *mut LieroTc) {
-    unsafe {
-        if !tc.is_null() {
-            crate::shared::release_shared(tc);
-        }
+    /// Why loading failed, or empty.
+    pub fn error(&self) -> &str {
+        &self.error
+    }
+
+    /// A TC of `data` alone, for tests.
+    #[cfg(test)]
+    pub(crate) fn of(data: Box<LieroTcData>) -> SharedTc {
+        Rc::new(RefCell::new(LieroTc {
+            error: String::new(),
+            common: None,
+            data: Some(data),
+        }))
     }
 }
 
@@ -807,8 +816,8 @@ impl LieroTc {
 /// Loads the TC in `node` as `Common::load` did, or the message it threw:
 /// the TC can't be read, or its constants, texts and hacks aren't the
 /// game's.
-pub fn load_checked(node: &Node) -> Result<crate::shared::Shared<LieroTc>, String> {
-    let tc = crate::shared::Shared::new(load(node));
+pub fn load_checked(node: &Node) -> Result<SharedTc, String> {
+    let tc = load(node);
     let Some(d) = tc.data.as_deref() else {
         return Err(format!("Could not load the TC: {}", tc.error));
     };
@@ -818,7 +827,7 @@ pub fn load_checked(node: &Node) -> Result<crate::shared::Shared<LieroTc>, Strin
     {
         return Err("The TC's constants, texts and hacks don't match the game's".into());
     }
-    Ok(tc)
+    Ok(Rc::new(RefCell::new(tc)))
 }
 
 const fn str_eq(a: &str, b: &str) -> bool {
@@ -1013,17 +1022,13 @@ mod tests {
 
         let from_folder = Node::new(b"../../TC/openliero");
         let from_zip = Node::new(format!("{dir}/openliero").as_bytes());
-        unsafe {
-            let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
-            assert!((*b).error.is_empty(), "{}", (*b).error);
-            let (da, db) = (&*liero_tc_data(&*a), &*liero_tc_data(&*b));
-            assert_eq!(da.weapons.len(), db.weapons.len());
-            assert_eq!(da.sounds.len(), db.sounds.len());
-            for (sa, sb) in da.sounds.iter().zip(&db.sounds) {
-                assert_eq!((sa.valid, sa.data.len()), (sb.valid, sb.data.len()));
-            }
-            liero_tc_free(a);
-            liero_tc_free(b);
+        let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
+        assert!(b.borrow().error.is_empty(), "{}", b.borrow().error);
+        let (da, db) = (tc_data(&a), tc_data(&b));
+        assert_eq!(da.weapons.len(), db.weapons.len());
+        assert_eq!(da.sounds.len(), db.sounds.len());
+        for (sa, sb) in da.sounds.iter().zip(&db.sounds) {
+            assert_eq!((sa.valid, sa.data.len()), (sb.valid, sb.data.len()));
         }
     }
 
@@ -1031,25 +1036,21 @@ mod tests {
     fn loads_from_a_node_and_reports_errors() {
         // Relative to the crate, where the tests run.
         let node = Node::new(b"../../TC/openliero");
-        unsafe {
-            let tc = liero_tc_load(&node);
-            assert!((*tc).error.is_empty(), "{}", (*tc).error);
-            let data = &*liero_tc_data(&*tc);
-            assert_eq!(data.weapons.len(), 40);
-            assert_eq!(data.font[b'A' as usize].width, 5);
-            liero_tc_free(tc);
+        let tc = liero_tc_load(&node);
+        assert!(tc.borrow().error.is_empty(), "{}", tc.borrow().error);
+        let data = tc_data(&tc);
+        assert_eq!(data.weapons.len(), 40);
+        assert_eq!(data.font[b'A' as usize].width, 5);
 
-            assert!(load_checked(&node).is_ok());
-            assert_eq!(
-                load_checked(&Node::new(b"target/no-such-tc")).err().as_deref(),
-                Some("Could not load the TC: Could not read tc.cfg")
-            );
+        assert!(load_checked(&node).is_ok());
+        assert_eq!(
+            load_checked(&Node::new(b"target/no-such-tc")).err().as_deref(),
+            Some("Could not load the TC: Could not read tc.cfg")
+        );
 
-            let missing = Node::new(b"target/no-such-tc");
-            let tc = liero_tc_load(&missing);
-            assert_eq!((*tc).error, "Could not read tc.cfg");
-            assert!(liero_tc_data(&*tc).is_null());
-            liero_tc_free(tc);
-        }
+        let missing = Node::new(b"target/no-such-tc");
+        let tc = liero_tc_load(&missing);
+        assert_eq!(tc.borrow().error, "Could not read tc.cfg");
+        assert!(tc.borrow().data().is_none());
     }
 }

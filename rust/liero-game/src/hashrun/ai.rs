@@ -14,8 +14,7 @@ use crate::ai::{liero_worm_ai_hash, liero_worm_ai_rand};
 use crate::controllers::liero_game_focus;
 use crate::game_box::liero_worm_set_ai;
 use crate::renderer::LieroRenderer;
-use crate::shared::Shared;
-use crate::tc::LieroTc;
+use crate::tc::SharedTc;
 
 struct AiConfig {
     name: &'static str,
@@ -77,7 +76,7 @@ const CONFIGS: [AiConfig; 6] = [
     ),
 ];
 
-fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32) {
+fn run_ai_game(out: &mut Out, tc: &SharedTc, c: &AiConfig, interval: i32) {
     let mut game = set_up_game(tc, c.seed, c.game_mode, c.weapons);
     let s = &mut game.settings_box().data;
     s.ai_frames = c.ai_frames;
@@ -102,7 +101,7 @@ fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32)
     split.set_render_resolution(320, 200);
     spectator.set_render_resolution(640, 400);
     for r in [&mut split, &mut spectator] {
-        r.load_palette(tc_data(tc));
+        r.load_palette(&tc_data(tc));
         // SAFETY: the renderer is a live one.
         unsafe { liero_game_focus(&mut game, &mut **r) };
     }

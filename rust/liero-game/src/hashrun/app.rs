@@ -307,10 +307,8 @@ unsafe fn app_process() {
 }
 
 unsafe fn randomize_tc() {
-    unsafe {
-        // F8 isn't in the script; the game seeds it from the system.
-        liero_tc_randomize(&mut *app().menu_tc(), 0);
-    }
+    // F8 isn't in the script; the game seeds it from the system.
+    liero_tc_randomize(&app().menu_tc(), 0);
 }
 
 unsafe fn menu_screen() -> LieroScreen {
@@ -535,9 +533,9 @@ pub fn hash_app(out: &mut Out) {
     let tc = super::tc::bundled();
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    a.play.load_palette(tc_data(&tc));
-    a.single.load_palette(tc_data(&tc));
-    a.tc = Some(tc);
+    a.play.load_palette(&tc_data(&tc));
+    a.single.load_palette(&tc_data(&tc));
+    a.set_tc(Some(tc));
     a.files.config = Node::new(root.as_bytes());
     a.files.tc_root = Node::new(b"TC");
     a.files.settings_node = Node::new(format!("{root}/liero.cfg").as_bytes());

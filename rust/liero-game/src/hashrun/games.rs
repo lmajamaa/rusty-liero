@@ -19,9 +19,8 @@ use crate::replay_file::{
 };
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
-use crate::shared::Shared;
 use crate::stats::{liero_stats_screen_draw, LieroStatsScreen};
-use crate::tc::{LieroTc, LieroTcData, LieroTcWeapon};
+use crate::tc::{LieroTcData, LieroTcWeapon, SharedTc};
 use crate::text::LieroStr;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{liero_weapsel_finish, liero_weapsel_free, liero_weapsel_start};
@@ -157,11 +156,7 @@ const CONFIGS: [RunConfig; 17] = [
     },
 ];
 
-/// The TC's data.
-pub(super) fn tc_data(tc: &Shared<LieroTc>) -> &LieroTcData {
-    // SAFETY: a loaded TC has its data while it lives.
-    unsafe { &*crate::tc::liero_tc_data(tc) }
-}
+pub(super) use crate::tc::tc_data;
 
 /// The menu positions of the named weapons.
 fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
@@ -189,12 +184,7 @@ pub(super) const HOOKS: LieroGameHooks = LieroGameHooks {
 
 /// A bot-vs-bot game as the hash run sets it up, before it starts, with
 /// random weapons when `weapons` is None (`setUpGame`).
-pub(super) fn set_up_game(
-    tc: &Shared<LieroTc>,
-    seed: u32,
-    game_mode: u32,
-    weapons: Option<&[&str; 5]>,
-) -> Box<LieroGame> {
+pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Option<&[&str; 5]>) -> Box<LieroGame> {
     let d = tc_data(tc);
     let settings = LieroSettingsBox::defaults();
     // SAFETY: nothing else has the new settings yet.
@@ -206,7 +196,7 @@ pub(super) fn set_up_game(
         // The original bot
         ws.data.controller = 1;
         if let Some(names) = weapons {
-            ws.data.weapons = weapon_positions(d, names);
+            ws.data.weapons = weapon_positions(&d, names);
         }
     }
     // 0 gives bots random weapons; 2 keeps the ones set above. (The
@@ -222,7 +212,7 @@ pub(super) fn set_up_game(
     // controller makes them, with settings and a TC that it keeps.
     unsafe {
         let mut game = Box::from_raw(liero_game_new());
-        crate::game_box::liero_game_set_context(&mut game, settings.as_ptr(), tc.as_ptr(), LieroSoundOut::NONE);
+        crate::game_box::liero_game_set_context(&mut game, settings.as_ptr(), Some(tc.clone()), LieroSoundOut::NONE);
         game.data_mut().rand.seed(seed.wrapping_mul(7919));
 
         for (i, ws) in s.worms.iter().enumerate() {
@@ -312,7 +302,7 @@ fn hash_stats_screen(out: &mut Out, name: &str, game: &mut LieroGame, renderer: 
     }
 }
 
-fn run_game(out: &mut Out, tc: &Shared<LieroTc>, config: &RunConfig, ticks: i32, interval: i32) {
+fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interval: i32) {
     let d = tc_data(tc);
     let mut game = set_up_game(tc, config.seed, config.game_mode, config.weapons);
     let name = config.name;
@@ -340,7 +330,7 @@ fn run_game(out: &mut Out, tc: &Shared<LieroTc>, config: &RunConfig, ticks: i32,
     split.set_render_resolution(320, 200);
     spectator.set_render_resolution(640, 400);
     for r in [&mut split, &mut spectator] {
-        r.load_palette(d);
+        r.load_palette(&d);
         // SAFETY: the renderer is a live one.
         unsafe { liero_game_focus(&mut game, &mut **r) };
     }
@@ -376,7 +366,7 @@ fn run_game(out: &mut Out, tc: &Shared<LieroTc>, config: &RunConfig, ticks: i32,
         }
     }
 
-    hash_stats_screen(out, name, &mut game, &mut split, d);
+    hash_stats_screen(out, name, &mut game, &mut split, &d);
     // SAFETY: the writer is done with; freeing it finishes the file.
     unsafe { liero_replay_writer_free(writer) };
     super::replays::hash_replay(out, tc, name, &path, 1000, ticks, 0);

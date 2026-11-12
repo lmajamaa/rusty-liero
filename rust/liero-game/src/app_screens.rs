@@ -47,11 +47,8 @@ fn new_local(a: &mut LieroApp) -> Box<crate::controllers::LieroController> {
 /// A level made from the menus' settings with the app's random numbers.
 fn new_level(a: &mut LieroApp) -> Box<LieroLevelBox> {
     let mut level = LieroLevelBox::new();
-    // SAFETY: the TC has its data while C++ keeps it.
-    unsafe {
-        let tc = &*crate::tc::liero_tc_data(&*a.menu_tc());
-        level.generate_from_settings(&tc.level_common(), &tc.palette_colors, a.menu_settings(), &mut a.rand);
-    }
+    let tc = crate::app::menu_tc_data();
+    level.generate_from_settings(&tc.level_common(), &tc.palette_colors, a.menu_settings(), &mut a.rand);
     level
 }
 

@@ -4,11 +4,11 @@
 
 use super::{Fnv, Out};
 use crate::fs::Node;
-use crate::tc::{load_checked, LieroTc, LieroTcData, LieroTcSprites, LIERO_TC_FONT_CHARS};
+use crate::tc::{load_checked, LieroTcData, LieroTcSprites, SharedTc, LIERO_TC_FONT_CHARS};
 use liero_data::save;
 
 /// The TC the hash run uses.
-pub(super) fn bundled() -> crate::shared::Shared<LieroTc> {
+pub(super) fn bundled() -> SharedTc {
     load_checked(&Node::new(b"TC/openliero")).expect("the hash run's TC")
 }
 
@@ -26,9 +26,9 @@ fn add_sprites(h: &mut Fnv, s: &LieroTcSprites) {
 
 pub fn hash_tc(out: &mut Out) {
     let tc = bundled();
-    let m = tc.model().expect("the TC loaded");
-    // SAFETY: a TC from `load_checked` has its data.
-    let d: &LieroTcData = unsafe { &*crate::tc::liero_tc_data(&tc) };
+    let t = tc.borrow();
+    let m = t.model().expect("the TC loaded");
+    let d: &LieroTcData = t.data().expect("the TC loaded");
 
     out.hash("tc-cfg", 0, Fnv::of(&save::tc_text(m)));
 
@@ -95,8 +95,7 @@ pub fn hash_tc(out: &mut Out) {
 /// `std::random_device` in the C++.
 pub fn hash_random_tc(out: &mut Out) {
     let tc = bundled();
-    // SAFETY: nothing else has this TC.
-    let t = unsafe { &mut *tc.as_ptr() };
+    let mut t = tc.borrow_mut();
     // Any seed: only the shuffle, which isn't hashed, uses it.
     t.randomize(0);
     let m = t.model().expect("the TC loaded");

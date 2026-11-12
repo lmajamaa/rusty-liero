@@ -661,10 +661,8 @@ unsafe fn app_process() {
 
 /// F8 on the menu: the developers' random TC.
 unsafe fn randomize_tc() {
-    unsafe {
-        if app().tc.is_some() {
-            liero_tc_randomize(&mut *app().menu_tc(), (js_sys::Math::random() * 4_294_967_296.0) as u32);
-        }
+    if app().has_tc() {
+        liero_tc_randomize(&app().menu_tc(), (js_sys::Math::random() * 4_294_967_296.0) as u32);
     }
 }
 

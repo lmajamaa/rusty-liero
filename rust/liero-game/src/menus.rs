@@ -290,8 +290,8 @@ impl LieroMenus {
         &mut self.worm().data
     }
 
-    fn tc<'a>(&self) -> &'a LieroTcData {
-        crate::app::app().tc_data()
+    fn tc(&self) -> std::cell::Ref<'static, LieroTcData> {
+        crate::app::menu_tc_data()
     }
 
     /// `Gfx::loadMenus`: the items, added to what the menus have.

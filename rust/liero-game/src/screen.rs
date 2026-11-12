@@ -188,7 +188,7 @@ impl Host {
         self.0.app_drawing.then(|| crate::app::app().frozen.view())
     }
     pub fn font(&self) -> Option<LieroFont<'static>> {
-        self.0.app_drawing.then(|| crate::app::app().font())
+        self.0.app_drawing.then(crate::app::menu_font)
     }
     pub fn fill_screen(&self, color: u8) {
         if self.0.app_drawing {
@@ -202,7 +202,7 @@ impl Host {
     pub fn menu_palette(&self) {
         if self.0.app_drawing {
             let a = crate::app::app();
-            a.play.data.pal = a.tc_data().palette_colors;
+            a.play.data.pal = crate::app::menu_tc_data().palette_colors;
             return;
         }
         if let Some(f) = self.0.menu_palette {

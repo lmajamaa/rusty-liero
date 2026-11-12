@@ -25,8 +25,10 @@ fn set_up() -> &'static mut LieroApp {
         // SAFETY: the new box's reference is the app's.
         a.settings = Some(unsafe { Shared::adopt(liero_settings_box_new()) });
     }
-    if a.tc.is_none() {
-        a.tc = Some(crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap());
+    if !a.has_tc() {
+        a.set_tc(Some(
+            crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
+        ));
     }
     if a.menus.is_null() {
         let hooks = LieroMenusHooks {
@@ -78,7 +80,7 @@ fn the_menu_starts_black_with_the_levels_miniature_behind_it() {
 fn the_spectator_screen_says_whether_a_game_is_paused() {
     let a = set_up();
     a.frozen_spectator.copy_from(&a.single.bmp);
-    let font = a.font();
+    let font = crate::app::menu_font();
     let (cx, cy) = (320, 100);
     // Drawing the same words again changes nothing; other words do.
     let shows = |a: &mut LieroApp, words: &[u8]| {

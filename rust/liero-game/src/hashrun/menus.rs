@@ -232,7 +232,7 @@ impl Ops {
 
     fn draw(&self, b: &mut LieroMenuBox, r: &LieroRenderer, disabled: bool, x: i32, show: bool) {
         let a = app();
-        let font = a.font();
+        let font = crate::app::menu_font();
         let scr = r.bmp.view();
         match self {
             Ops::Menus(kind) => liero_menus_draw(menus(a), *kind, &scr, &font, disabled, x, show),
@@ -423,7 +423,7 @@ fn run_menus(out: &mut Out) {
 
     // Long enough to scroll, and searched by any part of the name like the
     // file selectors.
-    let tc = a.tc_data();
+    let tc = crate::app::menu_tc_data();
     let b = liero_menu_box_new(179, 28, false);
     // SAFETY: the box is new, and freed below.
     let weapons = unsafe { &mut *b };
@@ -484,13 +484,12 @@ fn draw_versus_info(
     center_x: i32,
     center_y: i32,
 ) {
-    let a = app();
-    let level = level_line(a.tc_data(), level_file, level_file_for_name);
+    let level = level_line(&crate::app::menu_tc_data(), level_file, level_file_for_name);
     // SAFETY: the bitmap and font are live.
     unsafe {
         liero_menu_draw_versus(
             &bmp.view(),
-            &a.font(),
+            &crate::app::menu_font(),
             LieroStr::of(&level),
             LieroStr::of(names[0]),
             LieroStr::of(names[1]),
@@ -538,7 +537,7 @@ fn run_boxes(out: &mut Out) {
         add_screen(&mut f, &a.single);
 
         a.play.clear();
-        let font = a.font();
+        let font = crate::app::menu_font();
         let scr = a.play.bmp.view();
         let text = texts[r.below(6) as usize];
         let x = 20 + r.below(280) as i32;
@@ -590,13 +589,13 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
 
     a.rand.seed(seed);
 
-    let tc = a.tc.clone().expect("no TC");
+    let tc = a.menu_tc();
     let d = tc_data(&tc);
     // SAFETY: the game keeps references to the settings and the TC; its
     // worms and viewports are made as the C++ `Game` view made them.
     let mut game = unsafe { Box::from_raw(liero_game_new()) };
     unsafe {
-        liero_game_set_context(&mut game, settings.as_ptr(), tc.as_ptr(), LieroSoundOut::NONE);
+        liero_game_set_context(&mut game, settings.as_ptr(), Some(tc.clone()), LieroSoundOut::NONE);
         for (i, ws) in s.worms.iter().enumerate() {
             let id = liero_game_new_worm(&mut game, ws.as_ptr());
             liero_game_list_worm(&mut game, Some(id));
@@ -703,9 +702,9 @@ pub fn hash_menus(out: &mut Out) {
     let tc = super::tc::bundled();
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    a.play.load_palette(tc_data(&tc));
-    a.single.load_palette(tc_data(&tc));
-    a.tc = Some(tc);
+    a.play.load_palette(&tc_data(&tc));
+    a.single.load_palette(&tc_data(&tc));
+    a.set_tc(Some(tc));
     a.menu_cycles = 0;
 
     run_menus(out);

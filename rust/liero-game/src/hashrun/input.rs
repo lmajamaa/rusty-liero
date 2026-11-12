@@ -30,19 +30,17 @@ use crate::keys::{
 use crate::rand::LieroRand;
 use crate::settings::LieroSettingsBox;
 use crate::sfx::{LieroMixer, LieroSoundOut, LIERO_SOUND_LOOP, LIERO_SOUND_NORMAL};
-use crate::shared::Shared;
-use crate::tc::{LieroTc, LieroTcSound};
+use crate::tc::{LieroTcSound, SharedTc};
 
-fn sounds(tc: &Shared<LieroTc>) -> &[LieroTcSound] {
-    let d = tc_data(tc);
-    &d.sounds
+fn sounds(tc: &SharedTc) -> std::cell::Ref<'_, [LieroTcSound]> {
+    std::cell::Ref::map(tc_data(tc), |d| &d.sounds[..])
 }
 
 fn samples(s: &LieroTcSound) -> &[i16] {
     &s.samples
 }
 
-fn hash_samples(out: &mut Out, tc: &Shared<LieroTc>) {
+fn hash_samples(out: &mut Out, tc: &SharedTc) {
     for (i, s) in sounds(tc).iter().enumerate() {
         let mut f = Fnv::default();
         f.bool(s.valid);
@@ -59,8 +57,9 @@ fn hash_buffer(f: &mut Fnv, buf: &[i16]) {
     buf.iter().for_each(|&v| f.i32(v.into()));
 }
 
-fn mixer_script(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
-    let mut sounds: Vec<&[i16]> = sounds(tc).iter().filter(|s| s.valid).map(samples).collect();
+fn mixer_script(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
+    let all = sounds(tc);
+    let mut sounds: Vec<&[i16]> = all.iter().filter(|s| s.valid).map(samples).collect();
     // A full-scale square wave, which clips as soon as two play at once.
     let square: Vec<i16> = (0..300)
         .map(|i| if (i / 25) % 2 == 1 { 32767 } else { -32768 })
@@ -116,7 +115,7 @@ fn mixer_script(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
 
 fn sound_game(
     out: &mut Out,
-    tc: &Shared<LieroTc>,
+    tc: &SharedTc,
     name: &str,
     seed: u32,
     game_mode: u32,
@@ -133,7 +132,7 @@ fn sound_game(
         liero_game_set_context(
             &mut game,
             settings,
-            tc.as_ptr(),
+            Some(tc.clone()),
             LieroSoundOut { mixer: m, report: None },
         )
     };
@@ -163,13 +162,13 @@ fn sound_game(
     }
 
     // SAFETY: as above; the mixer is dropped once the game has no sound.
-    unsafe { liero_game_set_context(&mut game, settings, tc.as_ptr(), LieroSoundOut::NONE) };
+    unsafe { liero_game_set_context(&mut game, settings, Some(tc.clone()), LieroSoundOut::NONE) };
     drop(mixer);
 }
 
 const LOUD: [&str; 5] = ["BIG NUKE", "MINIGUN", "CHAINGUN", "LASER", "HELLRAIDER"];
 
-fn hash_sound(out: &mut Out, tc: &Shared<LieroTc>) {
+fn hash_sound(out: &mut Out, tc: &SharedTc) {
     hash_samples(out, tc);
     for seed in 1..=4 {
         mixer_script(out, tc, seed, 2000);
@@ -405,7 +404,7 @@ fn hash_key_names(out: &mut Out) {
     out.hash("keys-names", 0, f);
 }
 
-fn hash_controls(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
+fn hash_controls(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
     let settings = LieroSettingsBox::defaults();
     let mut r = LieroRand::new(seed);
     // A small pool of keys, so the two worms and their controls share some.
@@ -433,7 +432,7 @@ fn hash_controls(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
 
     // SAFETY: the controller keeps references to the settings and the TC,
     // and is freed below.
-    let lc = unsafe { liero_local_controller_new(settings.as_ptr(), tc.as_ptr()) };
+    let lc = unsafe { liero_local_controller_new(settings.as_ptr(), tc.clone()) };
     // SAFETY: the controller is new; its data and game live as long as it
     // does.
     let (d, game) = unsafe { (liero_controller_data(&mut *lc), &mut *liero_controller_game(&mut *lc)) };
@@ -495,7 +494,7 @@ fn hash_controls(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
     unsafe { liero_controller_free(lc) };
 }
 
-fn hash_input(out: &mut Out, tc: &Shared<LieroTc>) {
+fn hash_input(out: &mut Out, tc: &SharedTc) {
     hash_key_map(out);
     for seed in 1..=3 {
         hash_events(out, seed, 2000);

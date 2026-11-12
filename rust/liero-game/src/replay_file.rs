@@ -489,7 +489,7 @@ pub unsafe fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut Li
     unsafe {
         let settings = &mut *liero_game_settings(game);
         let level = &mut *liero_game_level(game);
-        let tc = &*game.tc_data();
+        let tc = &*game.tc_ptr();
         let (version, g) = match read_start(&mut r.source()) {
             Ok(read) => read,
             Err(e) => return r.outcome(Err(e)),

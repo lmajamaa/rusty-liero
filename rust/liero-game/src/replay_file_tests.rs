@@ -3,7 +3,7 @@ use crate::fs::Node;
 use crate::game_box::{liero_game_free, liero_game_new};
 use crate::level::LieroLevelBox;
 use crate::settings::{liero_settings_box_free, liero_settings_box_new};
-use crate::tc::LieroTcData;
+use crate::tc::{LieroTc, LieroTcData, SharedTc};
 use crate::worm::LieroWormData;
 
 const NO_WASM: &str = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack";
@@ -12,7 +12,7 @@ const NO_WASM: &str = "miniz_oxide's debug compressor builds its tables on the 6
 struct Setup {
     game: *mut LieroGame,
     settings: *mut LieroSettingsBox,
-    tc: Box<LieroTcData>,
+    tc: SharedTc,
 }
 
 impl Setup {
@@ -22,10 +22,10 @@ impl Setup {
         let s = Setup {
             game: liero_game_new(),
             settings: liero_settings_box_new(),
-            tc,
+            tc: LieroTc::of(tc),
         };
         let settings = unsafe { crate::shared::Shared::retain(s.settings) };
-        unsafe { (*s.game).set_context_data(Some(settings), None, &*s.tc, crate::sfx::LieroSoundOut::NONE) };
+        unsafe { (*s.game).set_context_data(Some(settings), Some(s.tc.clone()), crate::sfx::LieroSoundOut::NONE) };
         s
     }
 

@@ -28,7 +28,9 @@ fn source(root: &str, choice: Choice) -> AppFiles {
 
 /// The bundled TC, as the app's.
 fn with_tc(a: &mut LieroApp) {
-    a.tc = Some(crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap());
+    a.set_tc(Some(
+        crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
+    ));
 }
 
 #[test]
@@ -179,9 +181,9 @@ fn a_chosen_tc_is_switched_to_once() {
     let mut s = source("../../TC", Choice::Tc);
     assert_eq!(s.choose(b"openliero", b"../../TC/openliero", b"openliero", false), -1);
     assert_eq!(a.menu_settings().tc, b"openliero");
-    assert_eq!(a.menu_tc(), before);
+    assert!(std::rc::Rc::ptr_eq(&a.menu_tc(), &before));
     assert!(take_chosen_tc());
-    assert_ne!(a.menu_tc(), before);
+    assert!(!std::rc::Rc::ptr_eq(&a.menu_tc(), &before));
     assert!(!take_chosen_tc());
 }
 

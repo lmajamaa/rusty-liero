@@ -517,7 +517,7 @@ pub fn liero_weapsel_draw_spectator(ws: &mut LieroWeapsel, scr: &LieroBitmap, fo
 /// The weapon tables of `game`, with the app's random numbers.
 unsafe fn game_env(game: &LieroGame) -> LieroWeapselEnv {
     unsafe {
-        let tc = &*game.tc_data();
+        let tc = &*game.tc_ptr();
         LieroWeapselEnv {
             weap_table: game.settings_box().data.weap_table.as_ptr(),
             weap_order: tc.weap_order.as_ptr(),
@@ -571,7 +571,7 @@ pub(crate) fn level_line(tc: &LieroTcData, game_level_file: &[u8], menu_level_fi
 pub unsafe fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
     unsafe {
         let g: *mut LieroGame = game;
-        let tc = &*game.tc_data();
+        let tc = &*game.tc_ptr();
         let select = game.settings_box().data.select_bot_weapons;
         let viewports: Vec<(i32, i32, i32)> = game
             .split_viewports()
@@ -639,7 +639,7 @@ pub unsafe fn liero_weapsel_process_game(ws: &mut LieroWeapsel) -> bool {
 pub unsafe fn liero_weapsel_finish(ws: &mut LieroWeapsel) {
     unsafe {
         let game = &mut *ws.game;
-        let tc = &*game.tc_data();
+        let tc = &*game.tc_ptr();
         let mut worms = Vec::new();
         let mut weapons = Vec::new();
         for w in game.listed_worms() {
@@ -676,7 +676,7 @@ unsafe fn menu_palette(r: *mut LieroRenderer) {
 pub unsafe fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRenderer, state: i32, spectators: bool) {
     unsafe {
         let game = &mut *ws.game;
-        let tc = &*game.tc_data();
+        let tc = &*game.tc_ptr();
         let font = tc_font(tc);
         let a = app();
         let g: *const LieroGame = game;
