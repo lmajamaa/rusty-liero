@@ -11,8 +11,6 @@ use crate::text::LieroStr;
 use miniz_oxide::deflate::core::{compress, create_comp_flags_from_zip_params, CompressorOxide, TDEFLFlush, TDEFLStatus};
 use miniz_oxide::inflate::decompress_to_vec_zlib;
 use std::ffi::c_void;
-use std::fs::File;
-use std::io::Write;
 
 /// gvl's output pieces.
 const PIECE: usize = 65536;
@@ -23,7 +21,8 @@ const LEVEL: i32 = 6;
 /// A zlib stream being written to a file.
 pub struct Deflater {
     c: Box<CompressorOxide>,
-    file: File,
+    /// The file, made empty; the pieces are added to its end.
+    path: Vec<u8>,
     out: Vec<u8>,
     /// Whether anything was written. gvl's filter never started a stream
     /// it got nothing for, so such a file stays empty.
@@ -33,10 +32,9 @@ pub struct Deflater {
 impl Deflater {
     /// Starts writing `node`, or None if it can't be created.
     pub fn new(node: &Node) -> Option<Deflater> {
-        let path = node.prepare_write()?;
-        let file = File::create(std::str::from_utf8(path).ok()?).ok()?;
+        let path = node.prepare_write()?.to_vec();
         let flags = create_comp_flags_from_zip_params(LEVEL, 15, 0);
-        Some(Deflater { c: Box::new(CompressorOxide::new(flags)), file, out: Vec::new(), started: false })
+        Some(Deflater { c: Box::new(CompressorOxide::new(flags)), path, out: Vec::new(), started: false })
     }
 
     fn run(&mut self, mut data: &[u8], flush: TDEFLFlush) {
@@ -48,7 +46,7 @@ impl Deflater {
             // Full pieces go to the file as they're made.
             while self.out.len() >= PIECE {
                 let rest = self.out.split_off(PIECE);
-                let _ = self.file.write_all(&self.out);
+                crate::disk::append(&self.path, &self.out);
                 self.out = rest;
             }
             // Until all of it is taken in, or with Finish until the stream
@@ -78,7 +76,7 @@ impl Drop for Deflater {
             return;
         }
         self.run(&[], TDEFLFlush::Finish);
-        let _ = self.file.write_all(&self.out);
+        crate::disk::append(&self.path, &self.out);
     }
 }
 

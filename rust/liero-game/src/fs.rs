@@ -15,8 +15,7 @@ use crate::cpp_sort;
 use crate::text::LieroStr;
 use std::collections::BTreeMap;
 use std::ffi::c_void;
-use std::fs;
-use std::io::Read;
+use crate::disk;
 use std::rc::Rc;
 
 /// `joinPath`: `leaf` under `root`, with a `/` between unless `root` is
@@ -30,19 +29,7 @@ pub fn join_path(root: &[u8], leaf: &[u8]) -> Vec<u8> {
     out
 }
 
-fn path_str(p: &[u8]) -> &str {
-    // Paths the game makes are ASCII; anything else can't name a file the
-    // browser's file system has, so it reads as missing.
-    std::str::from_utf8(p).unwrap_or("\u{0}")
-}
-
-fn exists(p: &[u8]) -> bool {
-    fs::metadata(path_str(p)).is_ok()
-}
-
-fn is_dir(p: &[u8]) -> Option<bool> {
-    fs::metadata(path_str(p)).ok().map(|m| m.is_dir())
-}
+use disk::{exists, is_dir};
 
 /// `tolerantFOpen` for reading.
 fn tolerant_read(p: &[u8]) -> Option<Vec<u8>> {
@@ -52,12 +39,8 @@ fn tolerant_read(p: &[u8]) -> Option<Vec<u8>> {
         *c = c.to_ascii_uppercase();
     }
     for name in [p.to_vec(), p.to_ascii_uppercase(), lower, capital] {
-        if let Ok(mut f) = fs::File::open(path_str(&name)) {
-            let mut data = Vec::new();
-            // A folder opens but doesn't read, as with `fopen`: no bytes.
-            if f.read_to_end(&mut data).is_err() {
-                data.clear();
-            }
+        // A folder opens but doesn't read, as with `fopen`: no bytes.
+        if let Some(data) = disk::open_read(&name) {
             return Some(data);
         }
     }
@@ -69,8 +52,8 @@ fn tolerant_read(p: &[u8]) -> Option<Vec<u8>> {
 fn create_directories(p: &[u8]) -> bool {
     for i in 1..p.len() {
         if p[i] == b'/' {
-            let dir = path_str(&p[..i]);
-            if fs::metadata(dir).is_err() && fs::create_dir(dir).is_err() {
+            let dir = &p[..i];
+            if !exists(dir) && !disk::create_dir(dir) {
                 return false;
             }
         }
@@ -155,7 +138,7 @@ impl ZipArchive {
     /// Reads `path`'s central directory, with its entries' names. An archive
     /// that can't be read has none, as miniz's reader left it.
     fn open(path: &[u8]) -> (ZipArchive, Vec<(Vec<u8>, bool)>) {
-        let data = fs::read(path_str(path)).unwrap_or_default();
+        let data = disk::read(path).unwrap_or_default();
         let mut archive = ZipArchive { data, entries: Vec::new() };
         let names = archive.read_directory().unwrap_or_default();
         if names.len() != archive.entries.len() {
@@ -290,9 +273,8 @@ impl Layer {
             Layer::Folder(p) => {
                 let dir = if p.is_empty() { b".".as_slice() } else { p };
                 let mut out = Vec::new();
-                if let Ok(rd) = fs::read_dir(path_str(dir)) {
-                    for e in rd.flatten() {
-                        let mut name = e.file_name().into_encoded_bytes();
+                if let Some(names) = disk::list(dir) {
+                    for mut name in names {
                         // Skipped if it can't be looked at, as `stat` failing.
                         let Some(mut dir) = is_dir(&join_path(p, &name)) else { continue };
                         if name.ends_with(b".zip") {
@@ -419,7 +401,7 @@ impl Node {
             Layer::Folder(p) => Some(p.as_slice()),
             Layer::Zip(..) => None,
         })?;
-        let create = || fs::File::create(path_str(p)).is_ok();
+        let create = || disk::create(p);
         if create() || (create_directories(p) && create()) {
             Some(p)
         } else {
@@ -433,7 +415,7 @@ impl Node {
     /// can't be created or written.
     pub fn write(&self, data: &[u8]) -> bool {
         match self.prepare_write() {
-            Some(p) => fs::write(path_str(p), data).is_ok(),
+            Some(p) => disk::write(p, data),
             None => false,
         }
     }

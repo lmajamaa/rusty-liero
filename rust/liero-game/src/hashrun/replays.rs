@@ -301,7 +301,7 @@ pub(super) fn hash_replay(out: &mut Out, tc: &Shared<LieroTc>, name: &str, path:
     unsafe { liero_replay_reader_free(reader) };
     drop(game);
     // The run has a fixed heap, which holds the in-memory files too.
-    let _ = std::fs::remove_file(super::on_disk(path));
+    crate::disk::remove_file(super::on_disk(path).as_bytes());
 }
 
 /// A change to make to the settings while recording.
@@ -440,7 +440,7 @@ pub fn hash_replays(out: &mut Out) {
     let base_path = "/tmp/replay-base.lrp";
     record_game(tc, base_path, 25, KILL_EM_ALL, 0, 1200, LIERO_REPLAY_VERSION, &[]);
     let base = read_replay(base_path);
-    let _ = std::fs::remove_file(super::on_disk(base_path));
+    crate::disk::remove_file(super::on_disk(base_path).as_bytes());
     let first_frame = base.len() - 1 - frame_offset(0, 1200);
 
     // The run's heap can't hold all the broken copies at once, so each is

@@ -6,6 +6,7 @@
 //   bun tools/hashrun/run.ts --update    # rewrite expected.txt
 //   bun tools/hashrun/run.ts --only=app,menus
 //   bun tools/hashrun/run.ts --wasm      # as wasm, with Bun
+//   bun tools/hashrun/run.ts --tree      # with the files in memory
 //
 // --only runs just those sections (tc, games, menus, settings, replays, ai,
 // input, app, levels, randomtc) and checks that each one's lines match a run
@@ -16,6 +17,10 @@
 // Bun, with the web build's 64 KB stack and every function checking for an
 // overflow (rust/liero-game/build.rs), which a native run can't see. CI runs
 // both.
+//
+// --tree keeps the game's files in a tree in memory instead of a folder on
+// disk, as the web build will (rust/liero-game/src/disk.rs), to show the tree
+// gives the same lines. It can be used with the others.
 //
 // Only regenerate expected.txt from a build whose game logic is known to be
 // right, such as the commit before a port.
@@ -28,12 +33,13 @@ const INTERVAL = 100;
 const args = process.argv.slice(2);
 const update = args.includes("--update");
 const wasm = args.includes("--wasm");
+const tree = args.includes("--tree");
 const only = args.find((a) => a.startsWith("--only="))?.slice("--only=".length) ?? "";
 if (update && only) {
   console.error("--update needs a full run, without --only");
   process.exit(1);
 }
-const unknown = args.filter((a) => a !== "--update" && a !== "--wasm" && !a.startsWith("--only="));
+const unknown = args.filter((a) => a !== "--update" && a !== "--wasm" && a !== "--tree" && !a.startsWith("--only="));
 if (unknown.length) {
   console.error(`Unknown arguments: ${unknown.join(" ")}`);
   process.exit(1);
@@ -42,7 +48,7 @@ const expectedPath = join(import.meta.dir, "expected.txt");
 
 const isHash = (l: string) => /^\S+ \d+ [0-9a-f]{16}( end| frame)?$/.test(l);
 
-const runArgs = [String(TICKS), String(INTERVAL), ...(only ? [only] : [])];
+const runArgs = [...(tree ? ["--tree"] : []), String(TICKS), String(INTERVAL), ...(only ? [only] : [])];
 const cargo = ["cargo", "build", "--quiet", "--release", "--manifest-path", "rust/liero-game/Cargo.toml", "--bin", "liero-hashrun"];
 let run;
 if (wasm) {
@@ -115,4 +121,4 @@ for (let i = 0; i < count; ++i) {
     process.exit(1);
   }
 }
-console.log(`All ${lines.length} game-state and frame hashes match${only ? ` (only ${only})` : ""}${wasm ? " (wasm)" : ""}`);
+console.log(`All ${lines.length} game-state and frame hashes match${only ? ` (only ${only})` : ""}${wasm ? " (wasm)" : ""}${tree ? " (files in memory)" : ""}`);
