@@ -1365,11 +1365,7 @@ mod tests {
                 x -= 49;
             }
             x >>= 3;
-            if x < 0 {
-                x = 0;
-            } else if x > 6 {
-                x = 6;
-            }
+            x = x.clamp(0, 6);
             if direction != 0 {
                 x = 6 - x;
             }

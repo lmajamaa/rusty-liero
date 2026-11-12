@@ -732,8 +732,7 @@ impl LieroStatsScreen {
             r.heatmap(&stats.presence);
         });
 
-        for i in 0..2 {
-            let w = &stats.worms[i];
+        for (i, w) in stats.worms.iter().enumerate().take(2) {
             r.pane(if i == 0 { -1 } else { 1 }, offs_x, offs_y, |r| {
                 r.draw_worm(i);
                 r.weapon_stats(&self.weapons[i]);
@@ -1098,7 +1097,8 @@ mod tests {
         assert_eq!(hm.map[(174 * 252) as usize], 1);
         hm.inc_area(0, 0, 2);
         assert_eq!(hm.map[0], 32);
-        assert_eq!(hm.map[2 * 252 + 2], 2 * (16 - 16));
+        // 2 × (16 − 16).
+        assert_eq!(hm.map[2 * 252 + 2], 0);
         assert_eq!(hm.map[252 + 2], 2 * (16 - 4));
         assert_eq!(hm.map.iter().filter(|&&v| v != 0).count(), 9);
 

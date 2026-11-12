@@ -106,6 +106,10 @@ docker compose run --rm web sh -c "cd rust/liero-game && cargo test"
 ```bash
 docker compose run --rm web sh -c "cd rust/liero-game && cargo test --target wasm32-unknown-emscripten"
 ```
+CI also runs clippy on every crate and fails on any warning:
+```bash
+docker compose run --rm web sh -c "cd rust/liero-game && cargo clippy --all-targets -- -D warnings"
+```
 Ported code is tested against the original C++: `rust/liero-game/reference/reference_values.cpp`
 prints the values the tests expect, by running the same loops through the C++
 code (see the comment at its top for how to run it).

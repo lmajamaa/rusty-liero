@@ -40,6 +40,8 @@ pub struct SimGame {
     _data: Option<Box<LieroGameData>>,
     _pixels: Vec<u8>,
     _materials: Vec<LieroMaterial>,
+    // Boxed so the raw pointers to them stay valid as the list grows.
+    #[allow(clippy::vec_box)]
     _worm_data: Vec<Box<LieroWormData>>,
 }
 

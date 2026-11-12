@@ -368,6 +368,8 @@ impl<'a> Scene<'a> {
         }
     }
 
+    // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
+    #[allow(clippy::too_many_arguments)]
     unsafe fn shadow(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32, w: i32, h: i32) {
         if let Some(mem) = set.sprite(frame) {
             liero_gfx_blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);

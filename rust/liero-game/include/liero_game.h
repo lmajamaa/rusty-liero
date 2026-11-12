@@ -3844,8 +3844,10 @@ struct LieroStr liero_level_box_old_level_file(const struct LieroLevelBox *l);
 void liero_level_box_set_old_level_file(struct LieroLevelBox *l, struct LieroStr text);
 
 /**
- * The C functions below take a menu's state and its `count` items, which
- * must be valid for the call.
+ * The C functions below take a menu's state and its `count` items.
+ *
+ * # Safety
+ * `items` has `count` items, valid for the call.
  */
 void liero_menu_move_to(struct LieroMenu *m,
                         struct LieroMenuItem *items,
@@ -4214,6 +4216,9 @@ bool liero_menus_left_right(struct LieroMenus *m, int32_t kind, int32_t dir);
 /**
  * Enter on `kind`'s selected item. A screen it opened is dropped: the menu
  * checks only press items that open none.
+ *
+ * # Safety
+ * The menus' hooks, which the item may call, are valid.
  */
 int32_t liero_menus_enter(struct LieroMenus *m, int32_t kind);
 

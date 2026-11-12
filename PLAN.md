@@ -180,7 +180,7 @@ Once no C++ is left, the web build moves to `wasm32-unknown-unknown` with `wasm-
 
 ## Phase 4: safe, idiomatic Rust
 
-Phase 4 starts when phase 3 is done: no C++ is left and nothing calls the `liero_*` C functions. It is done when `liero-game` and `liero-data` build with `#![forbid(unsafe_code)]`, clippy is clean, and `tools/hashrun/expected.txt` hasn't changed by a line. The Rust written in phase 2 was shaped by C++ on the other side: it is correct, but it reads like C.
+Phase 4 starts when phase 3 is done: no C++ is left and nothing calls the `liero_*` C functions. It is done when `liero-game` and `liero-data` build with `#![forbid(unsafe_code)]`, clippy is clean without the `#[allow(clippy::…)]` lines CI started with (raw-pointer accessors, boxes that raw pointers point into, and ported functions with many arguments), and `tools/hashrun/expected.txt` hasn't changed by a line. The Rust written in phase 2 was shaped by C++ on the other side: it is correct, but it reads like C.
 
 **Where it stands** (2026-11-11, counted by `tools/rust-patterns/report.ts`; 27,896 lines of Rust):
 

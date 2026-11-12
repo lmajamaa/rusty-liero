@@ -208,8 +208,8 @@ mod tests {
     use std::collections::VecDeque;
 
     thread_local! {
-        static EVENTS: RefCell<VecDeque<LieroEvent>> = RefCell::new(VecDeque::new());
-        static LOG: RefCell<Vec<String>> = RefCell::new(Vec::new());
+        static EVENTS: RefCell<VecDeque<LieroEvent>> = const { RefCell::new(VecDeque::new()) };
+        static LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
 
     unsafe extern "C" fn poll(out: *mut LieroEvent) -> bool {

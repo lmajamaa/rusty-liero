@@ -757,9 +757,7 @@ mod tests {
     use super::*;
 
     fn odd_settings() -> Settings {
-        let mut s = Settings::default();
-        s.max_bonuses = -3;
-        s.game_mode = 0xffff_fff0;
+        let mut s = Settings { max_bonuses: -3, game_mode: 0xffff_fff0, ..Default::default() };
         s.level_file = b"a\"b\\c\x01\xff".to_vec();
         s.ext.tc = b"my tc".to_vec();
         s.weap_table[3] = 2;
@@ -813,7 +811,7 @@ mod tests {
         let wrong_type = text.replace("blood = 100", "blood = true");
         let mut t = Settings::default();
         assert!(matches!(read_text(&mut t, wrong_type.as_bytes()), Err(TextError::Parse(_))));
-        assert_eq!(t.random_level, true);
+        assert!(t.random_level);
 
         let short = text.replace("weapTable = [0, 0, 0, 2", "weapTable = [0, 0, 2");
         let mut t = Settings::default();
@@ -849,8 +847,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "16 bits")]
     fn archive_asserts_that_fields_fit() {
-        let mut s = Settings::default();
-        s.lives = 0x10000;
+        let mut s = Settings { lives: 0x10000, ..Default::default() };
         write_archive(&mut s);
     }
 

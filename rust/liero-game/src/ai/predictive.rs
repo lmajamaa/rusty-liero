@@ -38,7 +38,7 @@ fn pressed(cs: u32, control: u32) -> bool {
     (cs >> control) & 1 != 0
 }
 
-const PI: f64 = 3.141592653589793;
+const PI: f64 = std::f64::consts::PI;
 
 /// A worm weapon, as the AI reads it.
 #[repr(C)]
@@ -431,7 +431,7 @@ fn worm_distance(from: &LieroAiWorm, to: &LieroAiWorm) -> i32 {
 
 /// An aiming angle, fixed point 0..128, in radians.
 fn langle_to_radians(langle: i32) -> f64 {
-    ((langle + itof(32)) & (itof(128) - 1)) as f64 * 0.04908738521234051935097880286374 / 65536.0
+    ((langle + itof(32)) & (itof(128) - 1)) as f64 * 0.04908738521234052 / 65536.0
 }
 
 fn normalized_langle(langle: i32) -> i32 {

@@ -457,7 +457,7 @@ mod tests {
     thread_local! {
         // Folder (below the root) to its entries.
         static TREE: RefCell<HashMap<String, Vec<(String, bool)>>> = RefCell::new(HashMap::new());
-        static CHOSEN: RefCell<Vec<String>> = RefCell::new(Vec::new());
+        static CHOSEN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
 
     /// The folders in `TREE`, choices going to `CHOSEN`, and with
@@ -570,9 +570,9 @@ mod tests {
     }
 
     thread_local! {
-        static KEYS: RefCell<Vec<u32>> = RefCell::new(Vec::new());
-        static TYPED: RefCell<Vec<crate::screen::LieroTypedKey>> = RefCell::new(Vec::new());
-        static PREVIEWS: RefCell<u32> = RefCell::new(0);
+        static KEYS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+        static TYPED: RefCell<Vec<crate::screen::LieroTypedKey>> = const { RefCell::new(Vec::new()) };
+        static PREVIEWS: RefCell<u32> = const { RefCell::new(0) };
     }
 
     unsafe extern "C" fn key_once(sc: u32) -> bool {

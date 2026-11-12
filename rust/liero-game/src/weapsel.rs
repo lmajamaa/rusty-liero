@@ -830,9 +830,7 @@ mod tests {
         let order: Vec<i32> = (0..10).rev().collect();
         let mut weapons: Vec<LieroTcWeapon> = (0..10).map(|_| unsafe { std::mem::zeroed() }).collect();
         let tc = tc(&mut weapons, &order);
-        let mut worm = LieroWormData::default();
-        worm.current_weapon = 3;
-        worm.control_states = 0xff;
+        let mut worm = LieroWormData { current_weapon: 3, control_states: 0xff, ..Default::default() };
         worm.weapons[1].delay_left = 5;
         worm.weapons[1].loading_left = 5;
         let numbers = [1u32, 2, 3, 4, 10];

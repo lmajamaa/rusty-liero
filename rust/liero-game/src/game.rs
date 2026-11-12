@@ -333,6 +333,9 @@ impl Game<'_> {
         unsafe { (*self.f.game).cycles }
     }
 
+    // The `&mut` is to the game behind a raw pointer, not to `self`; phase 4
+    // of PLAN.md replaces these pointers.
+    #[allow(clippy::mut_from_ref)]
     fn zone(&self) -> &mut LieroHoldazone {
         // SAFETY: valid for the call, and only used within a statement or
         // between hook calls.

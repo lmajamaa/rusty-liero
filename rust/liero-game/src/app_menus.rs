@@ -39,6 +39,9 @@ impl LieroApp {
         unsafe { self.menus.as_mut().expect("no menus") }
     }
 
+    // Clippy's suggestion, passing the function, doesn't compile: an
+    // `extern "C"` fn isn't a Rust closure over the reference.
+    #[allow(clippy::redundant_closure)]
     fn running(&mut self) -> bool {
         self.controller.as_deref().is_some_and(|c| liero_controller_running(c))
     }
