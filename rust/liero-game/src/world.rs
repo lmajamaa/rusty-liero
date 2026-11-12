@@ -5,37 +5,32 @@
 //! `worm.cpp` in C++). Results have to stay bit-identical to the C++
 //! versions, which `tools/hashrun` checks.
 //!
-//! The physics of each kind of object is in `object.rs`, `weapon.rs` and
-//! `worm.rs`, which call back through tables of hooks. The hooks are here,
-//! in Rust; only sounds, stats and the viewports' own processing call out
-//! to C++ (`LieroGameHooks`).
-//!
-//! As in C++, a hook can change any object, including the one being
-//! processed (an explosion pushes nearby objects, and a new object can
-//! reuse a freed slot), so objects are worked on through raw pointers and
-//! read at the points the C++ code read them.
+//! `World` borrows the whole game for the tick. As in C++, what a step
+//! calls can change any object, including the one being processed (an
+//! explosion pushes nearby objects, and a new object can reuse a freed
+//! slot), so objects are worked on by their slots and read afresh at the
+//! points the C++ code read them. Only sounds and the stats' clock call
+//! out (`LieroGameHooks`).
 
 use std::ffi::c_void;
-use std::ptr::{addr_of_mut, null_mut};
+use std::ptr::null_mut;
 
-use crate::game::{stats_worms, Game, LieroBonusState, LieroGameHooks, LieroRect};
-use crate::level::LieroLevelCommon;
+use crate::game::{Game, LieroBonusState, LieroGameFields, LieroGameHooks, LieroGameSettings, LieroRect};
+use crate::level::slice;
 use crate::math::{cos_sin, ftoi, itof, vector_length, LieroIVec2};
 use crate::object::LieroBObject;
 use crate::object::{
     add, div, ftoi_vec, inside, liero_explosion_damage, liero_explosion_push_object, liero_explosion_push_worm, sub,
     LieroBonusConstants,
 };
-use crate::objects::{
-    Cursor, LieroBObjectList, LieroBonusList, LieroNObject, LieroNObjectList, LieroSObjectList, LieroWObject,
-    LieroWObjectList,
-};
-use crate::rand::LieroRand;
+use crate::objects::{Cursor, FiredBy, LieroNObject, LieroWObject};
+use crate::sfx::LieroSoundOut;
 use crate::stats::{
     liero_stats_after_death, liero_stats_after_spawn, liero_stats_damage_dealt, liero_stats_damage_potential,
-    liero_stats_hit, liero_stats_pre_tick, liero_stats_shot, liero_stats_tick, LieroStats,
+    liero_stats_hit, liero_stats_shot, LieroStats,
 };
 use crate::tc::{c, h, LieroTcData, LieroTcNObject, LieroTcSObject, LieroTcWeapon};
+use crate::viewport::LieroViewport;
 use crate::weapon::{LieroWeapon, LieroWormWeapon};
 use crate::worm::{
     LieroWormConstants, LieroWormData, LieroWormEnv, WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
@@ -105,183 +100,183 @@ fn mul_div(v: LieroIVec2, m: i32, d: i32) -> LieroIVec2 {
     }
 }
 
-/// The whole game, with the hooks to C++.
-#[derive(Clone, Copy)]
+/// The whole game, borrowed for a tick, with the clock from C++.
 pub(crate) struct World<'a> {
     pub(crate) g: Game<'a>,
-    pub(crate) h: &'a LieroGameHooks,
+    tc: &'a LieroTcData,
+    /// The split-screen and spectator viewports, whose shake and death
+    /// banners the tick moves.
+    viewports: Vec<&'a mut LieroViewport>,
+    spectators: Vec<&'a mut LieroViewport>,
+    /// The stats the tick records, if any.
+    stats: Option<&'a mut LieroStats>,
+    sound: LieroSoundOut,
+    h: &'a LieroGameHooks,
 }
 
-// SAFETY for the methods: the pointers in the game's fields are valid for
-// the call, as `liero_game_process_frame` requires.
 impl<'a> World<'a> {
-    fn data(&self) -> *mut crate::game::LieroGameData {
-        self.g.f.game
-    }
-
-    fn tc(&self) -> &'a LieroTcData {
-        unsafe { &*self.g.f.tc }
+    /// Borrows what `f` points to.
+    ///
+    /// # Safety
+    /// As `Game::new`; the TC, the viewports and the stats (which may be
+    /// null) are valid for `'a` too, and nothing else uses the viewports
+    /// or the stats meanwhile.
+    pub(crate) unsafe fn new(f: &'a LieroGameFields, s: &'a LieroGameSettings, h: &'a LieroGameHooks) -> Self {
+        unsafe {
+            let viewports = |list: *const *mut LieroViewport, n: i32| -> Vec<&'a mut LieroViewport> {
+                slice(list, n.max(0) as usize).iter().map(|&v| &mut *v).collect()
+            };
+            World {
+                g: Game::new(f, s),
+                tc: &*f.tc,
+                viewports: viewports(f.viewports, f.viewport_count),
+                spectators: viewports(f.spectator_viewports, f.spectator_viewport_count),
+                stats: f.stats.as_mut(),
+                sound: f.sound,
+                h,
+            }
+        }
     }
 
     fn constant(&self, i: usize) -> i32 {
-        unsafe { *self.tc().constants.add(i) }
+        unsafe { *self.tc.constants.add(i) }
     }
 
     fn hack(&self, i: usize) -> bool {
-        unsafe { *self.tc().hacks.add(i) }
+        unsafe { *self.tc.hacks.add(i) }
     }
 
     fn weapon(&self, i: i32) -> *const LieroTcWeapon {
-        let tc = self.tc();
+        let tc = self.tc;
         assert!(0 <= i && (i as usize) < tc.weapon_count);
         unsafe { tc.weapons.add(i as usize) }
     }
 
     fn nobject_type(&self, i: i32) -> &'a LieroTcNObject {
-        let tc = self.tc();
+        let tc = self.tc;
         assert!(0 <= i && (i as usize) < tc.nobject_count);
         unsafe { &*tc.nobjects.add(i as usize) }
     }
 
     fn sobject_type(&self, i: i32) -> &'a LieroTcSObject {
-        let tc = self.tc();
+        let tc = self.tc;
         assert!(0 <= i && (i as usize) < tc.sobject_count);
         unsafe { &*tc.sobjects.add(i as usize) }
     }
 
-    /// `Common::levelCommon`.
-    fn common(&self) -> LieroLevelCommon {
-        let tc = self.tc();
-        LieroLevelCommon {
-            materials: tc.materials.as_ptr(),
-            textures: tc.textures.as_ptr(),
-            large_sprites: tc.large_sprites.pixels().as_ptr(),
-            large_sprite_count: tc.large_sprites.count,
-        }
-    }
-
-    fn rand(&self, max: u32) -> u32 {
-        unsafe { (*self.data()).rand.below(max) }
-    }
-
-    fn rand_ptr(&self) -> *mut LieroRand {
-        unsafe { addr_of_mut!((*self.data()).rand) }
+    fn rand(&mut self, max: u32) -> u32 {
+        self.g.data.rand.below(max)
     }
 
     fn cycles(&self) -> i32 {
-        unsafe { (*self.data()).cycles }
+        self.g.data.cycles
     }
 
     fn worm_count(&self) -> i32 {
-        self.g.f.worm_count
-    }
-
-    /// The game's worm `id`, listed or not.
-    fn pool_worm(&self, id: WormId) -> *mut LieroWormData {
-        let f = &self.g.f;
-        assert!((id.0 as usize) < f.pool_count, "no worm {id:?}");
-        // SAFETY: the pool holds `pool_count` worms.
-        unsafe { *f.pool.add(id.0 as usize) }
+        self.g.worm_count()
     }
 
     /// Worm `i`, a position in the game's worms.
-    fn worm(&self, i: i32) -> *mut LieroWormData {
-        self.g.worm(i).data
+    fn worm(&self, i: i32) -> &LieroWormData {
+        self.g.worm(i)
     }
 
-    fn wobjects(&self) -> *mut LieroWObjectList {
-        unsafe { addr_of_mut!((*self.data()).wobjects) }
-    }
-
-    fn nobjects(&self) -> *mut LieroNObjectList {
-        unsafe { addr_of_mut!((*self.data()).nobjects) }
-    }
-
-    fn sobjects(&self) -> *mut LieroSObjectList {
-        unsafe { addr_of_mut!((*self.data()).sobjects) }
-    }
-
-    fn bonuses(&self) -> *mut LieroBonusList {
-        unsafe { addr_of_mut!((*self.data()).bonuses) }
-    }
-
-    fn bobjects(&self) -> *mut LieroBObjectList {
-        unsafe { addr_of_mut!((*self.data()).bobjects) }
+    /// Draws dirt effect `effect` at (x, y), and with shadows on corrects
+    /// them around it, from (x1, y1) to (x2, y2).
+    fn dirt_effect(&mut self, effect: i32, x: i32, y: i32, shadow: [i32; 4]) {
+        let common = self.tc.level_common();
+        self.g
+            .level
+            .draw_dirt_effect(&common, &mut self.g.data.rand, effect, x, y);
+        if self.g.s.shadow {
+            let [x1, y1, x2, y2] = shadow;
+            self.g.level.correct_shadow(&common, x1, y1, x2, y2);
+        }
     }
 
     // Sounds and stats.
 
     fn play(&self, sound: i32, id: *mut c_void, loops: i32) {
-        unsafe { self.g.f.sound.play(self.tc(), sound, id, loops) }
+        unsafe { self.sound.play(self.tc, sound, id, loops) }
     }
 
     fn playing(&self, id: *mut c_void) -> bool {
-        unsafe { self.g.f.sound.playing(id) }
+        unsafe { self.sound.playing(id) }
     }
 
     fn stop(&self, id: *mut c_void) {
-        unsafe { self.g.f.sound.stop(id) }
+        unsafe { self.sound.stop(id) }
     }
 
     /// The stats the game records, if any.
-    fn stats(&self) -> Option<&mut LieroStats> {
-        unsafe { self.g.f.stats.as_mut() }
+    fn stats(&mut self) -> Option<&mut LieroStats> {
+        self.stats.as_deref_mut()
     }
 
-    /// The weapon's index in the TC, or -1 for none (`weaponIndex`).
-    fn weapon_index(weapon: *mut LieroWormWeapon) -> i32 {
-        if weapon.is_null() {
+    /// The index in the TC of the weapon in the slot, or -1 for none
+    /// (`weaponIndex`).
+    fn weapon_index(&self, by: FiredBy) -> i32 {
+        if by.worm < 0 {
             -1
         } else {
-            unsafe { (*((*weapon).kind as *const LieroTcWeapon)).id }
+            let ww = &self.g.pool_worm(WormId(by.worm as u32)).weapons[by.slot as usize];
+            unsafe { (*(ww.kind as *const LieroTcWeapon)).id }
         }
     }
 
-    fn damage_potential(&self, by: i32, weapon: *mut LieroWormWeapon, hp: i32) {
-        if let Some(s) = self.stats() {
-            liero_stats_damage_potential(s, by, Self::weapon_index(weapon), hp);
+    fn damage_potential(&mut self, by: i32, weapon: FiredBy, hp: i32) {
+        if self.stats.is_some() {
+            let w = self.weapon_index(weapon);
+            liero_stats_damage_potential(self.stats.as_deref_mut().unwrap(), by, w, hp);
         }
     }
 
-    fn damage_dealt(&self, by: i32, weapon: *mut LieroWormWeapon, to: i32, hp: i32, has_hit: bool) {
-        if let Some(s) = self.stats() {
-            let pos = unsafe { (*self.worm(to)).pos };
-            let w = Self::weapon_index(weapon);
+    fn damage_dealt(&mut self, by: i32, weapon: FiredBy, to: i32, hp: i32, has_hit: bool) {
+        if self.stats.is_some() {
+            let pos = self.worm(to).pos;
+            let w = self.weapon_index(weapon);
+            let s = self.stats.as_deref_mut().unwrap();
             liero_stats_damage_dealt(s, by, w, to, ftoi(pos.x), ftoi(pos.y), hp, has_hit);
         }
     }
 
-    fn shot(&self, by: i32, weapon: *mut LieroWormWeapon) {
-        if let Some(s) = self.stats() {
-            liero_stats_shot(s, by, Self::weapon_index(weapon));
+    fn shot(&mut self, by: i32, weapon: FiredBy) {
+        if self.stats.is_some() {
+            let w = self.weapon_index(weapon);
+            liero_stats_shot(self.stats.as_deref_mut().unwrap(), by, w);
         }
     }
 
-    fn hit(&self, by: i32, weapon: *mut LieroWormWeapon, to: i32) {
-        if let Some(s) = self.stats() {
-            liero_stats_hit(s, by, Self::weapon_index(weapon), to);
+    fn hit(&mut self, by: i32, weapon: FiredBy, to: i32) {
+        if self.stats.is_some() {
+            let w = self.weapon_index(weapon);
+            liero_stats_hit(self.stats.as_deref_mut().unwrap(), by, w, to);
         }
     }
 
     /// The stats' start or end of a tick.
-    fn stats_tick(&self, end: bool) {
-        if let Some(s) = self.stats() {
-            unsafe {
-                let ticks = (self.h.hires_ticks)(self.h.ctx);
-                let worms = stats_worms(self.g.f);
-                if end {
-                    liero_stats_tick(s, ticks, worms.as_ptr(), worms.len());
-                } else {
-                    liero_stats_pre_tick(s, ticks, worms.as_ptr(), worms.len());
-                }
+    fn stats_tick(&mut self, end: bool) {
+        if self.stats.is_some() {
+            let ticks = unsafe { (self.h.hires_ticks)(self.h.ctx) };
+            let worms = self.g.stats_worms();
+            let s = self.stats.as_deref_mut().unwrap();
+            if end {
+                s.tick(ticks, &worms);
+            } else {
+                s.pre_tick(ticks, &worms);
             }
         }
     }
 
+    /// The id worm `i`'s own sounds play with.
+    fn worm_sound_id(&self, i: i32) -> *mut c_void {
+        std::ptr::from_ref(self.worm(i)).cast_mut().cast()
+    }
+
     /// A worm's hurt sound: one of three, unless one of its own is playing.
-    fn hurt_sound(&self, worm: i32) {
+    fn hurt_sound(&mut self, worm: i32) {
         let snd = 18 + self.rand(3) as i32; // NOTE: MUST be outside the unpredictable branch below
-        let id = self.worm(worm).cast();
+        let id = self.worm_sound_id(worm);
         if !self.playing(id) {
             self.play(snd, id, 0);
         }
@@ -290,183 +285,152 @@ impl<'a> World<'a> {
     // Creating objects.
 
     /// `Game::createBObject`.
-    fn create_bobject(&self, pos: LieroIVec2, vel: LieroIVec2) {
+    fn create_bobject(&mut self, pos: LieroIVec2, vel: LieroIVec2) {
         // Taking the slot uses no random numbers, so the colour can come first.
-        let color = self.rand(self.constant(c("NumBloodColours")) as u32) as i32 + self.constant(c("FirstBloodColour"));
-        // SAFETY: nothing else has the list during the call.
-        *unsafe { &mut *self.bobjects() }.new_object_reuse() = LieroBObject { pos, vel, color };
+        let n = self.constant(c("NumBloodColours")) as u32;
+        let color = self.rand(n) as i32 + self.constant(c("FirstBloodColour"));
+        *self.g.data.bobjects.new_object_reuse() = LieroBObject { pos, vel, color };
     }
 
     /// `createSObject`: an explosion or smoke, which hurts and pushes what
     /// is near when it does damage.
     #[allow(clippy::too_many_arguments)]
-    fn create_sobject(
-        &self,
-        kind: i32,
-        x: i32,
-        y: i32,
-        owner_idx: i32,
-        fired_by: *mut LieroWormWeapon,
-        from: Option<usize>,
-    ) {
+    fn create_sobject(&mut self, kind: i32, x: i32, y: i32, owner_idx: i32, fired_by: FiredBy, from: Option<usize>) {
         let t = self.sobject_type(kind);
-        unsafe {
-            let obj = addr_of_mut!((*self.sobjects()).arr[(*self.sobjects()).new_object_reuse()]);
+        let slot = self.g.data.sobjects.new_object_reuse();
 
-            assert!(t.num_sounds < 10);
+        assert!(t.num_sounds < 10);
 
-            if t.start_sound >= 0 {
-                self.play(self.rand(t.num_sounds as u32) as i32 + t.start_sound, null_mut(), 0);
+        if t.start_sound >= 0 {
+            let snd = self.rand(t.num_sounds as u32) as i32 + t.start_sound;
+            self.play(snd, null_mut(), 0);
+        }
+
+        for v in &mut self.viewports {
+            let r = v.rect;
+            if x > v.x && x < v.x + (r.x2 - r.x1) && y > v.y && y < v.y + (r.y2 - r.y1) && itof(t.shake) > v.shake {
+                v.shake = itof(t.shake);
             }
+        }
 
-            for i in 0..self.g.f.viewport_count {
-                let v = *self.g.f.viewports.add(i as usize);
-                let r = (*v).rect;
-                if x > (*v).x
-                    && x < (*v).x + (r.x2 - r.x1)
-                    && y > (*v).y
-                    && y < (*v).y + (r.y2 - r.y1)
-                    && itof(t.shake) > (*v).shake
-                {
-                    (*v).shake = itof(t.shake);
-                }
-            }
+        let obj = &mut self.g.data.sobjects.arr[slot];
+        obj.id = t.id;
+        obj.x = x - 8;
+        obj.y = y - 8;
+        obj.cur_frame = 0;
+        obj.anim_delay = t.anim_delay;
 
-            (*obj).id = t.id;
-            (*obj).x = x - 8;
-            (*obj).y = y - 8;
-            (*obj).cur_frame = 0;
-            (*obj).anim_delay = t.anim_delay;
+        if t.flash > self.g.data.screen_flash {
+            self.g.data.screen_flash = t.flash;
+        }
 
-            if t.flash > (*self.data()).screen_flash {
-                (*self.data()).screen_flash = t.flash;
-            }
+        self.damage_potential(owner_idx, fired_by, t.damage);
 
-            self.damage_potential(owner_idx, fired_by, t.damage);
+        if t.damage > 0 {
+            for i in 0..self.worm_count() {
+                let w = self.g.worm_mut(i);
 
-            if t.damage > 0 {
-                for i in 0..self.worm_count() {
-                    let w = self.worm(i);
+                let mut power_sum = 0;
+                if liero_explosion_push_worm(w.pos, &mut w.vel, x, y, t.detect_range, t.blow_away, &mut power_sum) {
+                    let z = liero_explosion_damage(t.damage, power_sum, t.detect_range);
 
-                    let mut power_sum = 0;
-                    if liero_explosion_push_worm(
-                        (*w).pos,
-                        &mut (*w).vel,
-                        x,
-                        y,
-                        t.detect_range,
-                        t.blow_away,
-                        &mut power_sum,
-                    ) {
-                        let z = liero_explosion_damage(t.damage, power_sum, t.detect_range);
-
-                        if let Some(from) = from {
-                            let from = addr_of_mut!((*self.wobjects()).arr[from]);
-                            if !(*from).has_hit {
-                                self.hit(owner_idx, fired_by, i);
-                                (*from).has_hit = true;
-                            }
-                        }
-
-                        if (*w).health > 0 {
-                            self.g.damage(i, z, owner_idx);
-                            self.damage_dealt(owner_idx, fired_by, i, z, false);
-
-                            let blood_amount = self.g.s.blood.wrapping_mul(power_sum) / 100;
-
-                            for _ in 0..blood_amount.max(0) {
-                                let angle = self.rand(128) as i32;
-                                self.create_nobject2(6, angle, div((*w).vel, 3), (*w).pos, 0, (*w).index, fired_by);
-                            }
-
-                            if self.rand(3) == 0 {
-                                self.hurt_sound(i);
-                            }
+                    if let Some(from) = from {
+                        if !self.g.data.wobjects.arr[from].has_hit {
+                            self.hit(owner_idx, fired_by, i);
+                            self.g.data.wobjects.arr[from].has_hit = true;
                         }
                     }
-                }
 
-                let obj_blow_away = t.blow_away / 3; // TODO in C++: Read from EXE
+                    if self.worm(i).health > 0 {
+                        self.g.damage(i, z, owner_idx);
+                        self.damage_dealt(owner_idx, fired_by, i, z, false);
 
-                let mut wr = Cursor::default();
-                while let Some(n) = wr.next(&*self.wobjects()) {
-                    let i = &mut (*self.wobjects()).arr[n];
-                    let weapon = &*(i.kind as *const LieroTcWeapon);
+                        let blood_amount = self.g.s.blood.wrapping_mul(power_sum) / 100;
 
-                    if weapon.affect_by_explosions
-                        && liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away)
-                        && weapon.chain_explosion
-                    {
-                        self.blow_up_wobject(n, owner_idx);
-                    }
-                }
-
-                let mut nr = Cursor::default();
-                while let Some(n) = nr.next(&*self.nobjects()) {
-                    let i = &mut (*self.nobjects()).arr[n];
-                    let nt = &*(i.kind as *const LieroTcNObject);
-                    if nt.affect_by_explosions {
-                        liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away);
-                    }
-                }
-
-                let width = t.detect_range / 2;
-                let level = self.g.f.level;
-                let rect = LieroRect {
-                    x1: (x - width).max(0),
-                    y1: (y - width).max(0),
-                    x2: (x + width + 1).min(level.width),
-                    y2: (y + width + 1).min(level.height),
-                };
-
-                for cy in rect.y1..rect.y2 {
-                    for cx in rect.x1..rect.x2 {
-                        let (any_dirt, pix) = {
-                            let lv = level.get();
-                            (lv.mat(cx, cy).any_dirt(), lv.pixel(cx, cy))
-                        };
-                        if any_dirt && self.rand(8) == 0 {
+                        for _ in 0..blood_amount.max(0) {
                             let angle = self.rand(128) as i32;
-                            self.create_nobject2(
-                                2,
-                                angle,
-                                LieroIVec2::default(),
-                                LieroIVec2 {
-                                    x: itof(cx),
-                                    y: itof(cy),
-                                },
-                                pix as i32,
-                                owner_idx,
-                                fired_by,
-                            );
+                            let w = self.worm(i);
+                            let (vel, pos, index) = (div(w.vel, 3), w.pos, w.index);
+                            self.create_nobject2(6, angle, vel, pos, 0, index, fired_by);
+                        }
+
+                        if self.rand(3) == 0 {
+                            self.hurt_sound(i);
                         }
                     }
                 }
             }
 
-            if t.dirt_effect >= 0 {
-                let mut level = self.g.f.level.get();
-                let common = self.tc().level_common();
-                level.draw_dirt_effect(&common, &mut *self.rand_ptr(), t.dirt_effect, x - 7, y - 7);
+            let obj_blow_away = t.blow_away / 3; // TODO in C++: Read from EXE
 
-                if self.g.s.shadow {
-                    level.correct_shadow(&common, x - 10, y - 10, x + 11, y + 11);
+            let mut wr = Cursor::default();
+            while let Some(n) = wr.next(&self.g.data.wobjects) {
+                let i = &mut self.g.data.wobjects.arr[n];
+                // SAFETY: a weapon object's weapon is the TC's.
+                let weapon = unsafe { &*(i.kind as *const LieroTcWeapon) };
+
+                if weapon.affect_by_explosions
+                    && liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away)
+                    && weapon.chain_explosion
+                {
+                    self.blow_up_wobject(n, owner_idx);
                 }
             }
 
-            let mut br = Cursor::default();
-            while let Some(i) = br.next(&*self.bonuses()) {
-                let b = &(*self.bonuses()).arr[i];
-                let (ix, iy) = (ftoi(b.x), ftoi(b.y));
-
-                if ix > x - t.detect_range
-                    && ix < x + t.detect_range
-                    && iy > y - t.detect_range
-                    && iy < y + t.detect_range
-                {
-                    (*self.bonuses()).free(br.last());
-                    self.create_sobject(0, ix, iy, owner_idx, fired_by, None);
+            let mut nr = Cursor::default();
+            while let Some(n) = nr.next(&self.g.data.nobjects) {
+                let i = &mut self.g.data.nobjects.arr[n];
+                // SAFETY: a non-weapon object's type is the TC's.
+                let nt = unsafe { &*(i.kind as *const LieroTcNObject) };
+                if nt.affect_by_explosions {
+                    liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away);
                 }
+            }
+
+            let width = t.detect_range / 2;
+            let rect = LieroRect {
+                x1: (x - width).max(0),
+                y1: (y - width).max(0),
+                x2: (x + width + 1).min(self.g.level.width),
+                y2: (y + width + 1).min(self.g.level.height),
+            };
+
+            for cy in rect.y1..rect.y2 {
+                for cx in rect.x1..rect.x2 {
+                    let any_dirt = self.g.level.mat(cx, cy).any_dirt();
+                    let pix = self.g.level.pixel(cx, cy);
+                    if any_dirt && self.rand(8) == 0 {
+                        let angle = self.rand(128) as i32;
+                        self.create_nobject2(
+                            2,
+                            angle,
+                            LieroIVec2::default(),
+                            LieroIVec2 {
+                                x: itof(cx),
+                                y: itof(cy),
+                            },
+                            pix as i32,
+                            owner_idx,
+                            fired_by,
+                        );
+                    }
+                }
+            }
+        }
+
+        if t.dirt_effect >= 0 {
+            self.dirt_effect(t.dirt_effect, x - 7, y - 7, [x - 10, y - 10, x + 11, y + 11]);
+        }
+
+        let mut br = Cursor::default();
+        while let Some(i) = br.next(&self.g.data.bonuses) {
+            let b = &self.g.data.bonuses.arr[i];
+            let (ix, iy) = (ftoi(b.x), ftoi(b.y));
+
+            if ix > x - t.detect_range && ix < x + t.detect_range && iy > y - t.detect_range && iy < y + t.detect_range
+            {
+                self.g.data.bonuses.free(br.last());
+                self.create_sobject(0, ix, iy, owner_idx, fired_by, None);
             }
         }
     }
@@ -474,37 +438,32 @@ impl<'a> World<'a> {
     /// `checkForSpecWormHit`: whether (x, y) is within `dist` of a worm
     /// pixel of worm `i`.
     fn spec_worm_hit(&self, x: i32, y: i32, dist: i32, i: i32) -> bool {
-        unsafe {
-            let w = self.worm(i);
-            if !(*w).visible {
-                return false;
-            }
+        let w = self.worm(i);
+        if !w.visible {
+            return false;
+        }
 
-            let sprite = self
-                .tc()
-                .worm_sprites
-                .frame((*w).current_frame + (*w).direction * 7 * 3);
+        let sprite = self.tc.worm_sprites.frame(w.current_frame + w.direction * 7 * 3);
 
-            let delta_x = x - ftoi((*w).pos.x) + 7;
-            let delta_y = y - ftoi((*w).pos.y) + 5;
+        let delta_x = x - ftoi(w.pos.x) + 7;
+        let delta_y = y - ftoi(w.pos.y) + 5;
 
-            let x1 = (delta_x - dist).max(0);
-            let y1 = (delta_y - dist).max(0);
-            let x2 = (delta_x + dist + 1).min(16);
-            let y2 = (delta_y + dist + 1).min(16);
+        let x1 = (delta_x - dist).max(0);
+        let y1 = (delta_y - dist).max(0);
+        let x2 = (delta_x + dist + 1).min(16);
+        let y2 = (delta_y + dist + 1).min(16);
 
-            let materials = &self.tc().materials;
-            for cy in y1..y2 {
-                for cx in x1..x2 {
-                    assert!(cy * 16 + cx < 16 * 16);
-                    let pix = sprite[(cy * 16 + cx) as usize];
-                    if materials[pix as usize].flags & crate::material::LIERO_MATERIAL_WORM != 0 {
-                        return true;
-                    }
+        let materials = &self.tc.materials;
+        for cy in y1..y2 {
+            for cx in x1..x2 {
+                assert!(cy * 16 + cx < 16 * 16);
+                let pix = sprite[(cy * 16 + cx) as usize];
+                if materials[pix as usize].flags & crate::material::LIERO_MATERIAL_WORM != 0 {
+                    return true;
                 }
             }
-            false
         }
+        false
     }
 
     /// `checkForWormHit`: tests only the first worm that isn't `own`.
@@ -518,60 +477,51 @@ impl<'a> World<'a> {
     }
 
     /// `SObject::process`.
-    fn process_sobject(&self, slot: usize) {
-        // SAFETY: nothing else has the list during the call.
-        let l = unsafe { &mut *self.sobjects() };
-        let t = self.sobject_type(l.arr[slot].id);
+    fn process_sobject(&mut self, slot: usize) {
+        let t = self.sobject_type(self.g.data.sobjects.arr[slot].id);
+        let l = &mut self.g.data.sobjects;
         if l.arr[slot].animate(t.anim_delay, t.num_frames) {
             l.free(slot);
         }
     }
 
     /// `Bonus::process`.
-    fn process_bonus(&self, slot: usize) {
-        unsafe {
-            let level = self.g.f.level;
-            let b = addr_of_mut!((*self.bonuses()).arr[slot]);
-            let ix = ftoi((*b).x);
-            assert!(ix >= 0 && ix < level.width);
+    fn process_bonus(&mut self, slot: usize) {
+        let ix = ftoi(self.g.data.bonuses.arr[slot].x);
+        assert!(ix >= 0 && ix < self.g.level.width);
 
-            let k = LieroBonusConstants {
-                gravity: self.constant(c("BonusGravity")),
-                bounce_mul: self.constant(c("BonusBounceMul")),
-                bounce_div: self.constant(c("BonusBounceDiv")),
-            };
+        let k = LieroBonusConstants {
+            gravity: self.constant(c("BonusGravity")),
+            bounce_mul: self.constant(c("BonusBounceMul")),
+            bounce_div: self.constant(c("BonusBounceDiv")),
+        };
 
-            if (*b).process(&level, &k) {
-                let iy = ftoi((*b).y);
-                let kind = self.tc().bonus_sobjects[(*b).frame as usize];
-                self.create_sobject(kind, ix, iy, 0, null_mut(), None);
-                // The explosion may have freed it.
-                if (*b).used {
-                    (*self.bonuses()).free(slot);
-                }
+        if self.g.data.bonuses.arr[slot].process(&self.g.level, &k) {
+            let b = self.g.data.bonuses.arr[slot];
+            let kind = self.tc.bonus_sobjects[b.frame as usize];
+            self.create_sobject(kind, ix, ftoi(b.y), 0, FiredBy::NONE, None);
+            // The explosion may have freed it.
+            if self.g.data.bonuses.arr[slot].used {
+                self.g.data.bonuses.free(slot);
             }
         }
     }
 
     /// The blood particles' loop in `Game::processFrame`.
-    fn process_bobjects(&self) {
-        unsafe {
-            let l = &mut *self.bobjects();
-            let rand = &mut *self.rand_ptr();
-            let level = self.g.f.level;
-            let common = self.common();
-            let gravity = self.constant(c("BObjGravity"));
-            let mut i = 0;
-            while i < l.count {
-                if l.arr[i].process(&level, &common, rand, gravity) {
-                    i += 1;
-                } else {
-                    l.free(i);
-                }
+    fn process_bobjects(&mut self) {
+        let gravity = self.constant(c("BObjGravity"));
+        let common = self.tc.level_common();
+        let (data, level) = (&mut *self.g.data, &mut self.g.level);
+        let l = &mut data.bobjects;
+        let mut i = 0;
+        while i < l.count {
+            if l.arr[i].process(level, &common, &mut data.rand, gravity) {
+                i += 1;
+            } else {
+                l.free(i);
             }
         }
     }
-
     fn worm_constants(&self) -> LieroWormConstants {
         let k = |name| self.constant(c(name));
         LieroWormConstants {
@@ -628,10 +578,10 @@ impl<'a> World<'a> {
     }
 
     /// `Game::createBonus`.
-    fn create_bonus(&self) {
+    fn create_bonus(&mut self) {
         let s = self.g.s;
 
-        if unsafe { (*self.bonuses()).count } as i32 >= s.max_bonuses {
+        if self.g.data.bonuses.count as i32 >= s.max_bonuses {
             return;
         }
 
@@ -656,9 +606,7 @@ impl<'a> World<'a> {
                 self.rand(2) as i32
             };
 
-            // SAFETY: nothing else has the list during the call.
-            let slot = unsafe { (*self.bonuses()).new_object() };
-            let Some(slot) = slot else {
+            let Some(slot) = self.g.data.bonuses.new_object() else {
                 return;
             };
 
@@ -682,8 +630,7 @@ impl<'a> World<'a> {
                 }
             }
 
-            // SAFETY: as above.
-            let bonus = unsafe { &mut (*self.bonuses()).arr[slot] };
+            let bonus = &mut self.g.data.bonuses.arr[slot];
             bonus.x = b.x;
             bonus.y = b.y;
             bonus.vel_y = b.vel_y;
@@ -694,36 +641,28 @@ impl<'a> World<'a> {
                 bonus.weapon = b.weapon;
             }
 
-            self.create_sobject(7, ix, iy, 0, null_mut(), None);
+            self.create_sobject(7, ix, iy, 0, FiredBy::NONE, None);
             return;
         } // 234F
     }
 
     /// Screen flash and viewport shake at the start of the tick.
-    fn begin_tick(&self) {
-        unsafe {
-            self.stats_tick(false);
+    fn begin_tick(&mut self) {
+        self.stats_tick(false);
 
-            if (*self.data()).screen_flash > 0 {
-                (*self.data()).screen_flash -= 1;
-            }
+        if self.g.data.screen_flash > 0 {
+            self.g.data.screen_flash -= 1;
+        }
 
-            for (vs, n) in [
-                (self.g.f.viewports, self.g.f.viewport_count),
-                (self.g.f.spectator_viewports, self.g.f.spectator_viewport_count),
-            ] {
-                for i in 0..n {
-                    let v = *vs.add(i as usize);
-                    if (*v).shake > 0 {
-                        (*v).shake -= 4000; // TODO in C++: Read 4000 from exe?
-                    }
-                }
+        for v in self.viewports.iter_mut().chain(&mut self.spectators) {
+            if v.shake > 0 {
+                v.shake -= 4000; // TODO in C++: Read 4000 from exe?
             }
         }
     }
 
     /// Moves the viewports' death banners.
-    fn update_banners(&self) {
+    fn update_banners(&mut self) {
         fn move_banner(banner_y: &mut i32, down: bool) {
             if down {
                 if *banner_y < 2 {
@@ -734,58 +673,54 @@ impl<'a> World<'a> {
             }
         }
 
-        unsafe {
-            let killed = |i: i32| (*self.worm(i)).killed_timer > 16;
+        let g = &self.g;
+        let killed = |i: i32| g.worm(i).killed_timer > 16;
 
-            for i in 0..self.g.f.viewport_count {
-                let v = *self.g.f.viewports.add(i as usize);
-                move_banner(&mut (*v).banner_y, killed((*v).worm_idx));
-            }
+        for v in &mut self.viewports {
+            move_banner(&mut v.banner_y, killed(v.worm_idx));
+        }
 
-            for i in 0..self.g.f.spectator_viewport_count {
-                let v = *self.g.f.spectator_viewports.add(i as usize);
-                move_banner(&mut (*v).banner_y, killed(0) || killed(1));
-            }
+        for v in &mut self.spectators {
+            move_banner(&mut v.banner_y, killed(0) || killed(1));
         }
     }
 
-    /// `Game::processFrame`.
-    pub(crate) fn process_frame(&self) {
+    /// `Game::processFrame`, but for the viewports' own processing, which
+    /// `liero_game_process_frame` does after.
+    pub(crate) fn process_frame(&mut self) {
         let s = self.g.s;
 
-        unsafe {
-            self.begin_tick();
+        self.begin_tick();
 
-            let mut br = Cursor::default();
-            while let Some(i) = br.next(&*self.bonuses()) {
-                self.process_bonus(i);
-            }
-
-            if self.cycles() & 1 == 0 {
-                self.update_banners();
-            }
-
-            let mut sr = Cursor::default();
-            while let Some(i) = sr.next(&*self.sobjects()) {
-                self.process_sobject(i);
-            }
-
-            let mut wr = Cursor::default();
-            while let Some(i) = wr.next(&*self.wobjects()) {
-                self.process_wobject(i);
-            }
-
-            let mut nr = Cursor::default();
-            while let Some(i) = nr.next(&*self.nobjects()) {
-                self.process_nobject(i);
-            }
-
-            self.process_bobjects();
-
-            // This was originally the beginning of the tick, but has been
-            // rotated down to separate out the drawing.
-            (*self.data()).cycles += 1;
+        let mut br = Cursor::default();
+        while let Some(i) = br.next(&self.g.data.bonuses) {
+            self.process_bonus(i);
         }
+
+        if self.cycles() & 1 == 0 {
+            self.update_banners();
+        }
+
+        let mut sr = Cursor::default();
+        while let Some(i) = sr.next(&self.g.data.sobjects) {
+            self.process_sobject(i);
+        }
+
+        let mut wr = Cursor::default();
+        while let Some(i) = wr.next(&self.g.data.wobjects) {
+            self.process_wobject(i);
+        }
+
+        let mut nr = Cursor::default();
+        while let Some(i) = nr.next(&self.g.data.nobjects) {
+            self.process_nobject(i);
+        }
+
+        self.process_bobjects();
+
+        // This was originally the beginning of the tick, but has been
+        // rotated down to separate out the drawing.
+        self.g.data.cycles += 1;
 
         if !s.bonus_disable && s.max_bonuses > 0 && self.rand(s.bonus_drop_chance as u32) == 0 {
             self.create_bonus();
@@ -804,26 +739,18 @@ impl<'a> World<'a> {
         // replays). Neither the viewports nor the stats at the end read
         // them.
         for i in 0..self.worm_count() {
-            unsafe {
-                let w = self.worm(i);
-                (*w).prev_control_states = (*w).control_states;
-            }
+            let w = self.g.worm_mut(i);
+            w.prev_control_states = w.control_states;
         }
 
-        if self.h.process_viewports {
-            unsafe { crate::scene::process_viewports(self.g.f) };
-        }
         self.stats_tick(true);
     }
 }
 
 /// Whether worm `w` holds control `c`.
-unsafe fn pressed(w: *const LieroWormData, c: u32) -> bool {
-    unsafe { ((*w).control_states >> c) & 1 != 0 }
+fn pressed(w: &LieroWormData, c: u32) -> bool {
+    (w.control_states >> c) & 1 != 0
 }
-
-// ---------------------------------------------------------------------------
-// The hooks. Each `ctx` is the context its caller above made.
 
 #[cfg(test)]
 mod tests {

@@ -8,8 +8,6 @@
 //! the C++ did, since what the tick calls can change them (healing changes
 //! health and lives, and an explosion can push the worm).
 
-use std::cell::Cell;
-
 use super::*;
 use crate::material::LieroMaterial;
 use crate::object::LieroNinjarope;
@@ -19,37 +17,30 @@ use crate::worm::*;
 
 impl World<'_> {
     /// `Worm::process` for worm `i`.
-    pub(super) fn process_worm(&self, i: i32) {
-        unsafe {
-            let worm = self.worm(i);
-            let s = self.g.s;
-            let k = self.worm_constants();
-            let env = LieroWormEnv {
-                level: self.g.f.level,
-                common: self.common(),
-                game: self.data(),
-                cycles: self.cycles(),
-                game_mode: s.game_mode,
-                blood: s.blood,
-                loading_time: s.loading_time,
-                load_change: s.load_change,
-                shadow: s.shadow,
-                quick_sim: (*self.data()).quick_sim,
-                anim_tab: WORM_ANIM_TAB,
-            };
+    pub(super) fn process_worm(&mut self, i: i32) {
+        let s = self.g.s;
+        let k = self.worm_constants();
+        let env = LieroWormEnv {
+            cycles: self.cycles(),
+            game_mode: s.game_mode,
+            blood: s.blood,
+            loading_time: s.loading_time,
+            load_change: s.load_change,
+            shadow: s.shadow,
+            quick_sim: self.g.data.quick_sim,
+            anim_tab: WORM_ANIM_TAB,
+        };
 
-            Worm {
-                w: worm,
-                max_health: self.g.worm(i).max_health,
-                k: &k,
-                env: &env,
-                world: *self,
-                i,
-                bonuses: Cell::default(),
-                wobjects: Cell::default(),
-            }
-            .process();
+        Worm {
+            max_health: self.g.max_health(i),
+            world: self,
+            k: &k,
+            env: &env,
+            i,
+            bonuses: Cursor::default(),
+            wobjects: Cursor::default(),
         }
+        .process();
     }
 }
 
@@ -62,39 +53,36 @@ const COL_POINTS: [&[(i32, i32)]; 4] = [
     &[(-1, -3), (-1, -2), (-1, -1), (-1, 0), (-1, 1), (-1, 2), (-1, 3)],
 ];
 
-/// Getters and setters for the worm's fields. SAFETY for all of them: the
-/// worm is valid for the tick, and no reference outlives the statement.
+/// Getters and setters for the worm's fields.
 macro_rules! fields {
     ($($get:ident, $set:ident: $t:ty;)*) => {
         $(
             #[allow(dead_code)]
             fn $get(&self) -> $t {
-                unsafe { (*self.w).$get }
+                self.w().$get
             }
             #[allow(dead_code)]
-            fn $set(&self, v: $t) {
-                unsafe { (*self.w).$get = v }
+            fn $set(&mut self, v: $t) {
+                self.w_mut().$get = v
             }
         )*
     };
 }
 
-struct Worm<'a> {
-    /// Read and written in place, field by field: a hook can change it.
-    w: *mut LieroWormData,
+struct Worm<'w, 'a> {
+    world: &'w mut World<'a>,
     /// The worm's full health (`settings->health`).
     max_health: i32,
-    k: &'a LieroWormConstants,
-    env: &'a LieroWormEnv,
-    world: World<'a>,
+    k: &'w LieroWormConstants,
+    env: &'w LieroWormEnv,
     /// The worm's position in the game's worms.
     i: i32,
     /// Where `bonus_next` and `steerable_next` are in their lists.
-    bonuses: Cell<Cursor>,
-    wobjects: Cell<Cursor>,
+    bonuses: Cursor,
+    wobjects: Cursor,
 }
 
-impl Worm<'_> {
+impl Worm<'_, '_> {
     fields! {
         pos, set_pos: LieroIVec2;
         vel, set_vel: LieroIVec2;
@@ -126,199 +114,203 @@ impl Worm<'_> {
         leave_shell_timer, set_leave_shell_timer: i32;
     }
 
+    fn w(&self) -> &LieroWormData {
+        self.world.worm(self.i)
+    }
+
+    fn w_mut(&mut self) -> &mut LieroWormData {
+        self.world.g.worm_mut(self.i)
+    }
+
     fn react(&self, dir: usize) -> i32 {
-        unsafe { (*self.w).reacts[dir] }
+        self.w().reacts[dir]
     }
 
-    fn set_react(&self, dir: usize, v: i32) {
-        unsafe { (*self.w).reacts[dir] = v }
+    fn set_react(&mut self, dir: usize, v: i32) {
+        self.w_mut().reacts[dir] = v;
     }
 
-    fn add_react(&self, dir: usize, v: i32) {
-        self.set_react(dir, self.react(dir) + v);
+    fn add_react(&mut self, dir: usize, v: i32) {
+        self.w_mut().reacts[dir] += v;
     }
 
     fn index(&self) -> i32 {
-        unsafe { (*self.w).index }
+        self.w().index
     }
 
-    fn weapons(&self) -> *mut LieroWormWeapon {
-        unsafe { std::ptr::addr_of_mut!((*self.w).weapons) as *mut LieroWormWeapon }
+    fn rope(&self) -> &LieroNinjarope {
+        &self.w().ninjarope
     }
 
-    fn rope(&self) -> *mut LieroNinjarope {
-        unsafe { std::ptr::addr_of_mut!((*self.w).ninjarope) }
+    fn rope_mut(&mut self) -> &mut LieroNinjarope {
+        &mut self.w_mut().ninjarope
     }
 
     /// The current weapon slot.
-    fn slot(&self) -> *mut LieroWormWeapon {
-        // SAFETY: there are five slots and current_weapon is one of them.
-        unsafe { self.weapons().add(self.current_weapon() as usize) }
+    fn slot(&self) -> &LieroWormWeapon {
+        &self.w().weapons[self.current_weapon() as usize]
+    }
+
+    fn slot_mut(&mut self) -> &mut LieroWormWeapon {
+        let n = self.current_weapon() as usize;
+        &mut self.w_mut().weapons[n]
+    }
+
+    /// The id the current weapon slot's looping sounds play with.
+    fn slot_sound_id(&self) -> *mut c_void {
+        std::ptr::from_ref(self.slot()).cast_mut().cast()
+    }
+
+    /// The current weapon slot, as the objects it fires record it.
+    fn fired_by(&self) -> FiredBy {
+        FiredBy {
+            worm: self.world.g.worm_id(self.i).0 as i32,
+            slot: self.current_weapon(),
+        }
     }
 
     fn available(&self) -> bool {
-        unsafe { (*self.slot()).loading_left == 0 }
+        self.slot().loading_left == 0
+    }
+
+    /// The current weapon's TC weapon.
+    fn tc_weapon(&self) -> &LieroTcWeapon {
+        // SAFETY: a slot's weapon is the TC's.
+        unsafe { &*(self.slot().kind as *const LieroTcWeapon) }
     }
 
     /// The current weapon's type.
     fn weapon(&self) -> LieroWeapon {
-        unsafe { weapon_view(&*((*self.slot()).kind as *const LieroTcWeapon)) }
+        weapon_view(self.tc_weapon())
     }
 
     fn pressed(&self, c: u32) -> bool {
         (self.control_states() >> c) & 1 != 0
     }
 
-    fn set_control(&self, c: u32, v: bool) {
+    fn set_control(&mut self, c: u32, v: bool) {
         let s = self.control_states();
         self.set_control_states(if v { s | 1 << c } else { s & !(1 << c) });
     }
 
-    fn release(&self, c: u32) {
+    fn release(&mut self, c: u32) {
         self.set_control(c, false);
     }
 
-    fn pressed_once(&self, c: u32) -> bool {
+    fn pressed_once(&mut self, c: u32) -> bool {
         let state = self.pressed(c);
         self.release(c);
         state
     }
 
-    fn rand_ptr(&self) -> *mut LieroRand {
-        unsafe { std::ptr::addr_of_mut!((*self.env.game).rand) }
+    fn rand(&mut self, max: u32) -> u32 {
+        self.world.rand(max)
     }
 
-    fn rand(&self, max: u32) -> u32 {
-        // SAFETY: valid for the call, and no hook runs during this.
-        unsafe { (*self.rand_ptr()).below(max) }
-    }
-
-    fn rand_u32(&self) -> u32 {
-        unsafe { (*self.rand_ptr()).next_u32() }
+    fn rand_u32(&mut self) -> u32 {
+        self.world.g.data.rand.next_u32()
     }
 
     fn play_sound(&self, sound: i32) {
         self.world.play(sound, null_mut(), 0);
     }
 
-    fn create_nobject1(&self, kind: i32, vel: LieroIVec2, pos: LieroIVec2) {
-        self.world.create_nobject1(kind, vel, pos, 0, self.index(), null_mut());
+    fn create_nobject1(&mut self, kind: i32, vel: LieroIVec2, pos: LieroIVec2) {
+        let index = self.index();
+        self.world.create_nobject1(kind, vel, pos, 0, index, FiredBy::NONE);
     }
 
-    fn create_nobject2(&self, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2) {
+    fn create_nobject2(&mut self, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2) {
+        let index = self.index();
         self.world
-            .create_nobject2(kind, angle, vel, pos, 0, self.index(), null_mut());
+            .create_nobject2(kind, angle, vel, pos, 0, index, FiredBy::NONE);
     }
 
     fn stop_loop_sound_if_any(&self) {
         if self.weapon().loop_sound != 0 {
-            self.world.stop(self.slot().cast());
+            self.world.stop(self.slot_sound_id());
         }
     }
 
     fn level_size(&self) -> (i32, i32) {
-        (self.env.level.width, self.env.level.height)
+        (self.world.g.level.width, self.world.g.level.height)
     }
 
     fn mat(&self, x: i32, y: i32) -> LieroMaterial {
-        // SAFETY: the view is valid for the call.
-        unsafe { self.env.level.get() }.mat(x, y)
+        self.world.g.level.mat(x, y)
     }
 
     /// `Level::checkedMatWrap`: the material at x + y * width, or the
     /// material of colour 0 when that is outside the level.
     fn checked_mat_wrap(&self, x: i32, y: i32) -> LieroMaterial {
-        // SAFETY: the views are valid for the call.
-        let (lv, cv) = unsafe { (self.env.level.get(), self.env.common.get()) };
+        let lv = &self.world.g.level;
         let idx = x.wrapping_add(y.wrapping_mul(lv.width)) as u32 as usize;
-        lv.materials.get(idx).copied().unwrap_or(cv.materials[0])
+        lv.materials.get(idx).copied().unwrap_or(self.world.tc.materials[0])
     }
 
-    fn draw_dirt_effect(&self, effect: i32, x: i32, y: i32) {
-        // SAFETY: the views and rand are valid for the call, and no hook
-        // runs during this.
-        unsafe {
-            let (mut lv, cv) = (self.env.level.get(), self.env.common.get());
-            lv.draw_dirt_effect(&cv, &mut *self.rand_ptr(), effect, x, y);
-        }
+    fn draw_dirt_effect(&mut self, effect: i32, x: i32, y: i32) {
+        let w = &mut *self.world;
+        let common = w.tc.level_common();
+        w.g.level.draw_dirt_effect(&common, &mut w.g.data.rand, effect, x, y);
     }
 
-    fn correct_shadow(&self, x1: i32, y1: i32, x2: i32, y2: i32) {
+    fn correct_shadow(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) {
         if self.env.shadow {
-            unsafe {
-                let (mut lv, cv) = (self.env.level.get(), self.env.common.get());
-                lv.correct_shadow(&cv, x1, y1, x2, y2);
-            }
+            let w = &mut *self.world;
+            let common = w.tc.level_common();
+            w.g.level.correct_shadow(&common, x1, y1, x2, y2);
         }
     }
 
     /// The worm's own sound: `sound`, unless one is playing.
     fn play_worm_sound(&self, sound: i32) {
-        self.world.play(sound, self.w.cast(), 0);
+        self.world.play(sound, self.world.worm_sound_id(self.i), 0);
     }
 
     /// The next bonus, by its slot, and a copy of it.
-    fn bonus_next(&self) -> Option<LieroBonus> {
-        let mut c = self.bonuses.get();
-        // SAFETY: the list is valid for the tick, and the copy is made at once.
-        let b = unsafe {
-            let l = &*self.world.bonuses();
-            c.next(l).map(|i| l.arr[i])
-        };
-        self.bonuses.set(c);
-        b
+    fn bonus_next(&mut self) -> Option<LieroBonus> {
+        let l = &self.world.g.data.bonuses;
+        self.bonuses.next(l).map(|i| l.arr[i])
     }
 
     /// Frees the bonus `bonus_next` returned last.
-    fn bonus_free(&self) {
-        // SAFETY: as in `bonus_next`.
-        unsafe { (*self.world.bonuses()).free(self.bonuses.get().last()) };
+    fn bonus_free(&mut self) {
+        self.world.g.data.bonuses.free(self.bonuses.last());
     }
 
     /// The next of the worm's weapon objects of its current weapon, by slot.
-    fn steerable_next(&self) -> Option<usize> {
-        // SAFETY: the slot is valid for the tick.
-        let kind = unsafe { (*self.slot()).kind };
+    fn steerable_next(&mut self) -> Option<usize> {
+        let kind = self.slot().kind;
         let index = self.index();
-        let mut c = self.wobjects.get();
-        let found = loop {
-            // SAFETY: as in `bonus_next`.
-            match c.next(unsafe { &*self.world.wobjects() }) {
-                Some(n) => {
-                    let o = self.world.wobj(n);
-                    if o.kind == kind && o.owner_idx == index {
-                        break Some(n);
-                    }
-                }
-                None => break None,
+        let l = &self.world.g.data.wobjects;
+        while let Some(n) = self.wobjects.next(l) {
+            if l.arr[n].kind == kind && l.arr[n].owner_idx == index {
+                return Some(n);
             }
-        };
-        self.wobjects.set(c);
-        found
+        }
+        None
     }
 
     /// Puts weapon `weapon` (an index into the TC's weapons) with full ammo
     /// in slot `slot`.
-    fn give_weapon(&self, slot: i32, weapon: i32) {
+    fn give_weapon(&mut self, slot: i32, weapon: i32) {
         let kind = self.world.weapon(weapon);
-        // SAFETY: there are five slots, and the weapon is the TC's.
-        unsafe {
-            let ww = self.weapons().add(slot as usize);
-            (*ww).kind = kind.cast();
-            (*ww).ammo = (*kind).ammo;
-        }
+        // SAFETY: the weapon is the TC's.
+        let ammo = unsafe { (*kind).ammo };
+        let ww = &mut self.w_mut().weapons[slot as usize];
+        ww.kind = kind.cast();
+        ww.ammo = ammo;
     }
 
     /// The current weapon's launch sound, looping or not.
     fn launch_sound(&self) {
-        let ww = self.slot();
-        // SAFETY: the slot's weapon is the TC's.
-        let w = unsafe { &*((*ww).kind as *const LieroTcWeapon) };
+        let id = self.slot_sound_id();
+        let w = self.tc_weapon();
 
         if w.launch_sound >= 0 {
             if w.loop_sound != 0 {
-                if !self.world.playing(ww.cast()) {
-                    self.world.play(w.launch_sound, ww.cast(), -1);
+                if !self.world.playing(id) {
+                    self.world.play(w.launch_sound, id, -1);
                 }
             } else {
                 self.world.play(w.launch_sound, null_mut(), 0);
@@ -327,15 +319,12 @@ impl Worm<'_> {
     }
 
     /// `Worm::fire`: fires the current weapon `w`.
-    fn fire(&self, w: &LieroWeapon) {
-        let ww = self.slot();
+    fn fire(&mut self, w: &LieroWeapon) {
         let angle = ftoi(self.aiming_angle());
 
-        // SAFETY: the slot is valid for the tick.
-        unsafe {
-            (*ww).ammo -= 1;
-            (*ww).delay_left = w.delay;
-        }
+        let ww = self.slot_mut();
+        ww.ammo -= 1;
+        ww.delay_left = w.delay;
 
         self.set_fire_cone(w.fire_cone);
 
@@ -362,11 +351,11 @@ impl Worm<'_> {
 
         for _ in 0..w.parts.max(0) {
             // `Weapon::fire`: one part of the shot.
-            let ww = self.slot();
-            // SAFETY: the slot's weapon is the TC's.
-            let kind = unsafe { &*((*ww).kind as *const LieroTcWeapon) };
+            // SAFETY: a slot's weapon is the TC's.
+            let kind = unsafe { &*(self.slot().kind as *const LieroTcWeapon) };
+            let (index, fired_by) = (self.index(), self.fired_by());
             self.world
-                .fire_weapon(kind, angle, firing_vel, speed, firing, self.index(), ww);
+                .fire_weapon(kind, angle, firing_vel, speed, firing, index, fired_by);
         }
 
         let mut recoil = w.recoil;
@@ -377,7 +366,7 @@ impl Worm<'_> {
         self.set_vel(sub(self.vel(), mul_div(cos_sin(angle), recoil, 100)));
     }
 
-    fn calculate_reaction_force(&self, new_x: i32, new_y: i32, dir: usize) {
+    fn calculate_reaction_force(&mut self, new_x: i32, new_y: i32, dir: usize) {
         self.set_react(dir, 0);
 
         for &(dx, dy) in COL_POINTS[dir] {
@@ -387,7 +376,7 @@ impl Worm<'_> {
         }
     }
 
-    fn process_physics(&self) {
+    fn process_physics(&mut self) {
         let k = self.k;
         let mut vel = self.vel();
 
@@ -456,7 +445,7 @@ impl Worm<'_> {
     }
 
     /// Liero.exe: 291C
-    fn calculate_reaction_forces(&self) {
+    fn calculate_reaction_forces(&mut self) {
         let k = self.k;
         let (width, height) = self.level_size();
         let mut next = add(self.pos(), self.vel());
@@ -501,11 +490,11 @@ impl Worm<'_> {
         }
     }
 
-    fn pick_up_bonuses(&self) {
+    fn pick_up_bonuses(&mut self) {
         let k = self.k;
         let ipos = ftoi_vec(self.pos());
 
-        self.bonuses.set(Cursor::default());
+        self.bonuses = Cursor::default();
         while let Some(b) = self.bonus_next() {
             let (bx, by) = (ftoi(b.x), ftoi(b.y));
             if !(ipos.x + 5 > bx && ipos.x - 5 < bx && ipos.y + 5 > by && ipos.y - 5 < by) {
@@ -537,16 +526,17 @@ impl Worm<'_> {
 
                     self.bonus_free();
 
-                    unsafe { (*self.weapons().add(slot as usize)).loading_left = 0 };
+                    self.w_mut().weapons[slot as usize].loading_left = 0;
                 } else {
                     self.bonus_free();
-                    self.world.create_sobject(0, bx, by, self.index(), null_mut(), None);
+                    let index = self.index();
+                    self.world.create_sobject(0, bx, by, index, FiredBy::NONE, None);
                 }
             }
         }
     }
 
-    fn process_steerables(&self) {
+    fn process_steerables(&mut self) {
         self.set_steerable_count(0);
         self.set_steerable_sum_x(0);
         self.set_steerable_sum_y(0);
@@ -556,7 +546,7 @@ impl Worm<'_> {
         }
 
         let turn = (self.env.cycles & 1) + 1;
-        self.wobjects.set(Cursor::default());
+        self.wobjects = Cursor::default();
         while let Some(n) = self.steerable_next() {
             let pos = self.world.wobj(n).pos;
             let (left, right) = (self.pressed(LIERO_CONTROL_LEFT), self.pressed(LIERO_CONTROL_RIGHT));
@@ -577,7 +567,7 @@ impl Worm<'_> {
         }
     }
 
-    fn process_aiming(&self) {
+    fn process_aiming(&mut self) {
         let k = self.k;
         let up = self.pressed(LIERO_CONTROL_UP);
         let down = self.pressed(LIERO_CONTROL_DOWN);
@@ -590,28 +580,28 @@ impl Worm<'_> {
             }
 
             // On the left, the max limit is the lower angle.
-            let limit = |angle: i32| {
-                self.set_aiming_speed(0);
-                self.set_aiming_angle(itof(angle));
+            let limit = |w: &mut Self, angle: i32| {
+                w.set_aiming_speed(0);
+                w.set_aiming_angle(itof(angle));
             };
             if self.direction() == 1 {
                 if ftoi(self.aiming_angle()) > k.aim_max_right {
-                    limit(k.aim_max_right);
+                    limit(self, k.aim_max_right);
                 }
                 if ftoi(self.aiming_angle()) < k.aim_min_right {
-                    limit(k.aim_min_right);
+                    limit(self, k.aim_min_right);
                 }
             } else {
                 if ftoi(self.aiming_angle()) < k.aim_max_left {
-                    limit(k.aim_max_left);
+                    limit(self, k.aim_max_left);
                 }
                 if ftoi(self.aiming_angle()) > k.aim_min_left {
-                    limit(k.aim_min_left);
+                    limit(self, k.aim_min_left);
                 }
             }
         }
 
-        let rope_out = unsafe { (*self.rope()).out };
+        let rope_out = self.rope().out;
         if self.movable() && (!rope_out || !self.pressed(LIERO_CONTROL_CHANGE)) {
             // Up turns towards the top on either side, down away from it.
             for (key, dir) in [(up, 0), (down, 1)] {
@@ -629,63 +619,65 @@ impl Worm<'_> {
         }
     }
 
-    fn process_tasks(&self) {
+    fn process_tasks(&mut self) {
         let k = self.k;
-        let r = self.rope();
 
-        // SAFETY: the rope pointer is valid for the call.
-        unsafe {
-            if self.pressed(LIERO_CONTROL_CHANGE) {
-                if (*r).out {
-                    if self.pressed(LIERO_CONTROL_UP) {
-                        (*r).length -= k.nr_pull_vel;
-                    }
-                    if self.pressed(LIERO_CONTROL_DOWN) {
-                        (*r).length += k.nr_release_vel;
-                    }
-
-                    if (*r).length < k.nr_min_length {
-                        (*r).length = k.nr_min_length;
-                    }
-                    if (*r).length > k.nr_max_length {
-                        (*r).length = k.nr_max_length;
-                    }
+        if self.pressed(LIERO_CONTROL_CHANGE) {
+            if self.rope().out {
+                let (up, down) = (self.pressed(LIERO_CONTROL_UP), self.pressed(LIERO_CONTROL_DOWN));
+                let r = self.rope_mut();
+                if up {
+                    r.length -= k.nr_pull_vel;
+                }
+                if down {
+                    r.length += k.nr_release_vel;
                 }
 
-                if self.pressed_once(LIERO_CONTROL_JUMP) {
-                    (*r).out = true;
-                    (*r).attached = false;
-
-                    self.play_sound(5);
-
-                    (*r).pos = self.pos();
-                    let dir = cos_sin(ftoi(self.aiming_angle()));
-                    (*r).vel = LieroIVec2 {
-                        x: dir.x.wrapping_shl(k.nr_throw_vel_x as u32),
-                        y: dir.y.wrapping_shl(k.nr_throw_vel_y as u32),
-                    };
-
-                    (*r).length = k.nr_initial_length;
+                if r.length < k.nr_min_length {
+                    r.length = k.nr_min_length;
                 }
-            } else if self.pressed(LIERO_CONTROL_JUMP) {
-                // Jump removes the rope and jumps.
-                (*r).out = false;
-                (*r).attached = false;
-
-                if (self.react(RF_UP) > 0 || k.air_jump) && (self.able_to_jump() || k.multi_jump) {
-                    let mut vel = self.vel();
-                    vel.y = vel.y.wrapping_sub(k.jump_force);
-                    self.set_vel(vel);
-                    self.set_able_to_jump(false);
+                if r.length > k.nr_max_length {
+                    r.length = k.nr_max_length;
                 }
-            } else {
-                self.set_able_to_jump(true);
             }
+
+            if self.pressed_once(LIERO_CONTROL_JUMP) {
+                let r = self.rope_mut();
+                r.out = true;
+                r.attached = false;
+
+                self.play_sound(5);
+
+                let pos = self.pos();
+                let dir = cos_sin(ftoi(self.aiming_angle()));
+                let r = self.rope_mut();
+                r.pos = pos;
+                r.vel = LieroIVec2 {
+                    x: dir.x.wrapping_shl(k.nr_throw_vel_x as u32),
+                    y: dir.y.wrapping_shl(k.nr_throw_vel_y as u32),
+                };
+
+                r.length = k.nr_initial_length;
+            }
+        } else if self.pressed(LIERO_CONTROL_JUMP) {
+            // Jump removes the rope and jumps.
+            let r = self.rope_mut();
+            r.out = false;
+            r.attached = false;
+
+            if (self.react(RF_UP) > 0 || k.air_jump) && (self.able_to_jump() || k.multi_jump) {
+                let mut vel = self.vel();
+                vel.y = vel.y.wrapping_sub(k.jump_force);
+                self.set_vel(vel);
+                self.set_able_to_jump(false);
+            }
+        } else {
+            self.set_able_to_jump(true);
         }
     }
 
-    fn fire_or_stop(&self) {
-        let ww = unsafe { *self.slot() };
+    fn fire_or_stop(&mut self) {
+        let ww = *self.slot();
         let w = self.weapon();
 
         if self.pressed(LIERO_CONTROL_FIRE)
@@ -695,37 +687,34 @@ impl Worm<'_> {
         {
             self.fire(&w);
         } else if w.loop_sound != 0 {
-            self.world.stop(self.slot().cast());
+            self.world.stop(self.slot_sound_id());
         }
     }
 
     /// `Worm::processWeapons`: counts down weapon delays and reloads, the
     /// fire cone and the shell casing timer.
-    fn process_weapons(&self) {
+    fn process_weapons(&mut self) {
         let current = self.weapon();
 
-        // SAFETY: the slots are valid for the tick.
-        unsafe {
-            for i in 0..LIERO_SELECTABLE_WEAPONS {
-                let ww = self.weapons().add(i);
-                if (*ww).delay_left >= 0 {
-                    (*ww).delay_left -= 1;
-                }
+        for ww in &mut self.w_mut().weapons[..LIERO_SELECTABLE_WEAPONS] {
+            if ww.delay_left >= 0 {
+                ww.delay_left -= 1;
             }
+        }
 
-            let ww = self.slot();
+        let loading_time = self.env.loading_time;
+        let ww = self.slot_mut();
 
-            if (*ww).ammo <= 0 {
-                (*ww).loading_left = current.computed_loading_time(self.env.loading_time);
-                (*ww).ammo = current.ammo;
-            }
+        if ww.ammo <= 0 {
+            ww.loading_left = current.computed_loading_time(loading_time);
+            ww.ammo = current.ammo;
+        }
 
-            // The computed loading time is never 0, so this works.
-            if (*ww).loading_left > 0 {
-                (*ww).loading_left -= 1;
-                if (*ww).loading_left <= 0 && current.play_reload_sound {
-                    self.play_sound(24);
-                }
+        // The computed loading time is never 0, so this works.
+        if ww.loading_left > 0 {
+            ww.loading_left -= 1;
+            if ww.loading_left <= 0 && current.play_reload_sound {
+                self.play_sound(24);
             }
         }
 
@@ -743,7 +732,7 @@ impl Worm<'_> {
         }
     }
 
-    fn process_sight(&self) {
+    fn process_sight(&mut self) {
         let w = self.weapon();
         let (width, height) = self.level_size();
 
@@ -779,7 +768,7 @@ impl Worm<'_> {
         self.set_hotspot_y(ftoi(temp.y));
     }
 
-    fn process_weapon_change(&self) {
+    fn process_weapon_change(&mut self) {
         if !self.key_change_pressed() {
             self.release(LIERO_CONTROL_LEFT);
             self.release(LIERO_CONTROL_RIGHT);
@@ -805,7 +794,7 @@ impl Worm<'_> {
         }
     }
 
-    fn dig(&self) {
+    fn dig(&mut self) {
         let dir = cos_sin(ftoi(self.aiming_angle()));
         let twice = LieroIVec2 {
             x: dir.x.wrapping_mul(2),
@@ -824,7 +813,7 @@ impl Worm<'_> {
         }
     }
 
-    fn process_movement(&self) {
+    fn process_movement(&mut self) {
         let k = self.k;
 
         if !self.movable() {
@@ -885,7 +874,7 @@ impl Worm<'_> {
         }
     }
 
-    fn bleed(&self) {
+    fn bleed(&mut self) {
         if self.health() >= self.max_health / 4 || self.rand(self.health().wrapping_add(6) as u32) != 0 {
             return;
         }
@@ -893,7 +882,7 @@ impl Worm<'_> {
         if self.rand(3) == 0 {
             // This must be outside the unpredictable branch below.
             let snd = 18 + self.rand(3) as i32;
-            if !self.world.playing(self.w.cast()) {
+            if !self.world.playing(self.world.worm_sound_id(self.i)) {
                 self.play_worm_sound(snd);
             }
         }
@@ -901,7 +890,7 @@ impl Worm<'_> {
         self.create_nobject1(6, self.vel(), self.pos());
     }
 
-    fn die(&self) {
+    fn die(&mut self) {
         let env = self.env;
 
         self.set_leave_shell_timer(0);
@@ -913,7 +902,7 @@ impl Worm<'_> {
         self.play_worm_sound(death_snd);
 
         self.set_fire_cone(0);
-        unsafe { (*self.rope()).out = false };
+        self.rope_mut().out = false;
 
         if env.game_mode == LIERO_GAME_SCALES_OF_JUSTICE {
             while self.health() <= 0 {
@@ -924,28 +913,23 @@ impl Worm<'_> {
             self.set_lives(self.lives() - 1);
         }
 
-        // SAFETY: the game's fields are valid for the call.
-        unsafe {
-            let last_killed = &mut (*env.game).last_killed_idx;
-            let old_last_killed = *last_killed;
-            let by = self.last_killed_by_idx();
-            // In Game of Tag, 'it' doesn't change if the killer was not 'it',
-            // the worm itself, unknown, or there was no 'it'.
-            if env.game_mode != LIERO_GAME_GAME_OF_TAG
-                || *last_killed < 0
-                || by < 0
-                || by == self.index()
-                || by == *last_killed
-            {
-                *last_killed = self.index();
-            }
-            (*env.game).got_changed = old_last_killed != *last_killed;
+        let (by, index) = (self.last_killed_by_idx(), self.index());
+        let data = &mut *self.world.g.data;
+        let old_last_killed = data.last_killed_idx;
+        // In Game of Tag, 'it' doesn't change if the killer was not 'it',
+        // the worm itself, unknown, or there was no 'it'.
+        if env.game_mode != LIERO_GAME_GAME_OF_TAG
+            || old_last_killed < 0
+            || by < 0
+            || by == index
+            || by == old_last_killed
+        {
+            data.last_killed_idx = index;
         }
+        data.got_changed = old_last_killed != data.last_killed_idx;
 
-        let by = self.last_killed_by_idx();
-        if by >= 0 && by != self.index() {
-            // SAFETY: the worm is valid for the tick.
-            unsafe { (*self.world.worm(by)).kills += 1 };
+        if by >= 0 && by != index {
+            self.world.g.worm_mut(by).kills += 1;
         }
 
         self.set_visible(false);
@@ -972,7 +956,7 @@ impl Worm<'_> {
         self.release(LIERO_CONTROL_FIRE);
     }
 
-    fn process_alive(&self) {
+    fn process_alive(&mut self) {
         self.calculate_reaction_forces();
         self.pick_up_bonuses();
         self.process_steerables();
@@ -1014,7 +998,7 @@ impl Worm<'_> {
 
     /// `checkRespawnPosition`: whether (x, y) is far enough from where the
     /// worm died (old) and from the enemy, with no rock around it.
-    fn check_respawn_position(&self, enemy: LieroIVec2, old: LieroIVec2, x: i32, y: i32) -> bool {
+    fn check_respawn_position(&mut self, enemy: LieroIVec2, old: LieroIVec2, x: i32, y: i32) -> bool {
         let k = self.k;
         let (width, height) = self.level_size();
 
@@ -1052,7 +1036,7 @@ impl Worm<'_> {
         true
     }
 
-    fn begin_respawn(&self) {
+    fn begin_respawn(&mut self) {
         let k = self.k;
         let (_, height) = self.level_size();
 
@@ -1062,8 +1046,7 @@ impl Worm<'_> {
         let mut enemy = temp;
         // When there are exactly two worms, the other one.
         if self.world.worm_count() == 2 {
-            // SAFETY: the worm is valid for the tick.
-            enemy = ftoi_vec(unsafe { (*self.world.worm(self.index() ^ 1)).pos });
+            enemy = ftoi_vec(self.world.worm(self.index() ^ 1).pos);
         }
 
         let mut trials = 0;
@@ -1091,7 +1074,7 @@ impl Worm<'_> {
         self.set_killed_timer(-1);
     }
 
-    fn do_respawning(&self) {
+    fn do_respawning(&mut self) {
         let (width, height) = self.level_size();
         let ipos = ftoi_vec(self.pos());
         let mut lr = self.logic_respawn();
@@ -1150,7 +1133,7 @@ impl Worm<'_> {
         }
     }
 
-    fn process_dead(&self) {
+    fn process_dead(&mut self) {
         self.set_steerable_count(0);
 
         if self.pressed_once(LIERO_CONTROL_FIRE) {
@@ -1171,7 +1154,7 @@ impl Worm<'_> {
         }
     }
 
-    fn process(&self) {
+    fn process(&mut self) {
         if self.health() > self.max_health {
             self.set_health(self.max_health);
         }

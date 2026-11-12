@@ -12,7 +12,7 @@ use std::ptr::null_mut;
 use super::dumb::{self, LieroDumbAiWorm};
 use super::path::LevelView;
 use super::predictive::{Games, LieroAiGame, LieroAiWeapon, LieroAiWorm};
-use crate::game::{Game, LieroGameData, LieroGameFields, LieroGameHooks, LieroGameSettings, LieroGameWorm};
+use crate::game::{LieroGameData, LieroGameFields, LieroGameHooks, LieroGameSettings, LieroGameWorm};
 use crate::level::LieroLevel;
 use crate::material::LieroMaterial;
 use crate::rand::LieroRand;
@@ -171,14 +171,7 @@ impl Games for Sims {
     fn process_frame(&mut self, g: Self::G) {
         unsafe {
             let g = &*g;
-            World {
-                g: Game {
-                    f: &g.fields,
-                    s: &g.settings,
-                },
-                h: &NO_HOOKS,
-            }
-            .process_frame();
+            World::new(&g.fields, &g.settings, &NO_HOOKS).process_frame();
         }
     }
 
