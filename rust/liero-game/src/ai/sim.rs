@@ -127,6 +127,9 @@ impl SimGame {
             };
             fields.viewports = std::ptr::null();
             fields.viewport_count = 0;
+            // The spectator viewports stay the real game's: as in C++, the
+            // copies' ticks shake them and move their banners, which shows
+            // in the frames drawn.
             fields.stats = std::ptr::null_mut();
             fields.sound = crate::sfx::LieroSoundOut::NONE;
 

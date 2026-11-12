@@ -3,12 +3,11 @@
 //! them.
 //!
 //! A worm holds a reference to its settings box, which the C++
-//! `WormSettings` share, and its bot, which copies of the game share as
-//! C++'s did. Copies of the game share the spectator viewports too, as
-//! C++'s `Game(Game const&)` and `postClone` left them.
-
-use std::cell::UnsafeCell;
-use std::rc::Rc;
+//! `WormSettings` share, and its bot. A copy of the game (a replay's point
+//! to rewind to) has no bots and no spectator viewports, since it is never
+//! played or drawn; rewinding keeps the game's own. C++'s copies shared
+//! them with the original, so they were the same objects after a rewind
+//! too.
 
 use crate::ai::LieroWormAi;
 use crate::controller::LIERO_STATE_GAME;
@@ -32,7 +31,7 @@ pub struct LieroWorm {
     pub data: LieroWormData,
     /// None before the worm has settings.
     settings: Option<WormSettingsRef>,
-    ai: Option<Rc<UnsafeCell<LieroWormAi>>>,
+    ai: Option<Box<LieroWormAi>>,
 }
 
 impl LieroWorm {
@@ -47,13 +46,18 @@ impl LieroWorm {
     }
 
     /// `Worm(Worm const&)`: the state copied as it is, rope anchor and all,
-    /// with the same settings and bot.
+    /// with the same settings and no bot.
     fn copy(&self) -> Box<Self> {
         Box::new(LieroWorm {
             data: self.data,
             settings: self.settings.clone(),
-            ai: self.ai.clone(),
+            ai: None,
         })
+    }
+
+    /// The worm's bot, if any.
+    pub(crate) fn ai_mut(&mut self) -> Option<&mut LieroWormAi> {
+        self.ai.as_deref_mut()
     }
 
     /// `s` is a valid box, or null.
@@ -86,7 +90,9 @@ pub struct LieroGame {
     // Boxed so the raw pointers to them stay valid as the list grows.
     #[allow(clippy::vec_box)]
     viewports: Vec<Box<LieroViewport>>,
-    spectators: Vec<Rc<UnsafeCell<LieroViewport>>>,
+    // Boxed so the raw pointers to them stay valid as the list grows.
+    #[allow(clippy::vec_box)]
+    spectators: Vec<Box<LieroViewport>>,
     /// What the game records for the stats screen, at a fixed address.
     stats: Box<LieroStats>,
     /// The level, at a fixed address. Copies of the game have their own.
@@ -273,17 +279,17 @@ impl LieroGame {
     }
 
     /// `Game(Game const&)` and `postClone(original, true)`: the state and
-    /// split-screen viewports copied, and every worm, at the same ids. The
-    /// copies share the spectator viewports, and their worms the settings
-    /// and bots. A copy's ropes are anchored to its own worms; C++'s stayed
-    /// on the original's.
+    /// split-screen viewports copied, and every worm, at the same ids, with
+    /// the same settings. A copy has no spectator viewports and its worms no
+    /// bots. A copy's ropes are anchored to its own worms; C++'s stayed on
+    /// the original's.
     fn copy(&self) -> Box<Self> {
         Box::new(LieroGame {
             data: self.data.clone_boxed(),
             pool: self.pool.iter().map(|w| w.copy()).collect(),
             list: self.list.clone(),
             viewports: self.viewports.clone(),
-            spectators: self.spectators.clone(),
+            spectators: Vec::new(),
             stats: self.stats.clone(),
             level: {
                 let mut l = LieroLevelBox::new();
@@ -331,15 +337,15 @@ pub fn liero_game_clone(g: &LieroGame) -> *mut LieroGame {
     Box::into_raw(g.copy())
 }
 
-/// Makes `to` a copy of `from` (rewinding a replay).
+/// Makes `to` a copy of `from` (rewinding a replay), but for the spectator
+/// viewports and the worms' bots, which `to` keeps, by worm id.
 pub fn liero_game_assign(to: &mut LieroGame, from: &LieroGame) {
     let c = from.copy();
     to.data.assign(&c.data);
     let LieroGame {
-        pool,
+        mut pool,
         list,
         viewports,
-        spectators,
         stats,
         level,
         settings,
@@ -348,10 +354,12 @@ pub fn liero_game_assign(to: &mut LieroGame, from: &LieroGame) {
         sound,
         ..
     } = *c;
+    for (w, old) in pool.iter_mut().zip(&mut to.pool) {
+        w.ai = old.ai.take();
+    }
     to.pool = pool;
     to.list = list;
     to.viewports = viewports;
-    to.spectators = spectators;
     *to.stats = *stats;
     to.level.assign(&level);
     (to.settings, to.tc_owner, to.tc, to.sound) = (settings, tc_owner, tc, sound);
@@ -467,12 +475,12 @@ pub unsafe fn liero_worm_set_settings(w: &mut LieroWorm, s: *mut LieroWormSettin
 pub fn liero_worm_set_ai(w: &mut LieroWorm, controller: u32, candidates: usize, testing: bool) {
     let ai = crate::ai::liero_worm_ai_new(controller, candidates, testing);
     // SAFETY: a new bot, or null, which isn't read.
-    w.ai = (!ai.is_null()).then(|| Rc::new(UnsafeCell::new(*unsafe { Box::from_raw(ai) })));
+    w.ai = (!ai.is_null()).then(|| unsafe { Box::from_raw(ai) });
 }
 
 /// The worm's bot, or null.
-pub fn liero_worm_ai(w: &LieroWorm) -> *mut LieroWormAi {
-    w.ai.as_ref().map_or(std::ptr::null_mut(), |a| a.get())
+pub fn liero_worm_ai(w: &mut LieroWorm) -> *mut LieroWormAi {
+    w.ai.as_deref_mut().map_or(std::ptr::null_mut(), |a| a)
 }
 
 /// Adds a viewport (`Game::addViewport`, or `addSpectatorViewport` with
@@ -489,9 +497,9 @@ pub fn liero_game_add_viewport(
     let mut vp = LieroViewport::new(rect, worm_idx, level_width, level_height);
     vp.kind = kind;
     if spectator_list {
-        let c = Rc::new(UnsafeCell::new(vp));
-        let p = c.get();
-        g.spectators.push(c);
+        let mut b = Box::new(vp);
+        let p: *mut LieroViewport = &mut *b;
+        g.spectators.push(b);
         p
     } else {
         let mut b = Box::new(vp);
@@ -517,7 +525,7 @@ pub fn liero_game_viewport_count(g: &LieroGame, spectator_list: bool) -> usize {
 
 pub fn liero_game_viewport(g: &mut LieroGame, spectator_list: bool, i: usize) -> *mut LieroViewport {
     if spectator_list {
-        g.spectators[i].get()
+        &mut *g.spectators[i]
     } else {
         &mut *g.viewports[i]
     }
@@ -580,7 +588,11 @@ pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
         })
         .collect();
     let viewports: Vec<*mut LieroViewport> = g.viewports.iter_mut().map(|v| &mut **v as *mut LieroViewport).collect();
-    let spectators: Vec<*mut LieroViewport> = g.spectators.iter().map(|v| v.get()).collect();
+    let spectators: Vec<*mut LieroViewport> = g
+        .spectators
+        .iter_mut()
+        .map(|v| &mut **v as *mut LieroViewport)
+        .collect();
     let fields = LieroGameFields {
         worms: worms.as_ptr(),
         worm_count: worms.len() as i32,
@@ -699,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    fn copies_share_settings_bots_and_spectators() {
+    fn copies_share_the_settings_but_not_bots_or_spectators() {
         unsafe {
             let s = [settings(100, "a"), settings(50, "b"), settings(10, "c")];
             let g = game(s);
@@ -715,17 +727,18 @@ mod tests {
             // The unlisted worms are copied too, at the same ids.
             assert_eq!(c.pool.len(), 3);
             assert_eq!(((*s[0]).refs(), (*s[1]).refs(), (*s[2]).refs()), (3, 3, 3));
-            assert_eq!(liero_worm_ai(&*a), liero_worm_ai(&*liero_game_worm(&mut *g, 0)));
-            assert!(!liero_worm_ai(&*a).is_null());
-            assert!(liero_worm_ai(&*b).is_null());
+            assert!(!liero_worm_ai(&mut *liero_game_worm(&mut *g, 0)).is_null());
+            assert!(liero_worm_ai(&mut *a).is_null());
+            assert!(liero_worm_ai(&mut *b).is_null());
 
-            // The state is the copy's own; the spectator viewport isn't.
+            // The state and viewports are the copy's own, and it has no
+            // spectator viewport.
             (*a).data.health = 1;
             assert_eq!((*liero_game_worm(&mut *g, 0)).data.health, 11);
             assert_eq!(liero_game_viewport_count(c, false), 2);
             assert_ne!(liero_game_viewport(c, false, 1), liero_game_viewport(&mut *g, false, 1));
             assert_eq!((*liero_game_viewport(c, false, 1)).worm_idx, 1);
-            assert_eq!(liero_game_viewport(c, true, 0), liero_game_viewport(&mut *g, true, 0));
+            assert_eq!(liero_game_viewport_count(c, true), 0);
 
             // The stats are the copy's own.
             assert_ne!(liero_game_stats(c), liero_game_stats(&mut *g));
@@ -761,7 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn assigning_replaces_the_worms() {
+    fn assigning_replaces_the_worms_but_keeps_bots_and_spectators() {
         unsafe {
             let s = [settings(100, "a"), settings(50, "b"), settings(10, "c")];
             let from = game(s);
@@ -769,6 +782,10 @@ mod tests {
             let old = liero_game_new_worm(to, s[0]);
             liero_game_list_worm(to, Some(old));
             liero_game_add_viewport(to, rect(0, 0, 1, 1), 0, 1, 1, 0, false);
+            let spectator = liero_game_add_viewport(to, rect(0, 0, 1, 1), 0, 1, 1, 0, true);
+            liero_worm_set_ai(to.worm_mut(old), 1, 0, false);
+            let bot = liero_worm_ai(to.worm_mut(old));
+            assert!(!bot.is_null());
 
             let stats = liero_game_stats(to);
             (*liero_game_stats(&mut *from)).ai_process_time(1, 7);
@@ -782,10 +799,14 @@ mod tests {
             assert_eq!((*liero_game_worm(to, 0)).data.health, 11);
             assert!(liero_game_worm(to, 1).is_null());
             assert_eq!(liero_game_viewport_count(to, false), 2);
-            assert_eq!(liero_game_viewport_count(to, true), 1);
-            // The old worm is gone: the ids are `from`'s.
+            // The old worm is gone: the ids are `from`'s. Its bot stays with
+            // its id, and the spectator viewport with the game.
             assert_eq!(to.pool.len(), 3);
             assert_eq!(to.worm_mut(WormId(2)).data.health, 33);
+            assert_eq!(liero_worm_ai(to.worm_mut(old)), bot);
+            assert!(liero_worm_ai(to.worm_mut(WormId(2))).is_null());
+            assert_eq!(liero_game_viewport_count(to, true), 1);
+            assert_eq!(liero_game_viewport(to, true, 0), spectator);
 
             liero_game_clear_viewports(to);
             assert_eq!(
@@ -947,7 +968,7 @@ mod tests {
             assert_eq!((w[0].max_health, w[1].max_health), (100, 50));
             assert_eq!((w[1].color, w[1].name.len), (7, 3));
             assert_eq!(w[1].data, liero_worm_data(&mut *liero_game_worm(g, 1)));
-            assert_eq!(w[0].ai, liero_worm_ai(&*liero_game_worm(g, 0)));
+            assert_eq!(w[0].ai, liero_worm_ai(&mut *liero_game_worm(g, 0)));
             assert!(w[1].ai.is_null());
             assert_eq!(f.game, liero_game_data(g));
             assert_eq!(f.stats, liero_game_stats(g));

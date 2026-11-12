@@ -10,8 +10,7 @@ use crate::controllers::{liero_game_focus, liero_game_stats_scene};
 use crate::fs::Node;
 use crate::game::{LieroGameHooks, LieroRect};
 use crate::game_box::{
-    liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_worm_ai,
-    liero_worm_set_ai, LieroGame,
+    liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_worm_set_ai, LieroGame,
 };
 use crate::level::LieroLevelBox;
 use crate::renderer::LieroRenderer;
@@ -235,7 +234,7 @@ pub(super) fn set_up_game(
             w.data.index = i as i32;
             w.data.stats_x = if i == 0 { 0 } else { 218 };
             liero_worm_set_ai(w, 1, 0, false);
-            let ai = &mut *liero_worm_ai(w);
+            let ai = w.ai_mut().expect("a bot");
             crate::ai::liero_worm_ai_rand(ai).seed(seed.wrapping_mul(104_729).wrapping_add(i as u32));
         }
 
