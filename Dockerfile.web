@@ -18,7 +18,7 @@ ENV RUSTUP_HOME=/rustup \
     PATH=/cargo/bin:$PATH
 
 RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
-      --default-toolchain ${RUST_VERSION} --target wasm32-unknown-emscripten \
+      --default-toolchain ${RUST_VERSION} --component clippy --target wasm32-unknown-emscripten \
  && cargo install --locked cbindgen --version ${CBINDGEN_VERSION} \
  && rm -rf /cargo/registry /cargo/git
 

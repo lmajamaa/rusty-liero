@@ -250,7 +250,7 @@ fn partition_with_equals_on_left<T: Copy>(v: &mut [T], mut first: usize, mut las
     } else {
         loop {
             first += 1;
-            if !(first < last && !c(&pivot, &v[first])) {
+            if first >= last || c(&pivot, &v[first]) {
                 break;
             }
         }
@@ -512,7 +512,9 @@ mod tests {
         }
     }
 
-    fn order_hash(seed: u32, sort_fn: fn(&mut [Item], &dyn Fn(&Item, &Item) -> bool)) -> u64 {
+    type SortFn = fn(&mut [Item], &dyn Fn(&Item, &Item) -> bool);
+
+    fn order_hash(seed: u32, sort_fn: SortFn) -> u64 {
         let mut h = Fnv::new();
         arrays(seed, |v| {
             sort_fn(v, &|a: &Item, b: &Item| a.key > b.key);

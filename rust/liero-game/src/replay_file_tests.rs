@@ -30,7 +30,7 @@ impl Setup {
     /// Two worms, the first's rope on the second, two split-screen
     /// viewports and a spectator one, and a 3 x 2 level.
     fn new() -> Self {
-        let s = Setup::empty();
+        let mut s = Setup::empty();
         unsafe {
             let g = &mut *s.game;
             let mut worms = Vec::new();
@@ -63,11 +63,11 @@ impl Setup {
         s
     }
 
-    fn level(&self) -> &mut LieroLevelBox {
+    fn level(&mut self) -> &mut LieroLevelBox {
         unsafe { &mut *liero_game_level(&mut *self.game) }
     }
 
-    fn worm(&self, i: usize) -> &mut LieroWormData {
+    fn worm(&mut self, i: usize) -> &mut LieroWormData {
         unsafe { &mut (*liero_game_worm(&*self.game, i)).data }
     }
 }
@@ -110,8 +110,8 @@ fn record(path: &str, s: &mut Setup, frames: &[[u32; 2]]) {
                 s.worm(i).control_states = c;
             }
             liero_replay_writer_frame(&mut *w);
-            for i in 0..2 {
-                s.worm(i).prev_control_states = f[i];
+            for (i, &c) in f.iter().enumerate().take(2) {
+                s.worm(i).prev_control_states = c;
             }
         }
         liero_replay_writer_free(w);
@@ -127,7 +127,7 @@ fn play(path: &str, s: &mut Setup) -> *mut LieroReplayReader {
 }
 
 /// Reads a frame, carrying the controls on as the game tick would.
-unsafe fn frame(r: *mut LieroReplayReader, s: &Setup) -> LieroReplayOutcome {
+unsafe fn frame(r: *mut LieroReplayReader, s: &mut Setup) -> LieroReplayOutcome {
     let o = liero_replay_reader_frame(&mut *r);
     for i in 0..liero_game_worm_count(&*s.game) {
         let d = s.worm(i);
@@ -170,12 +170,12 @@ fn plays_back_the_game_it_recorded() {
         assert_eq!(t.level().data().origpal[5].g, 42);
 
         for f in frames {
-            let o = frame(r, &t);
+            let o = frame(r, &mut t);
             ok(o);
             assert!(!o.end && !o.settings_changed);
             assert_eq!([t.worm(0).control_states, t.worm(1).control_states], f);
         }
-        assert!(frame(r, &t).end);
+        assert!(frame(r, &mut t).end);
         liero_replay_reader_free(r);
     }
 }
@@ -190,12 +190,12 @@ fn rewinds_to_a_position() {
     let r = play(&p, &mut t);
     unsafe {
         let start = liero_replay_reader_pos(&*r);
-        ok(frame(r, &t));
-        ok(frame(r, &t));
+        ok(frame(r, &mut t));
+        ok(frame(r, &mut t));
         assert_eq!(t.worm(0).control_states, 2);
         liero_replay_reader_set_pos(&mut *r, start);
         t.worm(0).prev_control_states = 0;
-        ok(frame(r, &t));
+        ok(frame(r, &mut t));
         assert_eq!(t.worm(0).control_states, 1);
         liero_replay_reader_free(r);
     }
@@ -225,9 +225,9 @@ fn writes_settings_changed_while_unfocused() {
     let r = play(&p, &mut t);
     unsafe {
         assert_eq!((*t.settings).data.lives, 9);
-        assert!(!frame(r, &t).settings_changed);
-        assert!(!frame(r, &t).settings_changed);
-        let o = frame(r, &t);
+        assert!(!frame(r, &mut t).settings_changed);
+        assert!(!frame(r, &mut t).settings_changed);
+        let o = frame(r, &mut t);
         ok(o);
         assert!(o.settings_changed);
         assert_eq!((*t.settings).data.lives, 3);
@@ -246,9 +246,9 @@ fn reports_desyncs_and_short_files() {
     let mut t = Setup::empty();
     let r = play(&p, &mut t);
     unsafe {
-        ok(frame(r, &t));
+        ok(frame(r, &mut t));
         t.worm(1).vel.x += 1;
-        let o = frame(r, &t);
+        let o = frame(r, &mut t);
         assert_eq!((o.status, message(&o)), (LieroReplayStatus::CheckError, "Replay has desynced"));
         liero_replay_reader_free(r);
     }
@@ -257,10 +257,10 @@ fn reports_desyncs_and_short_files() {
     let data = inflate(&std::fs::read(&p).unwrap());
     let r = liero_replay_reader_new(&node(&p));
     unsafe {
-        let u = Setup::empty();
+        let mut u = Setup::empty();
         ok(liero_replay_reader_begin(&mut *r, &mut *u.game));
         (*r).data.truncate((*r).pos + 1);
-        let o = frame(r, &u);
+        let o = frame(r, &mut u);
         assert_eq!((o.status, message(&o)), (LieroReplayStatus::ReadError, "Read error in get()"));
         liero_replay_reader_free(r);
     }
@@ -310,14 +310,15 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
     let mut t = Setup::empty();
     let r = play(&p, &mut t);
     unsafe {
-        let name = |i| (*liero_worm_settings(&*liero_game_worm(&*t.game, i))).name.clone();
-        assert!(!frame(r, &t).settings_changed);
+        let game = t.game;
+        let name = |i| (*liero_worm_settings(&*liero_game_worm(&*game, i))).name.clone();
+        assert!(!frame(r, &mut t).settings_changed);
         assert_eq!(name(2), b"worm 2");
-        let o = frame(r, &t);
+        let o = frame(r, &mut t);
         ok(o);
         assert!(o.settings_changed);
         assert_eq!((name(2), name(3)), (b"renamed".to_vec(), b"worm 3".to_vec()));
-        assert!(!frame(r, &t).settings_changed);
+        assert!(!frame(r, &mut t).settings_changed);
         liero_replay_reader_free(r);
     }
 }

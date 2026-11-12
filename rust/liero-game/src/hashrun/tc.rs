@@ -39,7 +39,7 @@ pub fn hash_tc(out: &mut Out) {
     let tc = bundled();
     let m = tc.model().expect("the TC loaded");
     // SAFETY: a TC from `load_checked` has its data.
-    let d: &LieroTcData = unsafe { &*crate::tc::liero_tc_data(&*tc) };
+    let d: &LieroTcData = unsafe { &*crate::tc::liero_tc_data(&tc) };
 
     out.hash("tc-cfg", 0, Fnv::of(&save::tc_text(m)));
 

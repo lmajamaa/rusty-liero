@@ -158,6 +158,8 @@ struct Pending {
     kind: i32,
     then: Then,
     /// What the text box typed, before Enter.
+    // Boxed: the text box is given its address.
+    #[allow(clippy::box_collection)]
     typed: Box<Vec<u8>>,
 }
 
@@ -697,10 +699,7 @@ impl LieroMenus {
             }
             Behavior::Weapon { slot, .. } => {
                 sound();
-                match self.value_position(kind, i) {
-                    None => None,
-                    Some((x, y)) => Some(self.input(kind, Then::WeaponSearch { slot }, b"", 10, x, y, false)),
-                }
+                self.value_position(kind, i).map(|(x, y)| self.input(kind, Then::WeaponSearch { slot }, b"", 10, x, y, false))
             }
             Behavior::ProfileLoad => {
                 sound();
@@ -1003,6 +1002,9 @@ pub extern "C" fn liero_menus_left_right(m: &mut LieroMenus, kind: i32, dir: i32
 
 /// Enter on `kind`'s selected item. A screen it opened is dropped: the menu
 /// checks only press items that open none.
+///
+/// # Safety
+/// The menus' hooks, which the item may call, are valid.
 #[no_mangle]
 pub unsafe extern "C" fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 {
     let (r, opened) = m.enter(kind);

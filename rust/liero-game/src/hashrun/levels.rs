@@ -11,7 +11,7 @@ use crate::settings::LieroSettingsBox;
 pub fn hash_level_files(out: &mut Out) {
     let tc = super::tc::bundled();
     // SAFETY: a TC from `load_checked` has its data.
-    let d = unsafe { &*crate::tc::liero_tc_data(&*tc) };
+    let d = unsafe { &*crate::tc::liero_tc_data(&tc) };
 
     let pixels = 504 * 350;
     let level: Vec<u8> = (0..pixels).map(|i| (i * 7 + i / 504) as u8).collect();

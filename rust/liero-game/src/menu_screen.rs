@@ -102,6 +102,9 @@ struct MenuScreen {
 }
 
 impl MenuScreen {
+    // The `&mut` is to the menus behind a raw pointer, not to `self`; phase 4
+    // of PLAN.md replaces these pointers.
+    #[allow(clippy::mut_from_ref)]
     fn menus(&self) -> &mut LieroMenus {
         // SAFETY: C++'s menus outlive the screen, and only it uses them
         // while it runs.
@@ -159,10 +162,8 @@ impl MenuScreen {
     /// One pass of the menu's loop (`Gfx::menuStep`).
     fn step(&mut self, host: &Host) -> Step {
         let h = self.h;
-        if self.part != Part::Top {
-            if self.take_result(self.how, self.entered) {
-                return Step::Close;
-            }
+        if self.part != Part::Top && self.take_result(self.how, self.entered) {
+            return Step::Close;
         }
 
         // Enter or F3 on an item: stop at `part` if it opened a screen.

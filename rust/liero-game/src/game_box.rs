@@ -69,10 +69,14 @@ pub struct LieroGame {
     /// Every worm made for the game, at a fixed address. A replay's worms
     /// that the game doesn't list stay here, as ropes can be anchored to
     /// them.
+    // Boxed so the raw pointers to them stay valid as the list grows.
+    #[allow(clippy::vec_box)]
     pool: Vec<Box<LieroWorm>>,
     /// The game's worms (`Game::worms`), in order. A replay's list can have
     /// empty places.
     list: Vec<*mut LieroWorm>,
+    // Boxed so the raw pointers to them stay valid as the list grows.
+    #[allow(clippy::vec_box)]
     viewports: Vec<Box<LieroViewport>>,
     spectators: Vec<Rc<UnsafeCell<LieroViewport>>>,
     /// What the game records for the stats screen, at a fixed address.
@@ -95,6 +99,9 @@ impl LieroGame {
     }
 
     /// The game's settings, from its context.
+    // The `&mut` is to the settings behind a raw pointer, not to `self`; phase 4
+    // of PLAN.md replaces these pointers.
+    #[allow(clippy::mut_from_ref)]
     pub(crate) fn settings_box(&self) -> &mut LieroSettingsBox {
         // SAFETY: the game's reference keeps them alive.
         unsafe { &mut *liero_game_settings(self) }
@@ -440,9 +447,10 @@ pub unsafe extern "C" fn liero_worm_set_settings(w: &mut LieroWorm, s: *mut Lier
 /// Gives the worm the bot for `controller`, or none for a human (0). See
 /// `liero_worm_ai_new`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_set_ai(w: &mut LieroWorm, controller: u32, candidates: usize, testing: bool) {
+pub extern "C" fn liero_worm_set_ai(w: &mut LieroWorm, controller: u32, candidates: usize, testing: bool) {
     let ai = crate::ai::liero_worm_ai_new(controller, candidates, testing);
-    w.ai = (!ai.is_null()).then(|| Rc::new(UnsafeCell::new(*Box::from_raw(ai))));
+    // SAFETY: a new bot, or null, which isn't read.
+    w.ai = (!ai.is_null()).then(|| Rc::new(UnsafeCell::new(*unsafe { Box::from_raw(ai) })));
 }
 
 /// The worm's bot, or null.

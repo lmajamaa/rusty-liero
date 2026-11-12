@@ -32,7 +32,7 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-unknown-emscripten
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --target wasm32-unknown-emscripten
           rustup default "$RUST_VERSION"
 
       - name: Install cbindgen
@@ -48,6 +48,11 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+
+      # The code only the web build compiles; the native job lints the rest.
+      - name: Clippy (wasm)
+        working-directory: rust/liero-game
+        run: cargo clippy --all-targets --target wasm32-unknown-emscripten -- -D warnings
 
       - name: Rust tests (native)
         working-directory: rust/liero-game
@@ -82,8 +87,14 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy
           rustup default "$RUST_VERSION"
+
+      - name: Clippy
+        run: |
+          for crate in rust/liero-game rust/liero-data tools/tctool; do
+            cargo clippy --all-targets --manifest-path "$crate/Cargo.toml" -- -D warnings
+          done
 
       - name: Build tctool
         run: cargo build --release --manifest-path tools/tctool/Cargo.toml

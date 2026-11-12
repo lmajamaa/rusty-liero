@@ -562,10 +562,13 @@ impl<'a> World<'a> {
             for i in 0..self.g.f.viewport_count {
                 let v = *self.g.f.viewports.add(i as usize);
                 let r = (*v).rect;
-                if x > (*v).x && x < (*v).x + (r.x2 - r.x1) && y > (*v).y && y < (*v).y + (r.y2 - r.y1) {
-                    if itof(t.shake) > (*v).shake {
-                        (*v).shake = itof(t.shake);
-                    }
+                if x > (*v).x
+                    && x < (*v).x + (r.x2 - r.x1)
+                    && y > (*v).y
+                    && y < (*v).y + (r.y2 - r.y1)
+                    && itof(t.shake) > (*v).shake
+                {
+                    (*v).shake = itof(t.shake);
                 }
             }
 
@@ -1043,7 +1046,7 @@ impl<'a> World<'a> {
                 create_sobject: worm_create_sobject,
                 create_nobject2: worm_create_nobject2,
                 play_worm_sound: worm_play_worm_sound,
-                worm_sound_playing: worm_sound_playing,
+                worm_sound_playing,
                 stop_loop_sound: worm_stop_loop_sound,
                 worm_hit: worm_worm_hit,
                 steerables_begin: worm_steerables_begin,

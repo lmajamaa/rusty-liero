@@ -87,7 +87,7 @@ unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
 /// The TC's data.
 pub(super) fn tc_data(tc: &Shared<LieroTc>) -> &LieroTcData {
     // SAFETY: a loaded TC has its data while it lives.
-    unsafe { &*crate::tc::liero_tc_data(&**tc) }
+    unsafe { &*crate::tc::liero_tc_data(tc) }
 }
 
 /// The menu positions of the named weapons.

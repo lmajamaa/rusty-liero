@@ -167,7 +167,7 @@ impl FileSource for AppFiles {
             }
             Choice::Profile(ws) => {
                 let mut status = LieroSettingsStatus::Ok;
-                if !liero_worm_settings_box_load_profile(&mut **ws, Some(&LieroFsNode(node.clone())), &mut status) {
+                if !liero_worm_settings_box_load_profile(ws, Some(&LieroFsNode(node.clone())), &mut status) {
                     panic!("Could not read {}", path(&node));
                 }
                 // A profile that ends early, or fails its checkpoint, threw

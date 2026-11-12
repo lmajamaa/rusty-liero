@@ -146,6 +146,8 @@ fn clip_image(mut x: i32, mut y: i32, mut width: i32, mut height: i32, pitch: i3
 ///
 /// # Safety
 /// `mem` must hold the image.
+// The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
+#[allow(clippy::too_many_arguments)]
 unsafe fn blit(
     scr: &mut Screen,
     mem: *const u8,

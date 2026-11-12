@@ -236,6 +236,8 @@ impl Menu<'_> {
     }
 
     /// One item: `MenuItem::draw`.
+    // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
+    #[allow(clippy::too_many_arguments)]
     unsafe fn draw_item(
         &self,
         scr: &LieroBitmap,
@@ -327,7 +329,7 @@ impl Menu<'_> {
 
 /// `toupper` in the C locale.
 fn same_letter(a: u8, b: u8) -> bool {
-    a.to_ascii_uppercase() == b.to_ascii_uppercase()
+    a.eq_ignore_ascii_case(&b)
 }
 
 fn matches(name: &[u8], text: &[u8], contains: bool) -> bool {
@@ -347,8 +349,10 @@ unsafe fn menu<'a>(m: &'a mut LieroMenu, items: *mut LieroMenuItem, count: i32) 
     Menu { m, items }
 }
 
-/// The C functions below take a menu's state and its `count` items, which
-/// must be valid for the call.
+/// The C functions below take a menu's state and its `count` items.
+///
+/// # Safety
+/// `items` has `count` items, valid for the call.
 #[no_mangle]
 pub unsafe extern "C" fn liero_menu_move_to(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, item: i32) {
     menu(m, items, count).move_to(item);
@@ -548,7 +552,7 @@ pub fn levenshtein(a: &[u8], b: &[u8]) -> u32 {
     }
     for x in 1..=b.len() {
         for y in 1..=a.len() {
-            let c = (a[y - 1].to_ascii_lowercase() != b[x - 1].to_ascii_lowercase()) as u32;
+            let c = (!a[y - 1].eq_ignore_ascii_case(&b[x - 1])) as u32;
             m[x * w + y] = (m[(x - 1) * w + y] + 1).min(m[x * w + y - 1] + 1).min(m[(x - 1) * w + y - 1] + c);
         }
     }

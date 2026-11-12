@@ -483,10 +483,7 @@ pub fn hash_replays(out: &mut Out) {
 
     // Settings for the game and for each worm in the middle of the frames,
     // for worms that exist and one that doesn't.
-    let mut changed = Settings::default();
-    changed.loading_time = 30;
-    changed.lives = 3;
-    changed.blood = 500;
+    let changed = Settings { loading_time: 30, lives: 3, blood: 500, ..Default::default() };
     let mut settings_bytes = vec![0x81];
     // Writing sets the settings too, so a copy is written.
     settings_bytes.extend(data::write_archive(&mut changed.clone()));

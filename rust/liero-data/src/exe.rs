@@ -274,8 +274,8 @@ pub fn load(exe: &[u8], chr: &[u8], snd: &[u8]) -> Result<Common, Error> {
     let mut bonus_rand_timer = [[0; 2]; 2];
     exe.seek(0x1C1E2)?;
     for i in 0..2 {
-        for j in 0..2 {
-            bonus_rand_timer[j][i] = exe.u16()? as i32;
+        for timer in &mut bonus_rand_timer {
+            timer[i] = exe.u16()? as i32;
         }
     }
     let mut ai_params = [[0; 7]; 2];
@@ -400,7 +400,10 @@ fn load_font(exe: R) -> Result<Vec<FontChar>, Error> {
         .collect())
 }
 
-fn load_palette(exe: R) -> Result<([[u8; 3]; 256], [(i32, i32); 4]), Error> {
+/// What `load_palette` reads.
+type Palette = ([[u8; 3]; 256], [(i32, i32); 4]);
+
+fn load_palette(exe: R) -> Result<Palette, Error> {
     exe.seek(132774)?;
     let mut palette = [[0u8; 3]; 256];
     for entry in palette.iter_mut() {
@@ -437,7 +440,9 @@ fn load_materials(exe: R) -> Result<[u8; 256], Error> {
     Ok(materials)
 }
 
-fn load_objects(exe: R) -> Result<(Vec<Weapon>, Vec<SObject>, Vec<NObject>), Error> {
+type Objects = (Vec<Weapon>, Vec<SObject>, Vec<NObject>);
+
+fn load_objects(exe: R) -> Result<Objects, Error> {
     let mut w: Vec<Weapon> = (0..40).map(|_| Weapon::default()).collect();
 
     exe.seek(112806)?;

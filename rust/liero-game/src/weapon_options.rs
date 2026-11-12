@@ -213,7 +213,7 @@ mod tests {
     use std::cell::RefCell;
 
     thread_local! {
-        static KEYS: RefCell<Vec<u32>> = RefCell::new(Vec::new());
+        static KEYS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     }
 
     unsafe extern "C" fn key_once(sc: u32) -> bool {

@@ -93,7 +93,7 @@ fn hash(ai: &FollowAi) -> u64 {
 /// game's (1) or the predictive one (2).
 pub enum LieroWormAi {
     Dumb(LieroRand),
-    Follow(FollowAi),
+    Follow(Box<FollowAi>),
 }
 
 /// The bot for `controller`, or null for a human (0). The predictive one
@@ -103,7 +103,7 @@ pub enum LieroWormAi {
 pub extern "C" fn liero_worm_ai_new(controller: u32, candidates: usize, testing: bool) -> *mut LieroWormAi {
     let ai = match controller {
         1 => LieroWormAi::Dumb(LieroRand::default()),
-        2 => LieroWormAi::Follow(FollowAi::new(Weights::default(), candidates, testing)),
+        2 => LieroWormAi::Follow(Box::new(FollowAi::new(Weights::default(), candidates, testing))),
         _ => return std::ptr::null_mut(),
     };
     Box::into_raw(Box::new(ai))

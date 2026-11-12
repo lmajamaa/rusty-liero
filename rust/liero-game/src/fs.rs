@@ -270,7 +270,7 @@ fn sort_listing(mut v: Vec<Entry>) -> Vec<Entry> {
     let mut out: Vec<Entry> = Vec::with_capacity(v.len());
     for i in order {
         let e = std::mem::replace(&mut v[i], Entry { name: Vec::new(), is_dir: false });
-        if out.last().map_or(true, |l| l.name != e.name) {
+        if out.last().is_none_or(|l| l.name != e.name) {
             out.push(e);
         }
     }
