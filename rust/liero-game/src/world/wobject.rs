@@ -11,7 +11,7 @@ use crate::weapon::{ENDLESS_LASER_ID, LIERO_SHOT_DTYPE2, LIERO_SHOT_LASER, LIERO
 
 impl World<'_> {
     /// A copy of weapon object `slot`.
-    fn wobj(&self, slot: usize) -> LieroWObject {
+    pub(super) fn wobj(&self, slot: usize) -> LieroWObject {
         // SAFETY: the list is valid for the tick, and nothing holds a
         // reference into it while this copies.
         unsafe { (*self.wobjects()).arr[slot] }
@@ -19,7 +19,7 @@ impl World<'_> {
 
     /// Changes weapon object `slot` with `f`, through a copy that is
     /// written back before this returns.
-    fn update_wobj<R>(&self, slot: usize, f: impl FnOnce(&mut LieroWObject) -> R) -> R {
+    pub(super) fn update_wobj<R>(&self, slot: usize, f: impl FnOnce(&mut LieroWObject) -> R) -> R {
         let mut o = self.wobj(slot);
         let r = f(&mut o);
         // SAFETY: as in `wobj`.

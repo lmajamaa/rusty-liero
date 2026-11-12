@@ -1,15 +1,16 @@
-//! Weapons: firing (`Worm::fire`, `Weapon::fire`) and reloading
-//! (`Worm::processWeapons`). Results have to stay bit-identical to the C++
-//! versions, which `tools/hashrun` checks.
+//! Weapons: a weapon's properties, a worm's weapon slots, and how a shot
+//! starts (`Weapon::fire`'s velocity, frame and fuse). Results have to stay
+//! bit-identical to the C++ versions, which `tools/hashrun` checks.
 //!
-//! Weapon objects such as bullets, grenades, mines and lasers
-//! (`WObject::process` and `WObject::blowUpObject`) are in
+//! Firing and reloading (`Worm::fire`, `Worm::processWeapons`) are in
+//! `world/worm.rs`, and weapon objects such as bullets, grenades, mines
+//! and lasers (`WObject::process` and `WObject::blowUpObject`) in
 //! `world/wobject.rs`.
 
 use std::ffi::c_void;
 
-use crate::math::{cos_sin, ftoi, itof, LieroIVec2};
-use crate::object::{add, sub};
+use crate::math::{cos_sin, LieroIVec2};
+use crate::object::add;
 use crate::rand::LieroRand;
 
 /// `v * m / d` on both components, rounding towards zero like C++.
@@ -152,143 +153,6 @@ impl LieroWeapon {
             vel: v,
             cur_frame,
             time_left,
-        }
-    }
-}
-
-/// Pointers to the fields of a C++ `Worm` that firing and reloading use.
-pub struct LieroWormFiring {
-    pub pos: *mut LieroIVec2,
-    pub vel: *mut LieroIVec2,
-    /// Fixed-point, 0 to 128.
-    pub aiming_angle: i32,
-    pub fire_cone: *mut i32,
-    pub leave_shell_timer: *mut i32,
-    /// All five weapon slots.
-    pub weapons: *mut LieroWormWeapon,
-    pub current_weapon: i32,
-}
-
-/// What C++ does when a worm fires or reloads.
-pub struct LieroWormFiringHooks {
-    pub ctx: *mut c_void,
-    /// The weapon's launch sound, looping or not.
-    pub launch_sound: unsafe fn(ctx: *mut c_void),
-    /// `Weapon::fire` for the current weapon: one part of a shot.
-    pub fire_part: unsafe fn(ctx: *mut c_void, angle: i32, vel: LieroIVec2, speed: i32, pos: LieroIVec2),
-    /// Plays sound `sound`.
-    pub play_sound: unsafe fn(ctx: *mut c_void, sound: i32),
-    /// `NObjectType::create1` for nobject type `kind`, owned by the worm.
-    pub create_nobject1: unsafe fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
-}
-
-/// Fires the worm's current weapon `w`: C++'s `Worm::fire`.
-/// `signed_recoil` is the TC's hack that makes recoils of 128 and more
-/// negative.
-///
-/// # Safety
-/// The pointers in `worm` must be valid for the call.
-pub unsafe fn liero_worm_fire(
-    worm: &LieroWormFiring,
-    w: &LieroWeapon,
-    rand: *mut LieroRand,
-    signed_recoil: bool,
-    hooks: &LieroWormFiringHooks,
-) {
-    unsafe {
-        let ww = worm.weapons.add(worm.current_weapon as usize);
-        let angle = ftoi(worm.aiming_angle);
-        let ctx = hooks.ctx;
-
-        (*ww).ammo -= 1;
-        (*ww).delay_left = w.delay;
-
-        *worm.fire_cone = w.fire_cone;
-
-        let firing = sub(
-            add(mul_div(cos_sin(angle), w.detect_distance + 5, 1), *worm.pos),
-            LieroIVec2 { x: 0, y: itof(1) },
-        );
-
-        if w.leave_shells > 0 && (*rand).below(w.leave_shells as u32) == 0 {
-            *worm.leave_shell_timer = w.leave_shell_delay;
-        }
-
-        (hooks.launch_sound)(ctx);
-
-        let mut speed = w.speed;
-        let mut firing_vel = LieroIVec2::default();
-
-        if w.affect_by_worm {
-            if speed < 100 {
-                speed = 100;
-            }
-            firing_vel = mul_div(*worm.vel, 100, speed);
-        }
-
-        for _ in 0..w.parts.max(0) {
-            (hooks.fire_part)(ctx, angle, firing_vel, speed, firing);
-        }
-
-        let mut recoil = w.recoil;
-        if signed_recoil && recoil >= 128 {
-            recoil -= 256;
-        }
-
-        *worm.vel = sub(*worm.vel, mul_div(cos_sin(angle), recoil, 100));
-    }
-}
-
-/// Counts down weapon delays and reloads, the fire cone and the shell
-/// casing timer: C++'s `Worm::processWeapons`. `current` is the current
-/// weapon's type and `loading_time_percent` the game's loading time
-/// setting.
-///
-/// # Safety
-/// The pointers in `worm` must be valid for the call.
-pub unsafe fn liero_worm_process_weapons(
-    worm: &LieroWormFiring,
-    current: &LieroWeapon,
-    loading_time_percent: i32,
-    rand: *mut LieroRand,
-    hooks: &LieroWormFiringHooks,
-) {
-    unsafe {
-        let ctx = hooks.ctx;
-
-        for i in 0..LIERO_SELECTABLE_WEAPONS {
-            let ww = worm.weapons.add(i);
-            if (*ww).delay_left >= 0 {
-                (*ww).delay_left -= 1;
-            }
-        }
-
-        let ww = worm.weapons.add(worm.current_weapon as usize);
-
-        if (*ww).ammo <= 0 {
-            (*ww).loading_left = current.computed_loading_time(loading_time_percent);
-            (*ww).ammo = current.ammo;
-        }
-
-        // The computed loading time is never 0, so this works.
-        if (*ww).loading_left > 0 {
-            (*ww).loading_left -= 1;
-            if (*ww).loading_left <= 0 && current.play_reload_sound {
-                (hooks.play_sound)(ctx, 24);
-            }
-        }
-
-        if *worm.fire_cone > 0 {
-            *worm.fire_cone -= 1;
-        }
-
-        if *worm.leave_shell_timer > 0 {
-            *worm.leave_shell_timer -= 1;
-            if *worm.leave_shell_timer <= 0 {
-                let vel_y = -((*rand).below(20000) as i32);
-                let vel_x = (*rand).below(16000) as i32 - 8000;
-                (hooks.create_nobject1)(ctx, 7, LieroIVec2 { x: vel_x, y: vel_y }, *worm.pos, 0);
-            }
         }
     }
 }
