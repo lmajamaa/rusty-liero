@@ -676,9 +676,8 @@ pub unsafe fn liero_menu_draw_versus(
 ///
 /// # Safety
 /// See `LieroBitmap`; `text` must be valid.
-pub unsafe fn liero_menu_draw_info_box(scr: &LieroBitmap, font: &LieroFont, text: LieroStr, x: i32, y: i32) {
+pub unsafe fn liero_menu_draw_info_box(scr: &LieroBitmap, font: &LieroFont, text: &[u8], x: i32, y: i32) {
     unsafe {
-        let text = text.bytes();
         let (width, height) = font.dims(text);
         let cx = x - width / 2 - 2;
         let cy = y - height / 2 - 2;
@@ -696,13 +695,12 @@ pub unsafe fn liero_menu_draw_input_box(
     scr: &LieroBitmap,
     frozen: &LieroBitmap,
     font: &LieroFont,
-    text: LieroStr,
+    text: &[u8],
     x: i32,
     y: i32,
     centered: bool,
 ) {
     unsafe {
-        let text = text.bytes();
         let width = font.dims(text).0;
         let adjust = if centered { width / 2 } else { 0 };
         let clr_x = x - 10 - adjust;
@@ -1003,27 +1001,23 @@ pub fn liero_menu_box_id(b: &LieroMenuBox, i: i32) -> i32 {
 
 /// # Safety
 /// `s` is valid.
-pub unsafe fn liero_menu_box_set_string(b: &mut LieroMenuBox, i: i32, s: LieroStr) {
-    unsafe {
-        let i = index(b, i);
-        b.0.names[i] = s.bytes().to_vec();
-    }
+pub fn liero_menu_box_set_string(b: &mut LieroMenuBox, i: i32, s: &[u8]) {
+    let i = index(b, i);
+    b.0.names[i] = s.to_vec();
 }
 
 /// Sets the value and shows it.
 ///
 /// # Safety
 /// `s` is valid.
-pub unsafe fn liero_menu_box_set_value(b: &mut LieroMenuBox, i: i32, s: LieroStr) {
-    unsafe {
-        let i = index(b, i);
-        b.0.set_value(i, s.bytes().to_vec());
-    }
+pub fn liero_menu_box_set_value(b: &mut LieroMenuBox, i: i32, s: &[u8]) {
+    let i = index(b, i);
+    b.0.set_value(i, s.to_vec());
 }
 
 /// The search text typed so far.
-pub fn liero_menu_box_search_text(b: &LieroMenuBox) -> LieroStr {
-    lstr(&b.0.search)
+pub fn liero_menu_box_search_text(b: &LieroMenuBox) -> &[u8] {
+    &b.0.search
 }
 
 /// One key typed: see `OwnedMenu::on_key`.
@@ -1106,14 +1100,15 @@ mod tests {
                 LieroStr {
                     ptr: v.as_ptr(),
                     len: 1,
-                },
+                }
+                .bytes(),
             );
             liero_menu_box_assign(&mut *b, &*a);
             let it = liero_menu_box_item(&*b, 1);
             assert!(it.has_value);
             assert_eq!(it.value.bytes(), b"3");
             assert_eq!(liero_menu_box_id(&*b, 1), 4);
-            assert_eq!(liero_menu_box_search_text(&*b).bytes(), b"L");
+            assert_eq!(liero_menu_box_search_text(&*b), b"L");
             assert_eq!(*liero_menu_box_state(&mut *b), (*a).0.m);
             liero_menu_box_free(a);
             liero_menu_box_free(b);

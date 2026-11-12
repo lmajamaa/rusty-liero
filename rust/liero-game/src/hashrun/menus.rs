@@ -96,7 +96,7 @@ fn hash_menu(f: &mut Fnv, b: &mut LieroMenuBox) {
     for v in [m.selection, m.top_item, m.bottom_item, m.visible_item_count, m.height] {
         f.i32(v);
     }
-    hash_str(f, &bytes(liero_menu_box_search_text(b)));
+    hash_str(f, liero_menu_box_search_text(b));
     for i in 0..liero_menu_box_count(b) {
         let it = liero_menu_box_item(b, i);
         hash_str(f, &bytes(it.string));
@@ -161,7 +161,7 @@ impl Availability {
         // SAFETY: the buffer is as long as said.
         let len = unsafe { liero_item_value_text(&be, buf.as_mut_ptr(), buf.len()) };
         // SAFETY: the value is copied.
-        unsafe { liero_menu_box_set_value(b, item, LieroStr::of(&buf[..len.min(buf.len())])) };
+        liero_menu_box_set_value(b, item, &buf[..len.min(buf.len())]);
     }
 
     fn update_items(&self, b: &mut LieroMenuBox) {
@@ -355,7 +355,7 @@ fn run_menus(out: &mut Out) {
     let main = menu(LIERO_MENU_MAIN);
     liero_menu_box_set_visibility(main, index_of(main, MA_RESUME_GAME), false);
     // SAFETY: the text is copied.
-    unsafe { liero_menu_box_set_string(main, index_of(main, MA_NEW_GAME), LieroStr::of(b"NEW GAME (F1)")) };
+    liero_menu_box_set_string(main, index_of(main, MA_NEW_GAME), b"NEW GAME (F1)");
 
     run_menu(
         out,
@@ -548,13 +548,13 @@ fn run_boxes(out: &mut Out) {
         let x = 20 + r.below(280) as i32;
         let y = 10 + r.below(180) as i32;
         // SAFETY: the bitmaps and font are live.
-        unsafe { liero_menu_draw_info_box(&scr, &font, LieroStr::of(text), x, y) };
+        unsafe { liero_menu_draw_info_box(&scr, &font, text, x, y) };
         let text = [texts[r.below(6) as usize], b"_"].concat();
         let x = 20 + r.below(200) as i32;
         let y = 10 + r.below(180) as i32;
         let centered = r.below(2) == 1;
         // SAFETY: as above.
-        unsafe { liero_menu_draw_input_box(&scr, &frozen.view(), &font, LieroStr::of(&text), x, y, centered) };
+        unsafe { liero_menu_draw_input_box(&scr, &frozen.view(), &font, &text, x, y, centered) };
         add_screen(&mut f, &a.play);
         print(out, "menu-boxes", step, f);
     }

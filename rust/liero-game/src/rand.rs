@@ -58,10 +58,6 @@ impl Default for LieroRand {
     }
 }
 
-pub fn liero_rand_seed(rand: &mut LieroRand, seed: u32) {
-    rand.seed(seed);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

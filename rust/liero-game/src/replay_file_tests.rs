@@ -109,8 +109,8 @@ fn path(name: &str) -> String {
     format!("{dir}/x.lrp")
 }
 
-fn node(path: &str) -> LieroFsNode {
-    LieroFsNode(Node::new(path.as_bytes()))
+fn node(path: &str) -> Node {
+    Node::new(path.as_bytes())
 }
 
 fn ok(o: LieroReplayOutcome) {

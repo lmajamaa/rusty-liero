@@ -18,18 +18,14 @@ use crate::app::app;
 use crate::app_screens::{liero_main_screen, LieroAppHooks};
 use crate::controllers::liero_controller_on_key;
 use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, LieroColor};
-use crate::keys::{
-    liero_joy_axis, liero_joy_axis_key, liero_joy_button, liero_joy_button_key, liero_keys_clear, liero_keys_event,
-    liero_keys_test_sdl, liero_keys_test_sdl_once, liero_sdl_to_dos_keysym, JoyButtons, LieroKeyChanges,
-};
+use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, LieroKeyChanges};
 use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks, LIERO_MENU_HIDDEN};
 use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items, LieroMenusHooks};
-use crate::rand::liero_rand_seed;
 use crate::screen::{
     liero_app_frame, liero_app_new, liero_app_push, liero_screen_set_host, LieroAppHost, LieroEvent, LieroScreen,
     LieroScreenHost, LieroTypedKey,
 };
-use crate::sfx::{liero_mixer_mix, liero_mixer_new, LieroMixer, LieroSoundOut};
+use crate::sfx::{LieroMixer, LieroSoundOut};
 use crate::tc::liero_tc_randomize;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -356,12 +352,13 @@ fn send_keys(to_controller: bool, changes: LieroKeyChanges) {
 }
 
 /// The app's view of gamepad `joy`'s buttons.
-fn pad_state(joy: i32) -> *mut bool {
+/// `f` on pad `joy`'s button states as the app sees them, if it's there.
+fn on_pad(joy: i32, f: impl FnOnce(&mut JoyButtons) -> LieroKeyChanges) -> Option<LieroKeyChanges> {
     shell(|s| {
         s.pads
             .get_mut(joy as usize)
             .and_then(Option::as_mut)
-            .map_or(std::ptr::null_mut(), |p| p.state.as_mut_ptr())
+            .map(|p| f(&mut p.state))
     })
 }
 
@@ -378,7 +375,7 @@ fn process_event(ev: Ev, to_controller: bool) {
                     }
                 });
             }
-            let dos = liero_keys_event(&mut app().keys, scancode, down);
+            let dos = app().keys.event(scancode, down);
             send_key(to_controller, dos, down);
             if down && scancode == SC_F11 {
                 set_fullscreen(!crate::shell::liero_shell_fullscreen(app()), true);
@@ -386,17 +383,13 @@ fn process_event(ev: Ev, to_controller: bool) {
         }
         Ev::Text(_) => {}
         Ev::JoyAxis { joy, axis, value } => {
-            let state = pad_state(joy);
-            if !state.is_null() {
-                // SAFETY: the pad's button states, which outlive the call.
-                send_keys(to_controller, unsafe { liero_joy_axis(state, joy, axis, value) });
+            if let Some(changes) = on_pad(joy, |b| joy_axis(b, joy, axis, value)) {
+                send_keys(to_controller, changes);
             }
         }
         Ev::JoyButton { joy, button, down } => {
-            let state = pad_state(joy);
-            if !state.is_null() {
-                // SAFETY: as above.
-                send_keys(to_controller, unsafe { liero_joy_button(state, joy, button, down) });
+            if let Some(changes) = on_pad(joy, |b| joy_button(b, joy, button, down)) {
+                send_keys(to_controller, changes);
             }
         }
     }
@@ -546,17 +539,17 @@ unsafe fn host_poll_event(out: *mut LieroEvent) -> bool {
                 if down {
                     e.scancode = scancode as u32;
                     e.choice = true;
-                    e.key = liero_sdl_to_dos_keysym(scancode);
+                    e.key = sdl_to_dos_keysym(scancode);
                 }
             }
             Ev::Text(c) => e.text = c,
             Ev::JoyAxis { joy, axis, value } => {
-                e.key = liero_joy_axis_key(joy, axis, value);
+                e.key = joy_axis_key(joy, axis, value);
                 e.choice = e.key != 0;
             }
             Ev::JoyButton { joy, button, down } => {
                 if down {
-                    e.key = liero_joy_button_key(joy, button);
+                    e.key = joy_button_key(joy, button);
                     e.choice = true;
                 }
             }
@@ -571,7 +564,7 @@ unsafe fn host_process() {
 }
 
 unsafe fn host_clear_keys() {
-    liero_keys_clear(&mut app().keys);
+    app().keys.clear();
 }
 
 fn mixer() -> *mut LieroMixer {
@@ -589,11 +582,11 @@ unsafe fn host_text_input(on: bool) {
 }
 
 unsafe fn host_test_key_once(scancode: u32) -> bool {
-    liero_keys_test_sdl_once(&mut app().keys, scancode as i32)
+    app().keys.test_sdl_once(scancode as i32)
 }
 
 unsafe fn host_test_key(scancode: u32) -> bool {
-    liero_keys_test_sdl(&app().keys, scancode as i32)
+    app().keys.test_sdl(scancode as i32)
 }
 
 unsafe fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
@@ -720,7 +713,7 @@ fn start_audio(mixer: *mut LieroMixer) -> Option<AudioContext> {
         floats.resize(n, 0.0);
         // SAFETY: the mixer lives as long as the page, and nothing else
         // uses it during this call.
-        unsafe { liero_mixer_mix(&mut *mixer, samples.as_mut_ptr(), n) };
+        unsafe { (*mixer).mix(&mut samples) };
         for (f, &s) in floats.iter_mut().zip(&samples) {
             *f = f32::from(s) / 32768.0;
         }
@@ -870,7 +863,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
 
     let a = app();
     // TODO from the C++: better seeding.
-    liero_rand_seed(&mut a.rand, (js_sys::Date::now() / 1000.0) as u32);
+    a.rand.seed((js_sys::Date::now() / 1000.0) as u32);
     let menus = liero_menus_new(LieroMenusHooks {
         menu_cycles: menus_menu_cycles,
         double_res: menus_double_res,
@@ -894,7 +887,8 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
         show_fullscreen(true);
     }
 
-    let mixer = liero_mixer_new();
+    // Kept for the page's life.
+    let mixer: *mut LieroMixer = Box::into_raw(Box::default());
     match start_audio(mixer) {
         Some(audio) => shell(|s| {
             s.mixer = Some(mixer);
@@ -974,10 +968,8 @@ fn run_frames(stack: *mut crate::screen::LieroApp) {
         }
         // SAFETY: closed; nothing uses it after this.
         unsafe { crate::screen::liero_app_free(stack) };
-        if !crate::shell::liero_shell_save_settings(app()) {
-            // SAFETY: the message is valid until the next call.
-            let msg = unsafe { crate::shell::liero_shell_error().bytes().to_vec() };
-            web_sys::console::error_1(&String::from_utf8_lossy(&msg).as_ref().into());
+        if let Err(e) = app().save_settings_at_end() {
+            web_sys::console::error_1(&e.into());
         }
         persist_changes();
         if let Some(audio) = shell(|s| s.audio.take()) {

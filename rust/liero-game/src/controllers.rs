@@ -12,13 +12,13 @@ use crate::controller::{
     LieroControllerData, LIERO_FADE_SHOWN, LIERO_STATE_GAME, LIERO_STATE_GAME_ENDED, LIERO_STATE_INITIAL,
     LIERO_STATE_WEAPON_SELECTION,
 };
-use crate::fs::LieroFsNode;
+use crate::fs::Node;
 use crate::game::{LieroGameHooks, LieroRect};
 use crate::game_box::{
     liero_game_add_viewport, liero_game_clone, liero_game_list_worm, liero_game_new, liero_game_new_worm,
     liero_game_set_context, liero_worm_set_ai, LieroGame,
 };
-use crate::keys::{liero_local_controller_key, LieroWormKeys, LIERO_DK_ESCAPE};
+use crate::keys::{local_controller_key, LieroWormKeys, LIERO_DK_ESCAPE};
 use crate::level::LieroLevelBox;
 use crate::renderer::LieroRenderer;
 use crate::replay::LieroReplayStatus;
@@ -84,7 +84,7 @@ unsafe fn new_game(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> Box<Lie
         let host = current_host();
         let mut game = Box::from_raw(liero_game_new());
         liero_game_set_context(&mut game, settings, tc, host.sound());
-        crate::rand::liero_rand_seed(&mut game.data_mut().rand, host.time() as u32);
+        game.data_mut().rand.seed(host.time() as u32);
         game
     }
 }
@@ -171,7 +171,7 @@ impl LieroController {
     /// A message over the game (`Gfx::infoBox`).
     fn info_box(&mut self, text: &str) {
         // SAFETY: the text outlives the call, which copies it.
-        let s = unsafe { liero_info_box_screen(LieroStr::of(text.as_bytes()), 320 / 2, 200 / 2, true) };
+        let s = liero_info_box_screen(text.as_bytes(), 320 / 2, 200 / 2, true);
         self.open(s);
     }
 
@@ -216,7 +216,7 @@ impl LieroController {
                             }
                         })
                         .collect();
-                    liero_local_controller_key(keys.as_ptr(), keys.len(), LIERO_MAX_CONTROL_EX, key, state)
+                    local_controller_key(&keys, LIERO_MAX_CONTROL_EX, key, state)
                 }
                 Kind::Replay(_) => key as u32 == LIERO_DK_ESCAPE,
             };
@@ -347,7 +347,7 @@ impl LieroController {
                     unreachable!()
                 };
                 let game = r.game.as_mut().expect("no game");
-                if crate::keys::liero_keys_test_sdl_once(&mut app().keys, SCANCODE_R) {
+                if app().keys.test_sdl_once(SCANCODE_R) {
                     crate::game_box::liero_game_assign(game, r.initial.as_ref().expect("no start to rewind to"));
                     crate::replay_file::liero_replay_reader_set_pos(
                         r.reader.as_mut().expect("no replay"),
@@ -608,7 +608,7 @@ unsafe fn start_recording(l: &mut Local) -> Result<(), String> {
     unsafe {
         let name = replay_name(&mut l.game);
         let node = crate::app::app().files.config.go(b"Replays").go(&name);
-        let w = liero_replay_writer_new(&LieroFsNode(node.clone()));
+        let w = liero_replay_writer_new(&node.clone());
         if w.is_null() {
             return Err(format!("Could not write {}", String::from_utf8_lossy(node.full_path())));
         }
@@ -704,7 +704,7 @@ pub unsafe fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: *m
 ///
 /// # Safety
 /// `tc` has a reference, which the controller keeps while it lives.
-pub unsafe fn liero_replay_controller_new(node: &LieroFsNode, tc: *mut LieroTc) -> *mut LieroController {
+pub unsafe fn liero_replay_controller_new(node: &Node, tc: *mut LieroTc) -> *mut LieroController {
     unsafe {
         let reader = liero_replay_reader_new(node);
         if reader.is_null() {

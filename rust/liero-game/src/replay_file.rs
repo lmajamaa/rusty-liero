@@ -17,7 +17,7 @@ use liero_data::gash::Hash;
 use liero_data::settings::{self as data, ReadError, Settings, Source, WormSettings};
 
 use crate::deflate::{inflate, Deflater};
-use crate::fs::LieroFsNode;
+use crate::fs::Node;
 use crate::game::LieroRect;
 use crate::game_box::{
     liero_game_add_viewport, liero_game_data, liero_game_level, liero_game_list_worm, liero_game_new_worm,
@@ -204,8 +204,8 @@ impl Drop for LieroReplayWriter {
 }
 
 /// Starts writing a replay at `node`, or null if it can't be created.
-pub fn liero_replay_writer_new(node: &LieroFsNode) -> *mut LieroReplayWriter {
-    match Deflater::new(&node.0) {
+pub fn liero_replay_writer_new(node: &Node) -> *mut LieroReplayWriter {
+    match Deflater::new(node) {
         Some(out) => Box::into_raw(Box::new(LieroReplayWriter {
             out,
             version: LIERO_REPLAY_VERSION,
@@ -433,8 +433,8 @@ impl LieroReplayReader {
 }
 
 /// Reads and inflates the replay at `node`, or null if it can't be read.
-pub fn liero_replay_reader_new(node: &LieroFsNode) -> *mut LieroReplayReader {
-    let Some(file) = node.0.read() else { return null_mut() };
+pub fn liero_replay_reader_new(node: &Node) -> *mut LieroReplayReader {
+    let Some(file) = node.read() else { return null_mut() };
     let r = inflate(&file);
     Box::into_raw(Box::new(LieroReplayReader {
         data: r.data,

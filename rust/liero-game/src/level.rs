@@ -14,7 +14,6 @@ use crate::gfx::LieroColor;
 use crate::material::LieroMaterial;
 use crate::math::LieroIVec2;
 use crate::rand::LieroRand;
-use crate::text::LieroStr;
 
 /// Width and height of the large sprites (stones, dirt textures...).
 pub const LIERO_LARGE_SPRITE_SIZE: i32 = 16;
@@ -1040,25 +1039,6 @@ pub unsafe fn liero_level_box_resize(l: &mut LieroLevelBox, width: i32, height: 
     l.resize(width, height);
 }
 
-/// The level file the level was made from.
-///
-/// # Safety
-/// `l` is valid; the text is valid until the level changes.
-pub unsafe fn liero_level_box_old_level_file(l: &LieroLevelBox) -> LieroStr {
-    LieroStr {
-        ptr: l.old_level_file.as_ptr(),
-        len: l.old_level_file.len(),
-    }
-}
-
-/// # Safety
-/// `l` and `text` are valid.
-pub unsafe fn liero_level_box_set_old_level_file(l: &mut LieroLevelBox, text: LieroStr) {
-    unsafe {
-        l.old_level_file = text.bytes().to_vec();
-    }
-}
-
 #[cfg(test)]
 #[path = "level_box_tests.rs"]
 mod box_tests;
@@ -1083,13 +1063,7 @@ mod tests {
             (*d).origpal[9].g = 33;
             (*d).old_random_level = true;
             let name = b"levels/A.LEV";
-            liero_level_box_set_old_level_file(
-                &mut *a,
-                LieroStr {
-                    ptr: name.as_ptr(),
-                    len: name.len(),
-                },
-            );
+            (*a).old_level_file = name.to_vec();
 
             // A copy has pixels of its own.
             let c = liero_level_box_clone(&*a);
@@ -1104,7 +1078,7 @@ mod tests {
                 (3, 7, 2)
             );
             assert_eq!(((*cd).origpal[9].g, (*cd).old_random_level), (33, true));
-            assert_eq!(liero_level_box_old_level_file(&*c).bytes(), name);
+            assert_eq!((*c).old_level_file, name);
             *(*cd).level.data.add(5) = 1;
             assert_eq!(*(*d).level.data.add(5), 7);
 

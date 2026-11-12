@@ -7,8 +7,8 @@ use super::game::hash_game;
 use super::games::{bot_tick, set_up_game, tc_data, GAME_OF_TAG, HOLDAZONE, HOOKS, KILL_EM_ALL};
 use super::{Fnv, Out};
 use crate::controllers::liero_game_focus;
-use crate::deflate::{inflate, liero_deflate_out_free, liero_deflate_out_new, liero_deflate_out_write, Inflated};
-use crate::fs::{LieroFsNode, Node};
+use crate::deflate::{inflate, Deflater, Inflated};
+use crate::fs::Node;
 use crate::game::LieroRect;
 use crate::game_box::{
     liero_game_add_viewport, liero_game_assign, liero_game_clear_viewports, liero_game_clone, liero_game_new,
@@ -26,13 +26,12 @@ use crate::settings::{LieroSettingsBox, LieroWormSettingsBox};
 use crate::sfx::LieroSoundOut;
 use crate::shared::Shared;
 use crate::tc::LieroTc;
-use crate::text::LieroStr;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use liero_data::gash::Hash;
 use liero_data::settings::{self as data, Settings, WormSettings};
 
-fn node(path: &str) -> LieroFsNode {
-    LieroFsNode(Node::new(path.as_bytes()))
+fn node(path: &str) -> Node {
+    Node::new(path.as_bytes())
 }
 
 /// What a replay file inflates to, and whether reading on failed.
@@ -52,13 +51,9 @@ fn read_replay(path: &str) -> Vec<u8> {
 
 /// Compresses `data` into a replay file, as the replay writer does.
 fn write_replay(path: &str, data: &[u8]) {
-    let out = liero_deflate_out_new(&node(path));
-    assert!(!out.is_null(), "Could not write {path}");
-    // SAFETY: the writer is new, and freed here.
-    unsafe {
-        liero_deflate_out_write(&mut *out, LieroStr::of(data));
-        liero_deflate_out_free(out);
-    }
+    let mut out = Deflater::new(&Node::new(path.as_bytes())).unwrap_or_else(|| panic!("Could not write {path}"));
+    out.write(data);
+    // Dropping it finishes the file.
 }
 
 fn add_hash(f: &mut Fnv, h: &Hash) {

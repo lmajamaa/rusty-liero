@@ -13,7 +13,6 @@
 
 use crate::cpp_sort;
 use crate::disk;
-use crate::text::LieroStr;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -445,31 +444,6 @@ impl Node {
         match self.prepare_write() {
             Some(p) => disk::write(p, data),
             None => false,
-        }
-    }
-}
-
-// ---- What C++ calls
-
-/// A file node for C++'s `FsNode` to own.
-pub struct LieroFsNode(pub(crate) Node);
-
-fn boxed(n: Node) -> *mut LieroFsNode {
-    Box::into_raw(Box::new(LieroFsNode(n)))
-}
-
-/// # Safety
-/// `path` must be valid.
-pub unsafe fn liero_fs_node_new(path: LieroStr) -> *mut LieroFsNode {
-    unsafe { boxed(Node::new(path.bytes())) }
-}
-
-/// # Safety
-/// `n` must come from a `liero_fs_node_*` function, or be null.
-pub unsafe fn liero_fs_node_free(n: *mut LieroFsNode) {
-    unsafe {
-        if !n.is_null() {
-            drop(Box::from_raw(n));
         }
     }
 }

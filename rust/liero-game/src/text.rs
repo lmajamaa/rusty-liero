@@ -72,28 +72,6 @@ pub fn time_to_string_ex(mut ms: i32, force_hours: bool, force_minutes: bool) ->
     ret
 }
 
-/// Writes `text` and a NUL to `out`, which holds `cap` bytes.
-unsafe fn write_c(text: &[u8], out: *mut u8, cap: usize) {
-    unsafe {
-        if cap == 0 {
-            return;
-        }
-        let n = text.len().min(cap - 1);
-        std::ptr::copy_nonoverlapping(text.as_ptr(), out, n);
-        *out.add(n) = 0;
-    }
-}
-
-/// `timeToStringEx`: writes the time and a NUL to `out` (10 bytes).
-///
-/// # Safety
-/// `out` must hold 10 bytes.
-pub unsafe fn liero_time_to_string_ex(ms: i32, force_hours: bool, force_minutes: bool, out: *mut u8) {
-    unsafe {
-        write_c(&time_to_string_ex(ms, force_hours, force_minutes), out, 10);
-    }
-}
-
 /// The game font, `Font` in C++.
 #[derive(Clone, Copy, Debug)]
 pub struct LieroFont {
@@ -156,9 +134,5 @@ mod tests {
         assert_eq!(time_to_string_ex(3_456, false, false), b"03.45");
         assert_eq!(time_to_string_ex(7_283_456, false, false), b"121:23.45");
         assert_eq!(time_to_string_ex(1_000, true, false), b"001.00");
-
-        let mut out = [0xffu8; 10];
-        unsafe { liero_time_to_string_ex(83_456, false, true, out.as_mut_ptr()) };
-        assert_eq!(&out[..9], b"01:23.45\0");
     }
 }

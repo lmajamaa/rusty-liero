@@ -1,12 +1,12 @@
 use super::*;
 use crate::controllers::{liero_controller_is_replay, LieroController};
-use crate::fs::{LieroFsNode, Node};
+use crate::fs::Node;
 use crate::settings::{liero_settings_box_new, LieroSettingsBox};
 use crate::tc::LieroTc;
 
 thread_local! {
     static SETTINGS: *mut LieroSettingsBox = liero_settings_box_new();
-    static TC: *mut LieroTc = crate::tc::liero_tc_load(&LieroFsNode(Node::new(b"../../TC/openliero")));
+    static TC: *mut LieroTc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
 }
 
 unsafe fn settings() -> *mut LieroSettingsBox {
@@ -36,7 +36,7 @@ fn replay() -> Box<LieroController> {
     std::fs::create_dir_all(dir).unwrap();
     let path = format!("{dir}/empty.lrp");
     std::fs::write(&path, b"").unwrap();
-    let c = unsafe { crate::controllers::liero_replay_controller_new(&LieroFsNode(Node::new(path.as_bytes())), tc()) };
+    let c = unsafe { crate::controllers::liero_replay_controller_new(&Node::new(path.as_bytes()), tc()) };
     assert!(!c.is_null());
     unsafe { Box::from_raw(c) }
 }

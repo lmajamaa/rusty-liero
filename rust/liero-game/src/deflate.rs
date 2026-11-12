@@ -6,8 +6,7 @@
 //! reader got of a broken stream was the pieces filled before it; reading
 //! on then failed. `inflate` keeps to that.
 
-use crate::fs::{LieroFsNode, Node};
-use crate::text::LieroStr;
+use crate::fs::Node;
 use miniz_oxide::deflate::core::{
     compress, create_comp_flags_from_zip_params, CompressorOxide, TDEFLFlush, TDEFLStatus,
 };
@@ -105,39 +104,6 @@ pub fn inflate(input: &[u8]) -> Inflated {
             let mut data = e.output;
             data.truncate(data.len() / PIECE * PIECE);
             Inflated { data, error: true }
-        }
-    }
-}
-
-// ---- What C++ calls
-
-/// A replay file being written.
-pub struct LieroDeflateOut(Deflater);
-
-/// Starts writing a compressed file at `node`. Null if it can't be created.
-pub fn liero_deflate_out_new(node: &LieroFsNode) -> *mut LieroDeflateOut {
-    match Deflater::new(&node.0) {
-        Some(d) => Box::into_raw(Box::new(LieroDeflateOut(d))),
-        None => std::ptr::null_mut(),
-    }
-}
-
-/// # Safety
-/// `data` must be valid.
-pub unsafe fn liero_deflate_out_write(out: &mut LieroDeflateOut, data: LieroStr) {
-    unsafe {
-        out.0.write(data.bytes());
-    }
-}
-
-/// Finishes the file.
-///
-/// # Safety
-/// `out` must come from `liero_deflate_out_new`, or be null.
-pub unsafe fn liero_deflate_out_free(out: *mut LieroDeflateOut) {
-    unsafe {
-        if !out.is_null() {
-            drop(Box::from_raw(out));
         }
     }
 }

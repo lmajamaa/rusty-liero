@@ -130,7 +130,7 @@ impl Screen for WeaponOptions {
                     ptr: self.no_weapons.as_ptr(),
                     len: self.no_weapons.len(),
                 };
-                return Tick::push(unsafe { liero_info_box_screen(text, 223, 68, false) });
+                return Tick::push(unsafe { liero_info_box_screen(text.bytes(), 223, 68, false) });
             }
         }
         self.resumed = false;

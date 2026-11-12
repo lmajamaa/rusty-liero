@@ -272,8 +272,8 @@ impl MenuScreen {
             if host.test_key(key) && !self.menus().left_right(self.cur(), dir) {
                 // Let go of them, so they act once (`resetLeftRight`).
                 let keys = &mut crate::app::app().keys;
-                crate::keys::liero_keys_release_sdl(keys, SCANCODE_LEFT as i32);
-                crate::keys::liero_keys_release_sdl(keys, SCANCODE_RIGHT as i32);
+                keys.release_sdl(SCANCODE_LEFT as i32);
+                keys.release_sdl(SCANCODE_RIGHT as i32);
             }
         }
 

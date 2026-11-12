@@ -7,14 +7,13 @@ use super::game::{add_screen, hash_frame, hash_game, hash_stats};
 use super::{Fnv, Out};
 use crate::app::app;
 use crate::controllers::{liero_game_focus, liero_game_stats_scene};
-use crate::fs::{LieroFsNode, Node};
+use crate::fs::Node;
 use crate::game::{LieroGameHooks, LieroRect};
 use crate::game_box::{
     liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_worm_ai,
     liero_worm_set_ai, LieroGame,
 };
 use crate::level::{liero_level_box_swap, LieroLevelBox};
-use crate::rand::liero_rand_seed;
 use crate::renderer::LieroRenderer;
 use crate::replay_file::{
     liero_replay_writer_begin, liero_replay_writer_frame, liero_replay_writer_free, liero_replay_writer_new,
@@ -232,14 +231,14 @@ pub(super) fn set_up_game(
     // Everything random comes from these seeds. Weapon selection and the
     // level use the app's random numbers, as in the menus.
     let a = app();
-    liero_rand_seed(&mut a.rand, seed);
+    a.rand.seed(seed);
 
     // SAFETY: the game, its worms and viewports are made as the local
     // controller makes them, with settings and a TC that it keeps.
     unsafe {
         let mut game = Box::from_raw(liero_game_new());
         crate::game_box::liero_game_set_context(&mut game, settings.as_ptr(), tc.as_ptr(), LieroSoundOut::NONE);
-        liero_rand_seed(&mut game.data_mut().rand, seed.wrapping_mul(7919));
+        game.data_mut().rand.seed(seed.wrapping_mul(7919));
 
         for (i, ws) in s.worms.iter().enumerate() {
             let w = &mut *liero_game_new_worm(&mut game, ws.as_ptr());
@@ -249,10 +248,7 @@ pub(super) fn set_up_game(
             w.data.stats_x = if i == 0 { 0 } else { 218 };
             liero_worm_set_ai(w, 1, 0, false);
             let ai = &mut *liero_worm_ai(w);
-            liero_rand_seed(
-                crate::ai::liero_worm_ai_rand(ai),
-                seed.wrapping_mul(104_729).wrapping_add(i as u32),
-            );
+            crate::ai::liero_worm_ai_rand(ai).seed(seed.wrapping_mul(104_729).wrapping_add(i as u32));
         }
 
         let r = |x1, y1, x2, y2| LieroRect { x1, y1, x2, y2 };
@@ -342,7 +338,7 @@ fn run_game(out: &mut Out, tc: &Shared<LieroTc>, config: &RunConfig, ticks: i32,
     // Records a replay of the game, as the local controller does when
     // replays are on, to play it back afterwards.
     let path = format!("/tmp/{name}.lrp");
-    let writer = liero_replay_writer_new(&LieroFsNode(Node::new(path.as_bytes())));
+    let writer = liero_replay_writer_new(&Node::new(path.as_bytes()));
     assert!(!writer.is_null(), "Could not write {path}");
     // SAFETY: the writer is new, and records the game while both live.
     unsafe {

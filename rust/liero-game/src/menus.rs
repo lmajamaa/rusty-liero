@@ -676,14 +676,14 @@ impl LieroMenus {
         y: i32,
         digits: bool,
     ) -> LieroScreen {
-        unsafe fn keep(ctx: *mut c_void, text: LieroStr) {
+        unsafe fn keep(ctx: *mut c_void, text: &[u8]) {
             unsafe {
-                *(ctx as *mut Vec<u8>) = text.bytes().to_vec();
+                *(ctx as *mut Vec<u8>) = text.to_vec();
             }
         }
         let mut typed = Box::new(text.to_vec());
         let ctx = (&mut *typed as *mut Vec<u8>).cast();
-        let screen = unsafe { liero_input_box_screen(lstr(text), max_len, x, y, digits, Some(keep), ctx) };
+        let screen = unsafe { liero_input_box_screen(text, max_len, x, y, digits, Some(keep), ctx) };
         self.pending = Some(Pending { kind, then, typed });
         screen
     }

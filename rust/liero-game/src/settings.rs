@@ -8,7 +8,7 @@
 //! written or the hash, and whether it worked. C++ copies what it needs out
 //! of the result and frees it.
 
-use crate::fs::LieroFsNode;
+use crate::fs::Node;
 use crate::text::LieroStr;
 use liero_data::settings::{
     self as data, ArchiveError, Bytes, Extensions, ReadError, Settings, Source, TextError, WormSettings,
@@ -339,11 +339,11 @@ pub unsafe fn liero_settings_write_text(s: &LieroSettings) -> *mut LieroSettings
 /// colour: `status` says so, and C++ threw before putting the colour back.
 pub fn liero_worm_settings_box_load_profile(
     s: &mut LieroWormSettingsBox,
-    node: Option<&LieroFsNode>,
+    node: Option<&Node>,
     status: &mut LieroSettingsStatus,
 ) -> bool {
     let Some(node) = node else { return false };
-    let Some(d) = node.0.read() else { return false };
+    let Some(d) = node.read() else { return false };
     let mut worm = s.worm();
     *status = archive_status(data::read_worm(
         &mut worm,
@@ -351,7 +351,7 @@ pub fn liero_worm_settings_box_load_profile(
         &mut Bytes::new(&d),
     ));
     let color = s.data.color;
-    s.profile = Some(node.0.clone());
+    s.profile = Some(node.clone());
     s.set_worm(&worm);
     if matches!(status, LieroSettingsStatus::Ok) {
         s.data.color = color;
@@ -363,18 +363,18 @@ pub fn liero_worm_settings_box_load_profile(
 /// version's archive, and remembers the profile
 /// (`WormSettings::saveProfile`). False, with nothing changed, if the file
 /// can't be written.
-pub fn liero_worm_settings_box_save_profile(s: &mut LieroWormSettingsBox, node: Option<&LieroFsNode>) -> bool {
+pub fn liero_worm_settings_box_save_profile(s: &mut LieroWormSettingsBox, node: Option<&Node>) -> bool {
     let Some(node) = node else { return false };
     // Opened before the archive is made, as `toOctetWriter` was.
-    if node.0.prepare_write().is_none() {
+    if node.prepare_write().is_none() {
         return false;
     }
     let mut worm = s.worm();
     let bytes = data::write_worm(&mut worm, crate::replay::LIERO_REPLAY_VERSION);
-    if !node.0.write(&bytes) {
+    if !node.write(&bytes) {
         return false;
     }
-    s.profile = Some(node.0.clone());
+    s.profile = Some(node.clone());
     s.set_worm(&worm);
     true
 }
@@ -437,12 +437,9 @@ pub unsafe fn liero_settings_result_settings(r: &LieroSettingsResult) -> *const 
     r.settings_view.as_ref().map_or(std::ptr::null(), |v| v)
 }
 
-/// The bytes written. Valid until `liero_settings_result_free`.
-///
-/// # Safety
-/// `r` must come from one of the functions above and not be freed.
-pub unsafe fn liero_settings_result_bytes(r: &LieroSettingsResult) -> LieroStr {
-    str(&r.bytes)
+/// The bytes written.
+pub fn liero_settings_result_bytes(r: &LieroSettingsResult) -> &[u8] {
+    &r.bytes
 }
 
 /// # Safety
@@ -482,7 +479,7 @@ mod tests {
             unsafe { settings_from(&*liero_settings_result_settings(self.r())) }
         }
         fn bytes(&self) -> Vec<u8> {
-            unsafe { liero_settings_result_bytes(self.r()).bytes().to_vec() }
+            liero_settings_result_bytes(self.r()).to_vec()
         }
     }
 
@@ -901,7 +898,7 @@ impl LieroWormSettingsBox {
 
     /// Saves the settings over their profile (the menus' "save profile").
     pub(crate) fn save_to_profile(&mut self) -> bool {
-        let node = self.profile.clone().map(crate::fs::LieroFsNode);
+        let node = self.profile.clone();
         liero_worm_settings_box_save_profile(self, node.as_ref())
     }
 }
@@ -952,11 +949,6 @@ impl Default for LieroSettingsData {
     }
 }
 
-fn set_bytes(dest: &mut Vec<u8>, text: LieroStr) {
-    // SAFETY: the caller passes a valid string.
-    *dest = unsafe { text.bytes() }.to_vec();
-}
-
 /// Settings with every field zero or empty, and the worms' too; C++ then
 /// sets the defaults.
 pub fn liero_settings_box_new() -> *mut LieroSettingsBox {
@@ -1005,17 +997,6 @@ pub fn liero_settings_box_data(s: &mut LieroSettingsBox) -> *mut LieroSettingsDa
     &mut s.data
 }
 
-/// The TC's name, valid until it's set.
-pub fn liero_settings_box_tc(s: &LieroSettingsBox) -> LieroStr {
-    str(&s.tc)
-}
-
-/// # Safety
-/// `text` must be valid.
-pub unsafe fn liero_settings_box_set_tc(s: &mut LieroSettingsBox, text: LieroStr) {
-    set_bytes(&mut s.tc, text);
-}
-
 /// A worm's settings with every field zero or empty.
 pub fn liero_worm_settings_box_new() -> *mut LieroWormSettingsBox {
     Box::into_raw(Box::default())
@@ -1053,32 +1034,9 @@ pub unsafe fn liero_worm_settings_box_free(s: *mut LieroWormSettingsBox) {
     }
 }
 
-/// A new node for the settings' profile, or null with none.
-pub fn liero_worm_settings_box_profile(s: &LieroWormSettingsBox) -> *mut LieroFsNode {
-    match &s.profile {
-        Some(n) => Box::into_raw(Box::new(LieroFsNode(n.clone()))),
-        None => std::ptr::null_mut(),
-    }
-}
-
-pub fn liero_worm_settings_box_set_profile(s: &mut LieroWormSettingsBox, node: Option<&LieroFsNode>) {
-    s.profile = node.map(|n| n.0.clone());
-}
-
 /// The plain fields, which stay where they are for the box's life.
 pub fn liero_worm_settings_box_data(s: &mut LieroWormSettingsBox) -> *mut LieroWormSettingsData {
     &mut s.data
-}
-
-/// The worm's name, valid until it's set.
-pub fn liero_worm_settings_box_name(s: &LieroWormSettingsBox) -> LieroStr {
-    str(&s.name)
-}
-
-/// # Safety
-/// `text` must be valid.
-pub unsafe fn liero_worm_settings_box_set_name(s: &mut LieroWormSettingsBox, text: LieroStr) {
-    set_bytes(&mut s.name, text);
 }
 
 #[cfg(test)]
@@ -1107,21 +1065,17 @@ mod box_tests {
         }
     }
 
-    fn s(b: &[u8]) -> LieroStr {
-        str(b)
-    }
-
     #[test]
     fn a_clone_is_separate() {
         let a = liero_settings_box_new();
         unsafe {
             (*liero_settings_box_data(&mut *a)).lives = 3;
-            liero_settings_box_set_tc(&mut *a, s(b"openliero"));
+            (*a).tc = b"openliero".to_vec();
             let b = liero_settings_box_clone(&*a);
             (*liero_settings_box_data(&mut *a)).lives = 5;
-            liero_settings_box_set_tc(&mut *a, s(b"other"));
+            (*a).tc = b"other".to_vec();
             assert_eq!((*b).data.lives, 3);
-            assert_eq!(liero_settings_box_tc(&*b).bytes(), b"openliero");
+            assert_eq!((*b).tc, b"openliero");
             liero_settings_box_free(a);
             liero_settings_box_free(b);
         }
@@ -1132,9 +1086,9 @@ mod box_tests {
         let w = liero_worm_settings_box_new();
         unsafe {
             (*liero_worm_settings_box_data(&mut *w)).health = 7;
-            liero_worm_settings_box_set_name(&mut *w, s(b"BOT A"));
+            (*w).name = b"BOT A".to_vec();
             let c = liero_worm_settings_box_clone(&*w);
-            assert_eq!(liero_worm_settings_box_name(&*c).bytes(), b"BOT A");
+            assert_eq!((*c).name, b"BOT A");
             assert_eq!((*c).data.health, 7);
             liero_worm_settings_box_free(w);
             liero_worm_settings_box_free(c);
@@ -1156,16 +1110,16 @@ mod box_tests {
             w.data.health = 50;
             w.data.color = 3;
 
-            let node = crate::fs::liero_fs_node_new(s(&path_bytes));
-            let path_bytes = (*node).0.full_path().to_vec();
-            assert!(liero_worm_settings_box_save_profile(w, Some(&*node)));
+            let node = Node::new(&path_bytes);
+            let path_bytes = node.full_path().to_vec();
+            assert!(liero_worm_settings_box_save_profile(w, Some(&node)));
             assert_eq!(w.profile_path(), Some(path_bytes.clone()));
 
             w.profile = None;
             w.data.health = 1;
             w.data.color = 9;
             let mut status = LieroSettingsStatus::Failed;
-            assert!(liero_worm_settings_box_load_profile(w, Some(&*node), &mut status));
+            assert!(liero_worm_settings_box_load_profile(w, Some(&node), &mut status));
             assert!(matches!(status, LieroSettingsStatus::Ok));
             assert_eq!(
                 (w.data.health, w.data.color, &w.name[..]),
@@ -1177,15 +1131,13 @@ mod box_tests {
             w.data.health = 2;
             assert!(w.save_to_profile(), "saved over the profile");
             w.data.health = 3;
-            assert!(liero_worm_settings_box_load_profile(w, Some(&*node), &mut status));
+            assert!(liero_worm_settings_box_load_profile(w, Some(&node), &mut status));
             assert_eq!(w.data.health, 2);
 
-            let missing = crate::fs::liero_fs_node_new(s(b"/no/such/dir/x.lpf"));
-            assert!(!liero_worm_settings_box_load_profile(w, Some(&*missing), &mut status));
+            let missing = Node::new(b"/no/such/dir/x.lpf");
+            assert!(!liero_worm_settings_box_load_profile(w, Some(&missing), &mut status));
             assert!(!liero_worm_settings_box_save_profile(w, None));
             assert_eq!(w.profile_path(), Some(path_bytes), "unchanged by failures");
-            crate::fs::liero_fs_node_free(node);
-            crate::fs::liero_fs_node_free(missing);
             liero_worm_settings_box_free(w);
         }
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1195,24 +1147,21 @@ mod box_tests {
     fn shared_until_the_last_reference() {
         let w = liero_worm_settings_box_new();
         unsafe {
-            let node = crate::fs::liero_fs_node_new(s(b"a/b.lpf"));
-            liero_worm_settings_box_set_profile(&mut *w, Some(&*node));
+            let node = Node::new(b"a/b.lpf");
+            (*w).profile = Some(node.clone());
             let again = liero_worm_settings_box_retain(w);
             liero_worm_settings_box_free(w);
             (*liero_worm_settings_box_data(&mut *again)).health = 3;
             assert_eq!((*again).refs, 1);
-            assert!(!liero_worm_settings_box_profile(&*again).is_null());
+            assert!((*again).profile.is_some());
             let c = liero_worm_settings_box_clone(&*again);
-            assert!(liero_worm_settings_box_profile(&*c).is_null(), "a clone has no profile");
+            assert!((*c).profile.is_none(), "a clone has no profile");
             assert_eq!((*c).data.health, 3);
-            assert_eq!((*again).profile_path().as_deref(), Some((*node).0.full_path()));
+            assert_eq!((*again).profile_path().as_deref(), Some(node.full_path()));
             (*again).profile = Some(crate::fs::Node::default());
             assert_eq!((*again).profile_path(), None, "a null node isn't a profile");
-            liero_worm_settings_box_set_profile(&mut *again, None);
-            assert!(liero_worm_settings_box_profile(&*again).is_null(), "cleared");
             liero_worm_settings_box_free(again);
             liero_worm_settings_box_free(c);
-            crate::fs::liero_fs_node_free(node);
         }
     }
 }

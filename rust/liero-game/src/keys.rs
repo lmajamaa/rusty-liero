@@ -260,6 +260,31 @@ impl Default for LieroKeys {
 
 impl LieroKeys {
     // Keys past the DOS ones are ignored (C indexed past the array).
+    /// Every key up.
+    pub fn clear(&mut self) {
+        *self = LieroKeys::default();
+    }
+
+    /// Whether the DOS key for an SDL key is down.
+    pub fn test_sdl(&self, scancode: i32) -> bool {
+        let d = sdl_to_dos(scancode);
+        d != 0 && self.test(d)
+    }
+
+    /// As `test_once`, for the DOS key of an SDL key.
+    pub fn test_sdl_once(&mut self, scancode: i32) -> bool {
+        let d = sdl_to_dos(scancode);
+        d != 0 && self.test_once(d)
+    }
+
+    /// Lets the DOS key for an SDL key go.
+    pub fn release_sdl(&mut self, scancode: i32) {
+        let d = sdl_to_dos(scancode);
+        if d != 0 {
+            self.set(d, false);
+        }
+    }
+
     pub fn test(&self, key: u32) -> bool {
         self.down.get(key as usize).copied().unwrap_or(false)
     }
@@ -444,14 +469,9 @@ pub fn apply_control(states: &mut u32, clean: &mut u32, control: u32, key_state:
     }
 }
 
-/// The DOS key for an SDL scancode, or 89 for one without.
-pub fn liero_sdl_to_dos_key(scancode: i32) -> u32 {
-    sdl_to_dos(scancode)
-}
-
-/// As `liero_sdl_to_dos_key` for a key pressed. (C also turned keys from 177
-/// up into 89, but the table has no such keys.)
-pub fn liero_sdl_to_dos_keysym(scancode: i32) -> u32 {
+/// The DOS key for an SDL key pressed. (C also turned keys from 177 up into
+/// 89, but the table has no such keys.)
+pub fn sdl_to_dos_keysym(scancode: i32) -> u32 {
     let k = sdl_to_dos(scancode);
     if k >= LIERO_MAX_DOS_KEY {
         LIERO_UNKNOWN_DOS_KEY
@@ -460,15 +480,11 @@ pub fn liero_sdl_to_dos_keysym(scancode: i32) -> u32 {
     }
 }
 
-pub fn liero_key_is_extended(key: u32) -> bool {
-    is_extended(key)
+/// The key for a gamepad button, after the hat's 16 keys.
+pub fn joy_button_key(joy: i32, button: u8) -> u32 {
+    joy_key(joy, 16 + button as i32)
 }
 
-pub fn liero_joy_key(joy: i32, button: i32) -> u32 {
-    joy_key(joy, button)
-}
-
-/// The DOS keys' names (`Texts::keyNames`), in the TC's code page.
 pub const KEY_NAMES: [&[u8]; 177] = [
     b"",
     b"Esc",
@@ -651,96 +667,14 @@ pub const KEY_NAMES: [&[u8]; 177] = [
 
 /// A key's name, as the player menu shows it (`Gfx::getKeyName`).
 pub fn key_name(key: u32) -> Vec<u8> {
-    let (mut joy, mut button) = (0, 0);
-    match liero_key_name_kind(key, &mut joy, &mut button) {
-        0 => KEY_NAMES[key as usize].to_vec(),
-        1 => format!("J{joy}_{button}").into_bytes(),
-        _ => Vec::new(),
-    }
-}
-
-/// For a key's name: 0 for a DOS key (named by the TC), 1 for a joystick
-/// button, setting `joy` and `button`, and -1 for neither.
-pub fn liero_key_name_kind(key: u32, joy: &mut i32, button: &mut i32) -> i32 {
     if key < LIERO_MAX_DOS_KEY {
-        0
+        KEY_NAMES[key as usize].to_vec()
     } else if key >= LIERO_JOY_KEYS_START {
         let k = key - LIERO_JOY_KEYS_START;
-        *joy = (k / LIERO_MAX_JOY_BUTTONS) as i32;
-        *button = (k % LIERO_MAX_JOY_BUTTONS) as i32;
-        1
+        format!("J{}_{}", k / LIERO_MAX_JOY_BUTTONS, k % LIERO_MAX_JOY_BUTTONS).into_bytes()
     } else {
-        -1
+        Vec::new()
     }
-}
-
-pub fn liero_keys_clear(k: &mut LieroKeys) {
-    *k = LieroKeys::default();
-}
-
-pub fn liero_keys_test(k: &LieroKeys, key: u32) -> bool {
-    k.test(key)
-}
-
-pub fn liero_keys_test_once(k: &mut LieroKeys, key: u32) -> bool {
-    k.test_once(key)
-}
-
-pub fn liero_keys_set(k: &mut LieroKeys, key: u32, state: bool) {
-    k.set(key, state);
-}
-
-pub fn liero_keys_toggle(k: &mut LieroKeys, key: u32) {
-    k.toggle(key);
-}
-
-pub fn liero_keys_test_sdl(k: &LieroKeys, scancode: i32) -> bool {
-    let d = sdl_to_dos(scancode);
-    d != 0 && k.test(d)
-}
-
-pub fn liero_keys_test_sdl_once(k: &mut LieroKeys, scancode: i32) -> bool {
-    let d = sdl_to_dos(scancode);
-    d != 0 && k.test_once(d)
-}
-
-pub fn liero_keys_release_sdl(k: &mut LieroKeys, scancode: i32) {
-    let d = sdl_to_dos(scancode);
-    if d != 0 {
-        k.set(d, false);
-    }
-}
-
-/// An SDL key going down or up. Returns the DOS key to pass to the
-/// controller, or 0 for none.
-pub fn liero_keys_event(k: &mut LieroKeys, scancode: i32, down: bool) -> u32 {
-    k.event(scancode, down)
-}
-
-/// # Safety
-/// `buttons` must point to a joystick's 32 button states.
-pub unsafe fn liero_joy_axis(buttons: *mut bool, joy: i32, axis: u8, value: i16) -> LieroKeyChanges {
-    unsafe { joy_axis(&mut *buttons.cast::<JoyButtons>(), joy, axis, value) }
-}
-
-/// # Safety
-/// As `liero_joy_axis`.
-pub unsafe fn liero_joy_hat(buttons: *mut bool, joy: i32, value: u8) -> LieroKeyChanges {
-    unsafe { joy_hat(&mut *buttons.cast::<JoyButtons>(), joy, value) }
-}
-
-/// # Safety
-/// As `liero_joy_axis`.
-pub unsafe fn liero_joy_button(buttons: *mut bool, joy: i32, button: u8, pressed: bool) -> LieroKeyChanges {
-    unsafe { joy_button(&mut *buttons.cast::<JoyButtons>(), joy, button, pressed) }
-}
-
-pub fn liero_joy_axis_key(joy: i32, axis: u8, value: i16) -> u32 {
-    joy_axis_key(joy, axis, value)
-}
-
-pub fn liero_joy_button_key(joy: i32, button: u8) -> u32 {
-    joy_key(joy, 16 + button as i32)
 }
 
 /// A key going down or up in a local game (`LocalController::onKey`): sets
@@ -748,20 +682,10 @@ pub fn liero_joy_button_key(joy: i32, button: u8) -> u32 {
 /// Escape, which leaves the game.
 ///
 /// # Safety
-/// `worms` must point to `count` worms, each with `control_count` controls.
-pub unsafe fn liero_local_controller_key(
-    worms: *const LieroWormKeys,
-    count: usize,
-    control_count: usize,
-    key: i32,
-    key_state: bool,
-) -> bool {
+/// Each worm's `controls` points to `control_count` controls, and its
+/// `states` and `clean` are valid.
+pub unsafe fn local_controller_key(worms: &[LieroWormKeys], control_count: usize, key: i32, key_state: bool) -> bool {
     unsafe {
-        let worms = if count == 0 {
-            &[][..]
-        } else {
-            std::slice::from_raw_parts(worms, count)
-        };
         let controls: Vec<&[u32]> = worms
             .iter()
             .map(|w| std::slice::from_raw_parts(w.controls, control_count))
@@ -817,11 +741,11 @@ mod tests {
             (231, 89), // Right GUI
             (511, 89),
         ] {
-            assert_eq!(liero_sdl_to_dos_key(s as i32), d, "{s}");
-            assert_eq!(liero_sdl_to_dos_keysym(s as i32), d, "{s}");
+            assert_eq!(sdl_to_dos(s as i32), d, "{s}");
+            assert_eq!(sdl_to_dos_keysym(s as i32), d, "{s}");
         }
         for s in [-1, -1000, 512, 513, i32::MAX, i32::MIN] {
-            assert_eq!(liero_sdl_to_dos_key(s), 89);
+            assert_eq!(sdl_to_dos(s), 89);
         }
     }
 
@@ -830,11 +754,11 @@ mod tests {
         let mut k = LieroKeys::default();
         assert_eq!(k.event(sc::A as i32, true), 0x1e);
         assert!(k.test(0x1e));
-        assert!(liero_keys_test_sdl(&k, sc::A as i32));
+        assert!(k.test_sdl(sc::A as i32));
         assert!(k.test_once(0x1e));
         assert!(!k.test(0x1e));
         k.toggle(5);
-        assert!(liero_keys_test_sdl_once(&mut k, sc::N1 as i32 + 3));
+        assert!(k.test_sdl_once(sc::N1 as i32 + 3));
         assert!(!k.test(5));
         k.set(176, true);
         assert!(k.test(176));
@@ -842,12 +766,12 @@ mod tests {
         k.set(177, true);
         assert!(!k.test(177));
         k.event(sc::LEFT as i32, true);
-        liero_keys_release_sdl(&mut k, sc::LEFT as i32);
+        k.release_sdl(sc::LEFT as i32);
         assert!(!k.test(0xa3));
         // Unknown keys go to 89.
         k.event(231, true);
         assert!(k.test(89));
-        liero_keys_clear(&mut k);
+        k.clear();
         assert_eq!(k, LieroKeys::default());
     }
 
@@ -917,20 +841,16 @@ mod tests {
         assert_eq!(joy_hat_key(1, 4 | 8), 545);
         assert_eq!(joy_hat_key(1, 8 | 2), 546);
         assert_eq!(joy_hat_key(1, 2), 547);
-        assert_eq!(liero_joy_button_key(1, 0), 560);
+        assert_eq!(joy_button_key(1, 0), 560);
     }
 
     #[test]
     fn key_names() {
-        let (mut j, mut b) = (-5, -5);
-        assert_eq!(liero_key_name_kind(176, &mut j, &mut b), 0);
-        assert_eq!(liero_key_name_kind(177, &mut j, &mut b), -1);
-        assert_eq!(liero_key_name_kind(511, &mut j, &mut b), -1);
-        assert_eq!((j, b), (-5, -5));
-        assert_eq!(liero_key_name_kind(512, &mut j, &mut b), 1);
-        assert_eq!((j, b), (0, 0));
-        assert_eq!(liero_key_name_kind(512 + 32 * 3 + 31, &mut j, &mut b), 1);
-        assert_eq!((j, b), (3, 31));
+        assert_eq!(key_name(176), KEY_NAMES[176]);
+        assert_eq!(key_name(177), b"");
+        assert_eq!(key_name(511), b"");
+        assert_eq!(key_name(512), b"J0_0");
+        assert_eq!(key_name(512 + 32 * 3 + 31), b"J3_31");
         assert!(!is_extended(176));
         assert!(is_extended(177));
         assert_eq!(joy_key(3, 31), 512 + 96 + 31);
@@ -955,7 +875,7 @@ mod tests {
                     clean: &mut clean[1],
                 },
             ];
-            liero_local_controller_key(worms.as_ptr(), 2, 8, k as i32, s)
+            local_controller_key(&worms, 8, k as i32, s)
         };
         // A key two worms share goes to the first.
         key(16, true, &mut states, &mut clean);

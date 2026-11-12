@@ -11,7 +11,7 @@ use std::cell::Cell;
 
 use crate::controllers::LieroController;
 use crate::keys::LieroKeys;
-use crate::rand::{liero_rand_seed, LieroRand, LIERO_RAND_DEFAULT_SEED};
+use crate::rand::{LieroRand, LIERO_RAND_DEFAULT_SEED};
 use crate::renderer::{LieroBitmapBox, LieroRenderer};
 use crate::settings::LieroSettingsBox;
 use crate::shared::Shared;
@@ -72,7 +72,7 @@ impl LieroApp {
 impl LieroApp {
     fn new() -> Self {
         let mut rand = LieroRand { x: 0, c: 0 };
-        liero_rand_seed(&mut rand, LIERO_RAND_DEFAULT_SEED);
+        rand.seed(LIERO_RAND_DEFAULT_SEED);
         LieroApp {
             rand,
             play: LieroRenderer::new(),

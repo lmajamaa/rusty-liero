@@ -23,12 +23,9 @@ use crate::app::app;
 use crate::app_screens::{liero_main_screen, LieroAppHooks};
 use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
-use crate::keys::{
-    liero_keys_clear, liero_keys_event, liero_keys_test_sdl, liero_keys_test_sdl_once, liero_sdl_to_dos_keysym,
-};
+use crate::keys::sdl_to_dos_keysym;
 use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks};
 use crate::menus::{liero_menus_load, liero_menus_reset};
-use crate::rand::liero_rand_seed;
 use crate::screen::{
     liero_app_free, liero_app_new, liero_app_push, liero_app_step, liero_screen_set_host, LieroAppHost, LieroEvent,
     LieroScreen, LieroScreenHost, LieroTypedKey,
@@ -142,7 +139,7 @@ fn process_event(ev: Ev, to_controller: bool) {
             }
         });
     }
-    let dos = liero_keys_event(&mut app().keys, scancode, down);
+    let dos = app().keys.event(scancode, down);
     if dos != 0 && to_controller {
         if let Some(c) = app().controller.as_deref_mut() {
             // SAFETY: the app's controller is a live one.
@@ -170,7 +167,7 @@ unsafe fn host_poll_event(out: *mut LieroEvent) -> bool {
                 if down {
                     e.scancode = scancode as u32;
                     e.choice = true;
-                    e.key = liero_sdl_to_dos_keysym(scancode);
+                    e.key = sdl_to_dos_keysym(scancode);
                 }
             }
             // The script types only ASCII, which is the same in DOS.
@@ -186,7 +183,7 @@ unsafe fn host_process() {
 }
 
 unsafe fn host_clear_keys() {
-    liero_keys_clear(&mut app().keys);
+    app().keys.clear();
 }
 
 unsafe fn report_sound(id: i32) {
@@ -197,11 +194,11 @@ unsafe fn report_sound(id: i32) {
 }
 
 unsafe fn host_test_key_once(scancode: u32) -> bool {
-    liero_keys_test_sdl_once(&mut app().keys, scancode as i32)
+    app().keys.test_sdl_once(scancode as i32)
 }
 
 unsafe fn host_test_key(scancode: u32) -> bool {
-    liero_keys_test_sdl(&app().keys, scancode as i32)
+    app().keys.test_sdl(scancode as i32)
 }
 
 unsafe fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
@@ -544,12 +541,12 @@ pub fn hash_app(out: &mut Out) {
     a.files.config = Node::new(root.as_bytes());
     a.files.tc_root = Node::new(b"TC");
     a.files.settings_node = Node::new(format!("{root}/liero.cfg").as_bytes());
-    liero_rand_seed(&mut a.rand, 77);
+    a.rand.seed(77);
     a.primary_single = false;
     // As in the browser, where the lines were recorded.
     a.save_settings_on_change = true;
     a.menu_settings().data.spectator_window = false;
-    liero_keys_clear(&mut a.keys);
+    a.keys.clear();
     // SAFETY: as above.
     liero_menus_load(unsafe { &mut *a.menus });
 

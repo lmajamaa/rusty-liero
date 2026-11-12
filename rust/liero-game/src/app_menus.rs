@@ -56,7 +56,7 @@ fn index_of(b: &LieroMenuBox, id: i32) -> i32 {
 
 fn set_string(b: &mut LieroMenuBox, id: i32, s: &str) {
     // SAFETY: the text outlives the call, which copies it.
-    unsafe { liero_menu_box_set_string(b, index_of(b, id), LieroStr::of(s.as_bytes())) };
+    liero_menu_box_set_string(b, index_of(b, id), s.as_bytes());
 }
 
 /// Sets the menus up for the main menu screen (`Gfx::menuStart`): the

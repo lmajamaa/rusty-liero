@@ -5,7 +5,7 @@
 //! result into `Common` from the `LieroTcData` views here, which point into
 //! the `LieroTc` until it's freed.
 
-use crate::fs::{LieroFsNode, Node};
+use crate::fs::Node;
 use crate::gfx::LieroColor;
 use crate::level::{LieroTexture, LIERO_TEXTURE_COUNT};
 use crate::rand::LieroRand;
@@ -712,17 +712,9 @@ fn load(node: &Node) -> LieroTc {
 }
 
 /// Loads the TC in `node` (`Common::load`). Always returns a TC to free with
-/// `liero_tc_free`; `liero_tc_error` says whether loading failed.
-pub fn liero_tc_load(node: &LieroFsNode) -> *mut LieroTc {
-    crate::shared::new_shared(load(&node.0))
-}
-
-/// Why loading failed, or an empty string.
-///
-/// # Safety
-/// `tc` must come from `liero_tc_load`.
-pub unsafe fn liero_tc_error(tc: &LieroTc) -> LieroStr {
-    str(tc.error.as_bytes())
+/// `liero_tc_free`; its `error` says whether loading failed.
+pub fn liero_tc_load(node: &Node) -> *mut LieroTc {
+    crate::shared::new_shared(load(node))
 }
 
 /// The loaded data, or null if loading failed. Valid until `liero_tc_free`.
@@ -1052,8 +1044,8 @@ mod tests {
         let tc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../TC/openliero");
         std::fs::write(format!("{dir}/openliero.zip"), stored_zip(&tc)).unwrap();
 
-        let from_folder = LieroFsNode(Node::new(b"../../TC/openliero"));
-        let from_zip = LieroFsNode(Node::new(format!("{dir}/openliero").as_bytes()));
+        let from_folder = Node::new(b"../../TC/openliero");
+        let from_zip = Node::new(format!("{dir}/openliero").as_bytes());
         unsafe {
             let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
             assert!((*b).error.is_empty(), "{}", (*b).error);
@@ -1072,7 +1064,7 @@ mod tests {
     #[test]
     fn loads_from_a_node_and_reports_errors() {
         // Relative to the crate, where the tests run.
-        let node = LieroFsNode(Node::new(b"../../TC/openliero"));
+        let node = Node::new(b"../../TC/openliero");
         unsafe {
             let tc = liero_tc_load(&node);
             assert!((*tc).error.is_empty(), "{}", (*tc).error);
@@ -1081,15 +1073,15 @@ mod tests {
             assert_eq!(data.font[b'A' as usize].width, 5);
             liero_tc_free(tc);
 
-            assert!(load_checked(&node.0).is_ok());
+            assert!(load_checked(&node).is_ok());
             assert_eq!(
                 load_checked(&Node::new(b"target/no-such-tc")).err().as_deref(),
                 Some("Could not load the TC: Could not read tc.cfg")
             );
 
-            let missing = LieroFsNode(Node::new(b"target/no-such-tc"));
+            let missing = Node::new(b"target/no-such-tc");
             let tc = liero_tc_load(&missing);
-            assert_eq!(liero_tc_error(&*tc).bytes(), b"Could not read tc.cfg");
+            assert_eq!((*tc).error, "Could not read tc.cfg");
             assert!(liero_tc_data(&*tc).is_null());
             liero_tc_free(tc);
         }

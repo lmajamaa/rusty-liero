@@ -13,7 +13,6 @@ use super::{Fnv, Out};
 use crate::ai::{liero_worm_ai_hash, liero_worm_ai_rand};
 use crate::controllers::liero_game_focus;
 use crate::game_box::{liero_worm_ai, liero_worm_set_ai};
-use crate::rand::liero_rand_seed;
 use crate::renderer::LieroRenderer;
 use crate::shared::Shared;
 use crate::tc::LieroTc;
@@ -94,10 +93,7 @@ fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32)
         // SAFETY: the worm is the game's, and its AI is new.
         unsafe {
             liero_worm_set_ai(w, 2, c.ai_parallels as usize, testing);
-            liero_rand_seed(
-                liero_worm_ai_rand(&mut *liero_worm_ai(w)),
-                c.seed.wrapping_mul(31).wrapping_add(i as u32),
-            );
+            liero_worm_ai_rand(&mut *liero_worm_ai(w)).seed(c.seed.wrapping_mul(31).wrapping_add(i as u32));
         }
     }
 

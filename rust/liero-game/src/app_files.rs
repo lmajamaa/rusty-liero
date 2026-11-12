@@ -7,7 +7,7 @@
 //! setting, and a setup or profile that can't be written.
 
 use crate::app::{app, LieroApp};
-use crate::fs::{join_path, LieroFsNode, Node};
+use crate::fs::{join_path, Node};
 use crate::level::{liero_level_draw_miniature, LieroLevelBox};
 use crate::menus::{
     LIERO_MAIN_REPLAY, LIERO_SELECTOR_LEVEL, LIERO_SELECTOR_OPTIONS, LIERO_SELECTOR_PROFILE, LIERO_SELECTOR_REPLAY,
@@ -173,7 +173,7 @@ impl FileSource for AppFiles {
             }
             Choice::Profile(ws) => {
                 let mut status = LieroSettingsStatus::Ok;
-                if !liero_worm_settings_box_load_profile(ws, Some(&LieroFsNode(node.clone())), &mut status) {
+                if !liero_worm_settings_box_load_profile(ws, Some(&node.clone()), &mut status) {
                     panic!("Could not read {}", path(&node));
                 }
                 // A profile that ends early, or fails its checkpoint, threw
@@ -190,8 +190,7 @@ impl FileSource for AppFiles {
                 // be recording it
                 a.controller = None;
                 // SAFETY: the app's TC has a reference.
-                let c =
-                    unsafe { crate::controllers::liero_replay_controller_new(&LieroFsNode(node.clone()), a.menu_tc()) };
+                let c = unsafe { crate::controllers::liero_replay_controller_new(&node.clone(), a.menu_tc()) };
                 if c.is_null() {
                     panic!("Could not read {}", path(&node));
                 }
@@ -311,7 +310,7 @@ pub(crate) fn save_profile_as(player: i32, name: &[u8]) {
     file.extend_from_slice(b".lpf");
     let node = a.files.config.go(b"Profiles").go(&file);
     let ws = &mut *a.menu_settings().worms[player as usize];
-    if !liero_worm_settings_box_save_profile(ws, Some(&LieroFsNode(node.clone()))) {
+    if !liero_worm_settings_box_save_profile(ws, Some(&node.clone())) {
         panic!("Could not write {}", path(&node));
     }
 }

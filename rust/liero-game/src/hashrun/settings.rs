@@ -7,7 +7,7 @@
 //! any, that the C++ threw.
 
 use super::{Fnv, Out};
-use crate::fs::{LieroFsNode, Node};
+use crate::fs::Node;
 use crate::settings::{
     liero_worm_settings_box_load_profile, liero_worm_settings_box_save_profile, LieroSettingsStatus,
     LieroWormSettingsBox,
@@ -626,19 +626,19 @@ fn worm_box(ws: &WormSettings) -> LieroWormSettingsBox {
 }
 
 /// `WormSettings::saveProfile`.
-fn save_profile(node: &LieroFsNode, ws: &WormSettings) -> Result<(), Thrown> {
+fn save_profile(node: &Node, ws: &WormSettings) -> Result<(), Thrown> {
     if liero_worm_settings_box_save_profile(&mut worm_box(ws), Some(node)) {
         Ok(())
     } else {
         Err(Thrown::Runtime(format!(
             "Could not write {}",
-            String::from_utf8_lossy(node.0.full_path())
+            String::from_utf8_lossy(node.full_path())
         )))
     }
 }
 
 /// `WormSettings::loadProfile` over `ws`.
-fn load_profile(node: &LieroFsNode, ws: &mut WormSettings) -> Result<(), Thrown> {
+fn load_profile(node: &Node, ws: &mut WormSettings) -> Result<(), Thrown> {
     let mut b = worm_box(ws);
     let mut status = LieroSettingsStatus::Ok;
     let read = liero_worm_settings_box_load_profile(&mut b, Some(node), &mut status);
@@ -646,7 +646,7 @@ fn load_profile(node: &LieroFsNode, ws: &mut WormSettings) -> Result<(), Thrown>
     if !read {
         return Err(Thrown::Runtime(format!(
             "Could not read {}",
-            String::from_utf8_lossy(node.0.full_path())
+            String::from_utf8_lossy(node.full_path())
         )));
     }
     match status {
@@ -667,7 +667,7 @@ pub fn hash_settings(out: &mut Out) {
 
     let cfg = Node::new(b"/tmp/liero.cfg");
     let dat = Node::new(b"/tmp/LIERO.DAT");
-    let lpf = LieroFsNode(Node::new(b"/tmp/worm.lpf"));
+    let lpf = Node::new(b"/tmp/worm.lpf");
 
     for i in 0..64 {
         let r = &mut Xorshift::new(i as u64);
@@ -775,7 +775,7 @@ pub fn hash_settings(out: &mut Out) {
 
             let mut h = Fnv::default();
             attempt(&mut h, save_profile(&lpf, ws));
-            let b = lpf.0.read().unwrap_or_default();
+            let b = lpf.read().unwrap_or_default();
             add_bytes(&mut h, &b);
             for j in 0..4 {
                 if j > 0 {
@@ -786,7 +786,7 @@ pub fn hash_settings(out: &mut Out) {
                     } else {
                         binary_worm(r)
                     };
-                    lpf.0.write(&c);
+                    lpf.write(&c);
                 }
                 let mut t = start_worm(r);
                 let loaded = load_profile(&lpf, &mut t);
