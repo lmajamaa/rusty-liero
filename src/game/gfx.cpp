@@ -488,32 +488,26 @@ void Gfx::processEvent(SDL_Event& ev, KeySink* controller)
 
 uint32_t appTicks()
 {
-	return gfx.driver ? gfx.driver->ticks() : SDL_GetTicks();
+	return SDL_GetTicks();
 }
 
 uint64_t appHiresTicks()
 {
-	return gfx.driver ? uint64_t(gfx.driver->ticks()) * 1000000 : hiresTicks();
+	return hiresTicks();
 }
 
 std::time_t appTime()
 {
-	return gfx.driver ? gfx.driver->time() : std::time(0);
+	return std::time(0);
 }
 
 bool Gfx::pollEvent(SDL_Event& ev)
 {
-	return driver ? driver->pollEvent(ev) : SDL_PollEvent(&ev) != 0;
+	return SDL_PollEvent(&ev) != 0;
 }
 
 void Gfx::idle()
 {
-	if (driver)
-	{
-		driver->idle();
-		return;
-	}
-
 	// In the browser the next step comes with a later frame, by which time the
 	// event may have come. Natively runScreens is a loop of its own, so a
 	// screen waiting for an event gives it a step's time, as the SDL_WaitEvent
@@ -600,12 +594,6 @@ void Gfx::draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRend
 
 void Gfx::flip()
 {
-	if (driver)
-	{
-		driver->frame();
-		return;
-	}
-
 	// draw into the play window. This uses either the normal split screen renderer
 	// or the single screen renderer if this is a replay and single screen replay
 	// is turned on

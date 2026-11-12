@@ -28,9 +28,6 @@ struct Sfx
 
 extern Sfx sfx;
 
-// Tells the app driver, if any, of a sound started.
-void sfxReport(int32_t sound);
-
 
 struct DefaultSoundPlayer : SoundPlayer
 {
@@ -41,13 +38,13 @@ struct DefaultSoundPlayer : SoundPlayer
 
 	Common& common;
 
-	// The mixer, if sound started, and the driver.
+	// The mixer, if sound started.
 	LieroSoundOut out()
 	{
 #if DISABLE_SOUND
-		return LieroSoundOut{ nullptr, sfxReport };
+		return LieroSoundOut{ nullptr, nullptr };
 #else
-		return LieroSoundOut{ sfx.initialized ? sfx.mixer : nullptr, sfxReport };
+		return LieroSoundOut{ sfx.initialized ? sfx.mixer : nullptr, nullptr };
 #endif
 	}
 

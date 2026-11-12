@@ -1,7 +1,7 @@
 //! Game data, mirroring the fields of `Common` in `src/game/common.hpp` that
 //! a TC folder holds.
 
-#[derive(Default, PartialEq)]
+#[derive(Default, Clone, PartialEq)]
 pub struct Weapon {
     pub name: Vec<u8>,
     pub id_str: String,
@@ -56,7 +56,7 @@ pub struct Weapon {
     pub chain_explosion: bool,
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Default, Clone, PartialEq)]
 pub struct NObject {
     pub id_str: String,
     pub detect_distance: i32,
@@ -89,7 +89,7 @@ pub struct NObject {
     pub time_to_explo_v: i32,
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Default, Clone, PartialEq)]
 pub struct SObject {
     pub id_str: String,
     pub start_sound: i32,

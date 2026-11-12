@@ -43,15 +43,7 @@ set(GAME_SOURCES
     src/game/gfx/palette.cpp
     src/game/gfx/renderer.cpp
     src/game/gfx.cpp
-    src/game/hashmenus.cpp
     src/game/hashrun.cpp
-    src/game/hashsettings.cpp
-    src/game/hashstats.cpp
-    src/game/hashreplays.cpp
-    src/game/hashai.cpp
-    src/game/hashsfx.cpp
-    src/game/hashapp.cpp
-    src/game/hashtc.cpp
     src/game/main.cpp
     src/game/replay.cpp
     src/game/screen.cpp

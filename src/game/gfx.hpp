@@ -68,24 +68,6 @@ struct Joystick {
 };
 
 
-// Runs the app without a window, for the hash run (hashapp.cpp). When set,
-// `flip` hands each frame to `frame` instead of showing it and waiting for
-// the next one, events come from `pollEvent` instead of SDL, and `appTicks`
-// and `appTime` read the driver's clock.
-struct AppDriver
-{
-	virtual ~AppDriver() {}
-	virtual void frame() = 0;
-	virtual bool pollEvent(SDL_Event& ev) = 0;
-	// A screen is waiting for an event and showed nothing: move the clock to
-	// the next event.
-	virtual void idle() = 0;
-	virtual uint32_t ticks() = 0;
-	virtual std::time_t time() = 0;
-	// A sound was started (Sfx::play).
-	virtual void sound(int id) {}
-};
-
 // The app. Rust owns what it keeps besides the SDL windows (LieroApp in
 // rust/liero-game/src/app.rs); the fields here refer to it.
 struct Gfx
@@ -94,7 +76,6 @@ struct Gfx
 
 	LieroApp* app = liero_app();
 
-	AppDriver* driver = nullptr;
 	bool pollEvent(SDL_Event& ev);
 	// A screen showed nothing while waiting for an event (screen.hpp).
 	void idle();

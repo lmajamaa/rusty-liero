@@ -82,6 +82,14 @@
  */
 #define LIERO_FADE_SHOWN 33
 
+#define KILL_EM_ALL 0
+
+#define GAME_OF_TAG 1
+
+#define HOLDAZONE 2
+
+#define SCALES_OF_JUSTICE 3
+
 /**
  * DOS scancodes are below this.
  */
@@ -1842,8 +1850,8 @@ typedef struct LieroScreenHost {
    */
   uint64_t (*hires_ticks)(void);
   /**
-   * `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in UTC under
-   * the app driver and local time otherwise. Writes at most `cap` bytes
+   * `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in local time,
+   * or UTC in the hash run. Writes at most `cap` bytes
    * and returns how many.
    */
   uintptr_t (*replay_time)(int64_t t, uint8_t *out, uintptr_t cap);
@@ -3135,6 +3143,20 @@ const struct LieroGameSettings *liero_game_view_settings(const struct LieroGameV
  * `v` comes from `liero_game_view_new`, or is null, and isn't used again.
  */
 void liero_game_view_free(struct LieroGameView *v);
+
+/**
+ * Runs section `name`, calling `print(ctx, line)` for each line, with the
+ * bot games `ticks` long at most and hashed every `interval`. False if it
+ * isn't one Rust has.
+ *
+ * # Safety
+ * `name` is valid, and `print` can be called with `ctx`.
+ */
+bool liero_hash_section(struct LieroStr name,
+                        int32_t ticks,
+                        int32_t interval,
+                        void *ctx,
+                        void (*print)(void *ctx, struct LieroStr line));
 
 /**
  * Fills a rectangle, clipped: `fillRect`.
