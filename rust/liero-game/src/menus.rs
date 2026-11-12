@@ -627,9 +627,9 @@ impl LieroMenus {
     /// Opens a text box; `then` gets what it typed.
     #[allow(clippy::too_many_arguments)]
     fn input(&mut self, kind: i32, then: Then, text: &[u8], max_len: usize, x: i32, y: i32, digits: bool) -> LieroScreen {
-        unsafe extern "C" fn keep(ctx: *mut c_void, text: LieroStr) {
+        unsafe extern "C" fn keep(ctx: *mut c_void, text: LieroStr) { unsafe {
             *(ctx as *mut Vec<u8>) = text.bytes().to_vec();
-        }
+        }}
         let mut typed = Box::new(text.to_vec());
         let ctx = (&mut *typed as *mut Vec<u8>).cast();
         let screen = unsafe { liero_input_box_screen(lstr(text), max_len, x, y, digits, Some(keep), ctx) };
@@ -894,7 +894,7 @@ impl LieroMenus {
             player: i32,
             palette_color: i32,
         }
-        unsafe extern "C" fn overlay(ctx: *mut c_void, item: i32, x: i32, y: i32, selected: bool, _disabled: bool) {
+        unsafe extern "C" fn overlay(ctx: *mut c_void, item: i32, x: i32, y: i32, selected: bool, _disabled: bool) { unsafe {
             let c = &*(ctx as *const Ctx);
             let id = c.ids[item as usize];
             if c.kind == LIERO_MENU_PLAYER && (PL_RED..=PL_BLUE).contains(&id) {
@@ -903,7 +903,7 @@ impl LieroMenus {
             } else if c.kind == LIERO_MENU_HIDDEN && id == HM_PALETTE_SELECT {
                 liero_menu_draw_palette_overlay(&c.scr, x, y, selected, c.palette_color);
             }
-        }
+        }}
         let ctx = Ctx {
             ids: self.menu(kind).ids.clone(),
             kind,
@@ -940,11 +940,11 @@ pub extern "C" fn liero_menus_new(hooks: LieroMenusHooks) -> *mut LieroMenus {
 /// # Safety
 /// `m` came from `liero_menus_new` and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menus_free(m: *mut LieroMenus) {
+pub unsafe extern "C" fn liero_menus_free(m: *mut LieroMenus) { unsafe {
     if !m.is_null() {
         drop(Box::from_raw(m));
     }
-}
+}}
 
 /// Empties the menus, as they were made, keeping their addresses.
 #[no_mangle]
@@ -1006,14 +1006,14 @@ pub extern "C" fn liero_menus_left_right(m: &mut LieroMenus, kind: i32, dir: i32
 /// # Safety
 /// The menus' hooks, which the item may call, are valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 {
+pub unsafe extern "C" fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 { unsafe {
     let (r, opened) = m.enter(kind);
     if let Some(s) = opened {
         s.release();
         m.pending = None;
     }
     r
-}
+}}
 
 /// # Safety
 /// See `LieroBitmap`.
@@ -1062,9 +1062,9 @@ mod tests {
     unsafe extern "C" fn double_res() -> *mut bool {
         DOUBLE_RES.get()
     }
-    unsafe extern "C" fn set_double_res(on: bool) {
+    unsafe extern "C" fn set_double_res(on: bool) { unsafe {
         *DOUBLE_RES.get() = on;
-    }
+    }}
     unsafe extern "C" fn set_fullscreen(_: bool) {}
 
     /// The menus with their items, on the app's new settings.

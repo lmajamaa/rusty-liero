@@ -1,3 +1,6 @@
+// No unsafe code, and none may be added (PLAN.md, phase 4).
+#![forbid(unsafe_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 

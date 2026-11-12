@@ -120,20 +120,20 @@ pub extern "C" fn liero_deflate_out_new(node: &LieroFsNode) -> *mut LieroDeflate
 /// # Safety
 /// `data` must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_deflate_out_write(out: &mut LieroDeflateOut, data: LieroStr) {
+pub unsafe extern "C" fn liero_deflate_out_write(out: &mut LieroDeflateOut, data: LieroStr) { unsafe {
     out.0.write(data.bytes());
-}
+}}
 
 /// Finishes the file.
 ///
 /// # Safety
 /// `out` must come from `liero_deflate_out_new`, or be null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_deflate_out_free(out: *mut LieroDeflateOut) {
+pub unsafe extern "C" fn liero_deflate_out_free(out: *mut LieroDeflateOut) { unsafe {
     if !out.is_null() {
         drop(Box::from_raw(out));
     }
-}
+}}
 
 /// Inflates the file at `node`: `got(ctx, data, error)` with what a reader
 /// gets of it, and whether reading on fails. False, without calling it, if
@@ -146,7 +146,7 @@ pub unsafe extern "C" fn liero_inflate_node(
     node: &LieroFsNode,
     ctx: *mut c_void,
     got: unsafe extern "C" fn(ctx: *mut c_void, data: LieroStr, error: bool),
-) -> bool {
+) -> bool { unsafe {
     match node.0.read() {
         Some(file) => {
             let r = inflate(&file);
@@ -155,7 +155,7 @@ pub unsafe extern "C" fn liero_inflate_node(
         }
         None => false,
     }
-}
+}}
 
 #[cfg(test)]
 #[path = "deflate_tests.rs"]

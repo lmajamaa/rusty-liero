@@ -63,7 +63,7 @@ impl SimGame {
     /// # Safety
     /// The pointers in `fields` and `settings` must be valid while it is
     /// used.
-    unsafe fn borrowed(fields: &LieroGameFields, settings: &LieroGameSettings, ai: &LieroAiSettings) -> Box<Self> {
+    unsafe fn borrowed(fields: &LieroGameFields, settings: &LieroGameSettings, ai: &LieroAiSettings) -> Box<Self> { unsafe {
         let worms = std::slice::from_raw_parts(fields.worms, fields.worm_count as usize).to_vec();
         let mut g = Box::new(SimGame {
             fields: *fields,
@@ -77,13 +77,13 @@ impl SimGame {
         });
         g.fields.worms = g.worms.as_ptr();
         g
-    }
+    }}
 
     /// `Game(Game const&)` and `postClone(original)`.
     ///
     /// # Safety
     /// As for `borrowed`.
-    unsafe fn copy(&self) -> Box<Self> {
+    unsafe fn copy(&self) -> Box<Self> { unsafe {
         let mut data = (*self.fields.game).clone_boxed();
         data.quick_sim = true;
 
@@ -124,7 +124,7 @@ impl SimGame {
         });
         g.fields.worms = g.worms.as_ptr();
         g
-    }
+    }}
 
     fn worm(&self, place: i32) -> *mut LieroWormData {
         self.worms[place as usize].data
@@ -237,19 +237,19 @@ pub unsafe fn process(
     settings: &LieroGameSettings,
     ai_settings: &LieroAiSettings,
     place: i32,
-) -> u32 {
+) -> u32 { unsafe {
     let game = Box::into_raw(SimGame::borrowed(fields, settings, ai_settings));
     let controls = ai.process(&mut Sims, game, place);
     drop(Box::from_raw(game));
     controls
-}
+}}
 
 /// One tick of the original bot for the worm at `place`, with its own
 /// generator.
 ///
 /// # Safety
 /// The pointers in `fields` must be valid for the call.
-pub unsafe fn process_dumb(rand: &mut LieroRand, fields: &LieroGameFields, place: i32) -> u32 {
+pub unsafe fn process_dumb(rand: &mut LieroRand, fields: &LieroGameFields, place: i32) -> u32 { unsafe {
     let worms = std::slice::from_raw_parts(fields.worms, fields.worm_count as usize);
     let me = &*worms[place as usize].data;
     let w = &*(me.weapons[me.current_weapon as usize].kind as *const LieroTcWeapon);
@@ -278,4 +278,4 @@ pub unsafe fn process_dumb(rand: &mut LieroRand, fields: &LieroGameFields, place
 
     let k = &*((*fields.tc).ai_params.as_ptr() as *const [[i32; 7]; 2]);
     dumb::process(rand, &worm, &others, k)
-}
+}}

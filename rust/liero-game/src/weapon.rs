@@ -208,7 +208,7 @@ pub unsafe fn liero_worm_fire(
     rand: *mut LieroRand,
     signed_recoil: bool,
     hooks: &LieroWormFiringHooks,
-) {
+) { unsafe {
     let ww = worm.weapons.add(worm.current_weapon as usize);
     let angle = ftoi(worm.aiming_angle);
     let ctx = hooks.ctx;
@@ -249,7 +249,7 @@ pub unsafe fn liero_worm_fire(
     }
 
     *worm.vel = sub(*worm.vel, mul_div(cos_sin(angle), recoil, 100));
-}
+}}
 
 /// Counts down weapon delays and reloads, the fire cone and the shell
 /// casing timer: C++'s `Worm::processWeapons`. `current` is the current
@@ -264,7 +264,7 @@ pub unsafe fn liero_worm_process_weapons(
     loading_time_percent: i32,
     rand: *mut LieroRand,
     hooks: &LieroWormFiringHooks,
-) {
+) { unsafe {
     let ctx = hooks.ctx;
 
     for i in 0..LIERO_SELECTABLE_WEAPONS {
@@ -301,7 +301,7 @@ pub unsafe fn liero_worm_process_weapons(
             (hooks.create_nobject1)(ctx, 7, LieroIVec2 { x: vel_x, y: vel_y }, *worm.pos, 0);
         }
     }
-}
+}}
 
 /// Pointers to the fields of one C++ `WObject`.
 #[repr(C)]
@@ -389,7 +389,7 @@ pub unsafe fn liero_wobject_process(
     w: &LieroWeapon,
     env: &LieroWObjectEnv,
     hooks: &LieroWObjectHooks,
-) {
+) { unsafe {
     let ctx = hooks.ctx;
     let (pos, vel) = (obj.pos, obj.vel);
     let mut iter = 0;
@@ -539,7 +539,7 @@ pub unsafe fn liero_wobject_process(
             return;
         }
     }
-}
+}}
 
 /// What C++ does when a weapon object blows up.
 #[repr(C)]
@@ -569,7 +569,7 @@ pub unsafe fn liero_wobject_blow_up(
     vel: LieroIVec2,
     env: &LieroWObjectEnv,
     hooks: &LieroBlowUpHooks,
-) {
+) { unsafe {
     let ctx = hooks.ctx;
     let (x, y) = (pos.x, pos.y);
 
@@ -607,7 +607,7 @@ pub unsafe fn liero_wobject_blow_up(
             lv.correct_shadow(&cv, ix - 10, iy - 10, ix + 11, iy + 11);
         }
     }
-}
+}}
 
 #[cfg(test)]
 mod tests {

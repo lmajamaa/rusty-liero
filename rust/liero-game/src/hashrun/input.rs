@@ -39,13 +39,13 @@ use crate::tc::{LieroTc, LieroTcSound};
 
 /// # Safety
 /// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
+unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] { unsafe {
     if n == 0 {
         &[]
     } else {
         std::slice::from_raw_parts(p, n)
     }
-}
+}}
 
 fn sounds(tc: &Shared<LieroTc>) -> &[LieroTcSound] {
     let d = tc_data(tc);

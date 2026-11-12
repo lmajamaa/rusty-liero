@@ -59,11 +59,11 @@ pub extern "C" fn liero_bitmap_box_new() -> *mut LieroBitmapBox {
 /// # Safety
 /// `b` comes from `liero_bitmap_box_new`, or is null, and isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_bitmap_box_free(b: *mut LieroBitmapBox) {
+pub unsafe extern "C" fn liero_bitmap_box_free(b: *mut LieroBitmapBox) { unsafe {
     if !b.is_null() {
         drop(Box::from_raw(b));
     }
-}
+}}
 
 /// The bitmap's fields, at a fixed address. Its pixels move when it's
 /// reallocated.
@@ -80,11 +80,11 @@ pub extern "C" fn liero_bitmap_box_alloc(b: &mut LieroBitmapBox, w: i32, h: i32,
 /// # Safety
 /// Both are valid; they may be the same.
 #[no_mangle]
-pub unsafe extern "C" fn liero_bitmap_box_copy(to: *mut LieroBitmapBox, from: *const LieroBitmapBox) {
+pub unsafe extern "C" fn liero_bitmap_box_copy(to: *mut LieroBitmapBox, from: *const LieroBitmapBox) { unsafe {
     if !std::ptr::eq(to, from) {
         (*to).copy_from(&*from);
     }
-}
+}}
 
 /// A renderer's palettes and size, which C++'s `Renderer` refers to.
 #[repr(C)]
@@ -147,11 +147,11 @@ pub extern "C" fn liero_renderer_new() -> *mut LieroRenderer {
 /// # Safety
 /// `r` comes from `liero_renderer_new`, or is null, and isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_renderer_free(r: *mut LieroRenderer) {
+pub unsafe extern "C" fn liero_renderer_free(r: *mut LieroRenderer) { unsafe {
     if !r.is_null() {
         drop(Box::from_raw(r));
     }
-}
+}}
 
 #[no_mangle]
 pub extern "C" fn liero_renderer_data(r: &mut LieroRenderer) -> *mut LieroRendererData {

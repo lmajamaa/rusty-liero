@@ -187,11 +187,11 @@ pub unsafe extern "C" fn liero_game_data_assign(to: &mut LieroGameData, from: &L
 /// # Safety
 /// `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_data_free(g: *mut LieroGameData) {
+pub unsafe extern "C" fn liero_game_data_free(g: *mut LieroGameData) { unsafe {
     if !g.is_null() {
         drop(Box::from_raw(g));
     }
-}
+}}
 
 /// The game state the rules read and change. `worms` has `worm_count`
 /// entries in the order of C++'s `Game::worms`; worm numbers (killers,
@@ -270,7 +270,7 @@ pub struct LieroGameHooks {
 ///
 /// # Safety
 /// `f`'s worms must be valid.
-pub(crate) unsafe fn stats_worms(f: &LieroGameFields) -> Vec<LieroStatsWorm> {
+pub(crate) unsafe fn stats_worms(f: &LieroGameFields) -> Vec<LieroStatsWorm> { unsafe {
     use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT};
     let worms = std::slice::from_raw_parts(f.worms, f.worm_count.max(0) as usize);
     worms
@@ -297,19 +297,19 @@ pub(crate) unsafe fn stats_worms(f: &LieroGameFields) -> Vec<LieroStatsWorm> {
             }
         })
         .collect()
-}
+}}
 
 /// The end of the game for its stats (`StatsRecorder::finish`).
 ///
 /// # Safety
 /// `f`'s pointers must be valid; its stats may be null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_stats_finish(f: &LieroGameFields) {
+pub unsafe extern "C" fn liero_game_stats_finish(f: &LieroGameFields) { unsafe {
     if let Some(s) = f.stats.as_mut() {
         let worms = stats_worms(f);
         crate::stats::liero_stats_finish(s, worms.as_ptr(), worms.len());
     }
-}
+}}
 
 /// Getters and setters for the game's fields. SAFETY for all of them: the
 /// pointers are valid for the call, and no reference outlives the statement.
@@ -613,13 +613,13 @@ pub unsafe extern "C" fn liero_game_spawn_zone(game: &LieroGameFields, settings:
 /// # Safety
 /// The pointers in `game` and `settings` are valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_start(game: &LieroGameFields, settings: &LieroGameSettings, blood_particle_max: i32) {
+pub unsafe extern "C" fn liero_game_start(game: &LieroGameFields, settings: &LieroGameSettings, blood_particle_max: i32) { unsafe {
     game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
     (*game.game).bobjects.resize(blood_particle_max.max(0) as usize);
     if settings.game_mode == LIERO_GAME_HOLDAZONE {
         Game { f: game, s: settings }.spawn_zone();
     }
-}
+}}
 
 /// Whether the game has ended: `Game::isGameOver`.
 ///

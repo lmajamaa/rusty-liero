@@ -30,13 +30,13 @@ pub struct LieroDrawSettings {
     pub is_replay: bool,
 }
 
-unsafe fn slice<'a, T>(p: *const T, n: i32) -> &'a [T] {
+unsafe fn slice<'a, T>(p: *const T, n: i32) -> &'a [T] { unsafe {
     if n <= 0 || p.is_null() {
         &[]
     } else {
         std::slice::from_raw_parts(p, n as usize)
     }
-}
+}}
 
 fn sprites(s: &LieroTcSprites) -> LieroSpriteSet {
     LieroSpriteSet { data: s.data, width: s.width, height: s.height, count: s.count }
@@ -47,20 +47,20 @@ fn lstr(b: &[u8]) -> LieroStr {
 }
 
 /// The index of the TC weapon a worm's slot or a shot points to, or -1.
-unsafe fn weapon_index(kind: *const std::ffi::c_void) -> i32 {
+unsafe fn weapon_index(kind: *const std::ffi::c_void) -> i32 { unsafe {
     if kind.is_null() {
         -1
     } else {
         (*(kind as *const LieroTcWeapon)).id
     }
-}
+}}
 
 /// The worms, in the game's order (`viewWorms`).
 ///
 /// # Safety
 /// The pointers in `f` are valid, and the worms' names stay so while the
 /// views are used.
-pub(crate) unsafe fn view_worms(f: &LieroGameFields) -> Vec<LieroViewWorm> {
+pub(crate) unsafe fn view_worms(f: &LieroGameFields) -> Vec<LieroViewWorm> { unsafe {
     slice(f.worms, f.worm_count)
         .iter()
         .map(|gw| {
@@ -112,21 +112,21 @@ pub(crate) unsafe fn view_worms(f: &LieroGameFields) -> Vec<LieroViewWorm> {
             }
         })
         .collect()
-}
+}}
 
 /// Each viewport's worm, shake and banner after a tick
 /// (`Game::processViewports`).
 ///
 /// # Safety
 /// The pointers in `f` are valid.
-pub(crate) unsafe fn process_viewports(f: &LieroGameFields) {
+pub(crate) unsafe fn process_viewports(f: &LieroGameFields) { unsafe {
     let worms = view_worms(f);
     for (list, n) in [(f.viewports, f.viewport_count), (f.spectator_viewports, f.spectator_viewport_count)] {
         for &vp in slice(list, n) {
             liero_viewport_process(&mut *vp, (*vp).kind, worms.as_ptr(), worms.len() as i32);
         }
     }
-}
+}}
 
 /// Draws viewport `vp` on `scr` (`Viewport::draw` and
 /// `SpectatorViewport::draw`, by its kind).
@@ -141,7 +141,7 @@ pub unsafe extern "C" fn liero_game_draw_viewport(
     draw: &LieroDrawSettings,
     vp: *mut LieroViewport,
     scr: &LieroBitmap,
-) {
+) { unsafe {
     let tc: &LieroTcData = &*game.tc;
     let d = &*game.game;
     let l = lists(game, settings, vp);
@@ -206,7 +206,7 @@ pub unsafe extern "C" fn liero_game_draw_viewport(
         is_replay: draw.is_replay,
     };
     liero_viewport_draw(&mut *vp, (*vp).kind, l.self_index, &scene, scr);
-}
+}}
 
 /// The lists a viewport draws, in C++'s order, which decides what is drawn
 /// on top, and `vp`'s place among the split-screen viewports.
@@ -224,7 +224,7 @@ struct Lists {
 
 /// # Safety
 /// As for `liero_game_draw_viewport`.
-unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut LieroViewport) -> Lists {
+unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut LieroViewport) -> Lists { unsafe {
     let tc: &LieroTcData = &*game.tc;
     let d = &*game.game;
 
@@ -295,7 +295,7 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
         vps.iter().map(|&v| LieroViewportBanner { worm_idx: (*v).worm_idx, banner_y: (*v).banner_y }).collect();
 
     Lists { worms, weapons, bonuses, sobjects, wobjects, nobjects, bobjects, banners, self_index }
-}
+}}
 
 #[cfg(test)]
 mod tests {

@@ -127,14 +127,14 @@ fn play(path: &str, s: &mut Setup) -> *mut LieroReplayReader {
 }
 
 /// Reads a frame, carrying the controls on as the game tick would.
-unsafe fn frame(r: *mut LieroReplayReader, s: &mut Setup) -> LieroReplayOutcome {
+unsafe fn frame(r: *mut LieroReplayReader, s: &mut Setup) -> LieroReplayOutcome { unsafe {
     let o = liero_replay_reader_frame(&mut *r);
     for i in 0..liero_game_worm_count(&*s.game) {
         let d = s.worm(i);
         d.prev_control_states = d.control_states;
     }
     o
-}
+}}
 
 #[test]
 fn plays_back_the_game_it_recorded() {

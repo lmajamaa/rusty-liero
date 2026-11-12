@@ -14,13 +14,13 @@ pub(super) fn bundled() -> crate::shared::Shared<LieroTc> {
 
 /// # Safety
 /// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
+unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] { unsafe {
     if n == 0 {
         &[]
     } else {
         std::slice::from_raw_parts(p, n)
     }
-}
+}}
 
 /// A sprite set as `addSprites` hashes it.
 fn add_sprites(h: &mut Fnv, s: &LieroTcSprites) {

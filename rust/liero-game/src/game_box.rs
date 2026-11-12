@@ -203,10 +203,10 @@ impl LieroGame {
     ///
     /// # Safety
     /// `r` is valid.
-    pub(crate) unsafe fn focus(&mut self, r: *mut LieroRenderer) {
+    pub(crate) unsafe fn focus(&mut self, r: *mut LieroRenderer) { unsafe {
         let level_pal = self.level.data().origpal;
         liero_game_origpal(self, (*r).data.origpal.as_mut_ptr(), level_pal.as_ptr());
-    }
+    }}
 
     /// `Game::draw`: the split-screen viewports, or with `spectators` the
     /// spectator ones, on `r`, and the palette with the TC's colour
@@ -215,7 +215,7 @@ impl LieroGame {
     /// # Safety
     /// The game has its context; `r` is valid and the game's worms don't
     /// point into it.
-    pub(crate) unsafe fn draw(&mut self, r: *mut LieroRenderer, state: i32, spectators: bool, is_replay: bool) {
+    pub(crate) unsafe fn draw(&mut self, r: *mut LieroRenderer, state: i32, spectators: bool, is_replay: bool) { unsafe {
         let d = draw_settings(&self.settings_box().data, &(*r).data, state, is_replay);
         let scr = (*r).bmp.view();
         let v = liero_game_view_new(self);
@@ -238,7 +238,7 @@ impl LieroGame {
             data.fade_value,
             self.data.screen_flash,
         );
-    }
+    }}
 
     fn owns(&self, w: *const LieroWorm) -> bool {
         self.pool.iter().any(|p| std::ptr::eq(&**p, w))
@@ -307,11 +307,11 @@ pub extern "C" fn liero_game_new() -> *mut LieroGame {
 /// `g` comes from `liero_game_new` or `_clone`, or is null, and isn't used
 /// again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_free(g: *mut LieroGame) {
+pub unsafe extern "C" fn liero_game_free(g: *mut LieroGame) { unsafe {
     if !g.is_null() {
         drop(Box::from_raw(g));
     }
-}
+}}
 
 /// A copy of the game, as a replay keeps to rewind to.
 #[no_mangle]
@@ -353,9 +353,9 @@ fn draw_settings(s: &crate::settings::LieroSettingsData, r: &LieroRendererData, 
 /// # Safety
 /// See `LieroGame::draw`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_draw(g: &mut LieroGame, r: *mut LieroRenderer, state: i32, spectators: bool, is_replay: bool) {
+pub unsafe extern "C" fn liero_game_draw(g: &mut LieroGame, r: *mut LieroRenderer, state: i32, spectators: bool, is_replay: bool) { unsafe {
     g.draw(r, state, spectators, is_replay);
-}
+}}
 
 /// Sets what the game is played with: the settings, the TC (or null) and
 /// where its sounds go. The game and its copies keep references to the
@@ -364,11 +364,11 @@ pub unsafe extern "C" fn liero_game_draw(g: &mut LieroGame, r: *mut LieroRendere
 /// # Safety
 /// `settings` and `tc` have references, or are null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_set_context(g: &mut LieroGame, settings: *mut LieroSettingsBox, tc: *mut LieroTc, sound: LieroSoundOut) {
+pub unsafe extern "C" fn liero_game_set_context(g: &mut LieroGame, settings: *mut LieroSettingsBox, tc: *mut LieroTc, sound: LieroSoundOut) { unsafe {
     let tc_owner = (!tc.is_null()).then(|| Shared::retain(tc));
     let data = tc_owner.as_ref().map_or(std::ptr::null(), |t| crate::tc::liero_tc_data(t));
     g.set_context_data((!settings.is_null()).then(|| Shared::retain(settings)), tc_owner, data, sound);
-}
+}}
 
 /// The game's level, at a fixed address.
 #[no_mangle]
@@ -518,7 +518,7 @@ pub extern "C" fn liero_game_viewport(g: &mut LieroGame, spectator_list: bool, i
 /// `origpal` and `level_pal` hold 256 entries, and the listed worms have
 /// settings.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_origpal(g: &LieroGame, origpal: *mut LieroColor, level_pal: *const LieroColor) {
+pub unsafe extern "C" fn liero_game_origpal(g: &LieroGame, origpal: *mut LieroColor, level_pal: *const LieroColor) { unsafe {
     std::ptr::copy_nonoverlapping(level_pal, origpal, 256);
     for w in g.worms().flatten() {
         if (0..2).contains(&w.data.index) {
@@ -526,7 +526,7 @@ pub unsafe extern "C" fn liero_game_origpal(g: &LieroGame, origpal: *mut LieroCo
             crate::gfx::liero_palette_set_worm_colour(origpal, w.data.index, s.data.color, &s.data.rgb);
         }
     }
-}
+}}
 
 /// The game as the tick, the bots and the viewports see it, with the
 /// lists it points to.
@@ -620,11 +620,11 @@ pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&
 /// # Safety
 /// `v` comes from `liero_game_view_new`, or is null, and isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_view_free(v: *mut LieroGameView) {
+pub unsafe extern "C" fn liero_game_view_free(v: *mut LieroGameView) { unsafe {
     if !v.is_null() {
         drop(Box::from_raw(v));
     }
-}
+}}
 
 #[cfg(test)]
 mod tests {
@@ -648,7 +648,7 @@ mod tests {
 
     /// A game with two listed worms (the first a bot) and an unlisted one,
     /// an empty place, two viewports and a spectator one.
-    unsafe fn game(s: [*mut LieroWormSettingsBox; 3]) -> *mut LieroGame {
+    unsafe fn game(s: [*mut LieroWormSettingsBox; 3]) -> *mut LieroGame { unsafe {
         let g = &mut *liero_game_new();
         let a = liero_game_new_worm(g, s[0]);
         let b = liero_game_new_worm(g, std::ptr::null_mut());
@@ -665,7 +665,7 @@ mod tests {
         liero_game_add_viewport(g, rect(160, 0, 318, 158), 1, 504, 350, 0, false);
         liero_game_add_viewport(g, rect(0, 0, 572, 350), 0, 504, 350, 1, true);
         g
-    }
+    }}
 
     #[test]
     fn copies_share_settings_bots_and_spectators() {

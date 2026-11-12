@@ -118,7 +118,7 @@ struct Env<'a> {
 }
 
 impl<'a> Env<'a> {
-    unsafe fn new(e: &'a LieroWeapselEnv) -> Self {
+    unsafe fn new(e: &'a LieroWeapselEnv) -> Self { unsafe {
         let order = if e.weapon_count <= 0 {
             &[][..]
         } else {
@@ -132,18 +132,18 @@ impl<'a> Env<'a> {
             tc: e.tc,
             sound: e.sound,
         }
-    }
+    }}
 
     /// Plays a menu sound (`soundPlayer->play`).
-    unsafe fn play(&self, sound: i32) {
+    unsafe fn play(&self, sound: i32) { unsafe {
         self.sound.play(&*self.tc, sound, std::ptr::null_mut(), 0);
-    }
+    }}
 
     /// The TC's weapon `w`, as a worm's weapon slot points to it.
-    unsafe fn kind(&self, w: i32) -> *const c_void {
+    unsafe fn kind(&self, w: i32) -> *const c_void { unsafe {
         assert!((w as usize) < (*self.tc).weapon_count);
         (*self.tc).weapons.add(w as usize).cast()
-    }
+    }}
 
     /// The weapon with number `n`, from 1. Numbers outside the list read
     /// other memory in C++; they give weapon 0 here.
@@ -217,7 +217,7 @@ impl<'a> Env<'a> {
 /// # Safety
 /// See `LieroWeapselEnv`; `weapons` and `out` hold 5 entries.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_choose(weapons: *mut u32, random: bool, env: &LieroWeapselEnv, out: *mut i32) {
+pub unsafe extern "C" fn liero_weapsel_choose(weapons: *mut u32, random: bool, env: &LieroWeapselEnv, out: *mut i32) { unsafe {
     let mut e = Env::new(env);
     let weapons = std::slice::from_raw_parts_mut(weapons, LIERO_SELECTABLE_WEAPONS);
     let out = std::slice::from_raw_parts_mut(out, LIERO_SELECTABLE_WEAPONS);
@@ -241,7 +241,7 @@ pub unsafe extern "C" fn liero_weapsel_choose(weapons: *mut u32, random: bool, e
         used[w as usize & 255] = true;
         out[j] = w;
     }
-}
+}}
 
 fn item(name: &[u8], color: u8) -> LieroMenuItemSpec {
     LieroMenuItemSpec {
@@ -264,7 +264,7 @@ fn item(name: &[u8], color: u8) -> LieroMenuItemSpec {
 /// `spec`'s pointers are valid for their counts, and see `LieroWeapselEnv`.
 /// The worms and their `weapons` outlive the selection.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_new(spec: &LieroWeapselSpec, env: &LieroWeapselEnv) -> *mut LieroWeapsel {
+pub unsafe extern "C" fn liero_weapsel_new(spec: &LieroWeapselSpec, env: &LieroWeapselEnv) -> *mut LieroWeapsel { unsafe {
     let e = Env::new(env);
     let weapon_names: Vec<Vec<u8>> =
         (0..spec.weapon_count.max(0) as usize).map(|i| (*spec.weapon_names.add(i)).bytes().to_vec()).collect();
@@ -307,16 +307,16 @@ pub unsafe extern "C" fn liero_weapsel_new(spec: &LieroWeapselSpec, env: &LieroW
         cached_spectator: false,
         focused: true,
     }))
-}
+}}
 
 /// # Safety
 /// `ws` came from `liero_weapsel_new` and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_free(ws: *mut LieroWeapsel) {
+pub unsafe extern "C" fn liero_weapsel_free(ws: *mut LieroWeapsel) { unsafe {
     if !ws.is_null() {
         drop(Box::from_raw(ws));
     }
-}
+}}
 
 #[no_mangle]
 pub extern "C" fn liero_weapsel_menu_count(ws: &LieroWeapsel) -> i32 {
@@ -359,7 +359,7 @@ fn pressed_once(worm: &mut LieroWormData, control: u32) -> bool {
 /// `worms` holds `count` valid worms, each with its settings' 5 weapon
 /// numbers in `weapons`, and `tc` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_finalize(worms: *const *mut LieroWormData, weapons: *const *const u32, count: i32, tc: &LieroTcData) {
+pub unsafe extern "C" fn liero_weapsel_finalize(worms: *const *mut LieroWormData, weapons: *const *const u32, count: i32, tc: &LieroTcData) { unsafe {
     for i in 0..count.max(0) as usize {
         let worm = &mut **worms.add(i);
         let numbers = std::slice::from_raw_parts(*weapons.add(i), LIERO_SELECTABLE_WEAPONS);
@@ -376,7 +376,7 @@ pub unsafe extern "C" fn liero_weapsel_finalize(worms: *const *mut LieroWormData
         // `Game::releaseControls`: the seven controls, not dig.
         worm.control_states &= !0x7f;
     }
-}
+}}
 
 /// One frame of weapon selection: `WeaponSelection::processFrame`. Each
 /// worm not ready changes the selected weapon with left and right, moves
@@ -386,7 +386,7 @@ pub unsafe extern "C" fn liero_weapsel_finalize(worms: *const *mut LieroWormData
 /// # Safety
 /// See `LieroWeapselEnv`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_process(ws: &mut LieroWeapsel, env: &LieroWeapselEnv) -> bool {
+pub unsafe extern "C" fn liero_weapsel_process(ws: &mut LieroWeapsel, env: &LieroWeapselEnv) -> bool { unsafe {
     let mut e = Env::new(env);
     let mut all_ready = true;
 
@@ -446,7 +446,7 @@ pub unsafe extern "C" fn liero_weapsel_process(ws: &mut LieroWeapsel, env: &Lier
     }
 
     all_ready
-}
+}}
 
 unsafe extern "C" fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
 
@@ -468,7 +468,7 @@ pub unsafe extern "C" fn liero_weapsel_draw(
     menu_scr: &LieroBitmap,
     font: &LieroFont,
     title: LieroStr,
-) {
+) { unsafe {
     let title = title.bytes();
     liero_gfx_draw_rounded_box(scr, 114, 2, 0, 7, font.dims(title).0);
     font.text(scr, title, 116, 3, 50, 1);
@@ -482,7 +482,7 @@ pub unsafe extern "C" fn liero_weapsel_draw(
             draw_menu(wm, menu_scr, font, -1);
         }
     }
-}
+}}
 
 /// The spectator window's weapon selection: the first two worms' menus, at
 /// the sides, while not ready.
@@ -499,7 +499,7 @@ pub unsafe extern "C" fn liero_weapsel_draw_spectator(ws: &mut LieroWeapsel, scr
 }
 
 /// The weapon tables of `game`, with the app's random numbers.
-unsafe fn game_env(game: &LieroGame) -> LieroWeapselEnv {
+unsafe fn game_env(game: &LieroGame) -> LieroWeapselEnv { unsafe {
     let tc = &*game.tc_data();
     LieroWeapselEnv {
         weap_table: game.settings_box().data.weap_table.as_ptr(),
@@ -509,7 +509,7 @@ unsafe fn game_env(game: &LieroGame) -> LieroWeapselEnv {
         tc,
         sound: game.sound(),
     }
-}
+}}
 
 /// The TC's font.
 pub(crate) fn tc_font(tc: &LieroTcData) -> LieroFont {
@@ -544,7 +544,7 @@ pub(crate) fn level_line(tc: &LieroTcData, game_level_file: &[u8], menu_level_fi
 /// The game has its context, and outlives the selection; each viewport's
 /// worm is listed and has settings.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
+pub unsafe extern "C" fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel { unsafe {
     let g: *mut LieroGame = game;
     let tc = &*game.tc_data();
     let select = game.settings_box().data.select_bot_weapons;
@@ -583,17 +583,17 @@ pub unsafe extern "C" fn liero_weapsel_start(game: &mut LieroGame) -> *mut Liero
     let ws = liero_weapsel_new(&spec, &env);
     (*ws).game = g;
     ws
-}
+}}
 
 /// `processFrame` for a selection started from a game.
 ///
 /// # Safety
 /// See `liero_weapsel_start`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_process_game(ws: &mut LieroWeapsel) -> bool {
+pub unsafe extern "C" fn liero_weapsel_process_game(ws: &mut LieroWeapsel) -> bool { unsafe {
     let env = game_env(&*ws.game);
     liero_weapsel_process(ws, &env)
-}
+}}
 
 /// `finalize` for a selection started from a game: gives each of the
 /// game's worms the weapons its settings chose.
@@ -601,7 +601,7 @@ pub unsafe extern "C" fn liero_weapsel_process_game(ws: &mut LieroWeapsel) -> bo
 /// # Safety
 /// See `liero_weapsel_start`; every listed worm has settings.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_finish(ws: &mut LieroWeapsel) {
+pub unsafe extern "C" fn liero_weapsel_finish(ws: &mut LieroWeapsel) { unsafe {
     let game = &mut *ws.game;
     let tc = &*game.tc_data();
     let mut worms = Vec::new();
@@ -612,7 +612,7 @@ pub unsafe extern "C" fn liero_weapsel_finish(ws: &mut LieroWeapsel) {
         worms.push(&mut w.data as *mut LieroWormData);
     }
     liero_weapsel_finalize(worms.as_ptr(), weapons.as_ptr(), worms.len() as i32, tc);
-}
+}}
 
 /// Hides the menus (the game went behind the menu), or shows them again.
 #[no_mangle]
@@ -621,12 +621,12 @@ pub extern "C" fn liero_weapsel_set_focused(ws: &mut LieroWeapsel, focused: bool
 }
 
 /// The renderer's palette as the menus show it: cycling and fading.
-unsafe fn menu_palette(r: *mut LieroRenderer) {
+unsafe fn menu_palette(r: *mut LieroRenderer) { unsafe {
     let d = &mut (*r).data;
     d.pal = d.origpal;
     liero_palette_rotate_from(d.pal.as_mut_ptr(), d.origpal.as_ptr(), 168, 174, app().menu_cycles);
     liero_palette_fade(d.pal.as_mut_ptr(), d.fade_value);
-}
+}}
 
 /// `WeaponSelection::draw` for a selection started from a game: on the
 /// spectator screen, who plays whom and the level, and on the play screen
@@ -636,7 +636,7 @@ unsafe fn menu_palette(r: *mut LieroRenderer) {
 /// # Safety
 /// See `liero_weapsel_start`; `r` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRenderer, state: i32, spectators: bool) {
+pub unsafe extern "C" fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRenderer, state: i32, spectators: bool) { unsafe {
     let game = &mut *ws.game;
     let tc = &*game.tc_data();
     let font = tc_font(tc);
@@ -678,7 +678,7 @@ pub unsafe extern "C" fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut 
         liero_weapsel_draw(ws, &(*r).bmp.view(), &menu_scr, &font, LieroStr::of(tc.text(text("SelWeap"))));
         menu_palette(&mut *a.play);
     }
-}
+}}
 
 #[cfg(test)]
 mod tests {

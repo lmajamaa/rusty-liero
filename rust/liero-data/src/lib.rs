@@ -9,6 +9,9 @@
 //! `settings` holds the game settings and their formats: liero.cfg,
 //! LIERO.DAT and the replay and profile archives, hashed with `gash`.
 
+// No unsafe code, and none may be added (PLAN.md, phase 4).
+#![forbid(unsafe_code)]
+
 pub mod exe;
 pub mod gash;
 pub mod load;

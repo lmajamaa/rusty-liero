@@ -4,6 +4,10 @@
 //! The modules still talk through the plain C functions (`liero_*`) that C++
 //! once called; phase 4 of PLAN.md turns them into Rust ones.
 
+// Every unsafe operation is in an `unsafe` block, even in an `unsafe fn`,
+// so they can be counted and removed (PLAN.md, phase 4).
+#![deny(unsafe_op_in_unsafe_fn)]
+
 pub mod ai;
 pub mod app;
 pub mod app_files;

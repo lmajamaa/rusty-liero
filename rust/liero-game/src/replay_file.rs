@@ -83,18 +83,18 @@ unsafe fn game_worms(game: &LieroGame) -> Vec<*mut LieroWorm> {
 
 /// # Safety
 /// `w` is valid and has settings.
-unsafe fn worm_settings<'a>(w: *mut LieroWorm) -> &'a mut LieroWormSettingsBox {
+unsafe fn worm_settings<'a>(w: *mut LieroWorm) -> &'a mut LieroWormSettingsBox { unsafe {
     let s = liero_worm_settings(&*w);
     assert!(!s.is_null(), "a worm without settings");
     &mut *s
-}
+}}
 
 /// `fastGameChecksum`: the generator and the worms' positions and
 /// velocities.
 ///
 /// # Safety
 /// `game` is valid.
-unsafe fn game_checksum(game: &mut LieroGame) -> u32 {
+unsafe fn game_checksum(game: &mut LieroGame) -> u32 { unsafe {
     let worms: Vec<[i32; 4]> = game_worms(game)
         .iter()
         .map(|&w| {
@@ -103,7 +103,7 @@ unsafe fn game_checksum(game: &mut LieroGame) -> u32 {
         })
         .collect();
     checksum((*liero_game_data(game)).rand.x, &worms)
-}
+}}
 
 /// `Settings::updateHash`: the hash of the settings archive. Writing it
 /// sets the TC name to the default, since the archive has none.
@@ -126,7 +126,7 @@ fn worm_hash(s: &mut LieroWormSettingsBox) -> Hash {
 ///
 /// # Safety
 /// `w` is valid and has settings.
-unsafe fn frame_worm(w: *mut LieroWorm, settings_expired: bool, settings: WormSettings) -> (LieroReplayFrameWorm, WormSettings) {
+unsafe fn frame_worm(w: *mut LieroWorm, settings_expired: bool, settings: WormSettings) -> (LieroReplayFrameWorm, WormSettings) { unsafe {
     let d = &(*w).data;
     let f = LieroReplayFrameWorm {
         index: d.index,
@@ -135,7 +135,7 @@ unsafe fn frame_worm(w: *mut LieroWorm, settings_expired: bool, settings: WormSe
         settings_expired,
     };
     (f, settings)
-}
+}}
 
 // ---- Writing ----
 
@@ -209,11 +209,11 @@ pub extern "C" fn liero_replay_writer_new(node: &LieroFsNode) -> *mut LieroRepla
 /// `w` comes from `liero_replay_writer_new`, or is null, and isn't used
 /// again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_free(w: *mut LieroReplayWriter) {
+pub unsafe extern "C" fn liero_replay_writer_free(w: *mut LieroReplayWriter) { unsafe {
     if !w.is_null() {
         drop(Box::from_raw(w));
     }
-}
+}}
 
 /// The version to write, before `liero_replay_writer_begin`; the hash run
 /// writes old ones.
@@ -230,7 +230,7 @@ pub extern "C" fn liero_replay_writer_set_version(w: &mut LieroReplayWriter, ver
 /// # Safety
 /// The game has its settings and TC (`liero_game_set_context`).
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut LieroGame) -> LieroReplayOutcome {
+pub unsafe extern "C" fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut LieroGame) -> LieroReplayOutcome { unsafe {
     let settings = &mut *liero_game_settings(game);
     let level = &*liero_game_level(game);
     let tc = &*game.tc_data();
@@ -292,7 +292,7 @@ pub unsafe extern "C" fn liero_replay_writer_begin(w: &mut LieroReplayWriter, ga
     }
     w.settings_expired = false;
     LieroReplayOutcome::new(Ok(()), "")
-}
+}}
 
 /// `recordFrame`: the game's controls this tick, and any settings that
 /// changed since they were written (a worm's only with more than three
@@ -301,7 +301,7 @@ pub unsafe extern "C" fn liero_replay_writer_begin(w: &mut LieroReplayWriter, ga
 /// # Safety
 /// The game and settings `liero_replay_writer_begin` had are still valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_frame(w: &mut LieroReplayWriter) {
+pub unsafe extern "C" fn liero_replay_writer_frame(w: &mut LieroReplayWriter) { unsafe {
     let game = &mut *w.game;
     let settings = &mut *w.settings;
     let worms = game_worms(game);
@@ -332,19 +332,19 @@ pub unsafe extern "C" fn liero_replay_writer_frame(w: &mut LieroReplayWriter) {
         }
     }
     w.out.write(&bytes);
-}
+}}
 
 /// The game lost focus (the menu opened): remembers the settings' hashes.
 ///
 /// # Safety
 /// As for `liero_replay_writer_frame`, once recording has begun.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) {
+pub unsafe extern "C" fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) { unsafe {
     for (p, d) in w.worms.iter_mut() {
         d.last_hash = worm_hash(worm_settings(*p));
     }
     w.last_settings_hash = settings_hash(&mut *w.settings);
-}
+}}
 
 /// The game has focus again: settings that changed are written with the
 /// next frame.
@@ -352,7 +352,7 @@ pub unsafe extern "C" fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) 
 /// # Safety
 /// As for `liero_replay_writer_unfocus`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_focus(w: &mut LieroReplayWriter) {
+pub unsafe extern "C" fn liero_replay_writer_focus(w: &mut LieroReplayWriter) { unsafe {
     for (p, d) in w.worms.iter_mut() {
         if d.last_hash != worm_hash(worm_settings(*p)) {
             d.expired = true;
@@ -361,7 +361,7 @@ pub unsafe extern "C" fn liero_replay_writer_focus(w: &mut LieroReplayWriter) {
     if w.last_settings_hash != settings_hash(&mut *w.settings) {
         w.settings_expired = true;
     }
-}
+}}
 
 // ---- Reading ----
 
@@ -419,11 +419,11 @@ pub extern "C" fn liero_replay_reader_new(node: &LieroFsNode) -> *mut LieroRepla
 /// `r` comes from `liero_replay_reader_new`, or is null, and isn't used
 /// again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_free(r: *mut LieroReplayReader) {
+pub unsafe extern "C" fn liero_replay_reader_free(r: *mut LieroReplayReader) { unsafe {
     if !r.is_null() {
         drop(Box::from_raw(r));
     }
-}
+}}
 
 /// How far playback has read, to go back to with `_set_pos`.
 #[no_mangle]
@@ -444,7 +444,7 @@ pub extern "C" fn liero_replay_reader_set_pos(r: &mut LieroReplayReader, pos: us
 /// # Safety
 /// The game has its settings and TC (`liero_game_set_context`).
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut LieroGame) -> LieroReplayOutcome {
+pub unsafe extern "C" fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut LieroGame) -> LieroReplayOutcome { unsafe {
     let settings = &mut *liero_game_settings(game);
     let level = &mut *liero_game_level(game);
     let tc = &*game.tc_data();
@@ -494,7 +494,7 @@ pub unsafe extern "C" fn liero_replay_reader_begin(r: &mut LieroReplayReader, ga
         c.b = g.level.palette[i * 3 + 2];
     }
     r.outcome(Ok(()))
-}
+}}
 
 /// `playbackFrame` without the renderer: sets the worms' controls for the
 /// tick and any settings the frame changes, then checks the checksum due.
@@ -503,7 +503,7 @@ pub unsafe extern "C" fn liero_replay_reader_begin(r: &mut LieroReplayReader, ga
 /// # Safety
 /// The game and settings `liero_replay_reader_begin` had are still valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_frame(r: &mut LieroReplayReader) -> LieroReplayOutcome {
+pub unsafe extern "C" fn liero_replay_reader_frame(r: &mut LieroReplayReader) -> LieroReplayOutcome { unsafe {
     let game = &mut *r.game;
     let settings = &mut *r.settings;
     let worms = game_worms(game);
@@ -539,7 +539,7 @@ pub unsafe extern "C" fn liero_replay_reader_frame(r: &mut LieroReplayReader) ->
     let mut o = r.outcome(checked);
     o.settings_changed = frame.settings_changed;
     o
-}
+}}
 
 #[cfg(test)]
 #[path = "replay_file_tests.rs"]

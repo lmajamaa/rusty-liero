@@ -449,7 +449,7 @@ impl Level<'_> {
     ///
     /// # Safety
     /// `dest` with `pitch` must cover the whole miniature.
-    pub unsafe fn draw_miniature(&self, dest: *mut u8, pitch: i32, map_x: i32, map_y: i32, step: i32) {
+    pub unsafe fn draw_miniature(&self, dest: *mut u8, pitch: i32, map_x: i32, map_y: i32, step: i32) { unsafe {
         let mut my = step / 2;
         let map_end_y = map_y + (self.height + step / 2) / step;
         let map_end_x = map_x + (self.width + step / 2) / step;
@@ -462,7 +462,7 @@ impl Level<'_> {
             }
             my += step;
         }
-    }
+    }}
 
     /// Draws a 16 x 16 stone sprite onto the level, clipped to it. With `p1`,
     /// every pixel is written, as palette index + 3 where the sprite is
@@ -573,27 +573,27 @@ impl Level<'_> {
 }
 
 /// Makes a slice from a C++ pointer, which may be null when `len` is 0.
-unsafe fn slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
+unsafe fn slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] { unsafe {
     if len == 0 {
         &[]
     } else {
         std::slice::from_raw_parts(ptr, len)
     }
-}
+}}
 
-unsafe fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] {
+unsafe fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] { unsafe {
     if len == 0 {
         &mut []
     } else {
         std::slice::from_raw_parts_mut(ptr, len)
     }
-}
+}}
 
 impl LieroLevel {
     /// # Safety
     /// `data` and `materials` must each point to `width * height` elements
     /// that nothing else uses during the call.
-    pub unsafe fn get(&self) -> Level<'_> {
+    pub unsafe fn get(&self) -> Level<'_> { unsafe {
         let len = (self.width.max(0) as usize) * (self.height.max(0) as usize);
         Level {
             data: slice_mut(self.data, len),
@@ -601,19 +601,19 @@ impl LieroLevel {
             width: self.width,
             height: self.height,
         }
-    }
+    }}
 }
 
 impl LieroLevelCommon {
     /// # Safety
     /// The pointers must point to tables of the documented sizes.
-    pub unsafe fn get(&self) -> Common<'_> {
+    pub unsafe fn get(&self) -> Common<'_> { unsafe {
         Common {
             materials: &*(self.materials as *const [LieroMaterial; 256]),
             textures: &*(self.textures as *const [LieroTexture; LIERO_TEXTURE_COUNT]),
             large_sprites: slice(self.large_sprites, self.large_sprite_count.max(0) as usize * SPRITE_PIXELS),
         }
-    }
+    }}
 }
 
 // The functions C++ calls. In each, `level` and `common` are views as
@@ -624,9 +624,9 @@ impl LieroLevelCommon {
 /// # Safety
 /// See `LieroLevel` and `LieroLevelCommon`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_level_update_materials(level: &LieroLevel, common: &LieroLevelCommon) {
+pub unsafe extern "C" fn liero_level_update_materials(level: &LieroLevel, common: &LieroLevelCommon) { unsafe {
     level.get().update_materials(&common.get());
-}
+}}
 
 /// Fills the level with the dirt pattern of random levels. C++ sizes the
 /// level first.
@@ -638,27 +638,27 @@ pub unsafe extern "C" fn liero_level_generate_dirt_pattern(
     level: &LieroLevel,
     common: &LieroLevelCommon,
     rand: &mut LieroRand,
-) {
+) { unsafe {
     level.get().generate_dirt_pattern(&common.get(), rand);
-}
+}}
 
 /// Generates a random level. C++ sizes the level and resets its palette first.
 ///
 /// # Safety
 /// See `LieroLevel` and `LieroLevelCommon`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_level_generate_random(level: &LieroLevel, common: &LieroLevelCommon, rand: &mut LieroRand) {
+pub unsafe extern "C" fn liero_level_generate_random(level: &LieroLevel, common: &LieroLevelCommon, rand: &mut LieroRand) { unsafe {
     level.get().generate_random(&common.get(), rand);
-}
+}}
 
 /// Adds the shadows of the "Shadows" option.
 ///
 /// # Safety
 /// See `LieroLevel` and `LieroLevelCommon`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_level_make_shadow(level: &LieroLevel, common: &LieroLevelCommon) {
+pub unsafe extern "C" fn liero_level_make_shadow(level: &LieroLevel, common: &LieroLevelCommon) { unsafe {
     level.get().make_shadow(&common.get());
-}
+}}
 
 /// Picks a random w x h area for Holdazone's zone and writes its top-left
 /// corner to `selected`. Returns false, leaving `selected` as it was, if there
@@ -673,7 +673,7 @@ pub unsafe extern "C" fn liero_level_select_spawn(
     w: i32,
     h: i32,
     selected: &mut LieroIVec2,
-) -> bool {
+) -> bool { unsafe {
     match level.get().select_spawn(rand, w, h) {
         Some(pos) => {
             *selected = pos;
@@ -681,7 +681,7 @@ pub unsafe extern "C" fn liero_level_select_spawn(
         }
         None => false,
     }
-}
+}}
 
 /// Draws the level shrunk by `step` into an 8-bit bitmap with `pitch` bytes
 /// per row, at (map_x, map_y).
@@ -696,9 +696,9 @@ pub unsafe extern "C" fn liero_level_draw_miniature(
     map_x: i32,
     map_y: i32,
     step: i32,
-) {
+) { unsafe {
     level.get().draw_miniature(dest, pitch, map_x, map_y, step);
-}
+}}
 
 /// Draws a 16 x 16 stone sprite onto the level.
 ///
@@ -712,9 +712,9 @@ pub unsafe extern "C" fn liero_level_blit_stone(
     sprite: *const u8,
     x: i32,
     y: i32,
-) {
+) { unsafe {
     level.get().blit_stone(&common.get(), p1, slice(sprite, SPRITE_PIXELS), x, y);
-}
+}}
 
 /// Draws a `width` x `height` image onto the level.
 ///
@@ -729,10 +729,10 @@ pub unsafe fn liero_level_blit_image(
     y: i32,
     width: i32,
     height: i32,
-) {
+) { unsafe {
     let len = (width.max(0) * height.max(0)) as usize;
     level.get().blit_image(&common.get(), slice(image, len), x, y, width, height);
-}
+}}
 
 /// Applies dirt effect `dirt_effect` (0 to 8) at (x, y).
 ///
@@ -745,9 +745,9 @@ pub unsafe fn liero_level_draw_dirt_effect(
     dirt_effect: i32,
     x: i32,
     y: i32,
-) {
+) { unsafe {
     level.get().draw_dirt_effect(&common.get(), rand, dirt_effect, x, y);
-}
+}}
 
 /// Corrects shadows in the rectangle from (x1, y1) to (x2, y2), excluded.
 ///
@@ -760,9 +760,9 @@ pub unsafe fn liero_level_correct_shadow(
     y1: i32,
     x2: i32,
     y2: i32,
-) {
+) { unsafe {
     level.get().correct_shadow(&common.get(), x1, y1, x2, y2);
-}
+}}
 
 /// A level's fields that C++'s `Level` refers to.
 #[repr(C)]
@@ -857,11 +857,11 @@ impl LieroLevelBox {
     ///
     /// # Safety
     /// `common` is valid.
-    pub(crate) unsafe fn generate_random(&mut self, common: &LieroLevelCommon, exepal: &[LieroColor; 256], rand: &mut LieroRand) {
+    pub(crate) unsafe fn generate_random(&mut self, common: &LieroLevelCommon, exepal: &[LieroColor; 256], rand: &mut LieroRand) { unsafe {
         self.data.origpal = *exepal;
         self.resize(LIERO_LEVEL_WIDTH, LIERO_LEVEL_HEIGHT);
         self.data.level.get().generate_random(&common.get(), rand);
-    }
+    }}
 
     /// `Level::load`: a .LEV file's pixels, and with `powerlevel_palette`
     /// the palette after "POWERLEVEL" if there is one, else the TC's. False
@@ -875,7 +875,7 @@ impl LieroLevelBox {
         exepal: &[LieroColor; 256],
         powerlevel_palette: bool,
         bytes: &[u8],
-    ) -> bool {
+    ) -> bool { unsafe {
         self.resize(LIERO_LEVEL_WIDTH, LIERO_LEVEL_HEIGHT);
         let n = self.pixels.len();
         // What there is is read before the error, as C++'s reader did.
@@ -907,7 +907,7 @@ impl LieroLevelBox {
         self.data.level.get().update_materials(&common.get());
         self.data.origpal = palette.unwrap_or(*exepal);
         true
-    }
+    }}
 
     /// `Level::generateFromSettings`: the settings' level file (".LEV"
     /// added if it has no dot), or a random level if it's random or can't
@@ -921,7 +921,7 @@ impl LieroLevelBox {
         exepal: &[LieroColor; 256],
         settings: &crate::settings::LieroSettingsBox,
         rand: &mut LieroRand,
-    ) {
+    ) { unsafe {
         let s = &settings.data;
         let mut loaded = false;
         if !s.random_level {
@@ -941,7 +941,7 @@ impl LieroLevelBox {
         if s.shadow {
             self.data.level.get().make_shadow(&common.get());
         }
-    }
+    }}
 }
 
 /// See `LieroLevelBox::generate_from_settings`.
@@ -955,9 +955,9 @@ pub unsafe extern "C" fn liero_level_box_generate_from_settings(
     exepal: *const LieroColor,
     settings: &crate::settings::LieroSettingsBox,
     rand: &mut LieroRand,
-) {
+) { unsafe {
     l.generate_from_settings(common, &*(exepal as *const [LieroColor; 256]), settings, rand);
-}
+}}
 
 /// See `LieroLevelBox::load`.
 ///
@@ -971,10 +971,10 @@ pub unsafe extern "C" fn liero_level_box_load(
     powerlevel_palette: bool,
     bytes: *const u8,
     len: usize,
-) -> bool {
+) -> bool { unsafe {
     let bytes = if len == 0 { &[][..] } else { std::slice::from_raw_parts(bytes, len) };
     l.load(common, &*(exepal as *const [LieroColor; 256]), powerlevel_palette, bytes)
-}
+}}
 
 #[no_mangle]
 pub extern "C" fn liero_level_box_new() -> *mut LieroLevelBox {
@@ -1014,11 +1014,11 @@ pub unsafe extern "C" fn liero_level_box_swap(a: &mut LieroLevelBox, b: &mut Lie
 /// # Safety
 /// `l` comes from `liero_level_box_new` or `_clone`, and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_level_box_free(l: *mut LieroLevelBox) {
+pub unsafe extern "C" fn liero_level_box_free(l: *mut LieroLevelBox) { unsafe {
     if !l.is_null() {
         drop(Box::from_raw(l));
     }
-}
+}}
 
 /// The fields C++ refers to, valid as long as the box.
 ///
@@ -1050,9 +1050,9 @@ pub unsafe extern "C" fn liero_level_box_old_level_file(l: &LieroLevelBox) -> Li
 /// # Safety
 /// `l` and `text` are valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_level_box_set_old_level_file(l: &mut LieroLevelBox, text: LieroStr) {
+pub unsafe extern "C" fn liero_level_box_set_old_level_file(l: &mut LieroLevelBox, text: LieroStr) { unsafe {
     l.old_level_file = text.bytes().to_vec();
-}
+}}
 
 #[cfg(test)]
 #[path = "level_box_tests.rs"]

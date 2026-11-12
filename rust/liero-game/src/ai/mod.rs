@@ -112,11 +112,11 @@ pub extern "C" fn liero_worm_ai_new(controller: u32, candidates: usize, testing:
 /// # Safety
 /// `ai` must come from `liero_worm_ai_new`, or be null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_ai_free(ai: *mut LieroWormAi) {
+pub unsafe extern "C" fn liero_worm_ai_free(ai: *mut LieroWormAi) { unsafe {
     if !ai.is_null() {
         drop(Box::from_raw(ai));
     }
-}
+}}
 
 /// The bot's own generator, which C++ can seed.
 #[no_mangle]
@@ -167,7 +167,7 @@ pub unsafe extern "C" fn liero_game_process_ais(
     settings: &LieroGameSettings,
     ai_settings: &LieroAiSettings,
     hooks: Option<&LieroGameHooks>,
-) {
+) { unsafe {
     let n = game.worm_count as usize;
     let phase = ((*game.game).cycles % 2) as usize;
     for i in 0..n {
@@ -184,4 +184,4 @@ pub unsafe extern "C" fn liero_game_process_ais(
             stats.ai_process_time((*w.data).index, (h.hires_ticks)(h.ctx).wrapping_sub(start));
         }
     }
-}
+}}

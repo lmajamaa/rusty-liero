@@ -171,14 +171,14 @@ impl Screen for WeaponOptions {
 /// `spec`'s pointers are valid for their counts, and `order`'s entries are
 /// below 40.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> LieroScreen {
+pub unsafe extern "C" fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> LieroScreen { unsafe {
     into_ffi(Box::new(WeaponOptions::new(spec)))
-}
+}}
 
 impl WeaponOptions {
     /// # Safety
     /// As for `liero_weapon_options_screen`.
-    unsafe fn new(spec: &LieroWeaponOptionsSpec) -> Self {
+    unsafe fn new(spec: &LieroWeaponOptionsSpec) -> Self { unsafe {
         let text = |s: LieroStr| s.bytes().to_vec();
         // Menu(179, 28) with setHeight(14), before any items.
         let mut menu = OwnedMenu::new(LieroMenu { x: 179, y: 28, height: 14, item_height: 8, ..Default::default() });
@@ -203,7 +203,7 @@ impl WeaponOptions {
         screen.menu.move_to(0);
         screen.update_items();
         screen
-    }
+    }}
 }
 
 #[cfg(test)]

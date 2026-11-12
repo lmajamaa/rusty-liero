@@ -709,13 +709,13 @@ pub fn read_checksum<S: Source + ?Sized>(src: &mut S, cycles: i32, actual: u32) 
 
 // ---- The game's worms and viewports, as replays hold them ----
 
-unsafe fn slice<'a, T>(p: *const T, len: usize) -> &'a [T] {
+unsafe fn slice<'a, T>(p: *const T, len: usize) -> &'a [T] { unsafe {
     if len == 0 || p.is_null() {
         &[]
     } else {
         std::slice::from_raw_parts(p, len)
     }
-}
+}}
 
 /// Weapon `kind`'s place among the TC's weapons, by address, as C++ took
 /// it (`w.type - &common.weapons[0]`).
@@ -733,7 +733,7 @@ pub unsafe fn liero_replay_worm_of(
     worms: *const *mut LieroWormData,
     count: usize,
     tc: &LieroTcData,
-) -> LieroReplayWorm {
+) -> LieroReplayWorm { unsafe {
     let worms = slice(worms, count);
     let anchor = worm.ninjarope.anchor as *mut LieroWormData;
     let rope = &worm.ninjarope;
@@ -788,7 +788,7 @@ pub unsafe fn liero_replay_worm_of(
         control_states: worm.control_states,
         prev_control_states: worm.prev_control_states,
     }
-}
+}}
 
 /// Sets a worm from a replay's (`setWormFields`). Its rope's anchor is one
 /// of `all`, every worm the replay has. Weapons aren't checked, as in C++.
@@ -801,7 +801,7 @@ pub unsafe fn liero_replay_worm_set(
     all: *const *mut LieroWormData,
     count: usize,
     tc: &LieroTcData,
-) {
+) { unsafe {
     let all = slice(all, count);
     worm.pos = LieroIVec2 { x: f.pos[0], y: f.pos[1] };
     worm.vel = LieroIVec2 { x: f.vel[0], y: f.vel[1] };
@@ -850,7 +850,7 @@ pub unsafe fn liero_replay_worm_set(
     worm.direction = f.direction;
     worm.control_states = f.control_states;
     worm.prev_control_states = f.prev_control_states;
-}
+}}
 
 /// A split-screen viewport as replays hold it (`viewportFields`).
 pub fn liero_replay_viewport_of(vp: &LieroViewport) -> LieroReplayViewport {

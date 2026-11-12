@@ -304,27 +304,27 @@ pub(crate) fn save_profile_as(player: i32, name: &[u8]) {
 
 /// # Safety
 /// `text` is valid.
-unsafe fn node_of(text: LieroStr) -> Node {
+unsafe fn node_of(text: LieroStr) -> Node { unsafe {
     Node::new(text.bytes())
-}
+}}
 
 /// Sets the config folder (`Gfx::setConfigPath`).
 ///
 /// # Safety
 /// `path` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_config_path(a: &mut LieroApp, path: LieroStr) {
+pub unsafe extern "C" fn liero_app_set_config_path(a: &mut LieroApp, path: LieroStr) { unsafe {
     a.files.config = node_of(path);
-}
+}}
 
 /// Sets the folder of TCs (`Gfx::setTcPath`).
 ///
 /// # Safety
 /// `path` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_tc_path(a: &mut LieroApp, path: LieroStr) {
+pub unsafe extern "C" fn liero_app_set_tc_path(a: &mut LieroApp, path: LieroStr) { unsafe {
     a.files.tc_root = node_of(path);
-}
+}}
 
 /// The TC folder `TC` in the config folder.
 #[no_mangle]

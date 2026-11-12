@@ -129,7 +129,7 @@ pub unsafe fn liero_bonus_process(
     timer: &mut i32,
     level: &LieroLevel,
     constants: &LieroBonusConstants,
-) -> bool {
+) -> bool { unsafe {
     let lv = level.get();
 
     *y = y.wrapping_add(*vel_y);
@@ -153,7 +153,7 @@ pub unsafe fn liero_bonus_process(
 
     *timer -= 1;
     *timer <= 0
-}
+}}
 
 /// Advances an explosion's animation one tick. Returns true when the
 /// animation is over, so C++ frees the object.
@@ -384,7 +384,7 @@ pub unsafe fn liero_nobject_process(
     t: &LieroNObjectType,
     env: &LieroNObjectEnv,
     hooks: &LieroNObjectHooks,
-) {
+) { unsafe {
     let o = Fields(obj);
     let ctx = hooks.ctx;
 
@@ -517,7 +517,7 @@ pub unsafe fn liero_nobject_process(
 
         (hooks.free)(ctx);
     }
-}
+}}
 
 /// The ninja rope, laid out like C++'s `Ninjarope`.
 #[repr(C)]
@@ -578,7 +578,7 @@ pub unsafe fn liero_ninjarope_process(
     rand: *mut LieroRand,
     constants: &LieroNinjaropeConstants,
     hooks: &LieroNinjaropeHooks,
-) {
+) { unsafe {
     let r = rope;
     let k = constants;
     let ctx = hooks.ctx;
@@ -657,7 +657,7 @@ pub unsafe fn liero_ninjarope_process(
             (*r).vel = sub((*r).vel, div(force, (*r).cur_len));
         }
     }
-}
+}}
 
 #[cfg(test)]
 mod tests {

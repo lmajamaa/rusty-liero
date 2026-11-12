@@ -71,11 +71,11 @@ pub extern "C" fn liero_controller_data_new() -> *mut LieroControllerData {
 /// # Safety
 /// `c` comes from `liero_controller_data_new`, and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_data_free(c: *mut LieroControllerData) {
+pub unsafe extern "C" fn liero_controller_data_free(c: *mut LieroControllerData) { unsafe {
     if !c.is_null() {
         drop(Box::from_raw(c));
     }
-}
+}}
 
 /// See `LieroControllerData::ticks`.
 #[no_mangle]

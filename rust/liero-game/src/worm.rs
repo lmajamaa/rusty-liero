@@ -172,11 +172,11 @@ pub unsafe extern "C" fn liero_worm_data_clone(w: &LieroWormData) -> *mut LieroW
 /// # Safety
 /// `w` comes from `liero_worm_data_new` or `_clone`, and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_data_free(w: *mut LieroWormData) {
+pub unsafe extern "C" fn liero_worm_data_free(w: *mut LieroWormData) { unsafe {
     if !w.is_null() {
         drop(Box::from_raw(w));
     }
-}
+}}
 
 /// Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
 #[repr(C)]

@@ -160,9 +160,9 @@ impl Screen for InputBox {
 /// # Safety
 /// `text` must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_info_box_screen(text: LieroStr, x: i32, y: i32, clear_screen: bool) -> LieroScreen {
+pub unsafe extern "C" fn liero_info_box_screen(text: LieroStr, x: i32, y: i32, clear_screen: bool) -> LieroScreen { unsafe {
     into_ffi(Box::new(InfoBox { text: text.bytes().to_vec(), x, y, clear_screen, shown: false, waiting: false }))
-}
+}}
 
 /// Waits for a key, joystick button or stick move and closes with its DOS
 /// key. Unless `extended`, keys only the extended controls have are passed
@@ -187,7 +187,7 @@ pub unsafe extern "C" fn liero_input_box_screen(
     digits_only: bool,
     done: Option<unsafe extern "C" fn(ctx: *mut c_void, text: LieroStr)>,
     ctx: *mut c_void,
-) -> LieroScreen {
+) -> LieroScreen { unsafe {
     into_ffi(Box::new(InputBox {
         buffer: text.bytes().to_vec(),
         max_len,
@@ -198,7 +198,7 @@ pub unsafe extern "C" fn liero_input_box_screen(
         ctx,
         shown: false,
     }))
-}
+}}
 
 #[cfg(test)]
 mod tests {
@@ -212,9 +212,9 @@ mod tests {
         static LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
 
-    unsafe extern "C" fn poll(out: *mut LieroEvent) -> bool {
+    unsafe extern "C" fn poll(out: *mut LieroEvent) -> bool { unsafe {
         EVENTS.with(|e| e.borrow_mut().pop_front()).map(|ev| *out = ev).is_some()
-    }
+    }}
     unsafe extern "C" fn sound(id: i32) {
         LOG.with(|l| l.borrow_mut().push(format!("sound {id}")));
     }
@@ -254,9 +254,9 @@ mod tests {
         LieroEvent { key_down: true, scancode, ..Default::default() }
     }
 
-    unsafe extern "C" fn keep(ctx: *mut c_void, text: LieroStr) {
+    unsafe extern "C" fn keep(ctx: *mut c_void, text: LieroStr) { unsafe {
         *(ctx as *mut Vec<u8>) = text.bytes().to_vec();
-    }
+    }}
 
     fn input(start: &[u8], max_len: usize, digits_only: bool, out: &mut Vec<u8>) -> InputBox {
         InputBox {

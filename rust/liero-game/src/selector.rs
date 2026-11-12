@@ -583,7 +583,7 @@ mod tests {
         })
     }
 
-    unsafe extern "C" fn typed(out: *mut crate::screen::LieroTypedKey, cap: usize) -> usize {
+    unsafe extern "C" fn typed(out: *mut crate::screen::LieroTypedKey, cap: usize) -> usize { unsafe {
         TYPED.with(|t| {
             let t = std::mem::take(&mut *t.borrow_mut());
             for (i, k) in t.iter().take(cap).enumerate() {
@@ -591,7 +591,7 @@ mod tests {
             }
             t.len().min(cap)
         })
-    }
+    }}
 
     fn key_host(keys: &[u32], typed_text: &[u8]) -> Host {
         KEYS.with(|k| *k.borrow_mut() = keys.to_vec());

@@ -136,10 +136,10 @@ pub extern "C" fn liero_vector_length(x: i32, y: i32) -> i32 {
 /// # Safety
 /// `out` must point to 128 writable `LieroIVec2`s.
 #[no_mangle]
-pub unsafe extern "C" fn liero_cos_sin_table(out: *mut LieroIVec2) {
+pub unsafe extern "C" fn liero_cos_sin_table(out: *mut LieroIVec2) { unsafe {
     let out = std::slice::from_raw_parts_mut(out, LIERO_COS_SIN_ENTRIES);
     out.copy_from_slice(&cos_sin_table());
-}
+}}
 
 #[cfg(test)]
 mod tests {

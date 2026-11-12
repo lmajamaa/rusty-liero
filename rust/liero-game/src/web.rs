@@ -475,7 +475,7 @@ fn show_frame() {
 
 // ---- What the screens call (LieroScreenHost)
 
-unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool {
+unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool { unsafe {
     let Some(ev) = next_event() else { return false };
     process_event(ev, false);
     let mut e = LieroEvent::default();
@@ -502,7 +502,7 @@ unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool {
     }
     *out = e;
     true
-}
+}}
 
 unsafe extern "C" fn host_process() {
     process(false);
@@ -516,9 +516,9 @@ fn mixer() -> *mut LieroMixer {
     shell(|s| s.mixer).unwrap_or(std::ptr::null_mut())
 }
 
-unsafe extern "C" fn host_play_sound(id: i32) {
+unsafe extern "C" fn host_play_sound(id: i32) { unsafe {
     crate::shell::liero_shell_play_sound(app(), mixer(), id);
-}
+}}
 
 unsafe extern "C" fn host_text_input(on: bool) {
     shell(|s| s.text_input = on);
@@ -532,13 +532,13 @@ unsafe extern "C" fn host_test_key(scancode: u32) -> bool {
     liero_keys_test_sdl(&app().keys, scancode as i32)
 }
 
-unsafe extern "C" fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
+unsafe extern "C" fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize { unsafe {
     shell(|s| {
         let n = s.key_buf.len().min(cap);
         std::ptr::copy_nonoverlapping(s.key_buf.as_ptr(), out, n);
         n
     })
-}
+}}
 
 unsafe extern "C" fn host_ticks() -> u32 {
     (now_ms() - shell(|s| s.start_ms)) as u32
@@ -553,7 +553,7 @@ unsafe extern "C" fn host_time() -> i64 {
 }
 
 /// `t` as "%Y-%m-%d %H.%M.%S" in local time, as `strftime` wrote it.
-unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
+unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize { unsafe {
     let d = js_sys::Date::new(&JsValue::from_f64(t as f64 * 1000.0));
     let s = format!(
         "{:04}-{:02}-{:02} {:02}.{:02}.{:02}",
@@ -571,7 +571,7 @@ unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize
     std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len());
     *out.add(s.len()) = 0;
     s.len()
-}
+}}
 
 unsafe extern "C" fn host_sound() -> LieroSoundOut {
     LieroSoundOut { mixer: mixer(), report: None }
@@ -609,11 +609,11 @@ unsafe extern "C" fn app_process() {
 }
 
 /// F8 on the menu: the developers' random TC.
-unsafe extern "C" fn randomize_tc() {
+unsafe extern "C" fn randomize_tc() { unsafe {
     if app().tc.is_some() {
         liero_tc_randomize(&mut *app().menu_tc(), (js_sys::Math::random() * 4_294_967_296.0) as u32);
     }
-}
+}}
 
 unsafe extern "C" fn menu_screen() -> LieroScreen {
     liero_menu_screen(LieroMenuScreenHooks { menus: app().menus, randomize_tc })

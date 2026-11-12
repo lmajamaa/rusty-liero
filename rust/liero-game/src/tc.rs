@@ -717,11 +717,11 @@ pub unsafe extern "C" fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
 /// # Safety
 /// `tc` must come from `liero_tc_load` and not be used afterwards.
 #[no_mangle]
-pub unsafe extern "C" fn liero_tc_free(tc: *mut LieroTc) {
+pub unsafe extern "C" fn liero_tc_free(tc: *mut LieroTc) { unsafe {
     if !tc.is_null() {
         crate::shared::release_shared(tc);
     }
-}
+}}
 
 /// Copies the named fields of `from` to `to`.
 macro_rules! copy_fields {
@@ -763,9 +763,9 @@ impl LieroTc {
 /// # Safety
 /// `tc` must come from `liero_tc_load` and still have a reference.
 #[no_mangle]
-pub unsafe extern "C" fn liero_tc_retain(tc: *mut LieroTc) -> *mut LieroTc {
+pub unsafe extern "C" fn liero_tc_retain(tc: *mut LieroTc) -> *mut LieroTc { unsafe {
     crate::shared::retain_shared(tc)
-}
+}}
 
 /// Loads the TC in `node` as `Common::load` did, or the message it threw:
 /// the TC can't be read, or its constants, texts and hacks aren't the

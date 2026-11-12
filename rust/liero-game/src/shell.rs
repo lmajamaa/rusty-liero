@@ -79,9 +79,9 @@ impl LieroApp {
 /// # Safety
 /// The paths are valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_shell_start(a: &mut LieroApp, config: LieroStr, tc_root: LieroStr, tc: LieroStr) -> bool {
+pub unsafe extern "C" fn liero_shell_start(a: &mut LieroApp, config: LieroStr, tc_root: LieroStr, tc: LieroStr) -> bool { unsafe {
     a.start(config.bytes(), tc_root.bytes(), tc.bytes()).map_or_else(fail, |()| true)
-}
+}}
 
 /// `LieroApp::save_settings_at_end`. False if it failed, with the message in
 /// `liero_shell_error`.
@@ -121,12 +121,12 @@ pub extern "C" fn liero_shell_set_spectator_window(a: &mut LieroApp, on: bool) {
 /// # Safety
 /// `mixer` is valid or null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_shell_play_sound(a: &LieroApp, mixer: *mut LieroMixer, sound: i32) {
+pub unsafe extern "C" fn liero_shell_play_sound(a: &LieroApp, mixer: *mut LieroMixer, sound: i32) { unsafe {
     if mixer.is_null() {
         return;
     }
     LieroSoundOut { mixer, report: None }.play(a.tc_data(), sound, std::ptr::null_mut(), 0);
-}
+}}
 
 #[cfg(test)]
 mod tests {

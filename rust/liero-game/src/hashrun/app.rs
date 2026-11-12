@@ -154,7 +154,7 @@ fn process(to_controller: bool) {
     }
 }
 
-unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool {
+unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool { unsafe {
     let Some(ev) = next_event() else { return false };
     process_event(ev, false);
     let mut e = LieroEvent::default();
@@ -172,7 +172,7 @@ unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool {
     }
     *out = e;
     true
-}
+}}
 
 unsafe extern "C" fn host_process() {
     process(false);
@@ -197,21 +197,21 @@ unsafe extern "C" fn host_test_key(scancode: u32) -> bool {
     liero_keys_test_sdl(&app().keys, scancode as i32)
 }
 
-unsafe extern "C" fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
+unsafe extern "C" fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize { unsafe {
     driver(|d| {
         let n = d.key_buf.len().min(cap);
         std::ptr::copy_nonoverlapping(d.key_buf.as_ptr(), out, n);
         n
     })
-}
+}}
 
 unsafe extern "C" fn host_ticks() -> u32 {
     driver(|d| (d.now as u32).wrapping_mul(14))
 }
 
-unsafe extern "C" fn host_hires_ticks() -> u64 {
+unsafe extern "C" fn host_hires_ticks() -> u64 { unsafe {
     u64::from(host_ticks()) * 1_000_000
-}
+}}
 
 unsafe extern "C" fn host_time() -> i64 {
     // 2001-09-09, then 70 frames a second.
@@ -234,7 +234,7 @@ fn utc_text(t: i64) -> String {
     format!("{year:04}-{month:02}-{day:02} {:02}.{:02}.{:02}", secs / 3600, secs / 60 % 60, secs % 60)
 }
 
-unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
+unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize { unsafe {
     let s = utc_text(t);
     // strftime writes nothing if the text and its 0 don't fit.
     if s.len() >= cap {
@@ -243,7 +243,7 @@ unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize
     std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len());
     *out.add(s.len()) = 0;
     s.len()
-}
+}}
 
 unsafe extern "C" fn host_sound() -> LieroSoundOut {
     // No mixer: the hash run has no sound.
@@ -289,10 +289,10 @@ unsafe extern "C" fn app_process() {
     process(true);
 }
 
-unsafe extern "C" fn randomize_tc() {
+unsafe extern "C" fn randomize_tc() { unsafe {
     // F8 isn't in the script; the game seeds it from the system.
     liero_tc_randomize(&mut *app().menu_tc(), 0);
-}
+}}
 
 unsafe extern "C" fn menu_screen() -> LieroScreen {
     liero_menu_screen(LieroMenuScreenHooks { menus: app().menus, randomize_tc })

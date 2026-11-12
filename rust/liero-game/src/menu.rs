@@ -203,7 +203,7 @@ impl Menu<'_> {
     /// Tab), whose name starts with or, if `contains`, contains the search
     /// text plus `key` (None for Tab), ignoring case: one key of
     /// `Menu::onKeys`. `prefix` is the search text so far.
-    pub unsafe fn search(&mut self, prefix: &[u8], key: Option<u8>, contains: bool, time: u32) -> LieroMenuSearch {
+    pub unsafe fn search(&mut self, prefix: &[u8], key: Option<u8>, contains: bool, time: u32) -> LieroMenuSearch { unsafe {
         let mut keep = prefix.len();
         if key.is_some() && time.wrapping_sub(self.m.search_time) > 1500 {
             keep = 0;
@@ -233,7 +233,7 @@ impl Menu<'_> {
                 return LieroMenuSearch { keep: 0, add: false };
             }
         }
-    }
+    }}
 
     /// One item: `MenuItem::draw`.
     // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
@@ -247,7 +247,7 @@ impl Menu<'_> {
         y: i32,
         selected: bool,
         disabled: bool,
-    ) {
+    ) { unsafe {
         let string = item.string.bytes();
         let value = item.value.bytes();
         let wid = font.dims(string).0;
@@ -280,7 +280,7 @@ impl Menu<'_> {
         if item.has_value {
             font.text(scr, value, value_x + 2, y + 1, c as i32, 1);
         }
-    }
+    }}
 
     /// The items in view and the scroll bar: `Menu::draw`. `x` < 0 means the
     /// menu's own position.
@@ -292,7 +292,7 @@ impl Menu<'_> {
         disabled: bool,
         x: i32,
         show_disabled_selection: bool,
-    ) {
+    ) { unsafe {
         let m = &*self.m;
         let x = if x < 0 { m.x } else { x };
         let mut items_left = m.height;
@@ -324,7 +324,7 @@ impl Menu<'_> {
             liero_gfx_fill_rect(scr, x - 7, tab_y + 9, 7, tab_height, 0);
             liero_gfx_fill_rect(scr, x - 8, tab_y + 8, 7, tab_height, 7);
         }
-    }
+    }}
 }
 
 /// `toupper` in the C locale.
@@ -340,32 +340,32 @@ fn matches(name: &[u8], text: &[u8], contains: bool) -> bool {
     }
 }
 
-unsafe fn menu<'a>(m: &'a mut LieroMenu, items: *mut LieroMenuItem, count: i32) -> Menu<'a> {
+unsafe fn menu<'a>(m: &'a mut LieroMenu, items: *mut LieroMenuItem, count: i32) -> Menu<'a> { unsafe {
     let items = if count <= 0 || items.is_null() {
         &mut [][..]
     } else {
         std::slice::from_raw_parts_mut(items, count as usize)
     };
     Menu { m, items }
-}
+}}
 
 /// The C functions below take a menu's state and its `count` items.
 ///
 /// # Safety
 /// `items` has `count` items, valid for the call.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_move_to(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, item: i32) {
+pub unsafe extern "C" fn liero_menu_move_to(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, item: i32) { unsafe {
     menu(m, items, count).move_to(item);
-}
+}}
 
 /// Selects the next selectable item up (`direction` < 0) or down.
 ///
 /// # Safety
 /// See `liero_menu_move_to`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_movement(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, direction: i32) {
+pub unsafe extern "C" fn liero_menu_movement(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, direction: i32) { unsafe {
     menu(m, items, count).movement(direction);
-}
+}}
 
 /// Moves half a page up or down.
 ///
@@ -377,27 +377,27 @@ pub unsafe extern "C" fn liero_menu_movement_page(
     items: *mut LieroMenuItem,
     count: i32,
     direction: i32,
-) {
+) { unsafe {
     menu(m, items, count).movement_page(direction);
-}
+}}
 
 /// Scrolls so the visible item `top` is first.
 ///
 /// # Safety
 /// See `liero_menu_move_to`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_set_top(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, top: i32) {
+pub unsafe extern "C" fn liero_menu_set_top(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, top: i32) { unsafe {
     menu(m, items, count).set_top(top);
-}
+}}
 
 /// Scrolls by `amount` items.
 ///
 /// # Safety
 /// See `liero_menu_move_to`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_scroll(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, amount: i32) {
+pub unsafe extern "C" fn liero_menu_scroll(m: &mut LieroMenu, items: *mut LieroMenuItem, count: i32, amount: i32) { unsafe {
     menu(m, items, count).scroll(amount);
-}
+}}
 
 /// Shows or hides `item`.
 ///
@@ -410,9 +410,9 @@ pub unsafe extern "C" fn liero_menu_set_visibility(
     count: i32,
     item: i32,
     state: bool,
-) {
+) { unsafe {
     menu(m, items, count).set_visibility(item, state);
-}
+}}
 
 /// Where `item` is drawn into `x` and `y`, or false if it is out of view.
 ///
@@ -426,7 +426,7 @@ pub unsafe extern "C" fn liero_menu_item_position(
     item: i32,
     x: &mut i32,
     y: &mut i32,
-) -> bool {
+) -> bool { unsafe {
     match menu(m, items, count).item_position(item) {
         Some((px, py)) => {
             (*x, *y) = (px, py);
@@ -434,7 +434,7 @@ pub unsafe extern "C" fn liero_menu_item_position(
         }
         None => false,
     }
-}
+}}
 
 /// One key typed to search the menu: `key` is the character, or -1 for Tab.
 /// `prefix` is the search text so far, `prefix_len` bytes.
@@ -451,11 +451,11 @@ pub unsafe extern "C" fn liero_menu_search(
     key: i32,
     contains: bool,
     time: u32,
-) -> LieroMenuSearch {
+) -> LieroMenuSearch { unsafe {
     let prefix = LieroStr { ptr: prefix, len: prefix_len };
     let key = (key >= 0).then_some(key as u8);
     menu(m, items, count).search(prefix.bytes(), key, contains, time)
-}
+}}
 
 /// Draws the menu: `Menu::draw`.
 ///
@@ -473,9 +473,9 @@ pub unsafe extern "C" fn liero_menu_draw(
     disabled: bool,
     x: i32,
     show_disabled_selection: bool,
-) {
+) { unsafe {
     menu(m, items, count).draw(scr, font, hooks, disabled, x, show_disabled_selection);
-}
+}}
 
 /// A number item's value after pressing left or right: `IntegerBehavior`.
 /// Held keys repeat every `scroll_interval` menu frames.
@@ -524,7 +524,7 @@ pub const LIERO_MENU_VALUE_FRAMES: i32 = 3;
 /// # Safety
 /// `out` must hold `cap` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_value_text(v: i32, kind: i32, out: *mut u8, cap: usize) -> usize {
+pub unsafe extern "C" fn liero_menu_value_text(v: i32, kind: i32, out: *mut u8, cap: usize) -> usize { unsafe {
     let text = match kind {
         LIERO_MENU_VALUE_PERCENTAGE => format!("{v}%").into_bytes(),
         LIERO_MENU_VALUE_TIME => time_to_string(v).to_vec(),
@@ -538,7 +538,7 @@ pub unsafe extern "C" fn liero_menu_value_text(v: i32, kind: i32, out: *mut u8, 
     std::ptr::copy_nonoverlapping(text.as_ptr(), out, n);
     *out.add(n) = 0;
     n
-}
+}}
 
 /// Edit distance between `a` and `b`, ignoring case: `levenshtein`.
 pub fn levenshtein(a: &[u8], b: &[u8]) -> u32 {
@@ -571,7 +571,7 @@ pub unsafe extern "C" fn liero_menu_closest_name(
     count: i32,
     search: *const u8,
     search_len: usize,
-) -> i32 {
+) -> i32 { unsafe {
     let search = LieroStr { ptr: search, len: search_len };
     let names = if count <= 0 { &[][..] } else { std::slice::from_raw_parts(names, count as usize) };
     let mut best = -1;
@@ -585,7 +585,7 @@ pub unsafe extern "C" fn liero_menu_closest_name(
         }
     }
     best
-}
+}}
 
 /// A colour component's bar in the player menu: `PlayerMenu::drawItemOverlay`.
 ///
@@ -599,22 +599,22 @@ pub unsafe extern "C" fn liero_menu_draw_rgb_overlay(
     selected: bool,
     value: i32,
     color: i32,
-) {
+) { unsafe {
     liero_gfx_draw_rounded_box(scr, x + 24, y, if selected { 168 } else { 0 }, 7, value - 1);
     liero_gfx_fill_rect(scr, x + 25, y + 1, value, 5, color as u8);
-}
+}}
 
 /// The palette entry shown in the options menu: `HiddenMenu::drawItemOverlay`.
 ///
 /// # Safety
 /// See `LieroBitmap`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_draw_palette_overlay(scr: &LieroBitmap, x: i32, y: i32, selected: bool, color: i32) {
+pub unsafe extern "C" fn liero_menu_draw_palette_overlay(scr: &LieroBitmap, x: i32, y: i32, selected: bool, color: i32) { unsafe {
     let w = 30;
     let offs_x = 44;
     liero_gfx_draw_rounded_box(scr, x + offs_x, y, if selected { 168 } else { 0 }, 7, w);
     liero_gfx_fill_rect(scr, x + offs_x + 1, y + 1, w + 1, 5, color as u8);
-}
+}}
 
 /// The level, "A vs B" and the worms' colours, twice as big, as the spectator
 /// window shows them: `drawVersusInfo`. `level` is the level's line of text.
@@ -632,7 +632,7 @@ pub unsafe extern "C" fn liero_menu_draw_versus(
     color1: i32,
     center_x: i32,
     center_y: i32,
-) {
+) { unsafe {
     font.centered(scr, level.bytes(), center_x, center_y - 32, 7, 2);
 
     let mut vs = name0.bytes().to_vec();
@@ -645,21 +645,21 @@ pub unsafe extern "C" fn liero_menu_draw_versus(
     liero_gfx_fill_rect(scr, center_x - size / 2, center_y + 23, 14, 14, color0 as u8);
     liero_gfx_fill_rect(scr, center_x + size / 2 - 17, center_y + 22, 16, 16, 7);
     liero_gfx_fill_rect(scr, center_x + size / 2 - 16, center_y + 23, 14, 14, color1 as u8);
-}
+}}
 
 /// A message in a box centred on (x, y): `drawInfoBox`.
 ///
 /// # Safety
 /// See `LieroBitmap`; `text` must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_draw_info_box(scr: &LieroBitmap, font: &LieroFont, text: LieroStr, x: i32, y: i32) {
+pub unsafe extern "C" fn liero_menu_draw_info_box(scr: &LieroBitmap, font: &LieroFont, text: LieroStr, x: i32, y: i32) { unsafe {
     let text = text.bytes();
     let (width, height) = font.dims(text);
     let cx = x - width / 2 - 2;
     let cy = y - height / 2 - 2;
     liero_gfx_draw_rounded_box(scr, cx, cy, 0, height + 1, width + 1);
     font.text(scr, text, cx + 2, cy + 2, 6, 1);
-}
+}}
 
 /// Text being typed in a box at (x, y), over a strip of `frozen`, the screen
 /// before the box: `drawInputBox`.
@@ -675,7 +675,7 @@ pub unsafe extern "C" fn liero_menu_draw_input_box(
     x: i32,
     y: i32,
     centered: bool,
-) {
+) { unsafe {
     let text = text.bytes();
     let width = font.dims(text).0;
     let adjust = if centered { width / 2 } else { 0 };
@@ -694,7 +694,7 @@ pub unsafe extern "C" fn liero_menu_draw_input_box(
 
     liero_gfx_draw_rounded_box(scr, x - 2 - adjust, y, 0, 7, width);
     font.text(scr, text, x - adjust, y + 1, 50, 1);
-}
+}}
 
 const SCANCODE_TAB: u32 = 43;
 
@@ -918,11 +918,11 @@ pub extern "C" fn liero_menu_box_assign(dst: &mut LieroMenuBox, src: &LieroMenuB
 /// # Safety
 /// `b` came from `liero_menu_box_new` or `_clone` and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_box_free(b: *mut LieroMenuBox) {
+pub unsafe extern "C" fn liero_menu_box_free(b: *mut LieroMenuBox) { unsafe {
     if !b.is_null() {
         drop(Box::from_raw(b));
     }
-}
+}}
 
 /// The menu's state, which stays at this address while the box lives.
 #[no_mangle]
@@ -972,20 +972,20 @@ pub extern "C" fn liero_menu_box_id(b: &LieroMenuBox, i: i32) -> i32 {
 /// # Safety
 /// `s` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_box_set_string(b: &mut LieroMenuBox, i: i32, s: LieroStr) {
+pub unsafe extern "C" fn liero_menu_box_set_string(b: &mut LieroMenuBox, i: i32, s: LieroStr) { unsafe {
     let i = index(b, i);
     b.0.names[i] = s.bytes().to_vec();
-}
+}}
 
 /// Sets the value and shows it.
 ///
 /// # Safety
 /// `s` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_menu_box_set_value(b: &mut LieroMenuBox, i: i32, s: LieroStr) {
+pub unsafe extern "C" fn liero_menu_box_set_value(b: &mut LieroMenuBox, i: i32, s: LieroStr) { unsafe {
     let i = index(b, i);
     b.0.set_value(i, s.bytes().to_vec());
-}
+}}
 
 /// Sets the flag alone, without counting visible items (`item.visible =`).
 #[no_mangle]

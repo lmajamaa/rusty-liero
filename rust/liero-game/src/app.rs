@@ -155,9 +155,9 @@ pub extern "C" fn liero_app_settings(a: &mut LieroApp) -> *mut LieroSettingsBox 
 /// # Safety
 /// `s` is a valid box, or null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_settings(a: &mut LieroApp, s: *mut LieroSettingsBox) {
+pub unsafe extern "C" fn liero_app_set_settings(a: &mut LieroApp, s: *mut LieroSettingsBox) { unsafe {
     a.settings = (!s.is_null()).then(|| Shared::retain(s));
-}
+}}
 
 /// Shows the single screen renderer, or the play one.
 #[no_mangle]
@@ -182,9 +182,9 @@ pub extern "C" fn liero_app_tc(a: &mut LieroApp) -> *mut LieroTc {
 /// # Safety
 /// `tc` comes from `liero_tc_load` and has a reference, or is null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_tc(a: &mut LieroApp, tc: *mut LieroTc) {
+pub unsafe extern "C" fn liero_app_set_tc(a: &mut LieroApp, tc: *mut LieroTc) { unsafe {
     a.tc = (!tc.is_null()).then(|| Shared::retain(tc));
-}
+}}
 
 /// The menus the app draws.
 #[no_mangle]
@@ -204,10 +204,10 @@ pub extern "C" fn liero_app_controller(a: &mut LieroApp) -> *mut LieroController
 /// # Safety
 /// `c` isn't used by C++ after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_controller(a: &mut LieroApp, c: *mut LieroController) {
+pub unsafe extern "C" fn liero_app_set_controller(a: &mut LieroApp, c: *mut LieroController) { unsafe {
     a.controller = None;
     a.controller = (!c.is_null()).then(|| Box::from_raw(c));
-}
+}}
 
 #[no_mangle]
 pub extern "C" fn liero_app_menu_cycles(a: &mut LieroApp) -> *mut u32 {

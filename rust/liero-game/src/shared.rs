@@ -16,18 +16,18 @@ pub fn new_shared<T>(v: T) -> *mut T {
 ///
 /// # Safety
 /// `p` comes from `new_shared` and still has a reference.
-pub unsafe fn retain_shared<T>(p: *mut T) -> *mut T {
+pub unsafe fn retain_shared<T>(p: *mut T) -> *mut T { unsafe {
     Rc::increment_strong_count(p as *const UnsafeCell<T>);
     p
-}
+}}
 
 /// Gives up one reference to `p`, freeing it with the last.
 ///
 /// # Safety
 /// `p` comes from `new_shared`, and this reference isn't used again.
-pub unsafe fn release_shared<T>(p: *mut T) {
+pub unsafe fn release_shared<T>(p: *mut T) { unsafe {
     Rc::decrement_strong_count(p as *const UnsafeCell<T>);
-}
+}}
 
 /// One reference to a shared box.
 pub struct Shared<T>(*mut T);
@@ -37,9 +37,9 @@ impl<T> Shared<T> {
     ///
     /// # Safety
     /// See `retain_shared`.
-    pub unsafe fn retain(p: *mut T) -> Self {
+    pub unsafe fn retain(p: *mut T) -> Self { unsafe {
         Shared(retain_shared(p))
-    }
+    }}
 
     /// Takes over the reference `p` has, as `new_shared` returns it.
     ///

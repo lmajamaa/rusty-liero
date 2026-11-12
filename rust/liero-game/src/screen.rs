@@ -340,24 +340,24 @@ pub(crate) fn current_host() -> Host {
 
 type BoxedScreen = Box<dyn Screen>;
 
-unsafe extern "C" fn rust_tick(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen) {
+unsafe extern "C" fn rust_tick(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen) { unsafe {
     let s = &mut *(data as *mut BoxedScreen);
     let t = s.tick(&host());
     *out = LieroTick { kind: t.kind, shown: t.shown, result: t.result };
     if let Some(n) = t.next {
         *next = n;
     }
-}
+}}
 
-unsafe extern "C" fn rust_resume(data: *mut c_void, result: i32) {
+unsafe extern "C" fn rust_resume(data: *mut c_void, result: i32) { unsafe {
     let s = &mut *(data as *mut BoxedScreen);
     s.resume(&host(), result);
-}
+}}
 
-unsafe extern "C" fn rust_free(data: *mut c_void) {
+unsafe extern "C" fn rust_free(data: *mut c_void) { unsafe {
     let mut s = Box::from_raw(data as *mut BoxedScreen);
     s.close(&host());
-}
+}}
 
 /// A Rust screen as the stack holds it.
 pub fn into_ffi(s: BoxedScreen) -> LieroScreen {
@@ -381,11 +381,11 @@ impl LieroScreen {
         LieroScreen { data: std::ptr::null_mut(), tick: None, resume: None, free: None }
     }
 
-    pub(crate) unsafe fn release(self) {
+    pub(crate) unsafe fn release(self) { unsafe {
         if let Some(free) = self.free {
             free(self.data);
         }
-    }
+    }}
 }
 
 impl LieroApp {
@@ -393,14 +393,14 @@ impl LieroApp {
         LieroApp { screens: Vec::new(), last: None }
     }
 
-    unsafe fn clear(&mut self) {
+    unsafe fn clear(&mut self) { unsafe {
         while let Some(s) = self.screens.pop() {
             s.release();
         }
-    }
+    }}
 
     /// One step of the top screen. False once no screen is left.
-    unsafe fn step(&mut self, host: &LieroAppHost) -> bool {
+    unsafe fn step(&mut self, host: &LieroAppHost) -> bool { unsafe {
         let Some(top) = self.screens.last() else {
             return false;
         };
@@ -442,7 +442,7 @@ impl LieroApp {
             LieroTickKind::TickQuit => self.clear(),
         }
         !self.screens.is_empty()
-    }
+    }}
 
     /// How many steps are due at `now`, and moves the clock past them.
     fn due(&mut self, now: u32) -> u32 {
@@ -471,12 +471,12 @@ pub extern "C" fn liero_app_new() -> *mut LieroApp {
 /// # Safety
 /// `app` comes from `liero_app_new` and isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_free(app: *mut LieroApp) {
+pub unsafe extern "C" fn liero_app_free(app: *mut LieroApp) { unsafe {
     if !app.is_null() {
         let mut app = Box::from_raw(app);
         app.clear();
     }
-}
+}}
 
 /// Puts `screen` on top; the stack owns it from now on.
 #[no_mangle]
@@ -495,18 +495,18 @@ pub extern "C" fn liero_app_depth(app: &LieroApp) -> usize {
 /// # Safety
 /// The screens' functions are safe to call.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_clear(app: &mut LieroApp) {
+pub unsafe extern "C" fn liero_app_clear(app: &mut LieroApp) { unsafe {
     app.clear();
-}
+}}
 
 /// Runs one step of the top screen. Returns false once no screen is left.
 ///
 /// # Safety
 /// The screens' and host's functions are safe to call with their data.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost) -> bool {
+pub unsafe extern "C" fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost) -> bool { unsafe {
     app.step(host)
-}
+}}
 
 /// Runs the steps due at `now_ms` on the caller's clock: one on the first
 /// call, then one per 14 ms passed, at most four. Returns false once no
@@ -515,14 +515,14 @@ pub unsafe extern "C" fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost)
 /// # Safety
 /// The screens' and host's functions are safe to call with their data.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_frame(app: &mut LieroApp, now_ms: u32, host: &LieroAppHost) -> bool {
+pub unsafe extern "C" fn liero_app_frame(app: &mut LieroApp, now_ms: u32, host: &LieroAppHost) -> bool { unsafe {
     for _ in 0..app.due(now_ms) {
         if !app.step(host) {
             return false;
         }
     }
     !app.screens.is_empty()
-}
+}}
 
 #[cfg(test)]
 mod tests {
@@ -542,7 +542,7 @@ mod tests {
         unsafe { (*f.log).borrow_mut().push(s) };
     }
 
-    unsafe extern "C" fn tick(data: *mut c_void, out: *mut LieroTick, next_out: *mut LieroScreen) {
+    unsafe extern "C" fn tick(data: *mut c_void, out: *mut LieroTick, next_out: *mut LieroScreen) { unsafe {
         let f = &mut *(data as *mut Fake);
         log(f, format!("tick {}", f.name));
         let out = &mut *out;
@@ -561,29 +561,29 @@ mod tests {
             None if f.then == LieroTickKind::TickPush => LieroTickKind::TickClose,
             None => f.then,
         };
-    }
+    }}
 
-    unsafe extern "C" fn resume(data: *mut c_void, result: i32) {
+    unsafe extern "C" fn resume(data: *mut c_void, result: i32) { unsafe {
         let f = &*(data as *mut Fake);
         log(f, format!("resume {} {}", f.name, result));
-    }
+    }}
 
-    unsafe extern "C" fn free(data: *mut c_void) {
+    unsafe extern "C" fn free(data: *mut c_void) { unsafe {
         let f = Box::from_raw(data as *mut Fake);
         log(&f, format!("free {}", f.name));
-    }
+    }}
 
     fn screen(f: Box<Fake>) -> LieroScreen {
         LieroScreen { data: Box::into_raw(f).cast(), tick: Some(tick), resume: Some(resume), free: Some(free) }
     }
 
-    unsafe extern "C" fn show(data: *mut c_void) {
+    unsafe extern "C" fn show(data: *mut c_void) { unsafe {
         (*(data as *const RefCell<Vec<String>>)).borrow_mut().push("show".into());
-    }
+    }}
 
-    unsafe extern "C" fn idle(data: *mut c_void) {
+    unsafe extern "C" fn idle(data: *mut c_void) { unsafe {
         (*(data as *const RefCell<Vec<String>>)).borrow_mut().push("idle".into());
-    }
+    }}
 
     fn fake(name: &'static str, stays: u32, then: LieroTickKind, open: Option<Box<Fake>>, log: &RefCell<Vec<String>>) -> Box<Fake> {
         Box::new(Fake { name, stays, then, open, log })

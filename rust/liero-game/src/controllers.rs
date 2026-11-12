@@ -79,13 +79,13 @@ pub struct LieroController {
 
 /// A new game with the settings, the TC and the app's sound, its clock
 /// seeded from the time, as C++'s `Game` constructor did.
-unsafe fn new_game(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> Box<LieroGame> {
+unsafe fn new_game(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> Box<LieroGame> { unsafe {
     let host = current_host();
     let mut game = Box::from_raw(liero_game_new());
     liero_game_set_context(&mut game, settings, tc, host.sound());
     crate::rand::liero_rand_seed(&mut game.data_mut().rand, host.time() as u32);
     game
-}
+}}
 
 unsafe extern "C" fn host_hires_ticks(_: *mut c_void) -> u64 {
     current_host().hires_ticks()
@@ -160,7 +160,7 @@ impl LieroController {
     }
 
     /// Ends the game's stats and opens the stats screen (`presentStats`).
-    unsafe fn present_stats(&mut self) {
+    unsafe fn present_stats(&mut self) { unsafe {
         let game = self.game().expect("no game");
         game.stats_finish();
         let names: Vec<LieroStr>;
@@ -172,9 +172,9 @@ impl LieroController {
         }
         let s = liero_stats_presenter_screen(&*game.stats(), &scene);
         self.open(s);
-    }
+    }}
 
-    unsafe fn on_key(&mut self, key: i32, state: bool) {
+    unsafe fn on_key(&mut self, key: i32, state: bool) { unsafe {
         let escape = match &mut self.kind {
             Kind::Local(l) => {
                 let keys: Vec<LieroWormKeys> = l
@@ -194,9 +194,9 @@ impl LieroController {
             self.data.fade_value = 31;
             self.data.going_to_menu = true;
         }
-    }
+    }}
 
-    unsafe fn unfocus(&mut self) {
+    unsafe fn unfocus(&mut self) { unsafe {
         if let Kind::Local(l) = &mut self.kind {
             if let Some(w) = &mut l.replay {
                 liero_replay_writer_unfocus(w);
@@ -205,9 +205,9 @@ impl LieroController {
                 liero_weapsel_set_focused(l.ws.as_mut().expect("no weapon selection"), false);
             }
         }
-    }
+    }}
 
-    unsafe fn focus(&mut self) {
+    unsafe fn focus(&mut self) { unsafe {
         let d = &mut self.data;
         if d.state == LIERO_STATE_GAME_ENDED {
             d.going_to_menu = true;
@@ -252,16 +252,16 @@ impl LieroController {
         game.focus(&mut *a.single);
         self.data.going_to_menu = false;
         self.data.fade_value = 0;
-    }
+    }}
 
-    unsafe fn process(&mut self) -> bool {
+    unsafe fn process(&mut self) -> bool { unsafe {
         match &mut self.kind {
             Kind::Local(_) => self.process_local(),
             Kind::Replay(_) => self.process_replay(),
         }
-    }
+    }}
 
-    unsafe fn process_local(&mut self) -> bool {
+    unsafe fn process_local(&mut self) -> bool { unsafe {
         let Kind::Local(l) = &mut self.kind else { unreachable!() };
         if self.data.state == LIERO_STATE_WEAPON_SELECTION {
             if liero_weapsel_process_game(l.ws.as_mut().expect("no weapon selection")) {
@@ -299,9 +299,9 @@ impl LieroController {
             self.data.fade_value += 1;
         }
         true
-    }
+    }}
 
-    unsafe fn process_replay(&mut self) -> bool {
+    unsafe fn process_replay(&mut self) -> bool { unsafe {
         if self.data.in_game() {
             let Kind::Replay(r) = &mut self.kind else { unreachable!() };
             let game = r.game.as_mut().expect("no game");
@@ -369,9 +369,9 @@ impl LieroController {
             return false;
         }
         true
-    }
+    }}
 
-    unsafe fn draw(&mut self, renderer: *mut LieroRenderer, spectators: bool) {
+    unsafe fn draw(&mut self, renderer: *mut LieroRenderer, spectators: bool) { unsafe {
         let state = self.data.state;
         match &mut self.kind {
             Kind::Local(l) => {
@@ -388,9 +388,9 @@ impl LieroController {
             }
         }
         (*renderer).data.fade_value = self.data.fade_value;
-    }
+    }}
 
-    unsafe fn change_state(&mut self, new_state: i32) {
+    unsafe fn change_state(&mut self, new_state: i32) { unsafe {
         if self.data.state == new_state {
             return;
         }
@@ -398,9 +398,9 @@ impl LieroController {
             Kind::Local(_) => self.change_local_state(new_state),
             Kind::Replay(_) => self.change_replay_state(new_state),
         }
-    }
+    }}
 
-    unsafe fn change_local_state(&mut self, new_state: i32) {
+    unsafe fn change_local_state(&mut self, new_state: i32) { unsafe {
         let Kind::Local(l) = &mut self.kind else { unreachable!() };
         // The new state is prepared before the old one goes: weapon
         // selection is dropped only once recording has started.
@@ -440,9 +440,9 @@ impl LieroController {
             l.ws = None;
         }
         self.data.state = new_state;
-    }
+    }}
 
-    unsafe fn change_replay_state(&mut self, new_state: i32) {
+    unsafe fn change_replay_state(&mut self, new_state: i32) { unsafe {
         let Kind::Replay(r) = &mut self.kind else { unreachable!() };
         if new_state == LIERO_STATE_GAME {
             let game = r.game.as_mut().expect("no game");
@@ -471,7 +471,7 @@ impl LieroController {
             self.data.going_to_menu = true;
         }
         self.data.state = new_state;
-    }
+    }}
 
     fn end_record(&mut self) {
         if let Kind::Local(l) = &mut self.kind {
@@ -506,16 +506,16 @@ impl Drop for LieroController {
     }
 }
 
-unsafe fn free_screen(s: LieroScreen) {
+unsafe fn free_screen(s: LieroScreen) { unsafe {
     if let Some(free) = s.free {
         free(s.data);
     }
-}
+}}
 
 /// The error a replay outcome is, as the controllers catch it: a check
 /// error, and with `read_too` a read error. Others stop the app, as the
 /// exceptions C++ didn't catch did.
-unsafe fn caught(o: &LieroReplayOutcome, read_too: bool) -> Option<String> {
+unsafe fn caught(o: &LieroReplayOutcome, read_too: bool) -> Option<String> { unsafe {
     let message = String::from_utf8_lossy(o.message.bytes()).into_owned();
     match o.status {
         LieroReplayStatus::Ok => None,
@@ -524,10 +524,10 @@ unsafe fn caught(o: &LieroReplayOutcome, read_too: bool) -> Option<String> {
         LieroReplayStatus::ReadError => panic!("{message}"),
         LieroReplayStatus::OutOfRange => panic!("vector"),
     }
-}
+}}
 
 /// Starts recording a replay of `l`'s game in the config folder's Replays.
-unsafe fn start_recording(l: &mut Local) -> Result<(), String> {
+unsafe fn start_recording(l: &mut Local) -> Result<(), String> { unsafe {
     let name = replay_name(&mut l.game);
     let node = crate::app::app().files.config.go(b"Replays").go(&name);
     let w = liero_replay_writer_new(&LieroFsNode(node.clone()));
@@ -542,7 +542,7 @@ unsafe fn start_recording(l: &mut Local) -> Result<(), String> {
         Some(e) => Err(e),
         None => Ok(()),
     }
-}
+}}
 
 /// What the stats screen draws with (`statsScene`).
 ///
@@ -552,7 +552,7 @@ pub(crate) unsafe fn stats_scene(
     game: &mut LieroGame,
     r: &crate::renderer::LieroRendererData,
     names: &[LieroStr],
-) -> LieroStatsScene {
+) -> LieroStatsScene { unsafe {
     let tc = &*game.tc_data();
     let sprites = &tc.worm_sprites;
     let size = sprites.width * sprites.height;
@@ -579,14 +579,14 @@ pub(crate) unsafe fn stats_scene(
         render_res_y: r.render_res_y,
         ticks_per_sec: 1_000_000_000,
     }
-}
+}}
 
 /// A local match with the settings' two players (`LocalController`).
 ///
 /// # Safety
 /// `settings` and `tc` have references.
 #[no_mangle]
-pub unsafe extern "C" fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> *mut LieroController {
+pub unsafe extern "C" fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> *mut LieroController { unsafe {
     let mut game = new_game(settings, tc);
     let s = &*settings;
     let mut indexes = [0; 2];
@@ -602,7 +602,7 @@ pub unsafe extern "C" fn liero_local_controller_new(settings: *mut LieroSettings
     split_viewports(&mut game, indexes[0], indexes[1]);
     spectator_viewport(&mut game, true);
     Box::into_raw(LieroController::new(Kind::Local(Local { game, ws: None, replay: None })))
-}
+}}
 
 /// A replay of `node`, played with `tc` (`ReplayController`), or null if
 /// it can't be read.
@@ -610,7 +610,7 @@ pub unsafe extern "C" fn liero_local_controller_new(settings: *mut LieroSettings
 /// # Safety
 /// `tc` has a reference, which the controller keeps while it lives.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_controller_new(node: &LieroFsNode, tc: *mut LieroTc) -> *mut LieroController {
+pub unsafe extern "C" fn liero_replay_controller_new(node: &LieroFsNode, tc: *mut LieroTc) -> *mut LieroController { unsafe {
     let reader = liero_replay_reader_new(node);
     if reader.is_null() {
         return std::ptr::null_mut();
@@ -618,7 +618,7 @@ pub unsafe extern "C" fn liero_replay_controller_new(node: &LieroFsNode, tc: *mu
     let tc = crate::shared::retain_shared(tc);
     let r = Replay { reader: Some(Box::from_raw(reader)), tc, game: None, initial: None, initial_pos: 0 };
     Box::into_raw(LieroController::new(Kind::Replay(r)))
-}
+}}
 
 impl Drop for Replay {
     fn drop(&mut self) {
@@ -633,11 +633,11 @@ impl Drop for Replay {
 /// # Safety
 /// `c` comes from a `_new` here, or is null, and isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_free(c: *mut LieroController) {
+pub unsafe extern "C" fn liero_controller_free(c: *mut LieroController) { unsafe {
     if !c.is_null() {
         drop(Box::from_raw(c));
     }
-}
+}}
 
 /// What the controllers share, at a fixed address.
 #[no_mangle]
@@ -650,36 +650,36 @@ pub extern "C" fn liero_controller_data(c: &mut LieroController) -> *mut LieroCo
 /// # Safety
 /// `c` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_on_key(c: &mut LieroController, key: i32, state: bool) {
+pub unsafe extern "C" fn liero_controller_on_key(c: &mut LieroController, key: i32, state: bool) { unsafe {
     c.on_key(key, state);
-}
+}}
 
 /// The menu opened.
 ///
 /// # Safety
 /// `c` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_unfocus(c: &mut LieroController) {
+pub unsafe extern "C" fn liero_controller_unfocus(c: &mut LieroController) { unsafe {
     c.unfocus();
-}
+}}
 
 /// The menu closed to the game.
 ///
 /// # Safety
 /// `c` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_focus(c: &mut LieroController) {
+pub unsafe extern "C" fn liero_controller_focus(c: &mut LieroController) { unsafe {
     c.focus();
-}
+}}
 
 /// One frame: false once the controller is done and back to the menu.
 ///
 /// # Safety
 /// `c` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_run(c: &mut LieroController) -> bool {
+pub unsafe extern "C" fn liero_controller_run(c: &mut LieroController) -> bool { unsafe {
     c.process()
-}
+}}
 
 /// Draws the game on `r`, the split screen or with `spectators` the
 /// spectator one.
@@ -687,9 +687,9 @@ pub unsafe extern "C" fn liero_controller_run(c: &mut LieroController) -> bool {
 /// # Safety
 /// `c` and `r` are valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_draw(c: &mut LieroController, r: *mut LieroRenderer, spectators: bool) {
+pub unsafe extern "C" fn liero_controller_draw(c: &mut LieroController, r: *mut LieroRenderer, spectators: bool) { unsafe {
     c.draw(r, spectators);
-}
+}}
 
 /// Whether a game is on, for the menu to offer to resume it.
 #[no_mangle]
@@ -719,7 +719,7 @@ pub extern "C" fn liero_controller_game(c: &mut LieroController) -> *mut LieroGa
 /// # Safety
 /// `out` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_take_opened(c: &mut LieroController, out: *mut LieroScreen) -> bool {
+pub unsafe extern "C" fn liero_controller_take_opened(c: &mut LieroController, out: *mut LieroScreen) -> bool { unsafe {
     match c.opened.take() {
         Some(s) => {
             *out = s;
@@ -727,7 +727,7 @@ pub unsafe extern "C" fn liero_controller_take_opened(c: &mut LieroController, o
         }
         None => false,
     }
-}
+}}
 
 /// What the stats screen draws `g`'s game with, on `r`; `names` are the
 /// TC's weapons' names, which outlive the scene.
@@ -740,19 +740,19 @@ pub unsafe extern "C" fn liero_game_stats_scene(
     r: &LieroRenderer,
     names: *const LieroStr,
     count: usize,
-) -> LieroStatsScene {
+) -> LieroStatsScene { unsafe {
     let names = if count == 0 { &[][..] } else { std::slice::from_raw_parts(names, count) };
     stats_scene(g, &r.data, names)
-}
+}}
 
 /// `Game::focus`: `r`'s palette from the level's and the worms' colours.
 ///
 /// # Safety
 /// `r` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_focus(g: &mut LieroGame, r: *mut LieroRenderer) {
+pub unsafe extern "C" fn liero_game_focus(g: &mut LieroGame, r: *mut LieroRenderer) { unsafe {
     g.focus(r);
-}
+}}
 
 #[cfg(test)]
 #[path = "controllers_tests.rs"]
