@@ -47,8 +47,7 @@ unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
 
 fn sounds(tc: &Shared<LieroTc>) -> &[LieroTcSound] {
     let d = tc_data(tc);
-    // SAFETY: the TC's sounds are as many as its count.
-    unsafe { items(d.sounds, d.sound_count) }
+    &d.sounds
 }
 
 fn samples(s: &LieroTcSound) -> &[i16] {

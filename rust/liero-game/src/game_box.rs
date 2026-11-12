@@ -628,7 +628,7 @@ pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&
         zone_timeout: s.zone_timeout,
         zone_capture_time: 70,
         weap_table: s.weap_table.as_ptr(),
-        weapon_count: tc.map_or(0, |tc| tc.weapon_count as i32),
+        weapon_count: tc.map_or(0, |tc| tc.weapons.len() as i32),
         bonus_rand_timer: [[t[0], t[1]], [t[2], t[3]]],
         bonus_spawn_rect_x: constant("BonusSpawnRectX"),
         bonus_spawn_rect_y: constant("BonusSpawnRectY"),
@@ -845,16 +845,12 @@ mod tests {
         let constants: Vec<i32> = (0..liero_data::exe::CONSTANT_ORDER.len() as i32)
             .map(|i| 1000 + i)
             .collect();
-        let layout = std::alloc::Layout::new::<LieroTcData>();
-        // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
-        let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
-        tc.constants = constants.as_ptr();
-        tc.constant_count = constants.len();
+        let mut tc = LieroTcData::empty();
+        tc.constants = constants;
         tc.bonus_rand_timer = [1, 2, 3, 4];
-        tc.weapon_count = 40;
-        let no_hacks = vec![false; liero_data::exe::HACKS.len()];
-        tc.hacks = no_hacks.as_ptr();
-        tc.hack_count = no_hacks.len();
+        // SAFETY: all zeroes is a valid weapon.
+        tc.weapons = (0..40).map(|_| unsafe { std::mem::zeroed() }).collect();
+        tc.hacks = vec![false; liero_data::exe::HACKS.len()];
         let s = crate::settings::liero_settings_box_new();
         unsafe {
             (*s).data.max_bonuses = 6;
@@ -878,8 +874,7 @@ mod tests {
         for (i, name) in names.iter().enumerate() {
             let mut hacks = vec![false; liero_data::exe::HACKS.len()];
             hacks[h(name)] = true;
-            tc.hacks = hacks.as_ptr();
-            tc.hack_count = hacks.len();
+            tc.hacks = hacks;
             let g = game_settings(unsafe { &(*s).data }, Some(&tc));
             let got = [
                 g.bonus_spawn_rect,

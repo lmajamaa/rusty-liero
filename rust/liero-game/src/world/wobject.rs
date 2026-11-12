@@ -133,7 +133,7 @@ impl<'a> World<'a> {
         let o = self.wobj(slot);
         let owner_idx = o.owner_idx;
         let kind = self.wobj_weapon(slot);
-        let index = ((kind as *const LieroTcWeapon as usize).wrapping_sub(self.tc.weapons as usize)
+        let index = ((kind as *const LieroTcWeapon as usize).wrapping_sub(self.tc.weapons.as_ptr() as usize)
             / std::mem::size_of::<LieroTcWeapon>()) as i32;
 
         // As liero would do this while rendering, we try to do it as early as possible

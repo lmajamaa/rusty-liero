@@ -749,7 +749,7 @@ pub fn read_checksum<S: Source + ?Sized>(src: &mut S, cycles: i32, actual: u32) 
 /// Weapon `kind`'s place among the TC's weapons, by address, as C++ took
 /// it (`w.type - &common.weapons[0]`).
 fn weapon_place(kind: *const c_void, tc: &LieroTcData) -> i32 {
-    ((kind as isize).wrapping_sub(tc.weapons as isize) / std::mem::size_of::<LieroTcWeapon>() as isize) as i32
+    ((kind as isize).wrapping_sub(tc.weapons.as_ptr() as isize) / std::mem::size_of::<LieroTcWeapon>() as isize) as i32
 }
 
 /// A worm as replays hold it (`wormFields`). Its rope's anchor is the
@@ -867,7 +867,7 @@ pub fn liero_replay_worm_set(worm: &mut LieroWormData, f: &LieroReplayWorm, all:
     for (w, r) in worm.weapons.iter_mut().zip(&f.weapons) {
         w.ammo = r.ammo;
         w.delay_left = r.delay_left;
-        w.kind = tc.weapons.wrapping_offset(r.weapon as isize).cast();
+        w.kind = tc.weapons.as_ptr().wrapping_offset(r.weapon as isize).cast();
         w.loading_left = r.loading_left;
     }
     worm.direction = f.direction;

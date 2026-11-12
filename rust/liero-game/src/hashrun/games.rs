@@ -158,18 +158,6 @@ const CONFIGS: [RunConfig; 17] = [
     },
 ];
 
-/// # Safety
-/// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
-    unsafe {
-        if n == 0 {
-            &[]
-        } else {
-            std::slice::from_raw_parts(p, n)
-        }
-    }
-}
-
 /// The TC's data.
 pub(super) fn tc_data(tc: &Shared<LieroTc>) -> &LieroTcData {
     // SAFETY: a loaded TC has its data while it lives.
@@ -178,8 +166,7 @@ pub(super) fn tc_data(tc: &Shared<LieroTc>) -> &LieroTcData {
 
 /// The menu positions of the named weapons.
 fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
-    // SAFETY: the TC's lists are as long as their counts.
-    let (weapons, order) = unsafe { (items(d.weapons, d.weapon_count), items(d.weap_order, d.weapon_count)) };
+    let (weapons, order) = (&d.weapons, &d.weap_order);
     names.map(|name| {
         // The last of the same name, as the C++ loop left it.
         let found = order.iter().rposition(|&w| {
@@ -305,11 +292,7 @@ fn hash_stats_screen(out: &mut Out, name: &str, game: &mut LieroGame, renderer: 
 
     let mut bg = crate::renderer::LieroBitmapBox::new();
     bg.copy_from(&renderer.bmp);
-    // SAFETY: the TC's weapons are as many as its count.
-    let names: Vec<LieroStr> = unsafe { items(d.weapons, d.weapon_count) }
-        .iter()
-        .map(|w| w.name)
-        .collect();
+    let names: Vec<LieroStr> = d.weapons.iter().map(|w| w.name).collect();
     let screen = LieroStatsScreen::new(stats, renderer.data.render_res_x);
 
     let mut n = 0;

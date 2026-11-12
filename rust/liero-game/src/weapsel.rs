@@ -143,10 +143,7 @@ impl<'a> Env<'a> {
 
     /// The TC's weapon `w`, as a worm's weapon slot points to it.
     unsafe fn kind(&self, w: i32) -> *const c_void {
-        unsafe {
-            assert!((w as usize) < (*self.tc).weapon_count);
-            (*self.tc).weapons.add(w as usize).cast()
-        }
+        unsafe { std::ptr::from_ref(&(*self.tc).weapons[w as usize]).cast() }
     }
 
     /// The weapon with number `n`, from 1. Numbers outside the list read
@@ -386,8 +383,7 @@ pub unsafe fn liero_weapsel_finalize(
             worm.current_weapon = 0; // It was 1 in OpenLiero A1
             for (ww, &n) in worm.weapons.iter_mut().zip(numbers) {
                 let w = tc.weapon_order()[(n as usize).wrapping_sub(1)];
-                assert!((w as usize) < tc.weapon_count);
-                let t = &*tc.weapons.add(w as usize);
+                let t = &tc.weapons[w as usize];
                 ww.kind = (t as *const LieroTcWeapon).cast();
                 ww.ammo = t.ammo;
                 ww.delay_left = 0;
@@ -530,8 +526,8 @@ unsafe fn game_env(game: &LieroGame) -> LieroWeapselEnv {
         let tc = &*game.tc_data();
         LieroWeapselEnv {
             weap_table: game.settings_box().data.weap_table.as_ptr(),
-            weap_order: tc.weap_order,
-            weapon_count: tc.weapon_count as i32,
+            weap_order: tc.weap_order.as_ptr(),
+            weapon_count: tc.weapons.len() as i32,
             rand: &mut app().rand,
             tc,
             sound: game.sound(),
@@ -614,7 +610,7 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
                 ready: bot && select != 1,
             });
         }
-        let names: Vec<LieroStr> = (0..tc.weapon_count).map(|i| (*tc.weapons.add(i)).name).collect();
+        let names: Vec<LieroStr> = tc.weapons.iter().map(|w| w.name).collect();
         let spec = LieroWeapselSpec {
             worms: worms.as_ptr(),
             worm_count: worms.len() as i32,
@@ -754,11 +750,8 @@ mod tests {
             .iter()
             .map(|t| LieroStr::of(t.0.as_bytes()))
             .collect();
-        let layout = std::alloc::Layout::new::<LieroTcData>();
-        // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
-        let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
-        tc.texts = texts.as_ptr();
-        tc.text_count = texts.len();
+        let mut tc = LieroTcData::empty();
+        tc.texts = texts;
         assert_eq!(level_line(&tc, b"", b"a/b.lev"), b"LevelRandom");
         assert_eq!(level_line(&tc, b"x", b"C:\\lev/a.b.lev"), b"LevelIs1a.bLevelIs2");
         assert_eq!(level_line(&tc, b"x", b"dir.d\\name"), b"LevelIs1nameLevelIs2");
@@ -836,25 +829,23 @@ mod tests {
 
     /// A TC with `n` weapons, each with ammo 10 + its index.
     /// Boxed: it is too big for the wasm tests' stack.
-    fn tc(weapons: &mut [LieroTcWeapon], order: &[i32]) -> Box<LieroTcData> {
+    fn tc(mut weapons: Vec<LieroTcWeapon>, order: &[i32]) -> Box<LieroTcData> {
         for (i, w) in weapons.iter_mut().enumerate() {
             w.id = i as i32;
             w.ammo = 10 + i as i32;
         }
-        let layout = std::alloc::Layout::new::<LieroTcData>();
-        // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
-        let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
-        tc.weapons = weapons.as_ptr();
-        tc.weapon_count = weapons.len();
-        tc.weap_order = order.as_ptr();
+        let mut tc = LieroTcData::empty();
+        tc.weapons = weapons;
+        tc.weap_order = order.to_vec();
         tc
     }
 
     #[test]
     fn menus_play_sounds_and_set_the_worm() {
         let order: Vec<i32> = (0..40).collect();
-        let mut weapons: Vec<LieroTcWeapon> = (0..40).map(|_| unsafe { std::mem::zeroed() }).collect();
-        let tc = tc(&mut weapons, &order);
+        let weapons: Vec<LieroTcWeapon> = (0..40).map(|_| unsafe { std::mem::zeroed() }).collect();
+        let tc = tc(weapons, &order);
+        let weapons = &tc.weapons;
         let table = [0u32; 40];
         let mut rand = LieroRand::new(1);
         let mut raw = env(&table, &order, &mut rand);
@@ -914,8 +905,9 @@ mod tests {
     #[test]
     fn finalize_loads_the_weapons_and_releases_the_controls() {
         let order: Vec<i32> = (0..10).rev().collect();
-        let mut weapons: Vec<LieroTcWeapon> = (0..10).map(|_| unsafe { std::mem::zeroed() }).collect();
-        let tc = tc(&mut weapons, &order);
+        let weapons: Vec<LieroTcWeapon> = (0..10).map(|_| unsafe { std::mem::zeroed() }).collect();
+        let tc = tc(weapons, &order);
+        let weapons = &tc.weapons;
         let mut worm = LieroWormData {
             current_weapon: 3,
             control_states: 0xff,

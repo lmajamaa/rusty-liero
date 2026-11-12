@@ -191,7 +191,7 @@ impl LieroController {
             let scene;
             {
                 let tc = &*game.tc_data();
-                names = (0..tc.weapon_count).map(|i| (*tc.weapons.add(i)).name).collect();
+                names = tc.weapons.iter().map(|w| w.name).collect();
                 scene = stats_scene(game, &app().play.data, &names);
             }
             let s = liero_stats_presenter_screen(&*game.stats(), &scene);

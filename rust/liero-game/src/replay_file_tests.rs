@@ -17,9 +17,7 @@ struct Setup {
 
 impl Setup {
     fn empty() -> Self {
-        let layout = std::alloc::Layout::new::<LieroTcData>();
-        // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
-        let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
+        let mut tc = LieroTcData::empty();
         tc.materials[5].flags = 7;
         let s = Setup {
             game: liero_game_new(),

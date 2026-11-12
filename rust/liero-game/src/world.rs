@@ -139,29 +139,26 @@ impl<'a> World<'a> {
     }
 
     fn constant(&self, i: usize) -> i32 {
-        unsafe { *self.tc.constants.add(i) }
+        self.tc.constants[i]
     }
 
     fn hack(&self, i: usize) -> bool {
-        unsafe { *self.tc.hacks.add(i) }
+        self.tc.hacks[i]
     }
 
-    fn weapon(&self, i: i32) -> *const LieroTcWeapon {
-        let tc = self.tc;
-        assert!(0 <= i && (i as usize) < tc.weapon_count);
-        unsafe { tc.weapons.add(i as usize) }
+    fn weapon(&self, i: i32) -> &'a LieroTcWeapon {
+        assert!(0 <= i, "no weapon {i}");
+        &self.tc.weapons[i as usize]
     }
 
     fn nobject_type(&self, i: i32) -> &'a LieroTcNObject {
-        let tc = self.tc;
-        assert!(0 <= i && (i as usize) < tc.nobject_count);
-        unsafe { &*tc.nobjects.add(i as usize) }
+        assert!(0 <= i, "no object type {i}");
+        &self.tc.nobjects[i as usize]
     }
 
     fn sobject_type(&self, i: i32) -> &'a LieroTcSObject {
-        let tc = self.tc;
-        assert!(0 <= i && (i as usize) < tc.sobject_count);
-        unsafe { &*tc.sobjects.add(i as usize) }
+        assert!(0 <= i, "no object type {i}");
+        &self.tc.sobjects[i as usize]
     }
 
     fn rand(&mut self, max: u32) -> u32 {

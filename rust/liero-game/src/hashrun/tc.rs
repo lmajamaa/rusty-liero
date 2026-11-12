@@ -63,8 +63,7 @@ pub fn hash_tc(out: &mut Out) {
         out.hash("tc-sobject", i as i64, h);
     }
 
-    // SAFETY: the TC's lists are as long as their counts.
-    let sounds = unsafe { items(d.sounds, d.sound_count) };
+    let sounds = &d.sounds;
     for (i, s) in sounds.iter().enumerate() {
         let mut h = Fnv::default();
         // SAFETY: the sound's name and samples are the TC's.
@@ -97,9 +96,8 @@ pub fn hash_tc(out: &mut Out) {
     out.hash("tc-font", 0, h);
 
     let mut h = Fnv::default();
-    h.u32(d.weapon_count as u32);
-    // SAFETY: there is an order entry for each weapon.
-    for &i in unsafe { items(d.weap_order, d.weapon_count) } {
+    h.u32(d.weapons.len() as u32);
+    for &i in &d.weap_order {
         h.i32(i);
     }
     add_sprites(&mut h, &d.worm_sprites);

@@ -295,11 +295,9 @@ impl Worm<'_, '_> {
     /// in slot `slot`.
     fn give_weapon(&mut self, slot: i32, weapon: i32) {
         let kind = self.world.weapon(weapon);
-        // SAFETY: the weapon is the TC's.
-        let ammo = unsafe { (*kind).ammo };
         let ww = &mut self.w_mut().weapons[slot as usize];
-        ww.kind = kind.cast();
-        ww.ammo = ammo;
+        ww.kind = std::ptr::from_ref(kind).cast();
+        ww.ammo = kind.ammo;
     }
 
     /// The current weapon's launch sound, looping or not.

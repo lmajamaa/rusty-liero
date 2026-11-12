@@ -163,7 +163,6 @@ pub unsafe fn liero_game_draw_viewport(
         let d = &*game.game;
         let l = lists(game, settings, vp);
 
-        assert!(h("RemExp") < tc.hack_count);
         let scene = LieroScene {
             worms: l.worms.as_ptr(),
             worm_count: l.worms.len() as i32,
@@ -210,7 +209,7 @@ pub unsafe fn liero_game_draw_viewport(
             names_on_bonuses: draw.names_on_bonuses,
             allow_viewing_spawn_point: draw.allow_viewing_spawn_point,
             map: draw.map,
-            rem_exp: *tc.hacks.add(h("RemExp")),
+            rem_exp: tc.hack(h("RemExp")),
             laser_weapon: tc.constant(c("LaserWeapon")),
             bonus_flicker_time: tc.constant(c("BonusFlickerTime")),
             nr_colour_begin: tc.constant(c("NRColourBegin")),
@@ -247,9 +246,8 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
         let d = &*game.game;
 
         let worms = view_worms(game);
-        let weapons: Vec<LieroViewWeapon> = (0..tc.weapon_count)
-            .map(|i| {
-                let w = &*tc.weapons.add(i);
+        let weapons: Vec<LieroViewWeapon> = (tc.weapons.iter())
+            .map(|w| {
                 let t = settings.loading_time.wrapping_mul(w.loading_time) / 100;
                 LieroViewWeapon {
                     name: w.name,
@@ -284,8 +282,7 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
             .iter()
             .filter(|o| o.used)
             .map(|o| {
-                assert!((o.id as usize) < tc.sobject_count);
-                let start_frame = (*tc.sobjects.add(o.id as usize)).start_frame;
+                let start_frame = tc.sobjects[o.id as usize].start_frame;
                 LieroViewSObject {
                     x: o.x,
                     y: o.y,
@@ -378,15 +375,10 @@ mod tests {
         sobjects[1].start_frame = 40;
         let mut nobjects: Vec<LieroTcNObject> = zeroed(1);
         nobjects[0].start_frame = 30;
-        let layout = std::alloc::Layout::new::<LieroTcData>();
-        // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
-        let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
-        tc.weapons = weapons.as_ptr();
-        tc.weapon_count = weapons.len();
-        tc.sobjects = sobjects.as_ptr();
-        tc.sobject_count = sobjects.len();
-        tc.nobjects = nobjects.as_ptr();
-        tc.nobject_count = nobjects.len();
+        let mut tc = LieroTcData::empty();
+        tc.weapons = weapons;
+        tc.sobjects = sobjects;
+        tc.nobjects = nobjects;
 
         let mut data = [LieroWormData::default(), LieroWormData::default()];
         data[1].index = 1;
@@ -444,7 +436,7 @@ mod tests {
         // The worms are reached through `fields` while `f` changes them, as
         // the tick does.
         let data_ptr: *mut [LieroWormData; 2] = &mut data;
-        f(&mut fields, unsafe { &mut *data_ptr }, &weapons);
+        f(&mut fields, unsafe { &mut *data_ptr }, &tc.weapons);
         for vp in vps.into_iter().chain(spectators) {
             unsafe { liero_viewport_free(vp) };
         }
@@ -465,7 +457,7 @@ mod tests {
             d.sobjects.arr[7].used = true;
             d.sobjects.arr[7].id = 1;
             d.nobjects.arr[0].used = true;
-            d.nobjects.arr[0].kind = (&*(*f.tc).nobjects as *const LieroTcNObject).cast();
+            d.nobjects.arr[0].kind = (*f.tc).nobjects.as_ptr().cast();
             d.bobjects.resize(4);
             d.bobjects.count = 3;
             (**f.viewports.add(1)).banner_y = 5;

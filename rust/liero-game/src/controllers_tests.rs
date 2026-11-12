@@ -116,7 +116,7 @@ fn r_rewinds_a_replay_to_its_start() {
         let mut c = local(tc, ["a", "b"]);
         let game = c.game().unwrap();
         // Weapons, as weapon selection gives them.
-        let weapons = (*game.tc_data()).weapons;
+        let weapons = (*game.tc_data()).weapons.as_ptr();
         for w in game.listed_worms() {
             for (i, ww) in w.unwrap().data.weapons.iter_mut().enumerate() {
                 ww.kind = weapons.add(i).cast();

@@ -449,7 +449,7 @@ impl LieroMenus {
                 let ws = self.worm_data();
                 if (PL_WEAP0..PL_WEAP0 + 5).contains(&id) {
                     let slot = (id - PL_WEAP0) as usize;
-                    let count = self.tc().weapon_count as u32;
+                    let count = self.tc().weapons.len() as u32;
                     return Behavior::Weapon {
                         slot,
                         item: enumeration(&mut ws.weapons[slot], 1, count),

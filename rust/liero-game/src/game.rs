@@ -771,9 +771,7 @@ mod tests {
         unsafe fn report(sound: i32) {
             PLAYED.store(sound, Ordering::SeqCst);
         }
-        let layout = std::alloc::Layout::new::<crate::tc::LieroTcData>();
-        // SAFETY: all zeroes is a valid TC.
-        let tc: Box<crate::tc::LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
+        let tc = crate::tc::LieroTcData::empty();
         with_game(&mut [worm(100), worm(100)], |f| {
             let mut f = *f;
             f.tc = &*tc;
