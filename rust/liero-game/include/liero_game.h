@@ -1850,8 +1850,8 @@ typedef struct LieroScreenHost {
    */
   uint64_t (*hires_ticks)(void);
   /**
-   * `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in UTC under
-   * the app driver and local time otherwise. Writes at most `cap` bytes
+   * `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in local time,
+   * or UTC in the hash run. Writes at most `cap` bytes
    * and returns how many.
    */
   uintptr_t (*replay_time)(int64_t t, uint8_t *out, uintptr_t cap);

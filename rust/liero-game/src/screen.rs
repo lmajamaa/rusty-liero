@@ -151,8 +151,8 @@ pub struct LieroScreenHost {
     pub time: Option<unsafe extern "C" fn() -> i64>,
     /// The stats' clock, in nanoseconds (`appHiresTicks`).
     pub hires_ticks: Option<unsafe extern "C" fn() -> u64>,
-    /// `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in UTC under
-    /// the app driver and local time otherwise. Writes at most `cap` bytes
+    /// `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in local time,
+    /// or UTC in the hash run. Writes at most `cap` bytes
     /// and returns how many.
     pub replay_time: Option<unsafe extern "C" fn(t: i64, out: *mut u8, cap: usize) -> usize>,
     /// Where the games' sounds go (`DefaultSoundPlayer::out`).

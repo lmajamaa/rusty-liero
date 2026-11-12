@@ -44,7 +44,6 @@ set(GAME_SOURCES
     src/game/gfx/renderer.cpp
     src/game/gfx.cpp
     src/game/hashrun.cpp
-    src/game/hashapp.cpp
     src/game/main.cpp
     src/game/replay.cpp
     src/game/screen.cpp

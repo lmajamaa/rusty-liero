@@ -8,6 +8,7 @@ use std::ffi::c_void;
 use crate::text::LieroStr;
 
 mod ai;
+mod app;
 mod game;
 mod games;
 mod input;
@@ -77,6 +78,7 @@ impl Out<'_> {
 pub fn run_section(name: &str, ticks: i32, interval: i32, out: &mut dyn FnMut(&str)) -> bool {
     let mut out = Out(out);
     match name {
+        "app" => app::hash_app(&mut out),
         "games" => games::hash_games(&mut out, ticks, interval),
         "replays" => replays::hash_replays(&mut out),
         "ai" => ai::hash_ai_games(&mut out),

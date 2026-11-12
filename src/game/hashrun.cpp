@@ -11,8 +11,6 @@
 
 #include "hashrun.hpp"
 
-#include "common.hpp"
-#include "filesystem.hpp"
 #include "math.hpp"
 
 #include <cstdio>
@@ -51,8 +49,6 @@ int hashRun(int argc, char* argv[])
 
 	precomputeTables();
 
-	std::shared_ptr<Common> common(new Common());
-	common->load(FsNode(std::string("TC/openliero")));
 	if (run("tc"))
 		rustSection("tc", ticks, interval);
 
@@ -70,7 +66,7 @@ int hashRun(int argc, char* argv[])
 	if (run("input"))
 		rustSection("input", ticks, interval);
 	if (run("app"))
-		hashApp(common);
+		rustSection("app", ticks, interval);
 	if (run("levels"))
 		rustSection("levels", ticks, interval);
 	if (run("randomtc"))

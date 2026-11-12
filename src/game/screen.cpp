@@ -207,8 +207,7 @@ uint64_t hostHiresTicks() { return appHiresTicks(); }
 size_t hostReplayTime(int64_t t, uint8_t* out, size_t cap)
 {
 	std::time_t ticks = std::time_t(t);
-	// The hash run names replays the same in every time zone.
-	std::tm* now = gfx.driver ? std::gmtime(&ticks) : std::localtime(&ticks);
+	std::tm* now = std::localtime(&ticks);
 	return std::strftime(reinterpret_cast<char*>(out), cap, "%Y-%m-%d %H.%M.%S", now);
 }
 
