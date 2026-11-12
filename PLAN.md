@@ -266,6 +266,10 @@ All of it is in `liero-game`; `liero-data` and `liero-tctool` have no `unsafe` t
 | Step 7's ownership doesn't fit `Rc<RefCell<_>>` without runtime borrow panics | Panics in the menus or playback | Pass borrows down from `App` instead of sharing; settings snapshots per game |
 | A crate chosen in phase 3 forces `unsafe` at its edge | `forbid` can't cover everything | The platform crate holds it, counted and commented |
 
+## Write-up: how the port was done
+
+1. [ ] **`RUST_PORT.md`**, the porting strategy as it was carried out, for someone porting another C++ codebase to Rust. Built from the merged pull requests: their descriptions, review comments and commits (`gh pr list --state merged`, `gh pr view --comments`), read in order. It covers what worked and what didn't: the Emscripten build as the reference, moving one module at a time behind a C boundary, the hash run as the check (the reference values from the C++, recorded games and replays, and planted bugs to show it catches changes), keeping C++'s quirks bit for bit, then removing the boundary and the `unsafe` in phase 4. Each point links the PRs it comes from. Nothing in it is new: where a PR doesn't say why, the write-up says so rather than guessing.
+
 ## Later: online multiplayer
 
 The game logic is deterministic and replays already record only inputs, which makes it a good fit for rollback netcode. Players send each other inputs over WebRTC DataChannels, and a small Bun server (Bun.serve with WebSockets) only connects them. GitHub Pages only serves static files, so that server needs a separate host. The old unused `src/tl/socket.c` has been removed; it couldn't run in a browser anyway.
