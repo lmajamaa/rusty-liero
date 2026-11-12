@@ -394,6 +394,7 @@ mod tests {
             .zip(names)
             .enumerate()
             .map(|(i, (d, n))| LieroGameWorm {
+                id: crate::worm::WormId(i as u32),
                 data: d,
                 max_health: 100,
                 ai: std::ptr::null_mut(),
@@ -416,10 +417,13 @@ mod tests {
         ];
         let spectators = [liero_viewport_new(rect, 0, 504, 350)];
         unsafe { (*spectators[0]).kind = LIERO_VIEWPORT_SPECTATOR };
+        let pool: Vec<*mut LieroWormData> = worms.iter().map(|w| w.data).collect();
         let mut game = LieroGameData::new_boxed();
         let mut fields = LieroGameFields {
             worms: worms.as_ptr(),
             worm_count: 2,
+            pool: pool.as_ptr(),
+            pool_count: pool.len(),
             game: &mut *game,
             level: LieroLevel {
                 data: std::ptr::null_mut(),

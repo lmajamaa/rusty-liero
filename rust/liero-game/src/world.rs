@@ -44,7 +44,7 @@ use crate::weapon::{
 };
 use crate::worm::{
     liero_worm_process, LieroBonusRef, LieroSteerable, LieroWormConstants, LieroWormData, LieroWormEnv, LieroWormHooks,
-    LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
+    WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
 };
 
 /// `Settings::wormAnimTab`.
@@ -347,6 +347,14 @@ impl<'a> World<'a> {
 
     fn worm_count(&self) -> i32 {
         self.g.f.worm_count
+    }
+
+    /// The game's worm `id`, listed or not.
+    fn pool_worm(&self, id: WormId) -> *mut LieroWormData {
+        let f = &self.g.f;
+        assert!((id.0 as usize) < f.pool_count, "no worm {id:?}");
+        // SAFETY: the pool holds `pool_count` worms.
+        unsafe { *f.pool.add(id.0 as usize) }
     }
 
     /// Worm `i`, a position in the game's worms.
@@ -1128,7 +1136,7 @@ impl<'a> World<'a> {
 
             liero_ninjarope_process(
                 addr_of_mut!((*owner).ninjarope),
-                rope_worm_motion(owner.cast()),
+                worm_motion(owner),
                 &level,
                 self.rand_ptr(),
                 &k,
@@ -1827,25 +1835,27 @@ struct RopeContext<'a> {
     owner: i32,
 }
 
-unsafe fn rope_find_anchor(ctx_: *mut c_void, x: i32, y: i32) -> *mut c_void {
+unsafe fn rope_find_anchor(ctx_: *mut c_void, x: i32, y: i32) -> Option<WormId> {
     unsafe {
         let c: &RopeContext = ctx(ctx_);
-        for i in 0..c.w.worm_count() {
-            if i != c.owner && c.w.spec_worm_hit(x, y, 1, i) {
-                return c.w.worm(i).cast();
-            }
-        }
-        null_mut()
+        (0..c.w.worm_count())
+            .find(|&i| i != c.owner && c.w.spec_worm_hit(x, y, 1, i))
+            .map(|i| c.w.g.worm(i).id)
     }
 }
 
-unsafe fn rope_worm_motion(worm: *mut c_void) -> LieroWormMotion {
+unsafe fn rope_worm_motion(ctx_: *mut c_void, worm: WormId) -> LieroWormMotion {
     unsafe {
-        let w = worm as *mut LieroWormData;
-        LieroWormMotion {
-            pos: addr_of_mut!((*w).pos),
-            vel: addr_of_mut!((*w).vel),
-        }
+        let c: &RopeContext = ctx(ctx_);
+        worm_motion(c.w.pool_worm(worm))
+    }
+}
+
+/// Where `w` keeps its position and velocity.
+fn worm_motion(w: *mut LieroWormData) -> LieroWormMotion {
+    LieroWormMotion {
+        pos: unsafe { addr_of_mut!((*w).pos) },
+        vel: unsafe { addr_of_mut!((*w).vel) },
     }
 }
 

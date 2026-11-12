@@ -599,8 +599,9 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
     unsafe {
         liero_game_set_context(&mut game, settings.as_ptr(), tc.as_ptr(), LieroSoundOut::NONE);
         for (i, ws) in s.worms.iter().enumerate() {
-            let w = &mut *liero_game_new_worm(&mut game, ws.as_ptr());
-            liero_game_list_worm(&mut game, w);
+            let id = liero_game_new_worm(&mut game, ws.as_ptr());
+            liero_game_list_worm(&mut game, Some(id));
+            let w = game.worm_mut(id);
             w.data.health = ws.data.health;
             w.data.index = i as i32;
             w.data.stats_x = if i == 0 { 0 } else { 218 };

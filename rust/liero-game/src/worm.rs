@@ -44,6 +44,11 @@ pub const LIERO_GAME_GAME_OF_TAG: i32 = 1;
 pub const LIERO_GAME_HOLDAZONE: i32 = 2;
 pub const LIERO_GAME_SCALES_OF_JUSTICE: i32 = 3;
 
+/// A worm of a game: its place among every worm the game has made
+/// (`LieroGame`'s pool), listed or not. Copies of the game keep the places.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WormId(pub u32);
+
 /// A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
 /// it (`liero_worm_data_new`), except its settings and AI.
 #[derive(Clone, Copy, Debug)]
@@ -130,7 +135,7 @@ impl Default for LieroWormData {
             ninjarope: LieroNinjarope {
                 out: false,
                 attached: false,
-                anchor: std::ptr::null_mut(),
+                anchor: None,
                 pos: zero,
                 vel: zero,
                 length: 0,
@@ -1409,7 +1414,7 @@ mod tests {
             assert_eq!((*w).killed_timer, 150);
             assert_eq!((*w).last_killed_by_idx, -1);
             assert_eq!((*w).reacts, [0; 4]);
-            assert!((*w).ninjarope.anchor.is_null() && !(*w).ninjarope.out);
+            assert!((*w).ninjarope.anchor.is_none() && !(*w).ninjarope.out);
 
             (*w).health = 75;
             (*w).kills = 3;

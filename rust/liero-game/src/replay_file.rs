@@ -34,6 +34,7 @@ use crate::settings::{
 };
 use crate::text::LieroStr;
 use crate::viewport::LIERO_VIEWPORT_WORM;
+use crate::worm::WormId;
 
 /// How a replay call ended, for C++ to throw as its replay code did.
 #[derive(Clone, Copy)]
@@ -74,13 +75,21 @@ impl LieroReplayOutcome {
 ///
 /// # Safety
 /// `game` is valid.
-unsafe fn game_worms(game: &LieroGame) -> Vec<*mut LieroWorm> {
+unsafe fn game_worms(game: &mut LieroGame) -> Vec<*mut LieroWorm> {
     (0..liero_game_worm_count(game))
         .map(|i| {
             let w = liero_game_worm(game, i);
             assert!(!w.is_null(), "an empty place among a replay's worms");
             w
         })
+        .collect()
+}
+
+/// The ids of the game's worms, as `game_worms` has them.
+fn game_worm_ids(game: &LieroGame) -> Vec<WormId> {
+    game.listed_ids()
+        .iter()
+        .map(|id| id.expect("an empty place among a replay's worms"))
         .collect()
 }
 
@@ -253,6 +262,7 @@ pub unsafe fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut Li
         w.settings = settings;
 
         let worms = game_worms(game);
+        let ids = game_worm_ids(game);
         let datas: Vec<_> = worms.iter().map(|&p| liero_worm_data(&mut *p)).collect();
         let d = &*liero_game_data(game);
         let l = level.data();
@@ -274,7 +284,7 @@ pub unsafe fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut Li
                 .iter()
                 .zip(&datas)
                 .map(|(&p, &data)| Worm {
-                    fields: liero_replay_worm_of(&*data, datas.as_ptr(), datas.len(), tc),
+                    fields: liero_replay_worm_of(&*data, &ids, tc),
                     settings: worm_settings(p).worm(),
                 })
                 .collect(),
@@ -501,16 +511,16 @@ pub unsafe fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut Li
         // Every worm read, including any only referred to, which the game
         // keeps without listing.
         let all: Vec<_> = g.worms.iter().map(|_| liero_game_new_worm(game, null_mut())).collect();
-        let datas: Vec<_> = all.iter().map(|&p| liero_worm_data(&mut *p)).collect();
-        for ((&p, &data), rw) in all.iter().zip(&datas).zip(&g.worms) {
-            liero_replay_worm_set(&mut *data, &rw.fields, datas.as_ptr(), datas.len(), tc);
+        for (&id, rw) in all.iter().zip(&g.worms) {
+            let w = game.worm_mut(id);
+            liero_replay_worm_set(&mut w.data, &rw.fields, &all, tc);
             let ws = liero_worm_settings_box_new();
             (*ws).set_worm(&rw.settings);
-            liero_worm_set_settings(&mut *p, ws);
+            liero_worm_set_settings(w, ws);
             liero_worm_settings_box_free(ws);
         }
         for &i in &g.list {
-            liero_game_list_worm(game, if i < 0 { null_mut() } else { all[i as usize] });
+            liero_game_list_worm(game, usize::try_from(i).ok().map(|i| all[i]));
         }
 
         for vp in &g.viewports {

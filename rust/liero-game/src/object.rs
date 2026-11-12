@@ -540,8 +540,8 @@ pub unsafe fn liero_nobject_process(
 pub struct LieroNinjarope {
     pub out: bool,
     pub attached: bool,
-    /// The worm the rope is attached to, or null.
-    pub anchor: *mut c_void,
+    /// The worm the rope is attached to, if any.
+    pub anchor: Option<crate::worm::WormId>,
     pub pos: LieroIVec2,
     pub vel: LieroIVec2,
     pub length: i32,
@@ -569,10 +569,10 @@ pub struct LieroNinjaropeConstants {
 /// What C++ does for the ninja rope. `ctx` is passed back to each function.
 pub struct LieroNinjaropeHooks {
     pub ctx: *mut c_void,
-    /// The first worm other than the owner that (x, y) hits, or null.
-    pub find_anchor: unsafe fn(ctx: *mut c_void, x: i32, y: i32) -> *mut c_void,
+    /// The first worm other than the owner that (x, y) hits, if any.
+    pub find_anchor: unsafe fn(ctx: *mut c_void, x: i32, y: i32) -> Option<crate::worm::WormId>,
     /// Where worm `worm` keeps its position and velocity.
-    pub worm_motion: unsafe fn(worm: *mut c_void) -> LieroWormMotion,
+    pub worm_motion: unsafe fn(ctx: *mut c_void, worm: crate::worm::WormId) -> LieroWormMotion,
     /// `NObjectType::create2` for nobject type `kind`, owned by the owner.
     pub create_nobject2:
         unsafe fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
@@ -640,14 +640,14 @@ pub unsafe fn liero_ninjarope_process(
             }
 
             (*r).vel = LieroIVec2::default();
-        } else if !(*r).anchor.is_null() {
+        } else if let Some(anchor) = (*r).anchor {
             if !(*r).attached {
                 // TODO in C++: should this be separate from attaching to terrain?
                 (*r).length = k.attach_length;
                 (*r).attached = true;
             }
 
-            let anchor = (hooks.worm_motion)((*r).anchor);
+            let anchor = (hooks.worm_motion)(ctx, anchor);
             if (*r).cur_len > (*r).length {
                 *anchor.vel = sub(*anchor.vel, div(force, (*r).cur_len));
             }

@@ -44,14 +44,14 @@ impl Setup {
                 (*ws).data.health = 100 + i;
                 let w = liero_game_new_worm(g, ws);
                 liero_worm_settings_box_free(ws);
-                let d = &mut (*w).data;
+                let d = &mut g.worm_mut(w).data;
                 d.index = i;
                 d.pos.x = 10 * (i + 1);
                 d.vel.y = -3;
-                liero_game_list_worm(g, w);
+                liero_game_list_worm(g, Some(w));
                 worms.push(w);
             }
-            (*worms[0]).data.ninjarope.anchor = (&mut (*worms[1]).data as *mut LieroWormData).cast();
+            g.worm_mut(worms[0]).data.ninjarope.anchor = Some(worms[1]);
             for i in 0..2 {
                 let r = LieroRect {
                     x1: 160 * i,
@@ -91,7 +91,7 @@ impl Setup {
     }
 
     fn worm(&mut self, i: usize) -> &mut LieroWormData {
-        unsafe { &mut (*liero_game_worm(&*self.game, i)).data }
+        unsafe { &mut (*liero_game_worm(&mut *self.game, i)).data }
     }
 }
 
@@ -187,10 +187,8 @@ fn plays_back_the_game_it_recorded() {
             );
         }
         // The rope is on the new second worm.
-        assert_eq!(
-            (*liero_game_worm(g, 0)).data.ninjarope.anchor,
-            (&mut (*liero_game_worm(g, 1)).data as *mut LieroWormData).cast()
-        );
+        let second = g.listed_ids()[1];
+        assert_eq!(g.worm_at(0).unwrap().data.ninjarope.anchor, second);
         // The split-screen viewports, not the spectator one.
         assert_eq!(
             (liero_game_viewport_count(g, false), liero_game_viewport_count(g, true)),
@@ -330,8 +328,8 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
             (*ws).name = format!("worm {i}").into_bytes();
             let w = liero_game_new_worm(g, ws);
             liero_worm_settings_box_free(ws);
-            (*w).data.index = i;
-            liero_game_list_worm(g, w);
+            g.worm_mut(w).data.index = i;
+            liero_game_list_worm(g, Some(w));
         }
         let w = liero_replay_writer_new(&node(&p));
         ok(liero_replay_writer_begin(&mut *w, g));
@@ -349,7 +347,7 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
     let r = play(&p, &mut t);
     unsafe {
         let game = t.game;
-        let name = |i| (*liero_worm_settings(&*liero_game_worm(&*game, i))).name.clone();
+        let name = |i| (*liero_worm_settings(&*liero_game_worm(&mut *game, i))).name.clone();
         assert!(!frame(r, &mut t).settings_changed);
         assert_eq!(name(2), b"worm 2");
         let o = frame(r, &mut t);
