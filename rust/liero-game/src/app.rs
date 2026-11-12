@@ -87,7 +87,7 @@ impl LieroApp {
             controller: None,
             menus: std::ptr::null_mut(),
             primary_single: false,
-            save_settings_on_change: cfg!(target_os = "emscripten"),
+            save_settings_on_change: false,
         }
     }
 }
@@ -219,7 +219,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "the wasm build has no threads")]
     fn each_thread_has_one_app() {
         let a: *mut LieroApp = app();
         assert_eq!(a, liero_app());

@@ -3,8 +3,7 @@
 # local builds. Change them together.
 #
 # Rust comes from the rustup that GitHub-hosted runners include, as in GitHub's
-# Rust guide. Actions are GitHub's own, plus Emscripten's setup-emsdk and
-# Oven's setup-bun.
+# Rust guide. Actions are GitHub's own, plus Oven's setup-bun.
 name: Test
 
 on:
@@ -17,9 +16,11 @@ permissions:
   contents: read
 
 env:
-  EMSDK_VERSION: 4.0.0
   RUST_VERSION: 1.87.0
-  CBINDGEN_VERSION: 0.29.0
+  # The wasm-bindgen CLI must match the crate's pin in rust/liero-game. It
+  # needs a newer Rust to build than the game's, used only for that.
+  WASM_BINDGEN_VERSION: 0.2.129
+  WASM_BINDGEN_RUST_VERSION: 1.88.0
   BUN_VERSION: 1.4.4
 
 jobs:
@@ -32,49 +33,34 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --target wasm32-unknown-emscripten
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --target wasm32-unknown-unknown
           rustup default "$RUST_VERSION"
 
-      - name: Install cbindgen
-        run: cargo install --locked cbindgen --version "$CBINDGEN_VERSION"
-
-      - name: Install Emscripten
-        uses: emscripten-core/setup-emsdk@v15
-        with:
-          version: ${{ env.EMSDK_VERSION }}
-          actions-cache-folder: emsdk-cache
+      - name: Install the wasm-bindgen CLI
+        run: |
+          rustup toolchain install "$WASM_BINDGEN_RUST_VERSION" --profile minimal
+          cargo +"$WASM_BINDGEN_RUST_VERSION" install --locked wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      # The code only the web build compiles; the native job lints the rest.
-      - name: Clippy (wasm)
+      # The web shell, which only the web build compiles; the native job
+      # lints the rest.
+      - name: Clippy (web shell)
         working-directory: rust/liero-game
-        run: cargo clippy --all-targets --target wasm32-unknown-emscripten -- -D warnings
+        run: cargo clippy --lib --target wasm32-unknown-unknown --features hashrun-export -- -D warnings
 
       - name: Rust tests (native)
         working-directory: rust/liero-game
         run: cargo test
 
-      - name: Rust tests (wasm, run with Bun)
-        working-directory: rust/liero-game
-        run: cargo test --target wasm32-unknown-emscripten
-
-      - name: Check the C header matches cbindgen's output
-        working-directory: rust/liero-game
-        run: |
-          cbindgen --config cbindgen.toml --output include/liero_game.h
-          git diff --exit-code include/liero_game.h
-
       - name: Build the game
-        run: |
-          emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/web -j
+        run: bun tools/web/build.ts
 
-      # As wasm with the web build's stack, every function checking for an
-      # overflow.
+      # The same wasm with the hash run's export: its 64 KB stack, its files
+      # in memory and its own maths.
       - name: Check game-state hashes against the original C++ (wasm)
         run: bun tools/hashrun/run.ts --wasm
 

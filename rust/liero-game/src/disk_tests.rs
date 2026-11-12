@@ -15,7 +15,7 @@ fn keys_skip_dots_and_go_up() {
     assert_eq!(key(b"/a/b/../c").unwrap(), b"a/c");
     assert_eq!(key(b"a/.."), Some(Vec::new()));
     assert_eq!(key(b".."), None);
-    assert_eq!(key(b"a/\xff"), None);
+    assert_eq!(key(b"a/\x94").unwrap(), b"a/\x94");
 }
 
 #[test]
@@ -126,7 +126,6 @@ fn the_tree_lists_its_files_and_starts_empty() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "the wasm build has no threads")]
 fn the_tree_is_this_threads() {
     in_tree(|| std::thread::spawn(|| assert!(!uses_tree())).join().unwrap());
 }
@@ -145,4 +144,51 @@ fn the_file_layer_works_on_the_tree() {
         let names: Vec<_> = Node::new(b"cfg").list().into_iter().map(|e| (e.name, e.is_dir)).collect();
         assert_eq!(names, [(b"Replays".to_vec(), true)]);
     });
+}
+
+#[test]
+fn changes_are_taken_once_with_what_the_files_hold() {
+    in_tree(|| {
+        assert!(create_dir(b"d"));
+        assert!(write(b"d/a", b"1"));
+        assert!(write(b"d/b", b"2"));
+        assert!(append(b"./d/a", b"3"));
+        assert!(!write(b"x/y", b"no folder"));
+        assert_eq!(
+            take_changes(),
+            [(b"d/a".to_vec(), Some(b"13".to_vec())), (b"d/b".to_vec(), Some(b"2".to_vec()))]
+        );
+        assert!(take_changes().is_empty());
+        assert!(remove_file(b"d/b"));
+        assert!(!remove_file(b"d/c"));
+        assert!(create(b"d/c"));
+        assert_eq!(take_changes(), [(b"d/b".to_vec(), None), (b"d/c".to_vec(), Some(Vec::new()))]);
+    });
+    assert!(take_changes().is_empty(), "nothing on disk");
+}
+
+/// A profile's name can have DOS characters, which aren't UTF-8.
+fn dos_names_work(dir: &[u8]) {
+    let file = [dir, b"/Zoe\x94.lpf"].concat();
+    assert!(write(&file, b"p"));
+    assert_eq!(read(&file).unwrap(), b"p");
+    assert_eq!(list(dir).unwrap(), vec![b"Zoe\x94.lpf".to_vec()]);
+    assert!(remove_file(&file));
+}
+
+#[test]
+fn dos_names_work_in_the_tree() {
+    in_tree(|| {
+        assert!(create_dir(b"Profiles"));
+        dos_names_work(b"Profiles");
+    });
+}
+
+#[test]
+#[cfg_attr(target_os = "macos", ignore = "file names there are UTF-8")]
+fn dos_names_work_on_the_disk() {
+    let dir = std::env::temp_dir().join(format!("liero-disk-test-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    dos_names_work(dir.to_str().unwrap().as_bytes());
+    fs::remove_dir(&dir).unwrap();
 }

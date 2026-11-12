@@ -1,9 +1,8 @@
-//! Game code ported from C++ to Rust. Built as a static library and linked
-//! into the web build of openliero (`wasm32-unknown-emscripten`).
+//! The game, ported from C++ to Rust, with its web shell (`web`, built for
+//! `wasm32-unknown-unknown` by `tools/web/build.ts`) and the hash run.
 //!
-//! C++ calls in through plain C functions (`liero_*`) in each module. `cbindgen`
-//! turns them into `include/liero_game.h`; regenerate it after changing them
-//! (see README).
+//! The modules still talk through the plain C functions (`liero_*`) that C++
+//! once called; phase 4 of PLAN.md turns them into Rust ones.
 
 pub mod ai;
 pub mod app;
@@ -16,6 +15,7 @@ pub mod controllers;
 pub mod cpp_sort;
 pub mod deflate;
 pub mod disk;
+pub mod exp;
 pub mod fs;
 pub mod game;
 pub mod game_box;
@@ -48,6 +48,9 @@ pub mod scene;
 pub mod viewport;
 pub mod weapon;
 pub mod weapon_options;
+/// The web build's shell (`wasm32-unknown-unknown` only).
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub mod web;
 pub mod weapsel;
 pub mod world;
 pub mod worm;
@@ -55,8 +58,7 @@ pub mod worm;
 use std::ffi::c_char;
 
 /// Name and version of this library as a NUL-terminated string, e.g.
-/// "liero-game 0.1.0". openliero prints it at startup to show the Rust side
-/// is linked in.
+/// "liero-game 0.1.0". The web shell prints it at startup.
 #[no_mangle]
 pub extern "C" fn liero_game_version() -> *const c_char {
     concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0")

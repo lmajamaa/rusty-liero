@@ -152,7 +152,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn start_writes_the_defaults_and_loads_the_tc() {
         let dir = folder("defaults");
         let a = app();
@@ -164,7 +163,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn start_reads_liero_cfg_and_keeps_it() {
         let dir = folder("read");
         let a = app();
@@ -180,7 +178,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn start_takes_the_tc_and_root_given() {
         let dir = folder("tc");
         let a = app();
@@ -209,7 +206,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn start_marks_the_settings_saved_if_the_menu_saves_them() {
         let dir = folder("mark");
         let a = app();
@@ -224,7 +220,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn save_settings_writes_liero_cfg() {
         let dir = folder("save");
         let a = app();

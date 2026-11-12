@@ -37,7 +37,6 @@ const END: u8 = 0x83;
 
 /// Why a replay call failed.
 ///
-/// cbindgen:prefix-with-name
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LieroReplayStatus {

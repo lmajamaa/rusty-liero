@@ -42,7 +42,6 @@ fn replay() -> Box<LieroController> {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn resuming_a_replay_shows_the_single_screen() {
     let a = set_up();
     a.primary_single = false;
@@ -66,7 +65,6 @@ fn resuming_a_replay_shows_the_single_screen() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn a_finished_game_goes_back_to_the_play_screen() {
     let a = set_up();
     a.primary_single = true;
@@ -85,7 +83,6 @@ unsafe extern "C" fn no_menu() -> LieroScreen {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn a_new_game_keeps_the_level_unless_the_settings_changed() {
     let a = set_up();
     let s = a.menu_settings();

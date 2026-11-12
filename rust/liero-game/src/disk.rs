@@ -6,12 +6,13 @@
 //! the same lines as the disk.
 //!
 //! The tree follows what the disk does on Linux, where the hashes were
-//! recorded: names are case-sensitive bytes, a path's `.` parts are skipped
+//! recorded: names are case-sensitive bytes, any but `/` (a profile's name
+//! can have DOS characters such as ö, byte 0x94), a path's `.` parts are skipped
 //! and `..` goes up, a folder opens for reading but reads as nothing, and a
 //! file can't be made where a folder is or in a folder that isn't there.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 
@@ -20,6 +21,8 @@ use std::io::{Read, Write};
 #[derive(Default)]
 pub struct Tree {
     entries: BTreeMap<Vec<u8>, Option<Vec<u8>>>,
+    /// The files written, added to or removed since `take_changes`.
+    changed: BTreeSet<Vec<u8>>,
 }
 
 thread_local! {
@@ -52,10 +55,8 @@ fn on<R>(tree: impl FnOnce(&mut Tree) -> R, disk: impl FnOnce() -> R) -> R {
 }
 
 /// The path as the tree keys it: its parts without `.` and with `..` taking
-/// the one before away, joined by `/`. None if it isn't UTF-8, which the
-/// disk can't open either (`fs.rs`'s `path_str`), or goes above the root.
+/// the one before away, joined by `/`. None if it goes above the root.
 fn key(p: &[u8]) -> Option<Vec<u8>> {
-    std::str::from_utf8(p).ok()?;
     let mut parts: Vec<&[u8]> = Vec::new();
     for part in p.split(|&c| c == b'/') {
         match part {
@@ -104,6 +105,7 @@ impl Tree {
             None => self.can_make(&k),
         };
         if ok {
+            self.changed.insert(k.clone());
             self.entries.insert(k, Some(data));
         }
         ok
@@ -115,16 +117,40 @@ impl Tree {
     }
 }
 
+/// The files written, added to or removed since the last call, by path
+/// from the tree's root, with what each holds now (None if removed), in
+/// byte order of the paths; nothing without a tree. The web build saves
+/// these.
+pub fn take_changes() -> Vec<(Vec<u8>, Option<Vec<u8>>)> {
+    TREE.with(|t| {
+        let mut t = t.borrow_mut();
+        let Some(t) = t.as_mut() else { return Vec::new() };
+        let changed = std::mem::take(&mut t.changed);
+        changed.into_iter().map(|k| {
+            let now = t.entries.get(&k).cloned().flatten();
+            (k, now)
+        }).collect()
+    })
+}
+
 /// The tree's files, by path from its root (see `Tree::files`), or nothing
 /// without a tree.
 pub fn tree_files() -> Vec<(Vec<u8>, Vec<u8>)> {
     TREE.with(|t| t.borrow().as_ref().map_or_else(Vec::new, |t| t.files().map(|(k, v)| (k.to_vec(), v.to_vec())).collect()))
 }
 
-fn path_str(p: &[u8]) -> &str {
-    // Paths the game makes are ASCII; anything else can't name a file the
-    // browser's file system has, so it reads as missing.
-    std::str::from_utf8(p).unwrap_or("\u{0}")
+/// The path for `std::fs`: its bytes as they are where names are bytes
+/// (Linux, macOS); elsewhere only UTF-8 can name a file, so
+/// anything else reads as missing.
+#[cfg(unix)]
+fn path_str(p: &[u8]) -> &std::path::Path {
+    use std::os::unix::ffi::OsStrExt;
+    std::path::Path::new(std::ffi::OsStr::from_bytes(p))
+}
+
+#[cfg(not(unix))]
+fn path_str(p: &[u8]) -> &std::path::Path {
+    std::path::Path::new(std::str::from_utf8(p).unwrap_or("\u{0}"))
 }
 
 /// Whether `p` is a folder, if it's there.
@@ -207,12 +233,12 @@ pub fn write(p: &[u8], data: &[u8]) -> bool {
 /// Adds `data` to the end of file `p`, which is there.
 pub fn append(p: &[u8], data: &[u8]) -> bool {
     on(
-        |t| match key(p).and_then(|k| t.entries.get_mut(&k)) {
-            Some(Some(f)) => {
-                f.extend_from_slice(data);
-                true
-            }
-            _ => false,
+        |t| {
+            let Some(k) = key(p) else { return false };
+            let Some(Some(f)) = t.entries.get_mut(&k) else { return false };
+            f.extend_from_slice(data);
+            t.changed.insert(k);
+            true
         },
         || fs::OpenOptions::new().append(true).open(path_str(p)).and_then(|mut f| f.write_all(data)).is_ok(),
     )
@@ -224,6 +250,7 @@ pub fn remove_file(p: &[u8]) -> bool {
         |t| match key(p) {
             Some(k) if matches!(t.entries.get(&k), Some(Some(_))) => {
                 t.entries.remove(&k);
+                t.changed.insert(k);
                 true
             }
             _ => false,
