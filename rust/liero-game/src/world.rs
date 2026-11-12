@@ -20,12 +20,11 @@ use std::ptr::{addr_of_mut, null_mut};
 
 use crate::game::{stats_worms, Game, LieroBonusState, LieroGameHooks, LieroRect};
 use crate::level::LieroLevelCommon;
-use crate::math::{cos_sin, ftoi, itof, LieroIVec2};
+use crate::math::{cos_sin, ftoi, itof, vector_length, LieroIVec2};
 use crate::object::LieroBObject;
 use crate::object::{
-    add, div, ftoi_vec, liero_explosion_damage, liero_explosion_push_object, liero_explosion_push_worm,
-    liero_ninjarope_process, liero_nobject_process, LieroBonusConstants, LieroNObjectEnv, LieroNObjectFields,
-    LieroNObjectHooks, LieroNObjectType, LieroNinjaropeConstants, LieroNinjaropeHooks, LieroWormMotion,
+    add, div, ftoi_vec, inside, liero_explosion_damage, liero_explosion_push_object, liero_explosion_push_worm, sub,
+    LieroBonusConstants,
 };
 use crate::objects::{
     Cursor, LieroBObjectList, LieroBonusList, LieroNObject, LieroNObjectList, LieroSObjectList, LieroWObject,
@@ -45,6 +44,9 @@ use crate::worm::{
     liero_worm_process, LieroBonusRef, LieroSteerable, LieroWormConstants, LieroWormData, LieroWormEnv, LieroWormHooks,
     WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
 };
+
+mod nobject;
+mod rope;
 
 /// `Settings::wormAnimTab`.
 const WORM_ANIM_TAB: [i32; 4] = [0, 7, 0, 14];
@@ -94,28 +96,6 @@ pub(crate) fn weapon_view(w: &LieroTcWeapon) -> LieroWeapon {
         part_trail_delay: w.part_trail_delay,
         loop_sound: w.loop_sound,
         laser_sight: w.laser_sight,
-    }
-}
-
-fn nobject_view(t: &LieroTcNObject) -> LieroNObjectType {
-    LieroNObjectType {
-        gravity: t.gravity,
-        bounce: t.bounce,
-        hit_damage: t.hit_damage,
-        expl_ground: t.expl_ground,
-        blood_trail: t.blood_trail,
-        blood_trail_delay: t.blood_trail_delay,
-        start_frame: t.start_frame,
-        num_frames: t.num_frames,
-        draw_on_map: t.draw_on_map,
-        leave_obj: t.leave_obj,
-        leave_obj_delay: t.leave_obj_delay,
-        time_to_explo: t.time_to_explo,
-        create_on_exp: t.create_on_exp,
-        dirt_effect: t.dirt_effect,
-        splinter_amount: t.splinter_amount,
-        splinter_colour: t.splinter_colour,
-        splinter_type: t.splinter_type,
     }
 }
 
@@ -317,103 +297,6 @@ impl<'a> World<'a> {
         let color = self.rand(self.constant(c("NumBloodColours")) as u32) as i32 + self.constant(c("FirstBloodColour"));
         // SAFETY: nothing else has the list during the call.
         *unsafe { &mut *self.bobjects() }.new_object_reuse() = LieroBObject { pos, vel, color };
-    }
-
-    /// `createNObject`.
-    fn create_nobject(
-        &self,
-        kind: i32,
-        vel: LieroIVec2,
-        pos: LieroIVec2,
-        color: i32,
-        owner_idx: i32,
-        fired_by: *mut LieroWormWeapon,
-    ) -> *mut LieroNObject {
-        let t = self.nobject_type(kind);
-        unsafe {
-            let obj = addr_of_mut!((*self.nobjects()).arr[(*self.nobjects()).new_object_reuse()]);
-
-            (*obj).kind = (t as *const LieroTcNObject).cast();
-            (*obj).owner_idx = owner_idx;
-            (*obj).pos = pos;
-            (*obj).vel = vel;
-
-            // STATS
-            (*obj).fired_by = fired_by;
-            (*obj).has_hit = false;
-
-            self.damage_potential(owner_idx, fired_by, t.hit_damage);
-
-            (*obj).cur_frame = if t.start_frame > 0 {
-                self.rand((t.num_frames + 1) as u32) as i32
-            } else if color != 0 {
-                color
-            } else {
-                t.color_bullets
-            };
-
-            (*obj).time_left = t.time_to_explo;
-            if t.time_to_explo_v != 0 {
-                (*obj).time_left -= self.rand(t.time_to_explo_v as u32) as i32;
-            }
-
-            obj
-        }
-    }
-
-    /// `createNObject1`.
-    fn create_nobject1(
-        &self,
-        kind: i32,
-        mut vel: LieroIVec2,
-        pos: LieroIVec2,
-        color: i32,
-        owner_idx: i32,
-        fired_by: *mut LieroWormWeapon,
-    ) {
-        let t = self.nobject_type(kind);
-        let d = t.distribution;
-        if d != 0 {
-            vel.x = vel
-                .x
-                .wrapping_add(d.wrapping_sub(self.rand(d.wrapping_mul(2) as u32) as i32));
-            vel.y = vel
-                .y
-                .wrapping_add(d.wrapping_sub(self.rand(d.wrapping_mul(2) as u32) as i32));
-        }
-        self.create_nobject(kind, vel, pos, color, owner_idx, fired_by);
-    }
-
-    /// `createNObject2`.
-    #[allow(clippy::too_many_arguments)]
-    fn create_nobject2(
-        &self,
-        kind: i32,
-        angle: i32,
-        mut vel: LieroIVec2,
-        pos: LieroIVec2,
-        color: i32,
-        owner_idx: i32,
-        fired_by: *mut LieroWormWeapon,
-    ) {
-        let t = self.nobject_type(kind);
-        let real_speed = t.speed.wrapping_sub(self.rand(t.speed_v as u32) as i32);
-
-        vel = add(vel, mul_div(cos_sin(angle), real_speed, 100));
-
-        // TODO in C++: !REPLAYS Make the distributions use the same code
-        let d = t.distribution;
-        if d != 0 {
-            vel.x = vel
-                .x
-                .wrapping_add((self.rand(d.wrapping_mul(2) as u32) as i32).wrapping_sub(d));
-            vel.y = vel
-                .y
-                .wrapping_add((self.rand(d.wrapping_mul(2) as u32) as i32).wrapping_sub(d));
-        }
-
-        let obj = self.create_nobject(kind, vel, pos, color, owner_idx, fired_by);
-        unsafe { (*obj).pos = add((*obj).pos, (*obj).vel) };
     }
 
     /// `createSObject`: an explosion or smoke, which hurts and pushes what
@@ -757,39 +640,6 @@ impl<'a> World<'a> {
         }
     }
 
-    /// `NObject::process`.
-    fn process_nobject(&self, slot: usize) {
-        unsafe {
-            let obj = addr_of_mut!((*self.nobjects()).arr[slot]);
-            let mut context = NObjectContext { w: *self, obj, slot };
-            let fields = LieroNObjectFields {
-                pos: addr_of_mut!((*obj).pos),
-                vel: addr_of_mut!((*obj).vel),
-                time_left: addr_of_mut!((*obj).time_left),
-                cur_frame: addr_of_mut!((*obj).cur_frame),
-            };
-            let t = nobject_view(&*((*obj).kind as *const LieroTcNObject));
-            let env = LieroNObjectEnv {
-                level: self.g.f.level,
-                common: self.common(),
-                rand: self.rand_ptr(),
-                cycles: self.cycles(),
-                shadow: self.g.s.shadow,
-            };
-            let hooks = LieroNObjectHooks {
-                ctx: (&mut context as *mut NObjectContext).cast(),
-                create_bobject: n_create_bobject,
-                create_sobject: n_create_sobject,
-                create_nobject2: n_create_nobject2,
-                draw_on_map: n_draw_on_map,
-                hit_worms: n_hit_worms,
-                free: n_free,
-            };
-
-            liero_nobject_process(&fields, &t, &env, &hooks);
-        }
-    }
-
     /// `SObject::process`.
     fn process_sobject(&self, slot: usize) {
         // SAFETY: nothing else has the list during the call.
@@ -961,39 +811,6 @@ impl<'a> World<'a> {
             };
 
             liero_worm_process(worm, self.g.worm(i).max_health, &k, &env, &hooks);
-        }
-    }
-
-    /// `Ninjarope::process` for worm `i`.
-    fn process_rope(&self, i: i32) {
-        unsafe {
-            let owner = self.worm(i);
-            let mut context = RopeContext { w: *self, owner: i };
-            let k = LieroNinjaropeConstants {
-                force_shl_x: self.constant(c("NRForceShlX")),
-                force_div_x: self.constant(c("NRForceDivX")),
-                force_shl_y: self.constant(c("NRForceShlY")),
-                force_div_y: self.constant(c("NRForceDivY")),
-                force_len_shl: self.constant(c("NRForceLenShl")),
-                attach_length: self.constant(c("NRAttachLength")),
-                gravity: self.constant(c("NinjaropeGravity")),
-            };
-            let hooks = LieroNinjaropeHooks {
-                ctx: (&mut context as *mut RopeContext).cast(),
-                find_anchor: rope_find_anchor,
-                worm_motion: rope_worm_motion,
-                create_nobject2: rope_create_nobject2,
-            };
-            let level = self.g.f.level;
-
-            liero_ninjarope_process(
-                addr_of_mut!((*owner).ninjarope),
-                worm_motion(owner),
-                &level,
-                self.rand_ptr(),
-                &k,
-                &hooks,
-            );
         }
     }
 
@@ -1378,100 +1195,6 @@ unsafe fn w_used(ctx_: *mut c_void) -> bool {
     }
 }
 
-struct NObjectContext<'a> {
-    w: World<'a>,
-    obj: *mut LieroNObject,
-    slot: usize,
-}
-
-unsafe fn n_create_bobject(ctx_: *mut c_void, pos: LieroIVec2, vel: LieroIVec2) {
-    unsafe {
-        let c: &NObjectContext = ctx(ctx_);
-        c.w.create_bobject(pos, vel);
-    }
-}
-
-unsafe fn n_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
-    unsafe {
-        let c: &NObjectContext = ctx(ctx_);
-        c.w.create_sobject(kind, x, y, (*c.obj).owner_idx, (*c.obj).fired_by, None);
-    }
-}
-
-unsafe fn n_create_nobject2(ctx_: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
-    unsafe {
-        let c: &NObjectContext = ctx(ctx_);
-        c.w.create_nobject2(kind, angle, vel, pos, color, (*c.obj).owner_idx, null_mut());
-    }
-}
-
-unsafe fn n_draw_on_map(ctx_: *mut c_void, x: i32, y: i32) {
-    unsafe {
-        let c: &NObjectContext = ctx(ctx_);
-        let t = &*((*c.obj).kind as *const LieroTcNObject);
-        let sprite = c.w.tc().small_sprites.frame(t.start_frame + (*c.obj).cur_frame);
-        let mut level = c.w.g.f.level.get();
-        let common = c.w.tc().level_common();
-        level.blit_image(&common, sprite, x, y, 7, 7);
-        // x and y are 3 left of and above the object. This seems like an overly
-        // large rectangle.
-        if c.w.g.s.shadow {
-            level.correct_shadow(&common, x - 5, y - 5, x + 12, y + 12);
-        }
-    }
-}
-
-unsafe fn n_hit_worms(ctx_: *mut c_void) -> bool {
-    unsafe {
-        let c: &NObjectContext = ctx(ctx_);
-        let world = &c.w;
-        let o = c.obj;
-        let t = &*((*o).kind as *const LieroTcNObject);
-        let mut do_explode = false;
-
-        for i in 0..world.worm_count() {
-            let w = world.worm(i);
-
-            if world.spec_worm_hit(ftoi((*o).pos.x), ftoi((*o).pos.y), t.detect_distance, i) {
-                (*w).vel = add((*w).vel, mul_div((*o).vel, t.blow_away, 100));
-
-                world.g.damage(i, t.hit_damage, (*o).owner_idx);
-
-                world.damage_dealt((*o).owner_idx, (*o).fired_by, i, t.hit_damage, (*o).has_hit);
-                (*o).has_hit = true;
-
-                if t.hit_damage > 0 && (*w).health > 0 && world.rand(3) == 0 {
-                    world.hurt_sound(i);
-                }
-
-                let blood = t.blood_on_hit.wrapping_mul(world.g.s.blood) / 100;
-
-                for _ in 0..blood.max(0) {
-                    let angle = world.rand(128) as i32;
-                    world.create_nobject2(6, angle, div((*o).vel, 3), (*o).pos, 0, (*o).owner_idx, null_mut());
-                }
-
-                if t.worm_explode {
-                    do_explode = true;
-                } else if t.worm_destroy && (*o).used {
-                    (*world.nobjects()).free(c.slot);
-                }
-            }
-        }
-
-        do_explode
-    }
-}
-
-unsafe fn n_free(ctx_: *mut c_void) {
-    unsafe {
-        let c: &NObjectContext = ctx(ctx_);
-        if (*c.obj).used {
-            (*c.w.nobjects()).free(c.slot);
-        }
-    }
-}
-
 struct WormContext<'a> {
     w: World<'a>,
     /// The worm's position in the game's worms.
@@ -1689,44 +1412,6 @@ unsafe fn worm_after_spawn(ctx_: *mut c_void) {
         if let Some(s) = c.w.stats() {
             liero_stats_after_spawn(s, c.i);
         }
-    }
-}
-
-struct RopeContext<'a> {
-    w: World<'a>,
-    /// The owner's position in the game's worms.
-    owner: i32,
-}
-
-unsafe fn rope_find_anchor(ctx_: *mut c_void, x: i32, y: i32) -> Option<WormId> {
-    unsafe {
-        let c: &RopeContext = ctx(ctx_);
-        (0..c.w.worm_count())
-            .find(|&i| i != c.owner && c.w.spec_worm_hit(x, y, 1, i))
-            .map(|i| c.w.g.worm(i).id)
-    }
-}
-
-unsafe fn rope_worm_motion(ctx_: *mut c_void, worm: WormId) -> LieroWormMotion {
-    unsafe {
-        let c: &RopeContext = ctx(ctx_);
-        worm_motion(c.w.pool_worm(worm))
-    }
-}
-
-/// Where `w` keeps its position and velocity.
-fn worm_motion(w: *mut LieroWormData) -> LieroWormMotion {
-    LieroWormMotion {
-        pos: unsafe { addr_of_mut!((*w).pos) },
-        vel: unsafe { addr_of_mut!((*w).vel) },
-    }
-}
-
-unsafe fn rope_create_nobject2(ctx_: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
-    unsafe {
-        let c: &RopeContext = ctx(ctx_);
-        let index = (*c.w.worm(c.owner)).index;
-        c.w.create_nobject2(kind, angle, vel, pos, color, index, null_mut());
     }
 }
 
