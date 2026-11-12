@@ -1,45 +1,36 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <cstring>
-#include <cassert>
-#include <cstdlib>
-#include <cctype>
-#include <vector>
-#include <utility>
-#include <algorithm>
-#include <cstdio>
-#include <memory>
-#include <limits>
 #include <random>
+#include <string>
 
 #include "gfx.hpp"
+
 #include "screen.hpp"
-#include "game.hpp"
-#include "sfx.hpp"
-#include "text.hpp"
-#include "keys.hpp"
-#include "filesystem.hpp"
-
-#include "ticks.hpp"
-
-
-#include "gfx/macros.hpp"
-
 
 Gfx gfx;
 
 namespace
 {
 LieroMenusHooks menusHooks();
+
+std::string str(LieroStr s)
+{
+	return std::string(reinterpret_cast<char const*>(s.ptr), s.len);
+}
+
+// The icon `name` in the config folder.
+std::string iconPath(char const* name)
+{
+	std::string p = str(liero_shell_config_path(gfx.app));
+	if (!p.empty() && p.back() != '/' && p.back() != '\\')
+		p += '/';
+	return p + name;
+}
 }
 
 Gfx::Gfx()
 : menus(liero_menus_new(menusHooks()))
-, mainMenu(liero_menus_box(menus, LIERO_MENU_MAIN), false)
-, settingsMenu(liero_menus_box(menus, LIERO_MENU_SETTINGS), false)
-, playerMenu(liero_menus_box(menus, LIERO_MENU_PLAYER), false)
-, hiddenMenu(liero_menus_box(menus, LIERO_MENU_HIDDEN), false)
-, sdlDrawSurface(0)
 , running(true)
 , doubleRes(true)
 , windowW(320 * 2)
@@ -52,76 +43,13 @@ Gfx::Gfx()
 	liero_app_set_menus(app, menus);
 }
 
-namespace
-{
-
-LieroStr lstr(std::string const& s)
-{
-	LieroStr r = { reinterpret_cast<uint8_t const*>(s.data()), s.size() };
-	return r;
-}
-
-}
-
-std::shared_ptr<Settings> const& Gfx::settings()
-{
-	LieroSettingsBox* box = liero_app_settings(app);
-	if (!box)
-		settingsView.reset();
-	else if (!settingsView || settingsView->rust() != box)
-		settingsView = Settings::of(box);
-	return settingsView;
-}
-
-void Gfx::setSettings(std::shared_ptr<Settings> s)
-{
-	liero_app_set_settings(app, s ? s->rust() : nullptr);
-	settingsView = std::move(s);
-}
-
-std::shared_ptr<Common> const& Gfx::common()
-{
-	LieroTc* tc = liero_app_tc(app);
-	if (!tc)
-		commonView.reset();
-	else if (!commonView || commonView->tc != tc)
-		commonView = Common::of(tc);
-	return commonView;
-}
-
-void Gfx::setCommon(std::shared_ptr<Common> c)
-{
-	liero_app_set_tc(app, c ? c->tc : nullptr);
-	commonView = std::move(c);
-}
-
-void Gfx::setConfigPath(std::string const& path)
-{
-	liero_app_set_config_path(app, lstr(path));
-}
-
-FsNode Gfx::getConfigNode()
-{
-	return FsNode::adopt(liero_app_config(app));
-}
-
-void Gfx::setTcPath(std::string const& path)
-{
-	liero_app_set_tc_path(app, lstr(path));
-}
-
-FsNode Gfx::getTcNode()
-{
-	return FsNode::adopt(liero_app_tc_root(app));
-}
-
 void Gfx::init()
 {
 	SDL_ShowCursor(SDL_DISABLE);
 	lastFrame = SDL_GetTicks();
 
-	playRenderer.init(320, 200);
-	singleScreenRenderer.init(640, 400);
+	liero_renderer_set_render_resolution(liero_app_renderer(app, false), 320, 200);
+	liero_renderer_set_render_resolution(liero_app_renderer(app, true), 640, 400);
 	// Joystick init
 	SDL_GameControllerEventState(SDL_ENABLE);
 	int numJoysticks = SDL_NumJoysticks();
@@ -138,7 +66,7 @@ void Gfx::setVideoMode()
 
 #ifdef __EMSCRIPTEN__
 	// The page has one canvas, so there is no second window to show.
-	settings()->spectatorWindow = false;
+	liero_shell_set_spectator_window(app, false);
 #endif
 
 	if (sdlSpectatorRenderer)
@@ -146,7 +74,7 @@ void Gfx::setVideoMode()
 		SDL_DestroyRenderer(sdlSpectatorRenderer);
 		sdlSpectatorRenderer = NULL;
 	}
-	if (settings()->spectatorWindow)
+	if (liero_shell_spectator_window(app))
 	{
 		flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 		if (spectatorFullscreen)
@@ -194,7 +122,7 @@ void Gfx::setVideoMode()
 
 	flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 
-	if (settings()->fullscreen)
+	if (liero_shell_fullscreen(app))
 	{
 		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 	}
@@ -212,7 +140,7 @@ void Gfx::setVideoMode()
 		// The Mac app will automatically use the .icns icon file located in the
 		// .app bundle, so don't override that here.
 #ifndef __APPLE__
-		std::string s = joinPath(getConfigNode().fullPath(), "icon.png");
+		std::string s = iconPath("icon.png");
 		SDL_Surface *icon = IMG_Load(s.c_str());
 		if (icon)
 		{
@@ -223,7 +151,7 @@ void Gfx::setVideoMode()
 	}
 	else
 	{
-		if (settings()->fullscreen)
+		if (liero_shell_fullscreen(app))
 		{
 			SDL_SetWindowFullscreen(sdlWindow, SDL_WINDOW_FULLSCREEN_DESKTOP);
 		}
@@ -249,7 +177,7 @@ void Gfx::setVideoMode()
 #ifndef __APPLE__
 	if (sdlSpectatorWindow)
 	{
-		std::string s = joinPath(getConfigNode().fullPath(), "spectator_icon.png");
+		std::string s = iconPath("spectator_icon.png");
 		SDL_Surface *spectator_icon = IMG_Load(s.c_str());
 		if (spectator_icon)
 		{
@@ -305,7 +233,7 @@ void Gfx::onWindowResize(Uint32 windowID)
 			sdlSpectatorDrawSurface = NULL;
 		}
 
-		if (settings()->spectatorWindow)
+		if (liero_shell_spectator_window(app))
 		{
 			sdlSpectatorTexture = SDL_CreateTexture(sdlSpectatorRenderer,
 			                                        SDL_PIXELFORMAT_ARGB8888,
@@ -316,11 +244,6 @@ void Gfx::onWindowResize(Uint32 windowID)
 			SDL_RenderSetLogicalSize(sdlSpectatorRenderer, 640, 400);
 		}
 	}
-}
-
-void Gfx::loadMenus()
-{
-	liero_menus_load(menus);
 }
 
 void Gfx::setSpectatorFullscreen(bool newFullscreen)
@@ -347,12 +270,12 @@ void Gfx::setSpectatorFullscreen(bool newFullscreen)
 
 void Gfx::setFullscreen(bool newFullscreen, bool updateMenu)
 {
-	if (newFullscreen == settings()->fullscreen)
+	if (newFullscreen == liero_shell_fullscreen(app))
 		return;
-	settings()->fullscreen = newFullscreen;
+	liero_shell_set_fullscreen(app, newFullscreen);
 
 	// fullscreen will automatically set window size
-	if (!settings()->fullscreen)
+	if (!liero_shell_fullscreen(app))
 	{
 		if (doubleRes)
 		{
@@ -394,18 +317,25 @@ void Gfx::setDoubleRes(bool newDoubleRes, bool updateMenu)
 namespace
 {
 
-// Passes joystick buttons that changed to the controller.
-void sendKeys(KeySink* controller, LieroKeyChanges const& changes)
+// Passes a key to the app's controller, if it has one.
+void sendKey(bool toController, uint32_t key, bool state)
 {
-	if (!controller)
+	if (!toController)
 		return;
+	if (LieroController* c = liero_app_controller(gfx.app))
+		liero_controller_on_key(c, int32_t(key), state);
+}
+
+// Passes joystick buttons that changed to the controller.
+void sendKeys(bool toController, LieroKeyChanges const& changes)
+{
 	for (uint32_t i = 0; i < changes.count; ++i)
-		controller->onKey(changes.keys[i], changes.states[i]);
+		sendKey(toController, changes.keys[i], changes.states[i]);
 }
 
 } // namespace
 
-void Gfx::processEvent(SDL_Event& ev, KeySink* controller)
+void Gfx::processEvent(SDL_Event& ev, bool toController)
 {
 	switch(ev.type)
 	{
@@ -418,14 +348,14 @@ void Gfx::processEvent(SDL_Event& ev, KeySink* controller)
 				*keyBufPtr++ = ev.key.keysym;
 
 			Uint32 dosScan = liero_keys_event(&dosKeys, s, true);
-			if(dosScan && controller)
-				controller->onKey(dosScan, true);
+			if(dosScan)
+				sendKey(toController, dosScan, true);
 
 			if(s == SDL_SCANCODE_F11)
 			{
 				if (SDL_GetWindowFromID(ev.key.windowID) == sdlWindow)
 				{
-					setFullscreen(!settings()->fullscreen);
+					setFullscreen(!liero_shell_fullscreen(app));
 				}
 				else
 				{
@@ -441,8 +371,8 @@ void Gfx::processEvent(SDL_Event& ev, KeySink* controller)
 			SDL_Scancode s = ev.key.keysym.scancode;
 
 			Uint32 dosScan = liero_keys_event(&dosKeys, s, false);
-			if(dosScan && controller)
-				controller->onKey(dosScan, false);
+			if(dosScan)
+				sendKey(toController, dosScan, false);
 		}
 		break;
 
@@ -469,36 +399,21 @@ void Gfx::processEvent(SDL_Event& ev, KeySink* controller)
 		break;
 
 		case SDL_JOYAXISMOTION:
-			sendKeys(controller, liero_joy_axis(joysticks[ev.jaxis.which].btnState, ev.jaxis.which, ev.jaxis.axis, ev.jaxis.value));
+			sendKeys(toController, liero_joy_axis(joysticks[ev.jaxis.which].btnState, ev.jaxis.which, ev.jaxis.axis, ev.jaxis.value));
 		break;
 
 		case SDL_JOYHATMOTION:
-			sendKeys(controller, liero_joy_hat(joysticks[ev.jhat.which].btnState, ev.jhat.which, ev.jhat.value));
+			sendKeys(toController, liero_joy_hat(joysticks[ev.jhat.which].btnState, ev.jhat.which, ev.jhat.value));
 		break;
 
 		case SDL_JOYBUTTONDOWN:
 		case SDL_JOYBUTTONUP: /* Fall-through */
-			sendKeys(controller, liero_joy_button(joysticks[ev.jbutton.which].btnState, ev.jbutton.which, ev.jbutton.button, ev.jbutton.state == SDL_PRESSED));
+			sendKeys(toController, liero_joy_button(joysticks[ev.jbutton.which].btnState, ev.jbutton.which, ev.jbutton.button, ev.jbutton.state == SDL_PRESSED));
 		break;
 
 		default:
 			break;
 	}
-}
-
-uint32_t appTicks()
-{
-	return SDL_GetTicks();
-}
-
-uint64_t appHiresTicks()
-{
-	return hiresTicks();
-}
-
-std::time_t appTime()
-{
-	return std::time(0);
 }
 
 bool Gfx::pollEvent(SDL_Event& ev)
@@ -518,24 +433,13 @@ void Gfx::idle()
 #endif
 }
 
-void Gfx::process(KeySink* controller)
+void Gfx::process(bool toController)
 {
 	SDL_Event ev;
 	keyBufPtr = keyBuf;
 	while(pollEvent(ev))
 	{
-		processEvent(ev, controller);
-	}
-}
-
-std::string Gfx::getKeyName(uint32_t key)
-{
-	int joy, button;
-	switch (liero_key_name_kind(key, &joy, &button))
-	{
-	case 0: return common()->texts.keyNames[key];
-	case 1: return "J" + toString(joy) + "_" + toString(button);
-	default: return "";
+		processEvent(ev, toController);
 	}
 }
 
@@ -544,52 +448,36 @@ void Gfx::clearKeys()
 	liero_keys_clear(&dosKeys);
 }
 
-void Gfx::preparePalette(SDL_PixelFormat* format, Color realPal[256], uint32_t (&pal32)[256])
+void Gfx::draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, LieroRenderer* renderer)
 {
-	for(int i = 0; i < 256; ++i)
-	{
-		pal32[i] = SDL_MapRGB(format, realPal[i].r, realPal[i].g, realPal[i].b);
-	}
-}
-
-void Gfx::draw(SDL_Surface& surface, SDL_Texture& texture, SDL_Renderer& sdlRenderer, Renderer& renderer)
-{
-	Rect updateRect;
-	Color realPal[256];
-	renderer.pal.activate(realPal);
-	int offsetX, offsetY;
-	int mag = fitScreen(surface.w, surface.h,
-						renderer.renderResX, renderer.renderResY, offsetX, offsetY);
-
-	Rect newRect(offsetX, offsetY, renderer.renderResX * mag, renderer.renderResY * mag);
+	LieroRendererData const& d = *liero_renderer_data(renderer);
+	LieroBitmap const& bmp = *liero_bitmap_box_view(liero_renderer_bitmap(renderer));
+	LieroColor realPal[256];
+	liero_palette_activate(d.pal, realPal);
+	int32_t offsetX, offsetY;
+	int mag = liero_gfx_fit_screen(surface.w, surface.h,
+						d.render_res_x, d.render_res_y, &offsetX, &offsetY);
 
 	if(mag != prevMag)
 	{
 		// Clear background if magnification is decreased to
 		// avoid leftovers.
 		SDL_FillRect(&surface, 0, 0);
-		updateRect = lastUpdateRect | newRect;
 	}
-	else
-		updateRect = newRect;
 	prevMag = mag;
 
 	std::size_t destPitch = surface.pitch;
-	std::size_t srcPitch = renderer.bmp.pitch;
-
-	PalIdx* dest = reinterpret_cast<PalIdx*>(surface.pixels) + offsetY * destPitch + offsetX * surface.format->BytesPerPixel;
-	PalIdx* src = renderer.bmp.pixels;
+	uint8_t* dest = reinterpret_cast<uint8_t*>(surface.pixels) + offsetY * destPitch + offsetX * surface.format->BytesPerPixel;
 
 	uint32_t pal32[256];
-	preparePalette(surface.format, realPal, pal32);
-	scaleDraw(src, renderer.renderResX, renderer.renderResY, srcPitch, dest, destPitch, mag, pal32);
+	for(int i = 0; i < 256; ++i)
+		pal32[i] = SDL_MapRGB(surface.format, realPal[i].r, realPal[i].g, realPal[i].b);
+	liero_gfx_scale_draw(bmp.pixels, d.render_res_x, d.render_res_y, std::size_t(bmp.pitch), dest, destPitch, mag, pal32);
 
 	SDL_UpdateTexture(&texture, NULL, surface.pixels, surface.w * 4);
 	SDL_RenderClear(&sdlRenderer);
 	SDL_RenderCopy(&sdlRenderer, &texture, NULL, NULL);
 	SDL_RenderPresent(&sdlRenderer);
-
-	lastUpdateRect = updateRect;
 }
 
 void Gfx::flip()
@@ -597,10 +485,10 @@ void Gfx::flip()
 	// draw into the play window. This uses either the normal split screen renderer
 	// or the single screen renderer if this is a replay and single screen replay
 	// is turned on
-	draw(*sdlDrawSurface, *sdlTexture, *sdlRenderer, primaryRenderer());
-	if (settings()->spectatorWindow)
+	draw(*sdlDrawSurface, *sdlTexture, *sdlRenderer, liero_app_primary(app));
+	if (liero_shell_spectator_window(app))
 	{
-		draw(*sdlSpectatorDrawSurface, *sdlSpectatorTexture, *sdlSpectatorRenderer, singleScreenRenderer);
+		draw(*sdlSpectatorDrawSurface, *sdlSpectatorTexture, *sdlSpectatorRenderer, liero_app_renderer(app, true));
 	}
 
 #ifndef __EMSCRIPTEN__
@@ -623,118 +511,36 @@ void Gfx::flip()
 #endif
 }
 
-// The boxes are drawn in Rust (rust/liero-game/src/menu.rs).
-
-void drawInfoBox(Common& common, Bitmap& bmp, std::string const& text, int x, int y)
-{
-	LieroBitmap scr = bmp.view();
-	LieroFont font = common.font.view();
-	liero_menu_draw_info_box(&scr, &font, lstr(text), x, y);
-}
-
-void drawInputBox(Common& common, Bitmap& bmp, Bitmap& frozen, std::string const& text, int x, int y, bool centered)
-{
-	LieroBitmap scr = bmp.view();
-	LieroBitmap from = frozen.view();
-	LieroFont font = common.font.view();
-	liero_menu_draw_input_box(&scr, &from, &font, lstr(text), x, y, centered);
-}
-
-// The boxes and key choice are screens in Rust (rust/liero-game/src/boxes.rs).
-
-std::unique_ptr<Screen> infoBoxScreen(std::string const& text, int x, int y, bool clearScreen)
-{
-	return fromFfi(liero_info_box_screen(lstr(text), x, y, clearScreen));
-}
-
 namespace
 {
 
-std::unique_ptr<Screen> menuScreen();
+// The app's screens are in Rust (rust/liero-game/src/app_screens.rs); these
+// are what they call here.
 
-// C++ called from Rust: an exception waits until the tick returns.
-template<typename F>
-auto guarded(F f, decltype(f()) fallback) -> decltype(f())
+void appProcess() { gfx.process(true); }
+
+void hookRandomizeTc()
 {
-	try
-	{
-		return f();
-	}
-	catch (...)
-	{
-		deferException();
-		return fallback;
-	}
-}
-
-// The app's screens and the menu's choices are in Rust
-// (rust/liero-game/src/app_screens.rs); these are what they call in C++.
-
-// The frame's keys go to the controller.
-struct ControllerKeys : KeySink
-{
-	void onKey(int key, bool state) override
-	{
-		if (LieroController* c = liero_app_controller(gfx.app))
-			liero_controller_on_key(c, key, state);
-	}
-};
-
-void appProcess()
-{
-	guarded([]
-	{
-		ControllerKeys keys;
-		gfx.process(&keys);
-		return 0;
-	}, 0);
-}
-
-LieroScreen appMenuScreen() { return screenToFfi(menuScreen()); }
-
-}
-
-std::unique_ptr<Screen> mainScreen()
-{
-	LieroAppHooks h;
-	h.process = appProcess;
-	h.menu_screen = appMenuScreen;
-	return fromFfi(liero_main_screen(h));
-}
-
-void Gfx::saveSettings(FsNode node)
-{
-	if (!node.rust() || !liero_app_save_settings(app, node.rust()))
-		throw std::runtime_error("Could not write " + node.fullPath());
-}
-
-bool Gfx::loadSettings(FsNode node)
-{
-	return liero_app_load_settings(app, node.rust(), false);
-}
-
-bool Gfx::loadSettingsLegacy(FsNode node)
-{
-	return liero_app_load_settings(app, node.rust(), true);
-}
-
-// F8 on the menu: the developers' random TC, in Rust (liero_tc_randomize).
-void Gfx::randomizeTc()
-{
-	if (LieroTc* tc = liero_app_tc(app))
+	// F8 on the menu: the developers' random TC.
+	if (LieroTc* tc = liero_app_tc(gfx.app))
 		liero_tc_randomize(tc, std::random_device()());
 }
 
-namespace
+LieroScreen appMenuScreen()
 {
+	LieroMenuScreenHooks h;
+	h.menus = gfx.menus;
+	h.randomize_tc = hookRandomizeTc;
+	return liero_menu_screen(h);
+}
 
 // The menus' hooks (rust/liero-game/src/menus.rs).
 
-uint32_t menusMenuCycles() { return gfx.menuCycles; }
+uint32_t menusMenuCycles() { return *liero_app_menu_cycles(gfx.app); }
 bool* menusDoubleRes() { return &gfx.doubleRes; }
 // The options menu shows the change itself.
-void menusSetDoubleRes(bool v) { guarded([v] { gfx.setDoubleRes(v, false); return 0; }, 0); }
-void menusSetFullscreen(bool v) { guarded([v] { gfx.setFullscreen(v, false); return 0; }, 0); }
+void menusSetDoubleRes(bool v) { gfx.setDoubleRes(v, false); }
+void menusSetFullscreen(bool v) { gfx.setFullscreen(v, false); }
 
 LieroMenusHooks menusHooks()
 {
@@ -746,14 +552,12 @@ LieroMenusHooks menusHooks()
 	return h;
 }
 
-void hookRandomizeTc() { guarded([] { gfx.randomizeTc(); return 0; }, 0); }
-
-std::unique_ptr<Screen> menuScreen()
-{
-	LieroMenuScreenHooks h;
-	h.menus = gfx.menus;
-	h.randomize_tc = hookRandomizeTc;
-	return fromFfi(liero_menu_screen(h));
 }
 
+LieroScreen mainScreen()
+{
+	LieroAppHooks h;
+	h.process = appProcess;
+	h.menu_screen = appMenuScreen;
+	return liero_main_screen(h);
 }

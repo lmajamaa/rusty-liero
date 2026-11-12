@@ -48,6 +48,9 @@ pub struct LieroApp {
     /// Whether the screen shows the single screen renderer, for a replay on
     /// one screen (`gfx.primaryRenderer`), rather than the play one.
     pub primary_single: bool,
+    /// Whether the menu writes liero.cfg as soon as the settings change, as
+    /// in the browser, where a closed tab never reaches the save at the end.
+    pub save_settings_on_change: bool,
 }
 
 impl LieroApp {
@@ -84,6 +87,7 @@ impl LieroApp {
             controller: None,
             menus: std::ptr::null_mut(),
             primary_single: false,
+            save_settings_on_change: cfg!(target_os = "emscripten"),
         }
     }
 }

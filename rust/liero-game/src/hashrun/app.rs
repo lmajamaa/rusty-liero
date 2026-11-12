@@ -483,12 +483,13 @@ fn build_script(s: &mut Script) {
 }
 
 pub fn hash_app(out: &mut Out) {
-    // A config folder of its own, with a broken replay to fail on.
+    // A config folder of its own, with a broken replay to fail on. The game
+    // reads "/hashapp" as "./hashapp" (`super::on_disk`).
     let root = "/hashapp";
     for dir in ["", "/Profiles", "/Replays"] {
-        let _ = std::fs::create_dir(format!("{root}{dir}"));
+        let _ = std::fs::create_dir(super::on_disk(&format!("{root}{dir}")));
     }
-    std::fs::write(format!("{root}/Replays/BROKEN.lrp"), "This is not a replay.").expect("can't write the broken replay");
+    std::fs::write(super::on_disk(&format!("{root}/Replays/BROKEN.lrp")), "This is not a replay.").expect("can't write the broken replay");
 
     // Fresh menus, as the game starts with: the menu checks before this one
     // leave items hidden and selected.
@@ -508,6 +509,8 @@ pub fn hash_app(out: &mut Out) {
     a.files.settings_node = Node::new(format!("{root}/liero.cfg").as_bytes());
     liero_rand_seed(&mut a.rand, 77);
     a.primary_single = false;
+    // As in the browser, where the lines were recorded.
+    a.save_settings_on_change = true;
     a.menu_settings().data.spectator_window = false;
     liero_keys_clear(&mut a.keys);
     // SAFETY: as above.

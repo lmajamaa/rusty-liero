@@ -6,36 +6,40 @@
 #include "gfx.hpp"
 #include "screen.hpp"
 #include "sfx.hpp"
-#include "game.hpp"
-#include "viewport.hpp"
-#include "worm.hpp"
-#include "filesystem.hpp"
-#include "text.hpp"
-#include "keys.hpp"
-#include "constants.hpp"
-#include "math.hpp"
-#include "console.hpp"
 
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <exception>
+#include <stdexcept>
+#include <string>
 #include <liero_game.h>
-#include "hashrun.hpp"
+
+namespace
+{
+
+LieroStr lstr(std::string const& s)
+{
+	return LieroStr{ reinterpret_cast<uint8_t const*>(s.data()), s.size() };
+}
+
+std::string shellError()
+{
+	LieroStr e = liero_shell_error();
+	return std::string(reinterpret_cast<char const*>(e.ptr), e.len);
+}
+
+}
 
 int gameEntry(int argc, char* argv[])
 try
 {
-	if (argc > 1 && std::strcmp(argv[1], "--hash-run") == 0)
-		return hashRun(argc, argv);
-
 	std::printf("%s\n", liero_game_version());
 
 	// TODO: Better PRNG seeding
-	gfx.rand.seed(Uint32(std::time(0)));
+	liero_rand_seed(liero_app_rand(gfx.app), uint32_t(std::time(0)));
 
-	bool tcSet = false;
-
-	std::string tcName;
+	std::string tcName; // Default to the settings' TC
 	std::string configPath; // Default to current dir
 	std::string tcPath; // Default to TC in the config folder
 
@@ -62,7 +66,6 @@ try
 		else
 		{
 			tcName = argv[i];
-			tcSet = true;
 		}
 	}
 
@@ -75,47 +78,20 @@ try
 	SDL_StopTextInput();
 #endif
 
-	precomputeTables();
-
-	gfx.loadMenus();
+	liero_menus_load(gfx.menus);
 
 	gfx.init();
-	gfx.setConfigPath(configPath);
 
-	FsNode configNode(gfx.getConfigNode());
-	if (tcPath.empty())
-		liero_app_set_tc_in_config(gfx.app);
-	else
-		gfx.setTcPath(tcPath);
-
-	if (!gfx.loadSettings(configNode / "liero.cfg"))
-	{
-		if (!gfx.loadSettingsLegacy(configNode / "LIERO.DAT"))
-		{
-			gfx.setSettings(std::make_shared<Settings>());
-			gfx.saveSettings(configNode / "liero.cfg");
-		}
-	}
-
-	if (tcSet)
-		gfx.settings()->tc = tcName;
-#ifdef __EMSCRIPTEN__
-	// What liero.cfg holds now, so the menu only writes it on a change.
-	liero_app_mark_settings_saved(gfx.app);
-#endif
-
-	// TC loading
-	FsNode lieroRoot(gfx.getTcNode() / gfx.settings()->tc.str());
-	std::shared_ptr<Common> common(new Common());
-	common->load(std::move(lieroRoot));
-	gfx.setCommon(common);
-	gfx.playRenderer.loadPalette(*common); // This gets the palette from common
+	// The settings and the TC (rust/liero-game/src/shell.rs).
+	if (!liero_shell_start(gfx.app, lstr(configPath), lstr(tcPath), lstr(tcName)))
+		throw std::runtime_error(shellError());
 
 	gfx.setVideoMode();
 	sfx.init();
 
-	startScreens(mainScreen(), [configNode]() {
-		gfx.settings()->save(configNode / "liero.cfg", gfx.rand);
+	startScreens(mainScreen(), []() {
+		if (!liero_shell_save_settings(gfx.app))
+			throw std::runtime_error(shellError());
 
 		sfx.deinit();
 		SDL_Quit();

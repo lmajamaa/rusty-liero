@@ -3,12 +3,13 @@ name = "liero-game"
 version = "0.1.0"
 edition = "2021"
 license = "BSD-2-Clause"
-description = "Game code ported from C++ to Rust, linked into openliero as a static library"
+description = "Game code ported from C++ to Rust, linked into openliero as a static library, and the hash run"
 
 [lib]
 name = "liero_game"
 path = "src/lib.rs"
-crate-type = ["staticlib"]
+# rlib for the hash run (src/bin/liero-hashrun.rs).
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 liero-data = { path = "../liero-data" }

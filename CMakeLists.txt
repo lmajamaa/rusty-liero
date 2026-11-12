@@ -25,30 +25,11 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 set(GAME_SOURCES
-    src/game/common.cpp
     src/game/console.cpp
-    src/game/constants.cpp
-    src/game/filesystem.cpp
-    src/game/game.cpp
-    src/game/level.cpp
-    src/game/math.cpp
-    src/game/rand.cpp
-    src/game/settings.cpp
-    src/game/text.cpp
-    src/game/viewport.cpp
-    src/game/weapon.cpp
-    src/game/worm.cpp
-    src/game/gfx/blit.cpp
-    src/game/gfx/font.cpp
-    src/game/gfx/palette.cpp
-    src/game/gfx/renderer.cpp
     src/game/gfx.cpp
-    src/game/hashrun.cpp
     src/game/main.cpp
-    src/game/replay.cpp
     src/game/screen.cpp
     src/game/sfx.cpp
-    src/game/menu/menu.cpp
     src/game/sdlmain.cpp
 )
 include_directories(src/game)
@@ -94,8 +75,9 @@ set_property(TARGET openliero APPEND PROPERTY
     LINK_DEPENDS ${PROJECT_SOURCE_DIR}/web/shell.html)
 # The web build's stack is 64 KB, and nothing stops a function from
 # writing past it into the program's data. With this on, every function
-# checks, and an overflow stops the game with an error. CI's hash run uses
-# it; the deployed game doesn't, as it's slower.
+# checks, and an overflow stops the game with an error. The deployed game
+# doesn't, as it's slower. The hash run's wasm build (tools/hashrun/run.ts
+# --wasm) checks the same way.
 option(LIERO_STACK_CHECK "Check for stack overflows in the web build" OFF)
 if(LIERO_STACK_CHECK)
     target_link_options(openliero PRIVATE "-sSTACK_OVERFLOW_CHECK=2")

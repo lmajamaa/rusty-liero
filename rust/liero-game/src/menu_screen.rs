@@ -179,9 +179,9 @@ impl MenuScreen {
         }
 
         if self.part == Part::Top {
-            // In the browser, liero.cfg is saved when the settings change.
-            if cfg!(target_os = "emscripten") {
-                crate::app::app().save_settings_if_changed();
+            let a = crate::app::app();
+            if a.save_settings_on_change {
+                a.save_settings_if_changed();
             }
             crate::app_menus::draw_menus();
 
