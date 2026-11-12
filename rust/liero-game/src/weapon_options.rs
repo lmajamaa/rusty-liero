@@ -304,7 +304,8 @@ mod tests {
         press(&[SCANCODE_ESCAPE]);
         assert_eq!(w.tick(&h).kind, LieroTickKind::TickStay);
 
-        table[5] = 0;
+        // SAFETY: the screen edits the table through this pointer.
+        unsafe { *w.weap_table.add(5) = 0 };
         press(&[SCANCODE_ESCAPE]);
         assert_eq!(w.tick(&h).kind, LieroTickKind::TickClose);
     }

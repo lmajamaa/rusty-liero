@@ -743,8 +743,7 @@ pub fn hash_settings(out: &mut Out) {
 
         // Worm settings: replay archives of every version, their hash and
         // profiles.
-        for w in 0..2 {
-            let ws = &s.worms[w];
+        for (w, ws) in s.worms.iter().enumerate().take(2) {
             let n = i * 2 + w;
 
             let mut h = Fnv::default();

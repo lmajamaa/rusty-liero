@@ -3,11 +3,9 @@ FROM debian:trixie-slim
 # Toolchain for local web builds (tools/web/build.ts), the Rust tests and the
 # hash run. CI installs the same versions directly; keep them in sync with
 # the env block in .github/workflows/test.yml.
-ARG RUST_VERSION=1.87.0
+ARG RUST_VERSION=1.100.0
 # The same version as the wasm-bindgen crate in rust/liero-game/Cargo.toml.
-# Its own dependencies need Rust 1.88, which builds only the tool and goes.
 ARG WASM_BINDGEN_VERSION=0.2.129
-ARG WASM_BINDGEN_RUST_VERSION=1.88.0
 
 # gcc and libc6-dev are the host linker cargo needs for build scripts.
 RUN apt-get update \
@@ -20,9 +18,7 @@ ENV RUSTUP_HOME=/rustup \
 
 RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
       --default-toolchain ${RUST_VERSION} --component clippy,rustfmt --target wasm32-unknown-unknown \
- && rustup toolchain install ${WASM_BINDGEN_RUST_VERSION} --profile minimal \
- && cargo +${WASM_BINDGEN_RUST_VERSION} install --locked wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} \
- && rustup toolchain uninstall ${WASM_BINDGEN_RUST_VERSION} \
+ && cargo install --locked wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} \
  && rm -rf /cargo/registry /cargo/git
 
 COPY --from=oven/bun:1.4.4 /usr/local/bin/bun /usr/local/bin/bun

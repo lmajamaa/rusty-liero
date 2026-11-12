@@ -339,12 +339,12 @@ mod tests {
             report: None,
         };
         unsafe {
-            assert!(out.playing(1 as *mut c_void));
-            out.stop(1 as *mut c_void);
+            assert!(out.playing(std::ptr::dangling_mut::<c_void>()));
+            out.stop(std::ptr::dangling_mut::<c_void>());
         }
         assert_eq!(mix(&mut m, 2), vec![0, 0]);
-        unsafe { LieroSoundOut::NONE.stop(1 as *mut c_void) };
-        assert!(unsafe { !LieroSoundOut::NONE.playing(1 as *mut c_void) });
+        unsafe { LieroSoundOut::NONE.stop(std::ptr::dangling_mut::<c_void>()) };
+        assert!(unsafe { !LieroSoundOut::NONE.playing(std::ptr::dangling_mut::<c_void>()) });
     }
 
     #[test]

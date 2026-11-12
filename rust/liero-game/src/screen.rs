@@ -549,7 +549,7 @@ mod tests {
             let f = &mut *(data as *mut Fake);
             log(f, format!("tick {}", f.name));
             let out = &mut *out;
-            out.shown = f.stays % 2 == 0;
+            out.shown = f.stays.is_multiple_of(2);
             if f.stays > 0 {
                 f.stays -= 1;
                 return;

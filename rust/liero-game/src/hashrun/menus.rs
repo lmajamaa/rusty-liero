@@ -337,8 +337,8 @@ fn run_menus(out: &mut Out) {
         let mut ws = ws.borrow_mut();
         ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
-        for j in 0..7 {
-            ws.data.controls[j] = (2 + j * 5 + i) as u32;
+        for (j, control) in ws.data.controls.iter_mut().enumerate().take(7) {
+            *control = (2 + j * 5 + i) as u32;
         }
     }
 
@@ -584,11 +584,11 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
         ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
         ws.data.controller = if i == 1 { controller1 } else { 0 };
-        for j in 0..5 {
-            ws.data.weapons[j] = 1 + r.below(40);
+        for weapon in ws.data.weapons.iter_mut().take(5) {
+            *weapon = 1 + r.below(40);
         }
     }
-    if seed % 2 == 0 {
+    if seed.is_multiple_of(2) {
         s.level_file = b"levels/SOME.LEV".to_vec();
     }
 

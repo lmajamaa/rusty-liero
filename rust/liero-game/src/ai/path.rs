@@ -219,7 +219,7 @@ impl PathLevel {
 
     fn set_slot(&mut self, slot: u32, v: u32) {
         let c = &mut self.cells[(slot / 2) as usize];
-        if slot % 2 == 0 {
+        if slot.is_multiple_of(2) {
             c.left_child = v;
         } else {
             c.right_sibling = v;

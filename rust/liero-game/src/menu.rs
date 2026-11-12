@@ -512,7 +512,7 @@ pub fn liero_menu_integer_left_right(
     menu_cycles: u32,
     scroll_interval: i32,
 ) -> i32 {
-    if scroll_interval == 0 || menu_cycles % scroll_interval as u32 != 0 {
+    if scroll_interval == 0 || !menu_cycles.is_multiple_of(scroll_interval as u32) {
         return v;
     }
     if (dir < 0 && v > min) || (dir > 0 && v < max) {

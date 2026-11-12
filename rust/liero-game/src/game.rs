@@ -815,13 +815,13 @@ mod tests {
             (*g).wobjects.count = 2;
             (*g).bobjects.resize(3);
             (*g).bobjects.count = 2;
-            (*g).bobjects.arr[1].color = 9;
+            (&mut (*g).bobjects.arr)[1].color = 9;
             let c = liero_game_data_clone(&*g);
             // Every field is copied, and the blood is separate.
             assert_eq!(format!("{:?}", *c), format!("{:?}", *g));
             (*c).cycles = 1;
-            (*c).bobjects.arr[1].color = 1;
-            assert_eq!(((*g).cycles, (*g).bobjects.arr[1].color), (7, 9));
+            (&mut (*c).bobjects.arr)[1].color = 1;
+            assert_eq!(((*g).cycles, (&(*g).bobjects.arr)[1].color), (7, 9));
 
             // Assigning copies everything back.
             liero_game_data_assign(&mut *c, &*g);
