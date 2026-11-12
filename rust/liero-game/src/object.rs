@@ -18,20 +18,32 @@ use crate::math::{ftoi, itof, vector_length, LieroIVec2};
 use crate::rand::LieroRand;
 
 pub(crate) fn add(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
-    LieroIVec2 { x: a.x.wrapping_add(b.x), y: a.y.wrapping_add(b.y) }
+    LieroIVec2 {
+        x: a.x.wrapping_add(b.x),
+        y: a.y.wrapping_add(b.y),
+    }
 }
 
 pub(crate) fn sub(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
-    LieroIVec2 { x: a.x.wrapping_sub(b.x), y: a.y.wrapping_sub(b.y) }
+    LieroIVec2 {
+        x: a.x.wrapping_sub(b.x),
+        y: a.y.wrapping_sub(b.y),
+    }
 }
 
 /// Divides both components, rounding towards zero like C++.
 pub(crate) fn div(a: LieroIVec2, d: i32) -> LieroIVec2 {
-    LieroIVec2 { x: a.x.wrapping_div(d), y: a.y.wrapping_div(d) }
+    LieroIVec2 {
+        x: a.x.wrapping_div(d),
+        y: a.y.wrapping_div(d),
+    }
 }
 
 pub(crate) fn ftoi_vec(v: LieroIVec2) -> LieroIVec2 {
-    LieroIVec2 { x: ftoi(v.x), y: ftoi(v.y) }
+    LieroIVec2 {
+        x: ftoi(v.x),
+        y: ftoi(v.y),
+    }
 }
 
 /// Like C++'s `Level::inside`: negative coordinates wrap to large unsigned
@@ -129,40 +141,37 @@ pub unsafe fn liero_bonus_process(
     timer: &mut i32,
     level: &LieroLevel,
     constants: &LieroBonusConstants,
-) -> bool { unsafe {
-    let lv = level.get();
+) -> bool {
+    unsafe {
+        let lv = level.get();
 
-    *y = y.wrapping_add(*vel_y);
+        *y = y.wrapping_add(*vel_y);
 
-    let ix = ftoi(x);
-    let iy = ftoi(*y);
+        let ix = ftoi(x);
+        let iy = ftoi(*y);
 
-    if inside(level, ix, iy + 1) && lv.mat(ix, iy + 1).background() {
-        *vel_y = vel_y.wrapping_add(constants.gravity);
-    }
-
-    let inew_y = ftoi(y.wrapping_add(*vel_y));
-    if inew_y < 0 || inew_y >= level.height - 1 || lv.mat(ix, inew_y).dirt_rock() {
-        *vel_y = -(vel_y.wrapping_mul(constants.bounce_mul)) / constants.bounce_div;
-
-        // TODO in C++: read from the EXE.
-        if vel_y.abs() < 100 {
-            *vel_y = 0;
+        if inside(level, ix, iy + 1) && lv.mat(ix, iy + 1).background() {
+            *vel_y = vel_y.wrapping_add(constants.gravity);
         }
-    }
 
-    *timer -= 1;
-    *timer <= 0
-}}
+        let inew_y = ftoi(y.wrapping_add(*vel_y));
+        if inew_y < 0 || inew_y >= level.height - 1 || lv.mat(ix, inew_y).dirt_rock() {
+            *vel_y = -(vel_y.wrapping_mul(constants.bounce_mul)) / constants.bounce_div;
+
+            // TODO in C++: read from the EXE.
+            if vel_y.abs() < 100 {
+                *vel_y = 0;
+            }
+        }
+
+        *timer -= 1;
+        *timer <= 0
+    }
+}
 
 /// Advances an explosion's animation one tick. Returns true when the
 /// animation is over, so C++ frees the object.
-pub fn liero_sobject_animate(
-    cur_frame: &mut i32,
-    anim_delay: &mut i32,
-    type_anim_delay: i32,
-    num_frames: i32,
-) -> bool {
+pub fn liero_sobject_animate(cur_frame: &mut i32, anim_delay: &mut i32, type_anim_delay: i32, num_frames: i32) -> bool {
     *anim_delay -= 1;
     if *anim_delay <= 0 {
         *anim_delay = type_anim_delay;
@@ -205,7 +214,11 @@ pub fn liero_explosion_push_worm(
     // TODO in C++: read from the EXE.
     if vel.x.abs() < itof(2) {
         let push = blow_away.wrapping_mul(power);
-        vel.x = if delta > 0 { vel.x.wrapping_add(push) } else { vel.x.wrapping_sub(push) };
+        vel.x = if delta > 0 {
+            vel.x.wrapping_add(push)
+        } else {
+            vel.x.wrapping_sub(push)
+        };
     }
 
     let delta = wiy - y;
@@ -214,7 +227,11 @@ pub fn liero_explosion_push_worm(
 
     if vel.y.abs() < itof(2) {
         let push = blow_away.wrapping_mul(power);
-        vel.y = if delta > 0 { vel.y.wrapping_add(push) } else { vel.y.wrapping_sub(push) };
+        vel.y = if delta > 0 {
+            vel.y.wrapping_add(push)
+        } else {
+            vel.y.wrapping_sub(push)
+        };
     }
 
     *power_sum = sum;
@@ -384,140 +401,145 @@ pub unsafe fn liero_nobject_process(
     t: &LieroNObjectType,
     env: &LieroNObjectEnv,
     hooks: &LieroNObjectHooks,
-) { unsafe {
-    let o = Fields(obj);
-    let ctx = hooks.ctx;
+) {
+    unsafe {
+        let o = Fields(obj);
+        let ctx = hooks.ctx;
 
-    let mut bounced = false;
-    let mut do_explode = false;
+        let mut bounced = false;
+        let mut do_explode = false;
 
-    o.set_pos(add(o.pos(), o.vel()));
+        o.set_pos(add(o.pos(), o.vel()));
 
-    let mut inew_pos = ftoi_vec(add(o.pos(), o.vel()));
-    let ipos = ftoi_vec(o.pos());
+        let mut inew_pos = ftoi_vec(add(o.pos(), o.vel()));
+        let ipos = ftoi_vec(o.pos());
 
-    if t.bounce > 0 {
-        if env.blocked(inew_pos.x, ipos.y) {
-            let v = o.vel();
-            o.set_vel(LieroIVec2 {
-                x: v.x.wrapping_neg().wrapping_mul(t.bounce) / 100,
-                // TODO in C++: read from the EXE.
-                y: v.y.wrapping_mul(4) / 5,
-            });
-            bounced = true;
-        }
-
-        if env.blocked(ipos.x, inew_pos.y) {
-            let v = o.vel();
-            o.set_vel(LieroIVec2 {
-                x: v.x.wrapping_mul(4) / 5,
-                y: v.y.wrapping_neg().wrapping_mul(t.bounce) / 100,
-            });
-            bounced = true;
-        }
-    }
-
-    if t.blood_trail && t.blood_trail_delay > 0 && env.cycles % t.blood_trail_delay == 0 {
-        // TODO in C++: read from the EXE.
-        (hooks.create_bobject)(ctx, o.pos(), div(o.vel(), 4));
-    }
-
-    // Yes, again.
-    inew_pos = ftoi_vec(add(o.pos(), o.vel()));
-
-    let mut p = o.pos();
-    if inew_pos.x < 0 {
-        p.x = 0;
-    }
-    if inew_pos.y < 0 {
-        p.y = 0;
-    }
-    if inew_pos.x >= env.level.width {
-        p.x = itof(env.level.width);
-    }
-    if inew_pos.y >= env.level.height {
-        p.y = itof(env.level.height);
-    }
-    o.set_pos(p);
-
-    if env.blocked(inew_pos.x, inew_pos.y) {
-        o.set_vel(LieroIVec2::default());
-
-        if t.expl_ground {
-            if t.start_frame > 0 && t.draw_on_map {
-                (hooks.draw_on_map)(ctx, ipos.x - 3, ipos.y - 3);
+        if t.bounce > 0 {
+            if env.blocked(inew_pos.x, ipos.y) {
+                let v = o.vel();
+                o.set_vel(LieroIVec2 {
+                    x: v.x.wrapping_neg().wrapping_mul(t.bounce) / 100,
+                    // TODO in C++: read from the EXE.
+                    y: v.y.wrapping_mul(4) / 5,
+                });
+                bounced = true;
             }
+
+            if env.blocked(ipos.x, inew_pos.y) {
+                let v = o.vel();
+                o.set_vel(LieroIVec2 {
+                    x: v.x.wrapping_mul(4) / 5,
+                    y: v.y.wrapping_neg().wrapping_mul(t.bounce) / 100,
+                });
+                bounced = true;
+            }
+        }
+
+        if t.blood_trail && t.blood_trail_delay > 0 && env.cycles % t.blood_trail_delay == 0 {
+            // TODO in C++: read from the EXE.
+            (hooks.create_bobject)(ctx, o.pos(), div(o.vel(), 4));
+        }
+
+        // Yes, again.
+        inew_pos = ftoi_vec(add(o.pos(), o.vel()));
+
+        let mut p = o.pos();
+        if inew_pos.x < 0 {
+            p.x = 0;
+        }
+        if inew_pos.y < 0 {
+            p.y = 0;
+        }
+        if inew_pos.x >= env.level.width {
+            p.x = itof(env.level.width);
+        }
+        if inew_pos.y >= env.level.height {
+            p.y = itof(env.level.height);
+        }
+        o.set_pos(p);
+
+        if env.blocked(inew_pos.x, inew_pos.y) {
+            o.set_vel(LieroIVec2::default());
+
+            if t.expl_ground {
+                if t.start_frame > 0 && t.draw_on_map {
+                    (hooks.draw_on_map)(ctx, ipos.x - 3, ipos.y - 3);
+                }
+                do_explode = true;
+            }
+        } else {
+            // `leave_obj >= 0`: not in Liero, but some TCs forget to set
+            // leave_obj_delay to 0 when they don't use this trail.
+            if !bounced && t.leave_obj_delay != 0 && t.leave_obj >= 0 && env.cycles % t.leave_obj_delay == 0 {
+                let p = o.pos();
+                (hooks.create_sobject)(ctx, t.leave_obj, ftoi(p.x), ftoi(p.y));
+            }
+
+            let v = o.vel();
+            o.set_vel(LieroIVec2 {
+                x: v.x,
+                y: v.y.wrapping_add(t.gravity),
+            });
+        }
+
+        // TODO in C++: read the 7 from the EXE.
+        if t.num_frames > 0 && (env.cycles & 7) == 0 {
+            let vx = o.vel().x;
+            if vx > 0 {
+                let f = o.cur_frame() + 1;
+                o.set_cur_frame(if f > t.num_frames { 0 } else { f });
+            } else if vx < 0 {
+                let f = o.cur_frame() - 1;
+                o.set_cur_frame(if f < 0 { t.num_frames } else { f });
+            }
+        }
+
+        if t.time_to_explo > 0 {
+            let left = o.time_left() - 1;
+            o.set_time_left(left);
+            if left <= 0 {
+                do_explode = true;
+            }
+        }
+
+        if !do_explode && t.hit_damage > 0 && (hooks.hit_worms)(ctx) {
             do_explode = true;
         }
-    } else {
-        // `leave_obj >= 0`: not in Liero, but some TCs forget to set
-        // leave_obj_delay to 0 when they don't use this trail.
-        if !bounced && t.leave_obj_delay != 0 && t.leave_obj >= 0 && env.cycles % t.leave_obj_delay == 0 {
-            let p = o.pos();
-            (hooks.create_sobject)(ctx, t.leave_obj, ftoi(p.x), ftoi(p.y));
-        }
 
-        let v = o.vel();
-        o.set_vel(LieroIVec2 { x: v.x, y: v.y.wrapping_add(t.gravity) });
-    }
+        if do_explode {
+            if t.create_on_exp >= 0 {
+                let p = o.pos();
+                (hooks.create_sobject)(ctx, t.create_on_exp, ftoi(p.x), ftoi(p.y));
+            }
 
-    // TODO in C++: read the 7 from the EXE.
-    if t.num_frames > 0 && (env.cycles & 7) == 0 {
-        let vx = o.vel().x;
-        if vx > 0 {
-            let f = o.cur_frame() + 1;
-            o.set_cur_frame(if f > t.num_frames { 0 } else { f });
-        } else if vx < 0 {
-            let f = o.cur_frame() - 1;
-            o.set_cur_frame(if f < 0 { t.num_frames } else { f });
-        }
-    }
-
-    if t.time_to_explo > 0 {
-        let left = o.time_left() - 1;
-        o.set_time_left(left);
-        if left <= 0 {
-            do_explode = true;
-        }
-    }
-
-    if !do_explode && t.hit_damage > 0 && (hooks.hit_worms)(ctx) {
-        do_explode = true;
-    }
-
-    if do_explode {
-        if t.create_on_exp >= 0 {
-            let p = o.pos();
-            (hooks.create_sobject)(ctx, t.create_on_exp, ftoi(p.x), ftoi(p.y));
-        }
-
-        if t.dirt_effect >= 0 {
-            let p = ftoi_vec(o.pos());
-            {
-                let (mut lv, cv) = (env.level.get(), env.common.get());
-                lv.draw_dirt_effect(&cv, &mut *env.rand, t.dirt_effect, p.x - 7, p.y - 7);
-                if env.shadow {
-                    lv.correct_shadow(&cv, p.x - 10, p.y - 10, p.x + 11, p.y + 11);
+            if t.dirt_effect >= 0 {
+                let p = ftoi_vec(o.pos());
+                {
+                    let (mut lv, cv) = (env.level.get(), env.common.get());
+                    lv.draw_dirt_effect(&cv, &mut *env.rand, t.dirt_effect, p.x - 7, p.y - 7);
+                    if env.shadow {
+                        lv.correct_shadow(&cv, p.x - 10, p.y - 10, p.x + 11, p.y + 11);
+                    }
                 }
             }
-        }
 
-        for _ in 0..t.splinter_amount.max(0) {
-            let angle = env.rand(128) as i32;
-            let color_sub = env.rand(2) as i32;
-            (hooks.create_nobject2)(
-                ctx,
-                t.splinter_type,
-                angle,
-                LieroIVec2::default(),
-                o.pos(),
-                t.splinter_colour - color_sub,
-            );
-        }
+            for _ in 0..t.splinter_amount.max(0) {
+                let angle = env.rand(128) as i32;
+                let color_sub = env.rand(2) as i32;
+                (hooks.create_nobject2)(
+                    ctx,
+                    t.splinter_type,
+                    angle,
+                    LieroIVec2::default(),
+                    o.pos(),
+                    t.splinter_colour - color_sub,
+                );
+            }
 
-        (hooks.free)(ctx);
+            (hooks.free)(ctx);
+        }
     }
-}}
+}
 
 /// The ninja rope, laid out like C++'s `Ninjarope`.
 #[repr(C)]
@@ -578,86 +600,88 @@ pub unsafe fn liero_ninjarope_process(
     rand: *mut LieroRand,
     constants: &LieroNinjaropeConstants,
     hooks: &LieroNinjaropeHooks,
-) { unsafe {
-    let r = rope;
-    let k = constants;
-    let ctx = hooks.ctx;
+) {
+    unsafe {
+        let r = rope;
+        let k = constants;
+        let ctx = hooks.ctx;
 
-    if !(*r).out {
-        return;
-    }
+        if !(*r).out {
+            return;
+        }
 
-    (*r).pos = add((*r).pos, (*r).vel);
-    let ipos = ftoi_vec((*r).pos);
+        (*r).pos = add((*r).pos, (*r).vel);
+        let ipos = ftoi_vec((*r).pos);
 
-    (*r).anchor = (hooks.find_anchor)(ctx, ipos.x, ipos.y);
+        (*r).anchor = (hooks.find_anchor)(ctx, ipos.x, ipos.y);
 
-    let diff = sub((*r).pos, *owner.pos);
-    let force = LieroIVec2 {
-        x: diff.x.wrapping_shl(k.force_shl_x as u32) / k.force_div_x,
-        y: diff.y.wrapping_shl(k.force_shl_y as u32) / k.force_div_y,
-    };
+        let diff = sub((*r).pos, *owner.pos);
+        let force = LieroIVec2 {
+            x: diff.x.wrapping_shl(k.force_shl_x as u32) / k.force_div_x,
+            y: diff.y.wrapping_shl(k.force_shl_y as u32) / k.force_div_y,
+        };
 
-    (*r).cur_len = (vector_length(ftoi(diff.x), ftoi(diff.y)) + 1).wrapping_shl(k.force_len_shl as u32);
+        (*r).cur_len = (vector_length(ftoi(diff.x), ftoi(diff.y)) + 1).wrapping_shl(k.force_len_shl as u32);
 
-    let hits_terrain = ipos.x <= 0
-        || ipos.x >= level.width - 1
-        || ipos.y <= 0
-        || ipos.y >= level.height - 1
-        || level.get().mat(ipos.x, ipos.y).dirt_rock();
+        let hits_terrain = ipos.x <= 0
+            || ipos.x >= level.width - 1
+            || ipos.y <= 0
+            || ipos.y >= level.height - 1
+            || level.get().mat(ipos.x, ipos.y).dirt_rock();
 
-    if hits_terrain {
-        if !(*r).attached {
-            (*r).length = k.attach_length;
-            (*r).attached = true;
+        if hits_terrain {
+            if !(*r).attached {
+                (*r).length = k.attach_length;
+                (*r).attached = true;
 
-            if inside(level, ipos.x, ipos.y) {
-                let (any_dirt, pix) = {
-                    let lv = level.get();
-                    (lv.mat(ipos.x, ipos.y).any_dirt(), lv.pixel(ipos.x, ipos.y))
-                };
-                if any_dirt {
-                    // TODO in C++: check 11 and read it from the EXE.
-                    for _ in 0..11 {
-                        let angle = (*rand).below(128) as i32;
-                        (hooks.create_nobject2)(ctx, 2, angle, LieroIVec2::default(), (*r).pos, pix as i32);
+                if inside(level, ipos.x, ipos.y) {
+                    let (any_dirt, pix) = {
+                        let lv = level.get();
+                        (lv.mat(ipos.x, ipos.y).any_dirt(), lv.pixel(ipos.x, ipos.y))
+                    };
+                    if any_dirt {
+                        // TODO in C++: check 11 and read it from the EXE.
+                        for _ in 0..11 {
+                            let angle = (*rand).below(128) as i32;
+                            (hooks.create_nobject2)(ctx, 2, angle, LieroIVec2::default(), (*r).pos, pix as i32);
+                        }
                     }
                 }
             }
+
+            (*r).vel = LieroIVec2::default();
+        } else if !(*r).anchor.is_null() {
+            if !(*r).attached {
+                // TODO in C++: should this be separate from attaching to terrain?
+                (*r).length = k.attach_length;
+                (*r).attached = true;
+            }
+
+            let anchor = (hooks.worm_motion)((*r).anchor);
+            if (*r).cur_len > (*r).length {
+                *anchor.vel = sub(*anchor.vel, div(force, (*r).cur_len));
+            }
+
+            (*r).vel = *anchor.vel;
+            (*r).pos = *anchor.pos;
+        } else {
+            (*r).attached = false;
         }
 
-        (*r).vel = LieroIVec2::default();
-    } else if !(*r).anchor.is_null() {
-        if !(*r).attached {
-            // TODO in C++: should this be separate from attaching to terrain?
-            (*r).length = k.attach_length;
-            (*r).attached = true;
-        }
+        if (*r).attached {
+            // cur_len can't be 0.
+            if (*r).cur_len > (*r).length {
+                *owner.vel = add(*owner.vel, div(force, (*r).cur_len));
+            }
+        } else {
+            (*r).vel.y = (*r).vel.y.wrapping_add(k.gravity);
 
-        let anchor = (hooks.worm_motion)((*r).anchor);
-        if (*r).cur_len > (*r).length {
-            *anchor.vel = sub(*anchor.vel, div(force, (*r).cur_len));
+            if (*r).cur_len > (*r).length {
+                (*r).vel = sub((*r).vel, div(force, (*r).cur_len));
+            }
         }
-
-        (*r).vel = *anchor.vel;
-        (*r).pos = *anchor.pos;
-    } else {
-        (*r).attached = false;
     }
-
-    if (*r).attached {
-        // cur_len can't be 0.
-        if (*r).cur_len > (*r).length {
-            *owner.vel = add(*owner.vel, div(force, (*r).cur_len));
-        }
-    } else {
-        (*r).vel.y = (*r).vel.y.wrapping_add(k.gravity);
-
-        if (*r).cur_len > (*r).length {
-            (*r).vel = sub((*r).vel, div(force, (*r).cur_len));
-        }
-    }
-}}
+}
 
 #[cfg(test)]
 mod tests {
@@ -678,30 +702,51 @@ mod tests {
     fn explosion_pushes_worm_away_and_sets_power() {
         let mut vel = LieroIVec2::default();
         let mut sum = 0;
-        let pos = LieroIVec2 { x: itof(13), y: itof(8) };
+        let pos = LieroIVec2 {
+            x: itof(13),
+            y: itof(8),
+        };
         assert!(liero_explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
         // power 3 on x, 4 on y; y pushed up since the worm is above.
         assert_eq!(vel, LieroIVec2 { x: 300, y: -400 });
         assert_eq!(sum, 3);
         assert_eq!(liero_explosion_damage(10, sum, 6), 5);
 
-        let far = LieroIVec2 { x: itof(16), y: itof(10) };
+        let far = LieroIVec2 {
+            x: itof(16),
+            y: itof(10),
+        };
         assert!(!liero_explosion_push_worm(far, &mut vel, 10, 10, 6, 100, &mut sum));
     }
 
     #[test]
     fn fast_worm_is_not_pushed() {
-        let mut vel = LieroIVec2 { x: itof(2), y: -itof(3) };
+        let mut vel = LieroIVec2 {
+            x: itof(2),
+            y: -itof(3),
+        };
         let mut sum = 0;
-        let pos = LieroIVec2 { x: itof(9), y: itof(12) };
+        let pos = LieroIVec2 {
+            x: itof(9),
+            y: itof(12),
+        };
         assert!(liero_explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
-        assert_eq!(vel, LieroIVec2 { x: itof(2), y: -itof(3) });
+        assert_eq!(
+            vel,
+            LieroIVec2 {
+                x: itof(2),
+                y: -itof(3)
+            }
+        );
     }
 
     #[test]
     fn object_at_centre_is_not_pushed() {
         let mut vel = LieroIVec2::default();
-        let pos = LieroIVec2 { x: itof(10), y: itof(12) };
+        let pos = LieroIVec2 {
+            x: itof(10),
+            y: itof(12),
+        };
         assert!(liero_explosion_push_object(pos, &mut vel, 10, 10, 6, 30));
         assert_eq!(vel, LieroIVec2 { x: 0, y: 30 * 4 });
     }

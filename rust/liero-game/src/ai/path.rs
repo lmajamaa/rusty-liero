@@ -48,7 +48,15 @@ pub struct Cell {
 
 impl Default for Cell {
     fn default() -> Self {
-        Cell { left_child: NO_CELL, prev_next: NO_CELL, right_sibling: NO_CELL, parent: NO_CELL, state: NONE, g: 0, cost: 0 }
+        Cell {
+            left_child: NO_CELL,
+            prev_next: NO_CELL,
+            right_sibling: NO_CELL,
+            parent: NO_CELL,
+            state: NONE,
+            g: 0,
+            cost: 0,
+        }
     }
 }
 
@@ -91,7 +99,10 @@ pub struct PathLevel {
 
 impl Default for PathLevel {
     fn default() -> Self {
-        PathLevel { cells: vec![Cell::default(); CELL_COUNT], root: NO_CELL }
+        PathLevel {
+            cells: vec![Cell::default(); CELL_COUNT],
+            root: NO_CELL,
+        }
     }
 }
 
@@ -217,7 +228,11 @@ impl PathLevel {
 
     fn insert(&mut self, el: u32) {
         self.cells[el as usize].left_child = NO_CELL;
-        self.root = if self.root == NO_CELL { el } else { self.link(self.root, el) };
+        self.root = if self.root == NO_CELL {
+            el
+        } else {
+            self.link(self.root, el)
+        };
     }
 
     fn decreased_key(&mut self, el: u32) {
@@ -230,12 +245,20 @@ impl PathLevel {
     fn unlink_min(&mut self) -> u32 {
         let ret = self.root;
         let left_child = self.cells[ret as usize].left_child;
-        self.root = if left_child != NO_CELL { self.combine_siblings(left_child) } else { NO_CELL };
+        self.root = if left_child != NO_CELL {
+            self.combine_siblings(left_child)
+        } else {
+            NO_CELL
+        };
         ret
     }
 
     fn unlink_subtree(&mut self, el: u32) {
-        let Cell { prev_next, right_sibling, .. } = self.cells[el as usize];
+        let Cell {
+            prev_next,
+            right_sibling,
+            ..
+        } = self.cells[el as usize];
         if right_sibling != NO_CELL {
             self.cells[right_sibling as usize].prev_next = prev_next;
         }
@@ -245,7 +268,11 @@ impl PathLevel {
     /// `comparison_link_`: the cell with the smaller g, `a` unless `b`'s is
     /// smaller, takes the other as its first child.
     fn link(&mut self, a: u32, b: u32) -> u32 {
-        let (parent, child) = if self.cells[a as usize].g < self.cells[b as usize].g { (a, b) } else { (b, a) };
+        let (parent, child) = if self.cells[a as usize].g < self.cells[b as usize].g {
+            (a, b)
+        } else {
+            (b, a)
+        };
         let ch = self.cells[parent as usize].left_child;
         let c = &mut self.cells[child as usize];
         c.prev_next = 2 * parent;

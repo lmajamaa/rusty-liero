@@ -1,7 +1,7 @@
 use super::*;
-use crate::material::LIERO_MATERIAL_BACKGROUND;
 use crate::ai::path::{FULL_HEIGHT, FULL_WIDTH};
 use crate::material::LieroMaterial;
+use crate::material::LIERO_MATERIAL_BACKGROUND;
 
 #[test]
 fn states_decompose_into_their_parts() {
@@ -26,7 +26,12 @@ fn states_decompose_into_their_parts() {
 fn contexts_pack_and_unpack() {
     for idx in 0..CONTEXTS {
         let (s, facing_enemy, ninjarope_out) = InputContext::unpack(idx);
-        let c = InputContext { current_state: s, facing_enemy, ninjarope_out, ..Default::default() };
+        let c = InputContext {
+            current_state: s,
+            facing_enemy,
+            ninjarope_out,
+            ..Default::default()
+        };
         assert_eq!(c.pack(), idx);
     }
 }
@@ -52,10 +57,21 @@ fn model_rows_are_chances() {
         assert!(row.iter().all(|&p| p > 0.0), "row {i}");
     }
     // Holding fire is likelier facing the enemy.
-    let row = |s: i32, facing: i32| m.trans[InputContext { current_state: InputState(s), facing_enemy: facing, ..Default::default() }.pack()];
+    let row = |s: i32, facing: i32| {
+        m.trans[InputContext {
+            current_state: InputState(s),
+            facing_enemy: facing,
+            ..Default::default()
+        }
+        .pack()]
+    };
     assert!(row(0, 1)[2] > row(0, 0)[2]);
     // A worm on the rope jumps less.
-    let rope = m.trans[InputContext { ninjarope_out: 1, ..Default::default() }.pack()];
+    let rope = m.trans[InputContext {
+        ninjarope_out: 1,
+        ..Default::default()
+    }
+    .pack()];
     assert!(rope[1] < row(0, 0)[1]);
 }
 
@@ -105,14 +121,36 @@ impl Fake {
             health: 100,
             lives: 3,
             settings_health: 100,
-            weapons: [LieroAiWeapon { ammo: 5, loading_time: 50, max_ammo: 5, ..Default::default() }; 5],
+            weapons: [LieroAiWeapon {
+                ammo: 5,
+                loading_time: 50,
+                max_ammo: 5,
+                ..Default::default()
+            }; 5],
             ..Default::default()
         };
-        let info = LieroAiGame { ai_frames: 20, ai_mutations: 2, ai_traces: true, last_killed_idx: -1, holder_idx: -1, contender_idx: -1, ..Default::default() };
+        let info = LieroAiGame {
+            ai_frames: 20,
+            ai_mutations: 2,
+            ai_traces: true,
+            last_killed_idx: -1,
+            holder_idx: -1,
+            contender_idx: -1,
+            ..Default::default()
+        };
         Fake {
-            games: vec![FakeGame { worms: [worm(0, 100, 1), worm(1, 300, 0)], info, freed: false }],
+            games: vec![FakeGame {
+                worms: [worm(0, 100, 1), worm(1, 300, 0)],
+                info,
+                freed: false,
+            }],
             level: vec![0; (FULL_WIDTH * FULL_HEIGHT) as usize],
-            materials: vec![LieroMaterial { flags: LIERO_MATERIAL_BACKGROUND }; 256],
+            materials: vec![
+                LieroMaterial {
+                    flags: LIERO_MATERIAL_BACKGROUND
+                };
+                256
+            ],
             clones: 0,
             frees: 0,
         }
@@ -171,7 +209,12 @@ impl Games for Fake {
     }
 
     fn level(&self, _g: usize) -> LevelView<'_> {
-        LevelView { data: &self.level, width: FULL_WIDTH, height: FULL_HEIGHT, materials: &self.materials }
+        LevelView {
+            data: &self.level,
+            width: FULL_WIDTH,
+            height: FULL_HEIGHT,
+            materials: &self.materials,
+        }
     }
 }
 

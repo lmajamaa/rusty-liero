@@ -10,8 +10,8 @@ use crate::controllers::{liero_game_focus, liero_game_stats_scene};
 use crate::fs::{LieroFsNode, Node};
 use crate::game::{LieroGameHooks, LieroRect};
 use crate::game_box::{
-    liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_worm_ai, liero_worm_set_ai,
-    LieroGame,
+    liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_worm_ai,
+    liero_worm_set_ai, LieroGame,
 };
 use crate::level::{liero_level_box_swap, LieroLevelBox};
 use crate::rand::liero_rand_seed;
@@ -55,34 +55,121 @@ const TRAPS: [&str; 5] = ["BOOBY TRAP", "EXPLOSIVES", "SPIKEBALLS", "CANNON", "R
 
 /// Random weapons in each game mode, then each fixed loadout.
 const CONFIGS: [RunConfig; 17] = [
-    RunConfig { name: "kill-1", seed: 1, game_mode: KILL_EM_ALL, weapons: None },
-    RunConfig { name: "kill-2", seed: 2, game_mode: KILL_EM_ALL, weapons: None },
-    RunConfig { name: "kill-3", seed: 3, game_mode: KILL_EM_ALL, weapons: None },
-    RunConfig { name: "kill-4", seed: 4, game_mode: KILL_EM_ALL, weapons: None },
-    RunConfig { name: "tag-5", seed: 5, game_mode: GAME_OF_TAG, weapons: None },
-    RunConfig { name: "zone-6", seed: 6, game_mode: HOLDAZONE, weapons: None },
-    RunConfig { name: "explosives-7", seed: 7, game_mode: KILL_EM_ALL, weapons: Some(&EXPLOSIVES) },
-    RunConfig { name: "bombs-8", seed: 8, game_mode: KILL_EM_ALL, weapons: Some(&BOMBS) },
-    RunConfig { name: "guns-9", seed: 9, game_mode: KILL_EM_ALL, weapons: Some(&GUNS) },
-    RunConfig { name: "shotguns-10", seed: 10, game_mode: KILL_EM_ALL, weapons: Some(&SHOTGUNS) },
-    RunConfig { name: "rockets-11", seed: 11, game_mode: KILL_EM_ALL, weapons: Some(&ROCKETS) },
-    RunConfig { name: "beams-12", seed: 12, game_mode: KILL_EM_ALL, weapons: Some(&BEAMS) },
-    RunConfig { name: "throwers-13", seed: 13, game_mode: KILL_EM_ALL, weapons: Some(&THROWERS) },
-    RunConfig { name: "traps-14", seed: 14, game_mode: KILL_EM_ALL, weapons: Some(&TRAPS) },
-    RunConfig { name: "soj-15", seed: 15, game_mode: SCALES_OF_JUSTICE, weapons: None },
-    RunConfig { name: "soj-guns-16", seed: 16, game_mode: SCALES_OF_JUSTICE, weapons: Some(&GUNS) },
-    RunConfig { name: "zone-shotguns-17", seed: 17, game_mode: HOLDAZONE, weapons: Some(&SHOTGUNS) },
+    RunConfig {
+        name: "kill-1",
+        seed: 1,
+        game_mode: KILL_EM_ALL,
+        weapons: None,
+    },
+    RunConfig {
+        name: "kill-2",
+        seed: 2,
+        game_mode: KILL_EM_ALL,
+        weapons: None,
+    },
+    RunConfig {
+        name: "kill-3",
+        seed: 3,
+        game_mode: KILL_EM_ALL,
+        weapons: None,
+    },
+    RunConfig {
+        name: "kill-4",
+        seed: 4,
+        game_mode: KILL_EM_ALL,
+        weapons: None,
+    },
+    RunConfig {
+        name: "tag-5",
+        seed: 5,
+        game_mode: GAME_OF_TAG,
+        weapons: None,
+    },
+    RunConfig {
+        name: "zone-6",
+        seed: 6,
+        game_mode: HOLDAZONE,
+        weapons: None,
+    },
+    RunConfig {
+        name: "explosives-7",
+        seed: 7,
+        game_mode: KILL_EM_ALL,
+        weapons: Some(&EXPLOSIVES),
+    },
+    RunConfig {
+        name: "bombs-8",
+        seed: 8,
+        game_mode: KILL_EM_ALL,
+        weapons: Some(&BOMBS),
+    },
+    RunConfig {
+        name: "guns-9",
+        seed: 9,
+        game_mode: KILL_EM_ALL,
+        weapons: Some(&GUNS),
+    },
+    RunConfig {
+        name: "shotguns-10",
+        seed: 10,
+        game_mode: KILL_EM_ALL,
+        weapons: Some(&SHOTGUNS),
+    },
+    RunConfig {
+        name: "rockets-11",
+        seed: 11,
+        game_mode: KILL_EM_ALL,
+        weapons: Some(&ROCKETS),
+    },
+    RunConfig {
+        name: "beams-12",
+        seed: 12,
+        game_mode: KILL_EM_ALL,
+        weapons: Some(&BEAMS),
+    },
+    RunConfig {
+        name: "throwers-13",
+        seed: 13,
+        game_mode: KILL_EM_ALL,
+        weapons: Some(&THROWERS),
+    },
+    RunConfig {
+        name: "traps-14",
+        seed: 14,
+        game_mode: KILL_EM_ALL,
+        weapons: Some(&TRAPS),
+    },
+    RunConfig {
+        name: "soj-15",
+        seed: 15,
+        game_mode: SCALES_OF_JUSTICE,
+        weapons: None,
+    },
+    RunConfig {
+        name: "soj-guns-16",
+        seed: 16,
+        game_mode: SCALES_OF_JUSTICE,
+        weapons: Some(&GUNS),
+    },
+    RunConfig {
+        name: "zone-shotguns-17",
+        seed: 17,
+        game_mode: HOLDAZONE,
+        weapons: Some(&SHOTGUNS),
+    },
 ];
 
 /// # Safety
 /// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] { unsafe {
-    if n == 0 {
-        &[]
-    } else {
-        std::slice::from_raw_parts(p, n)
+unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
+    unsafe {
+        if n == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(p, n)
+        }
     }
-}}
+}
 
 /// The TC's data.
 pub(super) fn tc_data(tc: &Shared<LieroTc>) -> &LieroTcData {
@@ -110,11 +197,20 @@ unsafe extern "C" fn no_ticks(_: *mut c_void) -> u64 {
 }
 
 /// What a tick runs with: the stats clock isn't hashed.
-pub(super) const HOOKS: LieroGameHooks = LieroGameHooks { ctx: std::ptr::null_mut(), hires_ticks: no_ticks, process_viewports: true };
+pub(super) const HOOKS: LieroGameHooks = LieroGameHooks {
+    ctx: std::ptr::null_mut(),
+    hires_ticks: no_ticks,
+    process_viewports: true,
+};
 
 /// A bot-vs-bot game as the hash run sets it up, before it starts, with
 /// random weapons when `weapons` is None (`setUpGame`).
-pub(super) fn set_up_game(tc: &Shared<LieroTc>, seed: u32, game_mode: u32, weapons: Option<&[&str; 5]>) -> Box<LieroGame> {
+pub(super) fn set_up_game(
+    tc: &Shared<LieroTc>,
+    seed: u32,
+    game_mode: u32,
+    weapons: Option<&[&str; 5]>,
+) -> Box<LieroGame> {
     let d = tc_data(tc);
     let settings = LieroSettingsBox::defaults();
     // SAFETY: nothing else has the new settings yet.
@@ -153,13 +249,32 @@ pub(super) fn set_up_game(tc: &Shared<LieroTc>, seed: u32, game_mode: u32, weapo
             w.data.stats_x = if i == 0 { 0 } else { 218 };
             liero_worm_set_ai(w, 1, 0, false);
             let ai = &mut *liero_worm_ai(w);
-            liero_rand_seed(crate::ai::liero_worm_ai_rand(ai), seed.wrapping_mul(104_729).wrapping_add(i as u32));
+            liero_rand_seed(
+                crate::ai::liero_worm_ai_rand(ai),
+                seed.wrapping_mul(104_729).wrapping_add(i as u32),
+            );
         }
 
         let r = |x1, y1, x2, y2| LieroRect { x1, y1, x2, y2 };
         liero_game_add_viewport(&mut game, r(0, 0, 158, 158), 0, 504, 350, LIERO_VIEWPORT_WORM, false);
-        liero_game_add_viewport(&mut game, r(160, 0, 158 + 160, 158), 1, 504, 350, LIERO_VIEWPORT_WORM, false);
-        liero_game_add_viewport(&mut game, r(0, 0, 504 + 68, 350), 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, true);
+        liero_game_add_viewport(
+            &mut game,
+            r(160, 0, 158 + 160, 158),
+            1,
+            504,
+            350,
+            LIERO_VIEWPORT_WORM,
+            false,
+        );
+        liero_game_add_viewport(
+            &mut game,
+            r(0, 0, 504 + 68, 350),
+            0,
+            504,
+            350,
+            LIERO_VIEWPORT_SPECTATOR,
+            true,
+        );
 
         let mut level = LieroLevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, s, &mut a.rand);
@@ -194,7 +309,10 @@ fn hash_stats_screen(out: &mut Out, name: &str, game: &mut LieroGame, renderer: 
     let mut bg = crate::renderer::LieroBitmapBox::new();
     bg.copy_from(&renderer.bmp);
     // SAFETY: the TC's weapons are as many as its count.
-    let names: Vec<LieroStr> = unsafe { items(d.weapons, d.weapon_count) }.iter().map(|w| w.name).collect();
+    let names: Vec<LieroStr> = unsafe { items(d.weapons, d.weapon_count) }
+        .iter()
+        .map(|w| w.name)
+        .collect();
     let screen = LieroStatsScreen::new(stats, renderer.data.render_res_x);
 
     let mut n = 0;
@@ -229,7 +347,10 @@ fn run_game(out: &mut Out, tc: &Shared<LieroTc>, config: &RunConfig, ticks: i32,
     // SAFETY: the writer is new, and records the game while both live.
     unsafe {
         let o = liero_replay_writer_begin(&mut *writer, &mut game);
-        assert!(o.status == crate::replay::LieroReplayStatus::Ok, "the replay didn't begin");
+        assert!(
+            o.status == crate::replay::LieroReplayStatus::Ok,
+            "the replay didn't begin"
+        );
     }
 
     let blood = game.settings_box().data.blood_particle_max;
@@ -247,7 +368,10 @@ fn run_game(out: &mut Out, tc: &Shared<LieroTc>, config: &RunConfig, ticks: i32,
     }
 
     out.line(&format!("{name} 0 {:016x}", hash_game(&mut game)));
-    out.line(&format!("{name} 0 {:016x} frame", hash_frame(&mut game, &mut split, &mut spectator)));
+    out.line(&format!(
+        "{name} 0 {:016x} frame",
+        hash_frame(&mut game, &mut split, &mut spectator)
+    ));
 
     for tick in 1..=ticks {
         bot_tick(&mut game);
@@ -259,9 +383,15 @@ fn run_game(out: &mut Out, tc: &Shared<LieroTc>, config: &RunConfig, ticks: i32,
         if over || tick % interval == 0 {
             let end = if over { " end" } else { "" };
             out.line(&format!("{name} {tick} {:016x}{end}", hash_game(&mut game)));
-            out.line(&format!("{name} {tick} {:016x} frame", hash_frame(&mut game, &mut split, &mut spectator)));
+            out.line(&format!(
+                "{name} {tick} {:016x} frame",
+                hash_frame(&mut game, &mut split, &mut spectator)
+            ));
             // SAFETY: the game's stats live as long as it does.
-            out.line(&format!("{name}-stats {tick} {:016x}", hash_stats(unsafe { &*game.stats() })));
+            out.line(&format!(
+                "{name}-stats {tick} {:016x}",
+                hash_stats(unsafe { &*game.stats() })
+            ));
         }
         if over {
             break;
@@ -274,8 +404,14 @@ fn run_game(out: &mut Out, tc: &Shared<LieroTc>, config: &RunConfig, ticks: i32,
     super::replays::hash_replay(out, tc, name, &path, 1000, ticks, 0);
 
     let g = game.data_mut().cycles;
-    let w: Vec<(i32, i32)> = game.listed_worms().map(|w| w.map_or((0, 0), |w| (w.data.kills, w.data.lives))).collect();
-    out.line(&format!("{name} summary: {g} ticks, kills {}-{}, lives {}-{}", w[0].0, w[1].0, w[0].1, w[1].1));
+    let w: Vec<(i32, i32)> = game
+        .listed_worms()
+        .map(|w| w.map_or((0, 0), |w| (w.data.kills, w.data.lives)))
+        .collect();
+    out.line(&format!(
+        "{name} summary: {g} ticks, kills {}-{}, lives {}-{}",
+        w[0].0, w[1].0, w[0].1, w[1].1
+    ));
 }
 
 /// Every bot game, `ticks` long at most and hashed every `interval`.

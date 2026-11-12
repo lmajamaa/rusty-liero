@@ -11,16 +11,20 @@
 use std::ffi::c_void;
 
 use crate::level::LieroLevel;
-use crate::objects::{zeroed_box, LieroBObjectList, LieroBonusList, LieroNObjectList, LieroSObjectList, LieroWObjectList};
 use crate::math::ftoi;
+use crate::objects::{
+    zeroed_box, LieroBObjectList, LieroBonusList, LieroNObjectList, LieroSObjectList, LieroWObjectList,
+};
 use crate::rand::LieroRand;
-use crate::tc::LieroTcData;
-use crate::text::LieroStr;
 use crate::sfx::LieroSoundOut;
 use crate::stats::{LieroStats, LieroStatsWorm};
+use crate::tc::LieroTcData;
+use crate::text::LieroStr;
 use crate::viewport::LieroViewport;
 use crate::world::World;
-use crate::worm::{LieroWormData, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE};
+use crate::worm::{
+    LieroWormData, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE,
+};
 
 /// Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
 /// `gvl::rect`.
@@ -187,11 +191,13 @@ pub unsafe extern "C" fn liero_game_data_assign(to: &mut LieroGameData, from: &L
 /// # Safety
 /// `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_data_free(g: *mut LieroGameData) { unsafe {
-    if !g.is_null() {
-        drop(Box::from_raw(g));
+pub unsafe extern "C" fn liero_game_data_free(g: *mut LieroGameData) {
+    unsafe {
+        if !g.is_null() {
+            drop(Box::from_raw(g));
+        }
     }
-}}
+}
 
 /// The game state the rules read and change. `worms` has `worm_count`
 /// entries in the order of C++'s `Game::worms`; worm numbers (killers,
@@ -270,46 +276,50 @@ pub struct LieroGameHooks {
 ///
 /// # Safety
 /// `f`'s worms must be valid.
-pub(crate) unsafe fn stats_worms(f: &LieroGameFields) -> Vec<LieroStatsWorm> { unsafe {
-    use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT};
-    let worms = std::slice::from_raw_parts(f.worms, f.worm_count.max(0) as usize);
-    worms
-        .iter()
-        .map(|gw| {
-            let w = &*gw.data;
-            let pressed = |c: u32| (w.control_states >> c) & 1 != 0;
-            LieroStatsWorm {
-                index: w.index,
-                x: ftoi(w.pos.x),
-                y: ftoi(w.pos.y),
-                visible: w.visible,
-                health: w.health,
-                lives: w.lives,
-                timer: w.timer,
-                kills: w.kills,
-                max_health: gw.max_health,
-                fire: pressed(LIERO_CONTROL_FIRE),
-                change: pressed(LIERO_CONTROL_CHANGE),
-                left: pressed(LIERO_CONTROL_LEFT),
-                right: pressed(LIERO_CONTROL_RIGHT),
-                current_weapon: w.current_weapon,
-                loading_left: w.weapons.map(|ww| ww.loading_left),
-            }
-        })
-        .collect()
-}}
+pub(crate) unsafe fn stats_worms(f: &LieroGameFields) -> Vec<LieroStatsWorm> {
+    unsafe {
+        use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT};
+        let worms = std::slice::from_raw_parts(f.worms, f.worm_count.max(0) as usize);
+        worms
+            .iter()
+            .map(|gw| {
+                let w = &*gw.data;
+                let pressed = |c: u32| (w.control_states >> c) & 1 != 0;
+                LieroStatsWorm {
+                    index: w.index,
+                    x: ftoi(w.pos.x),
+                    y: ftoi(w.pos.y),
+                    visible: w.visible,
+                    health: w.health,
+                    lives: w.lives,
+                    timer: w.timer,
+                    kills: w.kills,
+                    max_health: gw.max_health,
+                    fire: pressed(LIERO_CONTROL_FIRE),
+                    change: pressed(LIERO_CONTROL_CHANGE),
+                    left: pressed(LIERO_CONTROL_LEFT),
+                    right: pressed(LIERO_CONTROL_RIGHT),
+                    current_weapon: w.current_weapon,
+                    loading_left: w.weapons.map(|ww| ww.loading_left),
+                }
+            })
+            .collect()
+    }
+}
 
 /// The end of the game for its stats (`StatsRecorder::finish`).
 ///
 /// # Safety
 /// `f`'s pointers must be valid; its stats may be null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_stats_finish(f: &LieroGameFields) { unsafe {
-    if let Some(s) = f.stats.as_mut() {
-        let worms = stats_worms(f);
-        crate::stats::liero_stats_finish(s, worms.as_ptr(), worms.len());
+pub unsafe extern "C" fn liero_game_stats_finish(f: &LieroGameFields) {
+    unsafe {
+        if let Some(s) = f.stats.as_mut() {
+            let worms = stats_worms(f);
+            crate::stats::liero_stats_finish(s, worms.as_ptr(), worms.len());
+        }
     }
-}}
+}
 
 /// Getters and setters for the game's fields. SAFETY for all of them: the
 /// pointers are valid for the call, and no reference outlives the statement.
@@ -440,9 +450,19 @@ impl Game<'_> {
 
         while z.zone_width >= 5 {
             // SAFETY: the view and rand are valid for the call.
-            let pos = unsafe { self.f.level.get().select_spawn(&mut (*self.f.game).rand, z.zone_width, z.zone_height - 8) };
+            let pos = unsafe {
+                self.f
+                    .level
+                    .get()
+                    .select_spawn(&mut (*self.f.game).rand, z.zone_width, z.zone_height - 8)
+            };
             if let Some(pos) = pos {
-                z.rect = LieroRect { x1: pos.x, y1: pos.y, x2: pos.x + z.zone_width, y2: pos.y + z.zone_height };
+                z.rect = LieroRect {
+                    x1: pos.x,
+                    y1: pos.y,
+                    x2: pos.x + z.zone_width,
+                    y2: pos.y + z.zone_height,
+                };
                 z.timeout_left = self.s.zone_timeout * 70;
                 z.contender_idx = -1;
                 z.contender_frames = 0;
@@ -501,10 +521,12 @@ impl Game<'_> {
             } else {
                 z.contender_idx = contender_idx;
 
-                if z.contender_frames < s.zone_capture_time && {
-                    z.contender_frames += 1;
-                    z.contender_frames >= s.zone_capture_time
-                } && z.holder_idx != z.contender_idx
+                if z.contender_frames < s.zone_capture_time
+                    && {
+                        z.contender_frames += 1;
+                        z.contender_frames >= s.zone_capture_time
+                    }
+                    && z.holder_idx != z.contender_idx
                 {
                     // New holder
                     let mut new_timeout = z.timeout_left;
@@ -549,10 +571,12 @@ impl Game<'_> {
 
     fn is_over(&self) -> bool {
         match self.s.game_mode {
-            LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => self.worms().any(|(_, w)| unsafe { (*w.data).lives } <= 0),
-            LIERO_GAME_GAME_OF_TAG | LIERO_GAME_HOLDAZONE => {
-                self.worms().any(|(_, w)| unsafe { (*w.data).timer } >= self.s.time_to_lose)
+            LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => {
+                self.worms().any(|(_, w)| unsafe { (*w.data).lives } <= 0)
             }
+            LIERO_GAME_GAME_OF_TAG | LIERO_GAME_HOLDAZONE => self
+                .worms()
+                .any(|(_, w)| unsafe { (*w.data).timer } >= self.s.time_to_lose),
             _ => false,
         }
     }
@@ -572,7 +596,11 @@ pub unsafe extern "C" fn liero_game_process_frame(
     settings: &LieroGameSettings,
     hooks: &LieroGameHooks,
 ) {
-    World { g: Game { f: game, s: settings }, h: hooks }.process_frame();
+    World {
+        g: Game { f: game, s: settings },
+        h: hooks,
+    }
+    .process_frame();
 }
 
 /// Hurts worm `target` (a position in `game.worms`) by `amount`, caused by
@@ -613,13 +641,19 @@ pub unsafe extern "C" fn liero_game_spawn_zone(game: &LieroGameFields, settings:
 /// # Safety
 /// The pointers in `game` and `settings` are valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_game_start(game: &LieroGameFields, settings: &LieroGameSettings, blood_particle_max: i32) { unsafe {
-    game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
-    (*game.game).bobjects.resize(blood_particle_max.max(0) as usize);
-    if settings.game_mode == LIERO_GAME_HOLDAZONE {
-        Game { f: game, s: settings }.spawn_zone();
+pub unsafe extern "C" fn liero_game_start(
+    game: &LieroGameFields,
+    settings: &LieroGameSettings,
+    blood_particle_max: i32,
+) {
+    unsafe {
+        game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
+        (*game.game).bobjects.resize(blood_particle_max.max(0) as usize);
+        if settings.game_mode == LIERO_GAME_HOLDAZONE {
+            Game { f: game, s: settings }.spawn_zone();
+        }
     }
-}}
+}
 
 /// Whether the game has ended: `Game::isGameOver`.
 ///
@@ -635,7 +669,12 @@ mod tests {
     use super::*;
 
     fn worm(health: i32) -> LieroWormData {
-        LieroWormData { visible: true, health, lives: 5, ..LieroWormData::default() }
+        LieroWormData {
+            visible: true,
+            health,
+            lives: 5,
+            ..LieroWormData::default()
+        }
     }
 
     fn settings(game_mode: i32) -> LieroGameSettings {
@@ -671,7 +710,16 @@ mod tests {
             .enumerate()
             .map(|(i, w)| {
                 w.index = i as i32;
-                LieroGameWorm { data: w, max_health: 100, ai: std::ptr::null_mut(), name: LieroStr { ptr: std::ptr::null(), len: 0 }, color: 0 }
+                LieroGameWorm {
+                    data: w,
+                    max_health: 100,
+                    ai: std::ptr::null_mut(),
+                    name: LieroStr {
+                        ptr: std::ptr::null(),
+                        len: 0,
+                    },
+                    color: 0,
+                }
             })
             .collect();
         let mut game = LieroGameData::new_boxed();
@@ -679,7 +727,12 @@ mod tests {
             worms: views.as_ptr(),
             worm_count: views.len() as i32,
             game: &mut *game,
-            level: LieroLevel { data: std::ptr::null_mut(), materials: std::ptr::null_mut(), width: 0, height: 0 },
+            level: LieroLevel {
+                data: std::ptr::null_mut(),
+                materials: std::ptr::null_mut(),
+                width: 0,
+                height: 0,
+            },
             tc: std::ptr::null(),
             viewports: std::ptr::null(),
             viewport_count: 0,
@@ -704,7 +757,10 @@ mod tests {
         with_game(&mut [worm(100), worm(100)], |f| {
             let mut f = *f;
             f.tc = &*tc;
-            f.sound = LieroSoundOut { mixer: std::ptr::null_mut(), report: Some(report) };
+            f.sound = LieroSoundOut {
+                mixer: std::ptr::null_mut(),
+                report: Some(report),
+            };
             unsafe {
                 liero_game_start(&f, &settings(LIERO_GAME_KILL_EM_ALL), 300);
                 assert_eq!(((*f.game).bobjects.limit, (*f.game).bobjects.count), (300, 0));
@@ -723,8 +779,14 @@ mod tests {
             assert_eq!(((*g).cycles, (*g).last_killed_idx, (*g).screen_flash), (0, -1, 0));
             assert!((*g).paused && !(*g).got_changed && !(*g).quick_sim);
             let z = (*g).holdazone;
-            assert_eq!((z.holder_idx, z.contender_idx, z.zone_width, z.zone_height), (-1, -1, 50, 34));
-            assert_eq!(((*g).wobjects.count, (*g).bobjects.limit, (*g).bobjects.count), (0, 1, 0));
+            assert_eq!(
+                (z.holder_idx, z.contender_idx, z.zone_width, z.zone_height),
+                (-1, -1, 50, 34)
+            );
+            assert_eq!(
+                ((*g).wobjects.count, (*g).bobjects.limit, (*g).bobjects.count),
+                (0, 1, 0)
+            );
             assert!((*g).nobjects.sentinel.used && (*g).bonuses.arr[5].frame == -1);
 
             (*g).cycles = 7;
@@ -820,7 +882,12 @@ mod tests {
 
     #[test]
     fn rect_contains_excludes_far_edges() {
-        let r = LieroRect { x1: 10, y1: 20, x2: 15, y2: 22 };
+        let r = LieroRect {
+            x1: 10,
+            y1: 20,
+            x2: 15,
+            y2: 22,
+        };
         assert!(r.contains(10, 20) && r.contains(14, 21));
         assert!(!r.contains(15, 20) && !r.contains(10, 22) && !r.contains(9, 20));
     }

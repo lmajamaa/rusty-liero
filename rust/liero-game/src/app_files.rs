@@ -137,7 +137,14 @@ fn preview_level(node: &Node) {
     // SAFETY: the miniatures fit the frozen screens.
     unsafe {
         liero_level_draw_miniature(&l, play.pixels, play.pitch, 134, 162, 10);
-        liero_level_draw_miniature(&l, spectator.pixels, spectator.pitch, center_x - 126, a.single.data.render_res_y - 208, 2);
+        liero_level_draw_miniature(
+            &l,
+            spectator.pixels,
+            spectator.pitch,
+            center_x - 126,
+            a.single.data.render_res_y - 208,
+            2,
+        );
     }
 }
 
@@ -184,7 +191,8 @@ impl FileSource for AppFiles {
                 // be recording it
                 a.controller = None;
                 // SAFETY: the app's TC has a reference.
-                let c = unsafe { crate::controllers::liero_replay_controller_new(&LieroFsNode(node.clone()), a.menu_tc()) };
+                let c =
+                    unsafe { crate::controllers::liero_replay_controller_new(&LieroFsNode(node.clone()), a.menu_tc()) };
                 if c.is_null() {
                     panic!("Could not read {}", path(&node));
                 }
@@ -237,7 +245,11 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
             (spec, config, Choice::Level)
         }
         LIERO_SELECTOR_PROFILE => {
-            let spec = Spec { select: join_path(&config_path, b"Profiles"), has_select: true, ..spec(b"LPF", b"Select profile:") };
+            let spec = Spec {
+                select: join_path(&config_path, b"Profiles"),
+                has_select: true,
+                ..spec(b"LPF", b"Select profile:")
+            };
             let ws = a.menu_settings().worms[player as usize].clone();
             (spec, config, Choice::Profile(ws))
         }
@@ -254,7 +266,12 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
         LIERO_SELECTOR_OPTIONS => (spec(b"CFG", b"Select options:"), config, Choice::Options),
         _ => {
             let root = a.files.tc_root.clone();
-            let spec = Spec { root: root.full_path().to_vec(), title: b"Select TC:".to_vec(), tcs: true, ..Default::default() };
+            let spec = Spec {
+                root: root.full_path().to_vec(),
+                title: b"Select TC:".to_vec(),
+                tcs: true,
+                ..Default::default()
+            };
             (spec, root, Choice::Tc)
         }
     }
@@ -304,27 +321,31 @@ pub(crate) fn save_profile_as(player: i32, name: &[u8]) {
 
 /// # Safety
 /// `text` is valid.
-unsafe fn node_of(text: LieroStr) -> Node { unsafe {
-    Node::new(text.bytes())
-}}
+unsafe fn node_of(text: LieroStr) -> Node {
+    unsafe { Node::new(text.bytes()) }
+}
 
 /// Sets the config folder (`Gfx::setConfigPath`).
 ///
 /// # Safety
 /// `path` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_config_path(a: &mut LieroApp, path: LieroStr) { unsafe {
-    a.files.config = node_of(path);
-}}
+pub unsafe extern "C" fn liero_app_set_config_path(a: &mut LieroApp, path: LieroStr) {
+    unsafe {
+        a.files.config = node_of(path);
+    }
+}
 
 /// Sets the folder of TCs (`Gfx::setTcPath`).
 ///
 /// # Safety
 /// `path` is valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_tc_path(a: &mut LieroApp, path: LieroStr) { unsafe {
-    a.files.tc_root = node_of(path);
-}}
+pub unsafe extern "C" fn liero_app_set_tc_path(a: &mut LieroApp, path: LieroStr) {
+    unsafe {
+        a.files.tc_root = node_of(path);
+    }
+}
 
 /// The TC folder `TC` in the config folder.
 #[no_mangle]

@@ -198,7 +198,11 @@ impl LieroBObjectList {
 
     fn from_vec(v: Vec<LieroBObject>, count: usize) -> Self {
         let limit = v.len();
-        LieroBObjectList { arr: Box::into_raw(v.into_boxed_slice()) as *mut LieroBObject, limit, count }
+        LieroBObjectList {
+            arr: Box::into_raw(v.into_boxed_slice()) as *mut LieroBObject,
+            limit,
+            count,
+        }
     }
 
     fn slice(&self) -> &[LieroBObject] {

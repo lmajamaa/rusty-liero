@@ -68,8 +68,16 @@ fn resuming_a_replay_shows_the_single_screen() {
 fn a_finished_game_goes_back_to_the_play_screen() {
     let a = set_up();
     a.primary_single = true;
-    let hooks = LieroAppHooks { process: no_process, menu_screen: no_menu };
-    let mut g = GameScreen { h: hooks, next: Next::Finish, shown: false, resumed: true };
+    let hooks = LieroAppHooks {
+        process: no_process,
+        menu_screen: no_menu,
+    };
+    let mut g = GameScreen {
+        h: hooks,
+        next: Next::Finish,
+        shown: false,
+        resumed: true,
+    };
     let t = g.tick(&Host(Default::default()));
     assert_eq!((t.kind, t.shown), (crate::screen::LieroTickKind::TickClose, false));
     assert!(!a.primary_single);

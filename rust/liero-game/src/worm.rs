@@ -18,8 +18,8 @@ use crate::math::{cos_sin, ftoi, itof, LieroIVec2};
 use crate::object::{add, div, ftoi_vec, sub, LieroNinjarope};
 use crate::rand::LieroRand;
 use crate::weapon::{
-    liero_worm_fire, liero_worm_process_weapons, LieroWeapon, LieroWormFiring, LieroWormFiringHooks,
-    LieroWormWeapon, LIERO_SELECTABLE_WEAPONS, LIERO_SHOT_STEERABLE,
+    liero_worm_fire, liero_worm_process_weapons, LieroWeapon, LieroWormFiring, LieroWormFiringHooks, LieroWormWeapon,
+    LIERO_SELECTABLE_WEAPONS, LIERO_SHOT_STEERABLE,
 };
 
 /// Indices into `reacts`: how much terrain pushes the worm in each
@@ -143,8 +143,12 @@ impl Default for LieroWormData {
             leave_shell_timer: 0,
             index: 0,
             reacts: [0; 4],
-            weapons: [LieroWormWeapon { kind: std::ptr::null(), ammo: 0, delay_left: 0, loading_left: 0 };
-                LIERO_SELECTABLE_WEAPONS],
+            weapons: [LieroWormWeapon {
+                kind: std::ptr::null(),
+                ammo: 0,
+                delay_left: 0,
+                loading_left: 0,
+            }; LIERO_SELECTABLE_WEAPONS],
             direction: 0,
             control_states: 0,
             prev_control_states: 0,
@@ -172,11 +176,13 @@ pub unsafe extern "C" fn liero_worm_data_clone(w: &LieroWormData) -> *mut LieroW
 /// # Safety
 /// `w` comes from `liero_worm_data_new` or `_clone`, and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_data_free(w: *mut LieroWormData) { unsafe {
-    if !w.is_null() {
-        drop(Box::from_raw(w));
+pub unsafe extern "C" fn liero_worm_data_free(w: *mut LieroWormData) {
+    unsafe {
+        if !w.is_null() {
+            drop(Box::from_raw(w));
+        }
     }
-}}
+}
 
 /// Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
 #[repr(C)]
@@ -593,7 +599,11 @@ impl Worm<'_> {
 
         let rh = self.react(if vel.x >= 0 { RF_LEFT } else { RF_RIGHT });
         let rv = self.react(if vel.y >= 0 { RF_UP } else { RF_DOWN });
-        let mbh = if vel.x > 0 { k.min_bounce_right } else { -k.min_bounce_left };
+        let mbh = if vel.x > 0 {
+            k.min_bounce_right
+        } else {
+            -k.min_bounce_left
+        };
         let mbv = if vel.y > 0 { k.min_bounce_down } else { -k.min_bounce_up };
 
         if vel.x != 0 && rh != 0 {
@@ -676,10 +686,7 @@ impl Worm<'_> {
         // Low or no push down, push up, and push left or right: step up.
         // Then the same the other way round.
         for (low, high, step) in [(RF_DOWN, RF_UP, -1), (RF_UP, RF_DOWN, 1)] {
-            if self.react(low) < 2
-                && self.react(high) > 0
-                && (self.react(RF_LEFT) > 0 || self.react(RF_RIGHT) > 0)
-            {
+            if self.react(low) < 2 && self.react(high) > 0 && (self.react(RF_LEFT) > 0 || self.react(RF_RIGHT) > 0) {
                 let mut pos = self.pos();
                 pos.y = pos.y.wrapping_add(itof(step));
                 self.set_pos(pos);
@@ -905,7 +912,13 @@ impl Worm<'_> {
     fn process_weapons(&self) {
         let w = self.weapon();
         unsafe {
-            liero_worm_process_weapons(&self.firing(), &w, self.env.loading_time, self.rand_ptr(), &*self.hooks.firing)
+            liero_worm_process_weapons(
+                &self.firing(),
+                &w,
+                self.env.loading_time,
+                self.rand_ptr(),
+                &*self.hooks.firing,
+            )
         };
     }
 
@@ -973,7 +986,10 @@ impl Worm<'_> {
 
     fn dig(&self) {
         let dir = cos_sin(ftoi(self.aiming_angle()));
-        let twice = LieroIVec2 { x: dir.x.wrapping_mul(2), y: dir.y.wrapping_mul(2) };
+        let twice = LieroIVec2 {
+            x: dir.x.wrapping_mul(2),
+            y: dir.y.wrapping_mul(2),
+        };
 
         let mut dig_pos = sub(add(twice, self.pos()), LieroIVec2 { x: itof(7), y: itof(7) });
 
@@ -1165,7 +1181,11 @@ impl Worm<'_> {
             self.die();
         }
 
-        let anim_frame = if self.animate() { ((self.env.cycles & 31) >> 3) as usize } else { 0 };
+        let anim_frame = if self.animate() {
+            ((self.env.cycles & 31) >> 3) as usize
+        } else {
+            0
+        };
         self.set_current_frame(
             liero_worm_angle_frame(self.aiming_angle(), self.direction()) + self.env.anim_tab[anim_frame],
         );
@@ -1268,7 +1288,10 @@ impl Worm<'_> {
         limit_xy(&mut lr, width - 158, height - 158);
         self.set_logic_respawn(lr);
 
-        let mut dest = LieroIVec2 { x: ipos.x - 80, y: ipos.y - 80 };
+        let mut dest = LieroIVec2 {
+            x: ipos.x - 80,
+            y: ipos.y - 80,
+        };
         limit_xy(&mut dest, width - 158, height - 158);
 
         if !(lr.x < dest.x + 5 && lr.x > dest.x - 5 && lr.y < dest.y + 5 && lr.y > dest.y - 5 && self.ready()) {
@@ -1349,7 +1372,14 @@ pub unsafe fn liero_worm_process(
     env: &LieroWormEnv,
     hooks: &LieroWormHooks,
 ) {
-    Worm { w: worm, max_health, k: constants, env, hooks }.process();
+    Worm {
+        w: worm,
+        max_health,
+        k: constants,
+        env,
+        hooks,
+    }
+    .process();
 }
 
 #[cfg(test)]

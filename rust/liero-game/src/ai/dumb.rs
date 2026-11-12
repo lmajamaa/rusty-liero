@@ -58,7 +58,9 @@ impl Controls {
 pub fn process(rand: &mut LieroRand, worm: &LieroDumbAiWorm, others: &[[i32; 2]], k: &[[i32; 7]; 2]) -> u32 {
     let mut cs = Controls(worm.control_states);
     // A chance of one in k[pressed][control] ticks.
-    let chance = |rand: &mut LieroRand, pressed: bool, control: u32| rand.below(k[pressed as usize][control as usize] as u32) == 0;
+    let chance = |rand: &mut LieroRand, pressed: bool, control: u32| {
+        rand.below(k[pressed as usize][control as usize] as u32) == 0
+    };
 
     // The nearest worm, the first of any as near. C++ read a null worm
     // when there were no others.

@@ -41,17 +41,41 @@ const fn ai(
     (ai_frames, ai_mutations, ai_parallels, ai_traces): (i32, i32, i32, bool),
     ticks: i32,
 ) -> AiConfig {
-    AiConfig { name, seed, game_mode, weapons, ai_frames, ai_mutations, ai_parallels, ai_traces, ticks }
+    AiConfig {
+        name,
+        seed,
+        game_mode,
+        weapons,
+        ai_frames,
+        ai_mutations,
+        ai_parallels,
+        ai_traces,
+        ticks,
+    }
 }
 
 const CONFIGS: [AiConfig; 6] = [
     ai("ai-kill-1", 101, KILL_EM_ALL, None, (30, 1, 3, false), 1500),
     ai("ai-tag-2", 102, GAME_OF_TAG, None, (30, 1, 3, false), 1500),
     ai("ai-zone-3", 103, HOLDAZONE, None, (30, 1, 3, false), 1500),
-    ai("ai-rockets-4", 104, KILL_EM_ALL, Some(&ROCKETS), (30, 1, 2, false), 1500),
+    ai(
+        "ai-rockets-4",
+        104,
+        KILL_EM_ALL,
+        Some(&ROCKETS),
+        (30, 1, 2, false),
+        1500,
+    ),
     ai("ai-mixed-5", 105, KILL_EM_ALL, Some(&MIXED), (20, 0, 4, true), 1000),
     // The menu's AI settings.
-    ai("ai-default-6", 106, KILL_EM_ALL, Some(&MIXED), (70 * 2, 2, 3, true), 120),
+    ai(
+        "ai-default-6",
+        106,
+        KILL_EM_ALL,
+        Some(&MIXED),
+        (70 * 2, 2, 3, true),
+        120,
+    ),
 ];
 
 fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32) {
@@ -70,7 +94,10 @@ fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32)
         // SAFETY: the worm is the game's, and its AI is new.
         unsafe {
             liero_worm_set_ai(w, 2, c.ai_parallels as usize, testing);
-            liero_rand_seed(liero_worm_ai_rand(&mut *liero_worm_ai(w)), c.seed.wrapping_mul(31).wrapping_add(i as u32));
+            liero_rand_seed(
+                liero_worm_ai_rand(&mut *liero_worm_ai(w)),
+                c.seed.wrapping_mul(31).wrapping_add(i as u32),
+            );
         }
     }
 
@@ -108,7 +135,10 @@ fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32)
                 let h = liero_worm_ai_hash(unsafe { &*liero_worm_ai(w) });
                 out.line(&format!("{name}-ai{i} {tick} {h:016x}"));
             }
-            out.line(&format!("{name} {tick} {:016x} frame", hash_frame(&mut game, &mut split, &mut spectator)));
+            out.line(&format!(
+                "{name} {tick} {:016x} frame",
+                hash_frame(&mut game, &mut split, &mut spectator)
+            ));
         }
         if over {
             break;
@@ -116,8 +146,14 @@ fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32)
     }
 
     let g = game.data_mut().cycles;
-    let w: Vec<(i32, i32)> = game.listed_worms().map(|w| w.map_or((0, 0), |w| (w.data.kills, w.data.lives))).collect();
-    out.line(&format!("{name} summary: {g} ticks, kills {}-{}, lives {}-{}", w[0].0, w[1].0, w[0].1, w[1].1));
+    let w: Vec<(i32, i32)> = game
+        .listed_worms()
+        .map(|w| w.map_or((0, 0), |w| (w.data.kills, w.data.lives)))
+        .collect();
+    out.line(&format!(
+        "{name} summary: {g} ticks, kills {}-{}, lives {}-{}",
+        w[0].0, w[1].0, w[0].1, w[1].1
+    ));
 }
 
 pub fn hash_ai_games(out: &mut Out) {

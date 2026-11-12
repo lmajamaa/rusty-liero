@@ -125,7 +125,9 @@ impl MenuScreen {
 
     fn move_main_to(&self, id: i32) {
         let main = self.menu(LIERO_MENU_MAIN);
-        let i = (0..main.0.len()).find(|&i| main.0.ids[i] == id).map_or(-1, |i| i as i32);
+        let i = (0..main.0.len())
+            .find(|&i| main.0.ids[i] == id)
+            .map_or(-1, |i| i as i32);
         main.0.move_to(i);
     }
 

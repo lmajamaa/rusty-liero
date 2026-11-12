@@ -20,13 +20,16 @@ use super::games::{bot_tick, set_up_game, tc_data, HOLDAZONE, HOOKS, KILL_EM_ALL
 use super::{Fnv, Out};
 use crate::app::app;
 use crate::controller::liero_controller_process;
-use crate::controllers::{liero_controller_data, liero_controller_free, liero_controller_game, liero_controller_on_key, liero_local_controller_new};
+use crate::controllers::{
+    liero_controller_data, liero_controller_free, liero_controller_game, liero_controller_on_key,
+    liero_local_controller_new,
+};
 use crate::game_box::liero_game_set_context;
 use crate::keys::{
     key_name, liero_joy_axis, liero_joy_button, liero_joy_hat, liero_joy_key, liero_key_is_extended, liero_keys_clear,
     liero_keys_event, liero_keys_release_sdl, liero_keys_test, liero_keys_test_once, liero_keys_test_sdl,
-    liero_keys_test_sdl_once, liero_keys_toggle, liero_sdl_to_dos_key, liero_sdl_to_dos_keysym, LieroKeyChanges, LieroKeys,
-    LIERO_DK_ESCAPE, LIERO_MAX_JOY_BUTTONS,
+    liero_keys_test_sdl_once, liero_keys_toggle, liero_sdl_to_dos_key, liero_sdl_to_dos_keysym, LieroKeyChanges,
+    LieroKeys, LIERO_DK_ESCAPE, LIERO_MAX_JOY_BUTTONS,
 };
 use crate::rand::LieroRand;
 use crate::settings::LieroSettingsBox;
@@ -39,13 +42,15 @@ use crate::tc::{LieroTc, LieroTcSound};
 
 /// # Safety
 /// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] { unsafe {
-    if n == 0 {
-        &[]
-    } else {
-        std::slice::from_raw_parts(p, n)
+unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
+    unsafe {
+        if n == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(p, n)
+        }
     }
-}}
+}
 
 fn sounds(tc: &Shared<LieroTc>) -> &[LieroTcSound] {
     let d = tc_data(tc);
@@ -78,7 +83,9 @@ fn hash_buffer(f: &mut Fnv, buf: &[i16]) {
 fn mixer_script(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
     let mut sounds: Vec<&[i16]> = sounds(tc).iter().filter(|s| s.valid).map(samples).collect();
     // A full-scale square wave, which clips as soon as two play at once.
-    let square: Vec<i16> = (0..300).map(|i| if (i / 25) % 2 == 1 { 32767 } else { -32768 }).collect();
+    let square: Vec<i16> = (0..300)
+        .map(|i| if (i / 25) % 2 == 1 { 32767 } else { -32768 })
+        .collect();
     sounds.push(&square);
     sounds.push(&[-32768]);
     sounds.push(&[12345, -23456]);
@@ -98,8 +105,14 @@ fn mixer_script(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
         let op = r.below(10);
         if op < 4 {
             let snd = sounds[r.below(sounds.len() as u32) as usize];
-            let time = liero_mixer_now(mixer).wrapping_add(r.below(6000) as i32).wrapping_sub(3000) as u32;
-            let flags = if r.below(4) == 0 { LIERO_SOUND_LOOP } else { LIERO_SOUND_NORMAL };
+            let time = liero_mixer_now(mixer)
+                .wrapping_add(r.below(6000) as i32)
+                .wrapping_sub(3000) as u32;
+            let flags = if r.below(4) == 0 {
+                LIERO_SOUND_LOOP
+            } else {
+                LIERO_SOUND_NORMAL
+            };
             // SAFETY: the samples outlive the mixer.
             let ret = unsafe { liero_mixer_add(mixer, snd.as_ptr(), snd.len(), time, id, flags) };
             f.bool(ret == id);
@@ -127,13 +140,28 @@ fn mixer_script(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
     unsafe { liero_mixer_free(m) };
 }
 
-fn sound_game(out: &mut Out, tc: &Shared<LieroTc>, name: &str, seed: u32, game_mode: u32, weapons: Option<&[&str; 5]>, ticks: i32) {
+fn sound_game(
+    out: &mut Out,
+    tc: &Shared<LieroTc>,
+    name: &str,
+    seed: u32,
+    game_mode: u32,
+    weapons: Option<&[&str; 5]>,
+    ticks: i32,
+) {
     let mut game = set_up_game(tc, seed, game_mode, weapons);
     let m = liero_mixer_new();
     let settings: *mut LieroSettingsBox = game.settings_box();
     // SAFETY: the game keeps references to its settings and TC; the mixer
     // lives until the game's sound goes back to none.
-    unsafe { liero_game_set_context(&mut game, settings, tc.as_ptr(), LieroSoundOut { mixer: m, report: None }) };
+    unsafe {
+        liero_game_set_context(
+            &mut game,
+            settings,
+            tc.as_ptr(),
+            LieroSoundOut { mixer: m, report: None },
+        )
+    };
 
     let blood = game.settings_box().data.blood_particle_max;
     game.start(blood);
@@ -255,13 +283,15 @@ impl Events {
                 }
             }
             // SAFETY: each joystick has its buttons.
-            Event::JoyAxis { which, axis, value } => {
-                send_keys(rec, unsafe { liero_joy_axis(self.joysticks[which].as_mut_ptr(), which as i32, axis, value) })
-            }
-            Event::JoyHat { which, value } => send_keys(rec, unsafe { liero_joy_hat(self.joysticks[which].as_mut_ptr(), which as i32, value) }),
-            Event::JoyButton { which, button, pressed } => {
-                send_keys(rec, unsafe { liero_joy_button(self.joysticks[which].as_mut_ptr(), which as i32, button, pressed) })
-            }
+            Event::JoyAxis { which, axis, value } => send_keys(rec, unsafe {
+                liero_joy_axis(self.joysticks[which].as_mut_ptr(), which as i32, axis, value)
+            }),
+            Event::JoyHat { which, value } => send_keys(rec, unsafe {
+                liero_joy_hat(self.joysticks[which].as_mut_ptr(), which as i32, value)
+            }),
+            Event::JoyButton { which, button, pressed } => send_keys(rec, unsafe {
+                liero_joy_button(self.joysticks[which].as_mut_ptr(), which as i32, button, pressed)
+            }),
         }
     }
 }
@@ -300,7 +330,10 @@ fn random_axis(r: &mut LieroRand) -> i16 {
 fn hash_events(out: &mut Out, seed: u32, steps: i32) {
     let keys = &mut app().keys;
     liero_keys_clear(keys);
-    let mut ev = Events { key_buf: Vec::new(), joysticks: [[false; LIERO_MAX_JOY_BUTTONS as usize]; 2] };
+    let mut ev = Events {
+        key_buf: Vec::new(),
+        joysticks: [[false; LIERO_MAX_JOY_BUTTONS as usize]; 2],
+    };
 
     let name = format!("keys-events-{seed}");
     let mut rec = Fnv::default();
@@ -311,16 +344,26 @@ fn hash_events(out: &mut Out, seed: u32, steps: i32) {
         let event = match op {
             0..=3 => {
                 let down = r.below(2) != 0;
-                Some(Event::Key { down, scancode: random_scancode(&mut r) })
+                Some(Event::Key {
+                    down,
+                    scancode: random_scancode(&mut r),
+                })
             }
             4 => {
                 let which = r.below(2) as usize;
                 let axis = r.below(6) as u8;
-                Some(Event::JoyAxis { which, axis, value: random_axis(&mut r) })
+                Some(Event::JoyAxis {
+                    which,
+                    axis,
+                    value: random_axis(&mut r),
+                })
             }
             5 => {
                 let which = r.below(2) as usize;
-                Some(Event::JoyHat { which, value: r.below(16) as u8 })
+                Some(Event::JoyHat {
+                    which,
+                    value: r.below(16) as u8,
+                })
             }
             6 => {
                 // The event's type, then its fields; the button state is
@@ -328,7 +371,11 @@ fn hash_events(out: &mut Out, seed: u32, steps: i32) {
                 r.below(2);
                 let which = r.below(2) as usize;
                 let button = r.below(16) as u8;
-                Some(Event::JoyButton { which, button, pressed: r.below(2) != 0 })
+                Some(Event::JoyButton {
+                    which,
+                    button,
+                    pressed: r.below(2) != 0,
+                })
             }
             _ => {
                 let k = r.below(177);
@@ -403,8 +450,14 @@ fn hash_controls(out: &mut Out, tc: &Shared<LieroTc>, seed: u32, steps: i32) {
         // SAFETY: nothing else has the new settings yet.
         let ws = unsafe { &mut *ws.as_ptr() };
         ws.data.controller = 0;
-        ws.data.controls.iter_mut().for_each(|c| *c = pool[r.below(12) as usize]);
-        ws.data.controls_ex.iter_mut().for_each(|c| *c = pool[r.below(12) as usize]);
+        ws.data
+            .controls
+            .iter_mut()
+            .for_each(|c| *c = pool[r.below(12) as usize]);
+        ws.data
+            .controls_ex
+            .iter_mut()
+            .for_each(|c| *c = pool[r.below(12) as usize]);
     }
 
     // SAFETY: the controller keeps references to the settings and the TC,

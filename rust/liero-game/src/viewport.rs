@@ -10,7 +10,6 @@
 //! is drawn from that. Rust owns a viewport's own state (`LieroViewport`),
 //! and the fields of C++'s `Viewport` refer to it.
 
-
 use crate::ai::predictive::LieroAiTrace;
 use crate::game::{LieroHoldazone, LieroRect};
 use crate::gfx::{
@@ -293,20 +292,24 @@ fn minimap_color(index: i32) -> i32 {
 
 impl LieroSpriteSet {
     /// Sprite `frame`, or None where C++ would have read outside the set.
-    unsafe fn sprite(&self, frame: i32) -> Option<*const u8> { unsafe {
-        (0..self.count)
-            .contains(&frame)
-            .then(|| self.data.add(frame as usize * (self.width * self.height) as usize))
-    }}
+    unsafe fn sprite(&self, frame: i32) -> Option<*const u8> {
+        unsafe {
+            (0..self.count)
+                .contains(&frame)
+                .then(|| self.data.add(frame as usize * (self.width * self.height) as usize))
+        }
+    }
 }
 
-unsafe fn slice<'a, T>(ptr: *const T, len: i32) -> &'a [T] { unsafe {
-    if len <= 0 || ptr.is_null() {
-        &[]
-    } else {
-        std::slice::from_raw_parts(ptr, len as usize)
+unsafe fn slice<'a, T>(ptr: *const T, len: i32) -> &'a [T] {
+    unsafe {
+        if len <= 0 || ptr.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts(ptr, len as usize)
+        }
     }
-}}
+}
 
 /// The scene as Rust reads it.
 struct Scene<'a> {
@@ -316,9 +319,15 @@ struct Scene<'a> {
 }
 
 impl<'a> Scene<'a> {
-    unsafe fn new(s: &'a LieroScene) -> Self { unsafe {
-        Scene { s, worms: slice(s.worms, s.worm_count), weapons: slice(s.weapons, s.weapon_count) }
-    }}
+    unsafe fn new(s: &'a LieroScene) -> Self {
+        unsafe {
+            Scene {
+                s,
+                worms: slice(s.worms, s.worm_count),
+                weapons: slice(s.weapons, s.weapon_count),
+            }
+        }
+    }
 
     /// `Game::wormByIdx`.
     fn worm(&self, idx: i32) -> Option<&'a LieroViewWorm> {
@@ -329,119 +338,151 @@ impl<'a> Scene<'a> {
         usize::try_from(idx).ok().and_then(|i| self.weapons.get(i))
     }
 
-    unsafe fn text(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32) { unsafe {
-        liero_font_draw_text(scr, self.s.font, self.s.font_count, text.as_ptr(), text.len(), x, y, color as u8, 1);
-    }}
+    unsafe fn text(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32) {
+        unsafe {
+            liero_font_draw_text(
+                scr,
+                self.s.font,
+                self.s.font_count,
+                text.as_ptr(),
+                text.len(),
+                x,
+                y,
+                color as u8,
+                1,
+            );
+        }
+    }
 
     /// The text with a black shadow, as banners are drawn.
-    unsafe fn banner(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32) { unsafe {
-        self.text(scr, text, x + 1, y + 1, 0);
-        self.text(scr, text, x, y, 50);
-    }}
+    unsafe fn banner(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32) {
+        unsafe {
+            self.text(scr, text, x + 1, y + 1, 0);
+            self.text(scr, text, x, y, 50);
+        }
+    }
 
     /// Capital letters from the small font, 4 pixels apart: `drawTextSmall`.
-    unsafe fn text_small(&self, scr: &LieroBitmap, text: &[u8], mut x: i32, y: i32) { unsafe {
-        let set = &self.s.text_sprites;
-        for &ch in text {
-            let c = ch.wrapping_sub(b'A');
-            if c < 26 {
-                if let Some(mem) = set.sprite(c as i32) {
-                    liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
+    unsafe fn text_small(&self, scr: &LieroBitmap, text: &[u8], mut x: i32, y: i32) {
+        unsafe {
+            let set = &self.s.text_sprites;
+            for &ch in text {
+                let c = ch.wrapping_sub(b'A');
+                if c < 26 {
+                    if let Some(mem) = set.sprite(c as i32) {
+                        liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
+                    }
                 }
+                x += 4;
             }
-            x += 4;
         }
-    }}
+    }
 
     /// The weapon's name in the small font, centred on x.
-    unsafe fn weapon_name(&self, scr: &LieroBitmap, weapon: i32, x: i32, y: i32) { unsafe {
-        if let Some(w) = self.weapon(weapon) {
-            let name = w.name.bytes();
-            let len = name.len() as i32 * 4;
-            self.text_small(scr, name, x - len / 2, y);
+    unsafe fn weapon_name(&self, scr: &LieroBitmap, weapon: i32, x: i32, y: i32) {
+        unsafe {
+            if let Some(w) = self.weapon(weapon) {
+                let name = w.name.bytes();
+                let len = name.len() as i32 * 4;
+                self.text_small(scr, name, x - len / 2, y);
+            }
         }
-    }}
+    }
 
-    unsafe fn blit(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32) { unsafe {
-        if let Some(mem) = set.sprite(frame) {
-            liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
+    unsafe fn blit(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32) {
+        unsafe {
+            if let Some(mem) = set.sprite(frame) {
+                liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
+            }
         }
-    }}
+    }
 
     // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
     #[allow(clippy::too_many_arguments)]
-    unsafe fn shadow(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32, w: i32, h: i32) { unsafe {
-        if let Some(mem) = set.sprite(frame) {
-            liero_gfx_blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);
+    unsafe fn shadow(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32, w: i32, h: i32) {
+        unsafe {
+            if let Some(mem) = set.sprite(frame) {
+                liero_gfx_blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);
+            }
         }
-    }}
+    }
 
     /// Darkens the pixel at (x, y) if inside the clip rectangle and its
     /// material shows shadows.
-    unsafe fn shadow_pixel(&self, scr: &LieroBitmap, x: i32, y: i32) { unsafe {
-        if scr.clip.contains(x, y) {
-            let p = scr.pixels.offset(y as isize * scr.pitch as isize + x as isize);
-            if (*self.s.materials.add(*p as usize)).see_shadow() {
-                *p = (*p).wrapping_add(4);
+    unsafe fn shadow_pixel(&self, scr: &LieroBitmap, x: i32, y: i32) {
+        unsafe {
+            if scr.clip.contains(x, y) {
+                let p = scr.pixels.offset(y as isize * scr.pitch as isize + x as isize);
+                if (*self.s.materials.add(*p as usize)).see_shadow() {
+                    *p = (*p).wrapping_add(4);
+                }
             }
         }
-    }}
+    }
 
-    unsafe fn pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) { unsafe {
-        if scr.clip.contains(x, y) {
-            *scr.pixels.offset(y as isize * scr.pitch as isize + x as isize) = color as u8;
+    unsafe fn pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) {
+        unsafe {
+            if scr.clip.contains(x, y) {
+                *scr.pixels.offset(y as isize * scr.pitch as isize + x as isize) = color as u8;
+            }
         }
-    }}
+    }
 
     /// `getPixel(x, y) = color` without clipping, kept inside the buffer.
-    unsafe fn raw_pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) { unsafe {
-        let i = y as i64 * scr.pitch as i64 + x as i64;
-        if 0 <= i && i < scr.pitch as i64 * scr.h as i64 {
-            *scr.pixels.offset(i as isize) = color as u8;
+    unsafe fn raw_pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) {
+        unsafe {
+            let i = y as i64 * scr.pitch as i64 + x as i64;
+            if 0 <= i && i < scr.pitch as i64 * scr.h as i64 {
+                *scr.pixels.offset(i as isize) = color as u8;
+            }
         }
-    }}
+    }
 
     /// The life bar, ammo or loading bar and the kills, as both kinds of
     /// viewport draw them for a worm. `x` is where the stats start.
-    unsafe fn draw_stats(&self, scr: &LieroBitmap, worm: &LieroViewWorm, x: i32, reloading_y: i32) { unsafe {
-        let res_y = self.s.render_res_y;
-        if worm.visible {
-            let width = div(worm.health.wrapping_mul(100), worm.max_health);
-            liero_gfx_draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
-        } else {
-            let width = 100 - (worm.killed_timer * 25) / 37;
-            if width > 0 {
-                let width = width.min(100);
+    unsafe fn draw_stats(&self, scr: &LieroBitmap, worm: &LieroViewWorm, x: i32, reloading_y: i32) {
+        unsafe {
+            let res_y = self.s.render_res_y;
+            if worm.visible {
+                let width = div(worm.health.wrapping_mul(100), worm.max_health);
                 liero_gfx_draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
+            } else {
+                let width = 100 - (worm.killed_timer * 25) / 37;
+                if width > 0 {
+                    let width = width.min(100);
+                    liero_gfx_draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
+                }
             }
-        }
 
-        let ww = &worm.weapons[worm.current_weapon as usize % 5];
-        let weapon = self.weapon(ww.weapon);
-        if ww.loading_left == 0 {
-            if ww.ammo > 0 {
-                let width = div(ww.ammo.wrapping_mul(100), weapon.map_or(0, |w| w.ammo));
+            let ww = &worm.weapons[worm.current_weapon as usize % 5];
+            let weapon = self.weapon(ww.weapon);
+            if ww.loading_left == 0 {
+                if ww.ammo > 0 {
+                    let width = div(ww.ammo.wrapping_mul(100), weapon.map_or(0, |w| w.ammo));
+                    if width > 0 {
+                        liero_gfx_draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
+                    }
+                }
+            } else {
+                let width = match weapon {
+                    Some(w) if w.loading_time != 0 => {
+                        100 - div(ww.loading_left.wrapping_mul(100), w.computed_loading_time)
+                    }
+                    _ => 100 - ww.loading_left.wrapping_mul(100),
+                };
                 if width > 0 {
                     liero_gfx_draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
                 }
+                if self.s.cycles % 20 > 10 && worm.visible {
+                    self.text(scr, self.s.reloading.bytes(), x, reloading_y, 50);
+                }
             }
-        } else {
-            let width = match weapon {
-                Some(w) if w.loading_time != 0 => 100 - div(ww.loading_left.wrapping_mul(100), w.computed_loading_time),
-                _ => 100 - ww.loading_left.wrapping_mul(100),
-            };
-            if width > 0 {
-                liero_gfx_draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
-            }
-            if self.s.cycles % 20 > 10 && worm.visible {
-                self.text(scr, self.s.reloading.bytes(), x, reloading_y, 50);
-            }
-        }
 
-        let mut kills = self.s.kills.bytes().to_vec();
-        kills.extend_from_slice(worm.kills.to_string().as_bytes());
-        self.text(scr, &kills, x, res_y - 29, 10);
-    }}
+            let mut kills = self.s.kills.bytes().to_vec();
+            kills.extend_from_slice(worm.kills.to_string().as_bytes());
+            self.text(scr, &kills, x, res_y - 29, 10);
+        }
+    }
 
     /// The worm's name, colour and the game time.
     /// `box_x` is where the colour's frame starts and `color_x` the colour.
@@ -453,430 +494,489 @@ impl<'a> Scene<'a> {
         box_x: i32,
         color_x: i32,
         time_x: i32,
-    ) { unsafe {
-        let res_y = self.s.render_res_y;
-        self.text(scr, worm.name.bytes(), x, res_y - 15, 7);
-        liero_gfx_fill_rect(scr, box_x, res_y - 8, 8, 8, 7);
-        liero_gfx_fill_rect(scr, color_x, res_y - 7, 6, 6, worm.color as u8);
-        let time = time_to_string_ex(self.s.cycles.wrapping_mul(14), false, true);
-        self.text(scr, &time, time_x, res_y - 15, 7);
-    }}
+    ) {
+        unsafe {
+            let res_y = self.s.render_res_y;
+            self.text(scr, worm.name.bytes(), x, res_y - 15, 7);
+            liero_gfx_fill_rect(scr, box_x, res_y - 8, 8, 8, 7);
+            liero_gfx_fill_rect(scr, color_x, res_y - 7, 6, 6, worm.color as u8);
+            let time = time_to_string_ex(self.s.cycles.wrapping_mul(14), false, true);
+            self.text(scr, &time, time_x, res_y - 15, 7);
+        }
+    }
 
     /// Lives, or the Holdazone or Game of Tag timer, of worm `pos` (a position
     /// in the worm list). `scale` is the viewport's multiplier for the
     /// timer's position.
-    unsafe fn draw_game_mode(&self, scr: &LieroBitmap, pos: i32, x: i32, scale: i32) { unsafe {
-        const STATE_COLOURS: [[i32; 2]; 2] = [[6, 10], [79, 4]];
-        let s = self.s;
-        let Some(worm) = self.worm(pos) else { return };
-        let (holder, ahead): (i32, fn(i32, i32) -> bool) = match s.game_mode {
-            LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => {
-                let mut lives = s.lives.bytes().to_vec();
-                lives.extend_from_slice(worm.lives.to_string().as_bytes());
-                self.text(scr, &lives, x, s.render_res_y - 22, 6);
-                return;
-            }
-            LIERO_GAME_HOLDAZONE => (s.holdazone.holder_idx, |other, mine| other <= mine),
-            LIERO_GAME_GAME_OF_TAG => (s.last_killed_idx, |other, mine| other >= mine),
-            _ => return,
-        };
+    unsafe fn draw_game_mode(&self, scr: &LieroBitmap, pos: i32, x: i32, scale: i32) {
+        unsafe {
+            const STATE_COLOURS: [[i32; 2]; 2] = [[6, 10], [79, 4]];
+            let s = self.s;
+            let Some(worm) = self.worm(pos) else { return };
+            let (holder, ahead): (i32, fn(i32, i32) -> bool) = match s.game_mode {
+                LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => {
+                    let mut lives = s.lives.bytes().to_vec();
+                    lives.extend_from_slice(worm.lives.to_string().as_bytes());
+                    self.text(scr, &lives, x, s.render_res_y - 22, 6);
+                    return;
+                }
+                LIERO_GAME_HOLDAZONE => (s.holdazone.holder_idx, |other, mine| other <= mine),
+                LIERO_GAME_GAME_OF_TAG => (s.last_killed_idx, |other, mine| other >= mine),
+                _ => return,
+            };
 
-        let state = self
-            .worms
-            .iter()
-            .enumerate()
-            .any(|(i, w)| i as i32 != pos && ahead(w.timer, worm.timer)) as usize;
-        let color = STATE_COLOURS[(holder != worm.index) as usize][state];
+            let state = self
+                .worms
+                .iter()
+                .enumerate()
+                .any(|(i, w)| i as i32 != pos && ahead(w.timer, worm.timer)) as usize;
+            let color = STATE_COLOURS[(holder != worm.index) as usize][state];
 
-        // C++ calls drawText(scr, str, len, x, y, color) with these four
-        // numbers, so 5 * scale is the length and the rest are shifted by one.
-        // Past the five characters it read a NUL, which only starts a new
-        // line, and then other memory; zeros stand in for that.
-        let len = (5 * scale).max(0) as usize;
-        let mut text = time_to_string(worm.timer).to_vec();
-        text.resize(len, 0);
-        self.text(scr, &text, 106 * scale + 84 * worm.index * scale, s.render_res_y - 39, color);
-    }}
+            // C++ calls drawText(scr, str, len, x, y, color) with these four
+            // numbers, so 5 * scale is the length and the rest are shifted by one.
+            // Past the five characters it read a NUL, which only starts a new
+            // line, and then other memory; zeros stand in for that.
+            let len = (5 * scale).max(0) as usize;
+            let mut text = time_to_string(worm.timer).to_vec();
+            text.resize(len, 0);
+            self.text(
+                scr,
+                &text,
+                106 * scale + 84 * worm.index * scale,
+                s.render_res_y - 39,
+                color,
+            );
+        }
+    }
 
     /// The Holdazone zone's dashed outline.
-    unsafe fn draw_zone(&self, scr: &LieroBitmap, offs: LieroIVec2) { unsafe {
-        let z = &self.s.holdazone;
-        let timing_out = z.timeout_left < 70 * 4;
-        let color = if timing_out { 168 } else { 50 };
-        let contender_color = match self.worm(z.contender_idx) {
-            Some(c) if timing_out => minimap_color(c.index),
-            Some(c) => WORM_COLOUR_INDEXES[c.index as usize & 1] + 5,
-            None => color,
-        };
-        liero_gfx_draw_dashed_line_box(
-            scr,
-            z.rect.x1 + offs.x,
-            z.rect.y1 + offs.y,
-            color as u8,
-            contender_color as u8,
-            z.contender_frames,
-            self.s.zone_capture_time,
-            z.rect.x2 - z.rect.x1,
-            z.rect.y2 - z.rect.y1,
-            self.s.cycles / 10,
-        );
-    }}
+    unsafe fn draw_zone(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+        unsafe {
+            let z = &self.s.holdazone;
+            let timing_out = z.timeout_left < 70 * 4;
+            let color = if timing_out { 168 } else { 50 };
+            let contender_color = match self.worm(z.contender_idx) {
+                Some(c) if timing_out => minimap_color(c.index),
+                Some(c) => WORM_COLOUR_INDEXES[c.index as usize & 1] + 5,
+                None => color,
+            };
+            liero_gfx_draw_dashed_line_box(
+                scr,
+                z.rect.x1 + offs.x,
+                z.rect.y1 + offs.y,
+                color as u8,
+                contender_color as u8,
+                z.contender_frames,
+                self.s.zone_capture_time,
+                z.rect.x2 - z.rect.x1,
+                z.rect.y2 - z.rect.y1,
+                self.s.cycles / 10,
+            );
+        }
+    }
 
     /// The worm's flickering outline where it will spawn, while Change is held
     /// before it has spawned.
-    unsafe fn draw_spawn_point(&self, scr: &LieroBitmap, worm: &LieroViewWorm, offs: LieroIVec2) { unsafe {
-        if self.s.allow_viewing_spawn_point && worm.pressed_change {
-            let set = &self.s.worm_sprites;
-            let frame = worm.current_frame + worm.direction * 7 * 3 + worm.index * 2 * 7 * 3;
-            if let Some(mem) = set.sprite(frame) {
-                let x = ftoi(worm.pos.x) - 7 + offs.x;
-                let y = ftoi(worm.pos.y) - 5 + offs.y;
-                liero_gfx_blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
+    unsafe fn draw_spawn_point(&self, scr: &LieroBitmap, worm: &LieroViewWorm, offs: LieroIVec2) {
+        unsafe {
+            if self.s.allow_viewing_spawn_point && worm.pressed_change {
+                let set = &self.s.worm_sprites;
+                let frame = worm.current_frame + worm.direction * 7 * 3 + worm.index * 2 * 7 * 3;
+                if let Some(mem) = set.sprite(frame) {
+                    let x = ftoi(worm.pos.x) - 7 + offs.x;
+                    let y = ftoi(worm.pos.y) - 5 + offs.y;
+                    liero_gfx_blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
+                }
             }
         }
-    }}
+    }
 
     /// Bonuses, special objects, weapon objects and non-weapon objects.
-    unsafe fn draw_objects(&self, scr: &LieroBitmap, offs: LieroIVec2) { unsafe {
-        let s = self.s;
-        let small = &s.small_sprites;
-        let large = &s.large_sprites;
+    unsafe fn draw_objects(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+        unsafe {
+            let s = self.s;
+            let small = &s.small_sprites;
+            let large = &s.large_sprites;
 
-        for b in slice(s.bonuses, s.bonus_count) {
-            if b.timer > s.bonus_flicker_time || (s.cycles & 3) == 0 {
-                let f = s.bonus_frames[b.frame as usize & 1];
-                self.blit(scr, small, f, ftoi(b.x) - 3 + offs.x, ftoi(b.y) - 3 + offs.y);
-                if s.shadow {
-                    self.shadow(scr, small, f, ftoi(b.x) - 5 + offs.x, ftoi(b.y) - 1 + offs.y, 7, 7);
-                }
-                if s.names_on_bonuses && b.frame == 0 {
-                    self.weapon_name(scr, b.weapon, ftoi(b.x) + offs.x, ftoi(b.y) - 10 + offs.y);
-                }
-            }
-        }
-
-        for o in slice(s.sobjects, s.sobject_count) {
-            let frame = o.cur_frame + o.start_frame;
-            if let Some(mem) = large.sprite(frame) {
-                liero_gfx_blit_image_r(scr, mem, o.x + offs.x, o.y + offs.y, 16, 16);
-                if s.shadow {
-                    liero_gfx_blit_shadow_image(scr, s.materials, mem, o.x + offs.x - 3, o.y + offs.y + 3, 16, 16);
-                }
-            }
-        }
-
-        for o in slice(s.wobjects, s.wobject_count) {
-            let Some(w) = self.weapon(o.weapon) else { continue };
-            if w.start_frame > -1 {
-                let mut cur_frame = o.cur_frame;
-                if w.shot_type == 2 {
-                    cur_frame = (cur_frame + 4) >> 3;
-                    if cur_frame < 0 {
-                        cur_frame = 16;
-                    } else if cur_frame > 15 {
-                        cur_frame -= 16;
+            for b in slice(s.bonuses, s.bonus_count) {
+                if b.timer > s.bonus_flicker_time || (s.cycles & 3) == 0 {
+                    let f = s.bonus_frames[b.frame as usize & 1];
+                    self.blit(scr, small, f, ftoi(b.x) - 3 + offs.x, ftoi(b.y) - 3 + offs.y);
+                    if s.shadow {
+                        self.shadow(scr, small, f, ftoi(b.x) - 5 + offs.x, ftoi(b.y) - 1 + offs.y, 7, 7);
                     }
-                } else if w.shot_type == 3 {
-                    if cur_frame > 64 {
-                        cur_frame -= 1;
+                    if s.names_on_bonuses && b.frame == 0 {
+                        self.weapon_name(scr, b.weapon, ftoi(b.x) + offs.x, ftoi(b.y) - 10 + offs.y);
                     }
-                    cur_frame = (cur_frame - 12) >> 3;
-                    cur_frame = cur_frame.clamp(0, 12);
-                }
-
-                let x = ftoi(o.pos.x) - 3;
-                let y = ftoi(o.pos.y) - 3;
-                let frame = w.start_frame + cur_frame;
-                if s.shadow && w.shadow {
-                    self.shadow(scr, small, frame, x - 3 + offs.x, y + 3 + offs.y, 7, 7);
-                }
-                self.blit(scr, small, frame, x + offs.x, y + offs.y);
-            } else if o.cur_frame > 0 {
-                let x = ftoi(o.pos.x) + offs.x;
-                let y = ftoi(o.pos.y) + offs.y;
-                self.pixel(scr, x, y, o.cur_frame);
-                if s.shadow {
-                    self.shadow_pixel(scr, x - 3, y + 3);
                 }
             }
 
-            // TODO in C++: read from the EXE.
-            if !s.rem_exp && o.weapon == 34 && s.names_on_bonuses && o.cur_frame == 0 && s.weapon_count > 0 {
-                let name = o.slot % s.weapon_count;
-                self.weapon_name(scr, name, ftoi(o.pos.x) + offs.x, ftoi(o.pos.y) - 10 + offs.y);
+            for o in slice(s.sobjects, s.sobject_count) {
+                let frame = o.cur_frame + o.start_frame;
+                if let Some(mem) = large.sprite(frame) {
+                    liero_gfx_blit_image_r(scr, mem, o.x + offs.x, o.y + offs.y, 16, 16);
+                    if s.shadow {
+                        liero_gfx_blit_shadow_image(scr, s.materials, mem, o.x + offs.x - 3, o.y + offs.y + 3, 16, 16);
+                    }
+                }
+            }
+
+            for o in slice(s.wobjects, s.wobject_count) {
+                let Some(w) = self.weapon(o.weapon) else { continue };
+                if w.start_frame > -1 {
+                    let mut cur_frame = o.cur_frame;
+                    if w.shot_type == 2 {
+                        cur_frame = (cur_frame + 4) >> 3;
+                        if cur_frame < 0 {
+                            cur_frame = 16;
+                        } else if cur_frame > 15 {
+                            cur_frame -= 16;
+                        }
+                    } else if w.shot_type == 3 {
+                        if cur_frame > 64 {
+                            cur_frame -= 1;
+                        }
+                        cur_frame = (cur_frame - 12) >> 3;
+                        cur_frame = cur_frame.clamp(0, 12);
+                    }
+
+                    let x = ftoi(o.pos.x) - 3;
+                    let y = ftoi(o.pos.y) - 3;
+                    let frame = w.start_frame + cur_frame;
+                    if s.shadow && w.shadow {
+                        self.shadow(scr, small, frame, x - 3 + offs.x, y + 3 + offs.y, 7, 7);
+                    }
+                    self.blit(scr, small, frame, x + offs.x, y + offs.y);
+                } else if o.cur_frame > 0 {
+                    let x = ftoi(o.pos.x) + offs.x;
+                    let y = ftoi(o.pos.y) + offs.y;
+                    self.pixel(scr, x, y, o.cur_frame);
+                    if s.shadow {
+                        self.shadow_pixel(scr, x - 3, y + 3);
+                    }
+                }
+
+                // TODO in C++: read from the EXE.
+                if !s.rem_exp && o.weapon == 34 && s.names_on_bonuses && o.cur_frame == 0 && s.weapon_count > 0 {
+                    let name = o.slot % s.weapon_count;
+                    self.weapon_name(scr, name, ftoi(o.pos.x) + offs.x, ftoi(o.pos.y) - 10 + offs.y);
+                }
+            }
+
+            for o in slice(s.nobjects, s.nobject_count) {
+                if o.start_frame > 0 {
+                    let x = ftoi(o.pos.x) - 3;
+                    let y = ftoi(o.pos.y) - 3;
+                    let frame = o.start_frame + o.cur_frame;
+                    if s.shadow {
+                        self.shadow(scr, small, frame, x - 3 + offs.x, y + 3 + offs.y, 7, 7);
+                    }
+                    self.blit(scr, small, frame, x + offs.x, y + offs.y);
+                } else if o.cur_frame > 1 {
+                    let x = ftoi(o.pos.x) + offs.x;
+                    let y = ftoi(o.pos.y) + offs.y;
+                    self.pixel(scr, x, y, o.cur_frame);
+                    if s.shadow {
+                        self.shadow_pixel(scr, x - 3, y + 3);
+                    }
+                }
             }
         }
-
-        for o in slice(s.nobjects, s.nobject_count) {
-            if o.start_frame > 0 {
-                let x = ftoi(o.pos.x) - 3;
-                let y = ftoi(o.pos.y) - 3;
-                let frame = o.start_frame + o.cur_frame;
-                if s.shadow {
-                    self.shadow(scr, small, frame, x - 3 + offs.x, y + 3 + offs.y, 7, 7);
-                }
-                self.blit(scr, small, frame, x + offs.x, y + offs.y);
-            } else if o.cur_frame > 1 {
-                let x = ftoi(o.pos.x) + offs.x;
-                let y = ftoi(o.pos.y) + offs.y;
-                self.pixel(scr, x, y, o.cur_frame);
-                if s.shadow {
-                    self.shadow_pixel(scr, x - 3, y + 3);
-                }
-            }
-        }
-    }}
+    }
 
     /// Every worm with its laser sight, rope and fire cone, and the AIs'
     /// debug output.
-    unsafe fn draw_worms(&self, scr: &LieroBitmap, offs: LieroIVec2, rand: &mut LieroRand) { unsafe {
-        let s = self.s;
-        for w in self.worms.iter() {
-            if w.visible {
-                let x = ftoi(w.pos.x) - 7 + offs.x;
-                let y = ftoi(w.pos.y) - 5 + offs.y;
-                let angle_frame = liero_worm_angle_frame(w.aiming_angle, w.direction);
-                let ww = &w.weapons[w.current_weapon as usize % 5];
-                let weapon = self.weapon(ww.weapon);
+    unsafe fn draw_worms(&self, scr: &LieroBitmap, offs: LieroIVec2, rand: &mut LieroRand) {
+        unsafe {
+            let s = self.s;
+            for w in self.worms.iter() {
+                if w.visible {
+                    let x = ftoi(w.pos.x) - 7 + offs.x;
+                    let y = ftoi(w.pos.y) - 5 + offs.y;
+                    let angle_frame = liero_worm_angle_frame(w.aiming_angle, w.direction);
+                    let ww = &w.weapons[w.current_weapon as usize % 5];
+                    let weapon = self.weapon(ww.weapon);
 
-                if ww.loading_left == 0 {
-                    if let Some(weapon) = weapon {
-                        let hx = w.hotspot_x + offs.x;
-                        let hy = w.hotspot_y + offs.y;
-                        if weapon.laser_sight {
-                            liero_gfx_draw_laser_sight(scr, rand, hx, hy, x + 7, y + 4);
-                        }
-                        if ww.weapon == s.laser_weapon - 1 && w.pressed_fire {
-                            liero_gfx_draw_line(scr, hx, hy, x + 7, y + 4, weapon.color_bullets as u8);
+                    if ww.loading_left == 0 {
+                        if let Some(weapon) = weapon {
+                            let hx = w.hotspot_x + offs.x;
+                            let hy = w.hotspot_y + offs.y;
+                            if weapon.laser_sight {
+                                liero_gfx_draw_laser_sight(scr, rand, hx, hy, x + 7, y + 4);
+                            }
+                            if ww.weapon == s.laser_weapon - 1 && w.pressed_fire {
+                                liero_gfx_draw_line(scr, hx, hy, x + 7, y + 4, weapon.color_bullets as u8);
+                            }
                         }
                     }
-                }
 
-                if w.rope_out {
-                    let rx = ftoi(w.rope_pos.x) + offs.x;
-                    let ry = ftoi(w.rope_pos.y) + offs.y;
-                    liero_gfx_draw_ninjarope(scr, s.nr_colour_begin, s.nr_colour_end, rx, ry, x + 7, y + 4);
-                    self.blit(scr, &s.large_sprites, 84, rx - 1, ry - 1);
+                    if w.rope_out {
+                        let rx = ftoi(w.rope_pos.x) + offs.x;
+                        let ry = ftoi(w.rope_pos.y) + offs.y;
+                        liero_gfx_draw_ninjarope(scr, s.nr_colour_begin, s.nr_colour_end, rx, ry, x + 7, y + 4);
+                        self.blit(scr, &s.large_sprites, 84, rx - 1, ry - 1);
+                        if s.shadow {
+                            liero_gfx_draw_shadow_line(scr, s.materials, rx - 3, ry + 3, x + 7 - 3, y + 4 + 3);
+                            self.shadow(scr, &s.large_sprites, 84, rx - 4, ry + 2, 16, 16);
+                        }
+                    }
+
+                    if weapon.is_some_and(|w| w.fire_cone > 0) && w.fire_cone > 0 {
+                        let dir = w.direction as usize & 1;
+                        let af = angle_frame.clamp(0, 6) as usize;
+                        if let Some(mem) = s.fire_cone_sprites.sprite(angle_frame + w.direction * 7) {
+                            let [ox, oy] = FIRE_CONE_OFFSET[dir][af];
+                            liero_gfx_blit_fire_cone(scr, w.fire_cone / 2, mem, ox + x, oy + y);
+                        }
+                    }
+
+                    let frame = w.current_frame + w.direction * 7 * 3 + w.index * 2 * 7 * 3;
+                    self.blit(scr, &s.worm_sprites, frame, x, y);
                     if s.shadow {
-                        liero_gfx_draw_shadow_line(scr, s.materials, rx - 3, ry + 3, x + 7 - 3, y + 4 + 3);
-                        self.shadow(scr, &s.large_sprites, 84, rx - 4, ry + 2, 16, 16);
+                        self.shadow(scr, &s.worm_sprites, frame, x - 3, y + 3, 16, 16);
                     }
                 }
 
-                if weapon.is_some_and(|w| w.fire_cone > 0) && w.fire_cone > 0 {
-                    let dir = w.direction as usize & 1;
-                    let af = angle_frame.clamp(0, 6) as usize;
-                    if let Some(mem) = s.fire_cone_sprites.sprite(angle_frame + w.direction * 7) {
-                        let [ox, oy] = FIRE_CONE_OFFSET[dir][af];
-                        liero_gfx_blit_fire_cone(scr, w.fire_cone / 2, mem, ox + x, oy + y);
-                    }
-                }
-
-                let frame = w.current_frame + w.direction * 7 * 3 + w.index * 2 * 7 * 3;
-                self.blit(scr, &s.worm_sprites, frame, x, y);
-                if s.shadow {
-                    self.shadow(scr, &s.worm_sprites, frame, x - 3, y + 3, 16, 16);
-                }
+                draw_traces(scr, slice(w.traces, w.trace_count as i32), offs);
             }
-
-            draw_traces(scr, slice(w.traces, w.trace_count as i32), offs);
         }
-    }}
+    }
 
     /// The worm's sight, and its weapon's name while Change is held.
-    unsafe fn draw_sight(&self, scr: &LieroBitmap, worm: &LieroViewWorm, offs: LieroIVec2) { unsafe {
-        if !worm.visible {
-            return;
-        }
-        let cs = cos_sin(ftoi(worm.aiming_angle) & 127);
-        let x = ftoi(worm.pos.x) - 1 + ftoi(cs.x.wrapping_mul(16)) + offs.x;
-        let y = ftoi(worm.pos.y) - 2 + ftoi(cs.y.wrapping_mul(16)) + offs.y;
-        self.blit(scr, &self.s.small_sprites, if worm.make_sight_green { 44 } else { 43 }, x, y);
+    unsafe fn draw_sight(&self, scr: &LieroBitmap, worm: &LieroViewWorm, offs: LieroIVec2) {
+        unsafe {
+            if !worm.visible {
+                return;
+            }
+            let cs = cos_sin(ftoi(worm.aiming_angle) & 127);
+            let x = ftoi(worm.pos.x) - 1 + ftoi(cs.x.wrapping_mul(16)) + offs.x;
+            let y = ftoi(worm.pos.y) - 2 + ftoi(cs.y.wrapping_mul(16)) + offs.y;
+            self.blit(
+                scr,
+                &self.s.small_sprites,
+                if worm.make_sight_green { 44 } else { 43 },
+                x,
+                y,
+            );
 
-        if worm.pressed_change {
-            let ww = &worm.weapons[worm.current_weapon as usize % 5];
-            self.weapon_name(scr, ww.weapon, ftoi(worm.pos.x) + 1 + offs.x, ftoi(worm.pos.y) - 10 + offs.y);
-        }
-    }}
-
-    unsafe fn draw_bobjects(&self, scr: &LieroBitmap, offs: LieroIVec2) { unsafe {
-        for b in slice(self.s.bobjects, self.s.bobject_count) {
-            let x = ftoi(b.pos.x) + offs.x;
-            let y = ftoi(b.pos.y) + offs.y;
-            self.pixel(scr, x, y, b.color);
-            if self.s.shadow {
-                self.shadow_pixel(scr, x - 3, y + 3);
+            if worm.pressed_change {
+                let ww = &worm.weapons[worm.current_weapon as usize % 5];
+                self.weapon_name(
+                    scr,
+                    ww.weapon,
+                    ftoi(worm.pos.x) + 1 + offs.x,
+                    ftoi(worm.pos.y) - 10 + offs.y,
+                );
             }
         }
-    }}
+    }
 
-    unsafe fn draw_level(&self, scr: &LieroBitmap, offs: LieroIVec2) { unsafe {
-        let l = &self.s.level;
-        liero_gfx_blit_image_no_key_colour(scr, l.data, offs.x, offs.y, l.width, l.height, l.width);
-    }}
+    unsafe fn draw_bobjects(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+        unsafe {
+            for b in slice(self.s.bobjects, self.s.bobject_count) {
+                let x = ftoi(b.pos.x) + offs.x;
+                let y = ftoi(b.pos.y) + offs.y;
+                self.pixel(scr, x, y, b.color);
+                if self.s.shadow {
+                    self.shadow_pixel(scr, x - 3, y + 3);
+                }
+            }
+        }
+    }
+
+    unsafe fn draw_level(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+        unsafe {
+            let l = &self.s.level;
+            liero_gfx_blit_image_no_key_colour(scr, l.data, offs.x, offs.y, l.width, l.height, l.width);
+        }
+    }
 
     /// The split-screen viewport: `Viewport::draw`.
-    unsafe fn draw_worm_view(&self, vp: &mut LieroViewport, outer: &LieroBitmap, self_index: i32) { unsafe {
-        let s = self.s;
-        let scr = outer;
-        let Some(worm) = self.worm(vp.worm_idx) else { return };
-        let multiplier = s.render_res_x / 320;
-        let center_x = s.render_res_x / 2;
-        let stats_x = worm.stats_x * multiplier;
+    unsafe fn draw_worm_view(&self, vp: &mut LieroViewport, outer: &LieroBitmap, self_index: i32) {
+        unsafe {
+            let s = self.s;
+            let scr = outer;
+            let Some(worm) = self.worm(vp.worm_idx) else { return };
+            let multiplier = s.render_res_x / 320;
+            let center_x = s.render_res_x / 2;
+            let stats_x = worm.stats_x * multiplier;
 
-        self.draw_stats(scr, worm, stats_x, 164 * multiplier);
-        if s.is_replay {
-            self.draw_name_and_time(scr, worm, stats_x, stats_x, (worm.stats_x + 1) * multiplier, 95 * multiplier);
-        }
-        self.draw_game_mode(scr, vp.worm_idx, stats_x, multiplier);
-
-        let r = vp.rect;
-        let view = LieroBitmap { clip: r, ..*scr };
-        let scr = &view;
-        let offs = LieroIVec2 { x: r.x1 - vp.x, y: r.y1 - vp.y };
-
-        self.draw_level(scr, offs);
-        if s.game_mode == LIERO_GAME_HOLDAZONE {
-            self.draw_zone(scr, offs);
-        }
-
-        if !worm.visible && worm.killed_timer <= 0 && !worm.ready {
-            let cx = (r.x1 + r.x2) / 2;
-            self.text(scr, s.press_fire.bytes(), cx - 30, 76, 0);
-            self.text(scr, s.press_fire.bytes(), cx - 31, 75, 50);
-            self.draw_spawn_point(scr, worm, offs);
-        }
-
-        if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == LIERO_GAME_GAME_OF_TAG && s.got_changed {
-            self.banner(scr, s.youre_it.bytes(), r.x1 + 2, vp.banner_y);
-        }
-
-        for (i, v) in slice(s.viewports, s.viewport_count).iter().enumerate() {
-            let Some(other) = self.worm(v.worm_idx) else { continue };
-            if i as i32 != self_index && other.health <= 0 && v.banner_y > -8 {
-                let mut msg = Vec::new();
-                if other.last_killed_by_idx == worm.index {
-                    msg.extend_from_slice(s.killed_msg.bytes());
-                    msg.extend_from_slice(other.name.bytes());
-                } else {
-                    msg.extend_from_slice(other.name.bytes());
-                    msg.extend_from_slice(s.committed_suicide_msg.bytes());
-                }
-                self.banner(scr, &msg, r.x1 + 2, v.banner_y);
+            self.draw_stats(scr, worm, stats_x, 164 * multiplier);
+            if s.is_replay {
+                self.draw_name_and_time(
+                    scr,
+                    worm,
+                    stats_x,
+                    stats_x,
+                    (worm.stats_x + 1) * multiplier,
+                    95 * multiplier,
+                );
             }
-        }
+            self.draw_game_mode(scr, vp.worm_idx, stats_x, multiplier);
 
-        self.draw_objects(scr, offs);
-        self.draw_worms(scr, offs, &mut vp.rand);
-        self.draw_sight(scr, worm, offs);
-        self.draw_bobjects(scr, offs);
+            let r = vp.rect;
+            let view = LieroBitmap { clip: r, ..*scr };
+            let scr = &view;
+            let offs = LieroIVec2 {
+                x: r.x1 - vp.x,
+                y: r.y1 - vp.y,
+            };
 
-        if s.map {
-            self.draw_minimap(outer, center_x);
-        }
-    }}
-
-    /// The minimap, drawn after the viewport outside its clip rectangle.
-    unsafe fn draw_minimap(&self, scr: &LieroBitmap, center_x: i32) { unsafe {
-        let s = self.s;
-        let map_x = center_x - 26;
-        let map_y = s.render_res_y - 38;
-        liero_level_draw_miniature(&s.level, scr.pixels, scr.pitch, map_x, map_y, 10);
-
-        for w in self.worms {
-            if w.visible {
-                self.raw_pixel(scr, ftoi(w.pos.x) / 10 + map_x, ftoi(w.pos.y) / 10 + map_y, minimap_color(w.index));
-            }
-        }
-
-        let z = &s.holdazone;
-        if s.game_mode == LIERO_GAME_HOLDAZONE && z.timeout_left > 0 {
-            let x = (z.rect.x1 + z.rect.x2) / 2 / 10 + map_x;
-            let y = (z.rect.y1 + z.rect.y2) / 2 / 10 + map_y;
-            let color = self.worm(z.holder_idx).map_or(168, |h| minimap_color(h.index));
-            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
-                self.pixel(scr, x + dx, y + dy, color);
-            }
-        }
-    }}
-
-    /// The spectator viewport: `SpectatorViewport::draw`.
-    unsafe fn draw_spectator_view(&self, vp: &mut LieroViewport, scr: &LieroBitmap) { unsafe {
-        let s = self.s;
-        let multiplier = s.render_res_x / 320;
-        let center_x = s.render_res_x / 2;
-        let r = vp.rect;
-        let offs = LieroIVec2 { x: r.x1 - vp.x, y: r.y1 - vp.y };
-        let res_y = s.render_res_y;
-
-        for (i, worm) in self.worms.iter().enumerate() {
-            // C++: "fix misalignment. Not sure why this is needed".
-            let offset_x = offs.x / (i as i32 + 1) + if i == 1 { 2 } else { 0 };
-            let list_x = center_x - 15 + if i == 0 { -90 } else { 60 };
-            let x = offset_x + worm.stats_x * multiplier;
-
-            self.draw_stats(scr, worm, x, 164);
-            self.draw_name_and_time(scr, worm, x, x - 1, x, center_x - 15);
-
-            if s.state_game {
-                for (j, ww) in worm.weapons.iter().enumerate() {
-                    let y = res_y - 40 + j as i32 * 8;
-                    let weapon = self.weapon(ww.weapon);
-                    if ww.ammo > 0 {
-                        let width = div(ww.ammo.wrapping_mul(60), weapon.map_or(0, |w| w.ammo));
-                        if width > 0 {
-                            liero_gfx_draw_bar(scr, list_x, y, width, 5, (width / 6 + 245) as u8);
-                        }
-                    }
-                    let color = if worm.current_weapon == j as i32 { 187 } else { 185 };
-                    if let Some(w) = weapon {
-                        self.text(scr, w.name.bytes(), list_x, y, color);
-                    }
-                }
+            self.draw_level(scr, offs);
+            if s.game_mode == LIERO_GAME_HOLDAZONE {
+                self.draw_zone(scr, offs);
             }
 
-            self.draw_game_mode(scr, i as i32, x, 1);
-        }
-
-        self.draw_level(scr, offs);
-        if s.game_mode == LIERO_GAME_HOLDAZONE {
-            self.draw_zone(scr, offs);
-        }
-
-        for worm in self.worms {
             if !worm.visible && worm.killed_timer <= 0 && !worm.ready {
+                let cx = (r.x1 + r.x2) / 2;
+                self.text(scr, s.press_fire.bytes(), cx - 30, 76, 0);
+                self.text(scr, s.press_fire.bytes(), cx - 31, 75, 50);
                 self.draw_spawn_point(scr, worm, offs);
             }
+
             if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == LIERO_GAME_GAME_OF_TAG && s.got_changed {
                 self.banner(scr, s.youre_it.bytes(), r.x1 + 2, vp.banner_y);
             }
-        }
 
-        for worm in self.worms {
-            if worm.health <= 0 && vp.banner_y > -8 {
-                let mut msg = Vec::new();
-                if worm.last_killed_by_idx == worm.index {
-                    msg.extend_from_slice(worm.name.bytes());
-                    msg.extend_from_slice(s.committed_suicide_msg.bytes());
-                } else {
-                    // C++ looks the killer up by position.
-                    if let Some(killer) = self.worm(worm.last_killed_by_idx) {
-                        msg.extend_from_slice(killer.name.bytes());
+            for (i, v) in slice(s.viewports, s.viewport_count).iter().enumerate() {
+                let Some(other) = self.worm(v.worm_idx) else { continue };
+                if i as i32 != self_index && other.health <= 0 && v.banner_y > -8 {
+                    let mut msg = Vec::new();
+                    if other.last_killed_by_idx == worm.index {
+                        msg.extend_from_slice(s.killed_msg.bytes());
+                        msg.extend_from_slice(other.name.bytes());
+                    } else {
+                        msg.extend_from_slice(other.name.bytes());
+                        msg.extend_from_slice(s.committed_suicide_msg.bytes());
                     }
-                    msg.extend_from_slice(b" killed ");
-                    msg.extend_from_slice(worm.name.bytes());
+                    self.banner(scr, &msg, r.x1 + 2, v.banner_y);
                 }
-                self.banner(scr, &msg, r.x1 + 2, vp.banner_y);
+            }
+
+            self.draw_objects(scr, offs);
+            self.draw_worms(scr, offs, &mut vp.rand);
+            self.draw_sight(scr, worm, offs);
+            self.draw_bobjects(scr, offs);
+
+            if s.map {
+                self.draw_minimap(outer, center_x);
             }
         }
+    }
 
-        self.draw_objects(scr, offs);
-        self.draw_worms(scr, offs, &mut vp.rand);
-        for worm in self.worms {
-            self.draw_sight(scr, worm, offs);
+    /// The minimap, drawn after the viewport outside its clip rectangle.
+    unsafe fn draw_minimap(&self, scr: &LieroBitmap, center_x: i32) {
+        unsafe {
+            let s = self.s;
+            let map_x = center_x - 26;
+            let map_y = s.render_res_y - 38;
+            liero_level_draw_miniature(&s.level, scr.pixels, scr.pitch, map_x, map_y, 10);
+
+            for w in self.worms {
+                if w.visible {
+                    self.raw_pixel(
+                        scr,
+                        ftoi(w.pos.x) / 10 + map_x,
+                        ftoi(w.pos.y) / 10 + map_y,
+                        minimap_color(w.index),
+                    );
+                }
+            }
+
+            let z = &s.holdazone;
+            if s.game_mode == LIERO_GAME_HOLDAZONE && z.timeout_left > 0 {
+                let x = (z.rect.x1 + z.rect.x2) / 2 / 10 + map_x;
+                let y = (z.rect.y1 + z.rect.y2) / 2 / 10 + map_y;
+                let color = self.worm(z.holder_idx).map_or(168, |h| minimap_color(h.index));
+                for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                    self.pixel(scr, x + dx, y + dy, color);
+                }
+            }
         }
-        self.draw_bobjects(scr, offs);
-    }}
+    }
+
+    /// The spectator viewport: `SpectatorViewport::draw`.
+    unsafe fn draw_spectator_view(&self, vp: &mut LieroViewport, scr: &LieroBitmap) {
+        unsafe {
+            let s = self.s;
+            let multiplier = s.render_res_x / 320;
+            let center_x = s.render_res_x / 2;
+            let r = vp.rect;
+            let offs = LieroIVec2 {
+                x: r.x1 - vp.x,
+                y: r.y1 - vp.y,
+            };
+            let res_y = s.render_res_y;
+
+            for (i, worm) in self.worms.iter().enumerate() {
+                // C++: "fix misalignment. Not sure why this is needed".
+                let offset_x = offs.x / (i as i32 + 1) + if i == 1 { 2 } else { 0 };
+                let list_x = center_x - 15 + if i == 0 { -90 } else { 60 };
+                let x = offset_x + worm.stats_x * multiplier;
+
+                self.draw_stats(scr, worm, x, 164);
+                self.draw_name_and_time(scr, worm, x, x - 1, x, center_x - 15);
+
+                if s.state_game {
+                    for (j, ww) in worm.weapons.iter().enumerate() {
+                        let y = res_y - 40 + j as i32 * 8;
+                        let weapon = self.weapon(ww.weapon);
+                        if ww.ammo > 0 {
+                            let width = div(ww.ammo.wrapping_mul(60), weapon.map_or(0, |w| w.ammo));
+                            if width > 0 {
+                                liero_gfx_draw_bar(scr, list_x, y, width, 5, (width / 6 + 245) as u8);
+                            }
+                        }
+                        let color = if worm.current_weapon == j as i32 { 187 } else { 185 };
+                        if let Some(w) = weapon {
+                            self.text(scr, w.name.bytes(), list_x, y, color);
+                        }
+                    }
+                }
+
+                self.draw_game_mode(scr, i as i32, x, 1);
+            }
+
+            self.draw_level(scr, offs);
+            if s.game_mode == LIERO_GAME_HOLDAZONE {
+                self.draw_zone(scr, offs);
+            }
+
+            for worm in self.worms {
+                if !worm.visible && worm.killed_timer <= 0 && !worm.ready {
+                    self.draw_spawn_point(scr, worm, offs);
+                }
+                if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == LIERO_GAME_GAME_OF_TAG && s.got_changed {
+                    self.banner(scr, s.youre_it.bytes(), r.x1 + 2, vp.banner_y);
+                }
+            }
+
+            for worm in self.worms {
+                if worm.health <= 0 && vp.banner_y > -8 {
+                    let mut msg = Vec::new();
+                    if worm.last_killed_by_idx == worm.index {
+                        msg.extend_from_slice(worm.name.bytes());
+                        msg.extend_from_slice(s.committed_suicide_msg.bytes());
+                    } else {
+                        // C++ looks the killer up by position.
+                        if let Some(killer) = self.worm(worm.last_killed_by_idx) {
+                            msg.extend_from_slice(killer.name.bytes());
+                        }
+                        msg.extend_from_slice(b" killed ");
+                        msg.extend_from_slice(worm.name.bytes());
+                    }
+                    self.banner(scr, &msg, r.x1 + 2, vp.banner_y);
+                }
+            }
+
+            self.draw_objects(scr, offs);
+            self.draw_worms(scr, offs, &mut vp.rand);
+            for worm in self.worms {
+                self.draw_sight(scr, worm, offs);
+            }
+            self.draw_bobjects(scr, offs);
+        }
+    }
 }
 
 impl LieroViewport {
@@ -930,7 +1030,12 @@ impl LieroViewport {
 
 /// See `LieroViewport::new`.
 #[no_mangle]
-pub extern "C" fn liero_viewport_new(rect: LieroRect, worm_idx: i32, level_width: i32, level_height: i32) -> *mut LieroViewport {
+pub extern "C" fn liero_viewport_new(
+    rect: LieroRect,
+    worm_idx: i32,
+    level_width: i32,
+    level_height: i32,
+) -> *mut LieroViewport {
     Box::into_raw(Box::new(LieroViewport::new(rect, worm_idx, level_width, level_height)))
 }
 
@@ -944,11 +1049,13 @@ pub unsafe extern "C" fn liero_viewport_clone(vp: &LieroViewport) -> *mut LieroV
 /// # Safety
 /// `vp` comes from `liero_viewport_new` or `_clone`, and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_viewport_free(vp: *mut LieroViewport) { unsafe {
-    if !vp.is_null() {
-        drop(Box::from_raw(vp));
+pub unsafe extern "C" fn liero_viewport_free(vp: *mut LieroViewport) {
+    unsafe {
+        if !vp.is_null() {
+            drop(Box::from_raw(vp));
+        }
     }
-}}
+}
 
 /// Moves the camera one tick: `Viewport::process` for `LIERO_VIEWPORT_WORM`,
 /// `SpectatorViewport::process` for `LIERO_VIEWPORT_SPECTATOR`. `worms` has
@@ -962,48 +1069,55 @@ pub unsafe extern "C" fn liero_viewport_process(
     kind: i32,
     worms: *const LieroViewWorm,
     worm_count: i32,
-) { unsafe {
-    let worms = slice(worms, worm_count);
-    let worm = |i: i32| usize::try_from(i).ok().and_then(|i| worms.get(i));
+) {
+    unsafe {
+        let worms = slice(worms, worm_count);
+        let worm = |i: i32| usize::try_from(i).ok().and_then(|i| worms.get(i));
 
-    if kind == LIERO_VIEWPORT_SPECTATOR {
-        // C++: "FIXME this is a bit broken". 150 is where killedTimer starts.
-        if [0, 1].iter().any(|&i| worm(i).is_some_and(|w| w.killed_timer == 150)) {
-            vp.banner_y = -8;
-        }
-    } else if let Some(w) = worm(vp.worm_idx) {
-        let (x, y) = (ftoi(w.pos.x), ftoi(w.pos.y));
-        if w.killed_timer <= 0 {
-            if !w.visible {
-                vp.scroll_to(x, y, 4);
-            } else if w.steerable_count > 0 {
-                vp.set_center(w.steerable_sum_x / w.steerable_count, w.steerable_sum_y / w.steerable_count);
-            } else {
-                vp.set_center(x, y);
-            }
-        } else if w.health <= 0 {
-            vp.set_center(x, y);
-            if w.killed_timer == 150 {
+        if kind == LIERO_VIEWPORT_SPECTATOR {
+            // C++: "FIXME this is a bit broken". 150 is where killedTimer starts.
+            if [0, 1].iter().any(|&i| worm(i).is_some_and(|w| w.killed_timer == 150)) {
                 vp.banner_y = -8;
             }
+        } else if let Some(w) = worm(vp.worm_idx) {
+            let (x, y) = (ftoi(w.pos.x), ftoi(w.pos.y));
+            if w.killed_timer <= 0 {
+                if !w.visible {
+                    vp.scroll_to(x, y, 4);
+                } else if w.steerable_count > 0 {
+                    vp.set_center(
+                        w.steerable_sum_x / w.steerable_count,
+                        w.steerable_sum_y / w.steerable_count,
+                    );
+                } else {
+                    vp.set_center(x, y);
+                }
+            } else if w.health <= 0 {
+                vp.set_center(x, y);
+                if w.killed_timer == 150 {
+                    vp.banner_y = -8;
+                }
+            }
         }
-    }
 
-    vp.shake_and_clamp();
-}}
+        vp.shake_and_clamp();
+    }
+}
 
 /// The positions a predictive bot's plans went through
 /// (`FollowAI::drawDebug`), with `Bitmap::setPixel`'s clipping.
-unsafe fn draw_traces(scr: &LieroBitmap, traces: &[LieroAiTrace], offs: LieroIVec2) { unsafe {
-    let clip = scr.clip;
-    for t in traces {
-        let (x, y) = (ftoi(t.x).wrapping_add(offs.x), ftoi(t.y).wrapping_add(offs.y));
-        let (dx, dy) = (x.wrapping_sub(clip.x1), y.wrapping_sub(clip.y1));
-        if dx >= 0 && dx < clip.x2.wrapping_sub(clip.x1) && dy >= 0 && dy < clip.y2.wrapping_sub(clip.y1) {
-            *scr.pixels.offset(y as isize * scr.pitch as isize + x as isize) = t.color;
+unsafe fn draw_traces(scr: &LieroBitmap, traces: &[LieroAiTrace], offs: LieroIVec2) {
+    unsafe {
+        let clip = scr.clip;
+        for t in traces {
+            let (x, y) = (ftoi(t.x).wrapping_add(offs.x), ftoi(t.y).wrapping_add(offs.y));
+            let (dx, dy) = (x.wrapping_sub(clip.x1), y.wrapping_sub(clip.y1));
+            if dx >= 0 && dx < clip.x2.wrapping_sub(clip.x1) && dy >= 0 && dy < clip.y2.wrapping_sub(clip.y1) {
+                *scr.pixels.offset(y as isize * scr.pitch as isize + x as isize) = t.color;
+            }
         }
     }
-}}
+}
 
 /// Draws a viewport on `scr`: `Viewport::draw` for `LIERO_VIEWPORT_WORM`,
 /// `SpectatorViewport::draw` for `LIERO_VIEWPORT_SPECTATOR`. `self_index` is
@@ -1019,14 +1133,16 @@ pub unsafe extern "C" fn liero_viewport_draw(
     self_index: i32,
     scene: &LieroScene,
     scr: &LieroBitmap,
-) { unsafe {
-    let scene = Scene::new(scene);
-    if kind == LIERO_VIEWPORT_SPECTATOR {
-        scene.draw_spectator_view(vp, scr);
-    } else {
-        scene.draw_worm_view(vp, scr, self_index);
+) {
+    unsafe {
+        let scene = Scene::new(scene);
+        if kind == LIERO_VIEWPORT_SPECTATOR {
+            scene.draw_spectator_view(vp, scr);
+        } else {
+            scene.draw_worm_view(vp, scr, self_index);
+        }
     }
-}}
+}
 
 #[cfg(test)]
 mod tests {
@@ -1034,12 +1150,18 @@ mod tests {
     use crate::rand::LIERO_RAND_DEFAULT_SEED;
 
     fn s(text: &'static [u8]) -> LieroStr {
-        LieroStr { ptr: text.as_ptr(), len: text.len() }
+        LieroStr {
+            ptr: text.as_ptr(),
+            len: text.len(),
+        }
     }
 
     fn worm(index: i32) -> LieroViewWorm {
         LieroViewWorm {
-            pos: LieroIVec2 { x: 100 << 16, y: 80 << 16 },
+            pos: LieroIVec2 {
+                x: 100 << 16,
+                y: 80 << 16,
+            },
             visible: true,
             ready: true,
             health: 100,
@@ -1065,7 +1187,11 @@ mod tests {
             fire_cone: 0,
             last_killed_by_idx: -1,
             current_weapon: 0,
-            weapons: [LieroViewWormWeapon { weapon: 0, ammo: 0, loading_left: 0 }; 5],
+            weapons: [LieroViewWormWeapon {
+                weapon: 0,
+                ammo: 0,
+                loading_left: 0,
+            }; 5],
             steerable_count: 0,
             steerable_sum_x: 0,
             steerable_sum_y: 0,
@@ -1075,18 +1201,41 @@ mod tests {
     }
 
     fn viewport() -> LieroViewport {
-        LieroViewport::new(LieroRect { x1: 0, y1: 0, x2: 158, y2: 158 }, 0, 504, 350)
+        LieroViewport::new(
+            LieroRect {
+                x1: 0,
+                y1: 0,
+                x2: 158,
+                y2: 158,
+            },
+            0,
+            504,
+            350,
+        )
     }
 
     #[test]
     fn new_viewport_matches_cpp_and_copies_are_separate() {
         let vp = viewport();
         // What C++'s Viewport constructor set.
-        assert_eq!((vp.max_x, vp.max_y, vp.center_x, vp.center_y), (504 - 158, 350 - 158, 79, 79));
+        assert_eq!(
+            (vp.max_x, vp.max_y, vp.center_x, vp.center_y),
+            (504 - 158, 350 - 158, 79, 79)
+        );
         assert_eq!((vp.x, vp.y, vp.shake, vp.banner_y), (0, 0, 0, -8));
         assert_eq!(vp.rand, LieroRand::new(LIERO_RAND_DEFAULT_SEED));
         unsafe {
-            let a = liero_viewport_new(LieroRect { x1: 160, y1: 0, x2: 318, y2: 158 }, 1, 504, 350);
+            let a = liero_viewport_new(
+                LieroRect {
+                    x1: 160,
+                    y1: 0,
+                    x2: 318,
+                    y2: 158,
+                },
+                1,
+                504,
+                350,
+            );
             (*a).x = 12;
             (*a).shake = 3;
             (*a).rand.next_u32();
@@ -1127,7 +1276,10 @@ mod tests {
         // Kept inside the level.
         w.visible = true;
         w.steerable_count = 0;
-        w.pos = LieroIVec2 { x: -5 << 16, y: 1000 << 16 };
+        w.pos = LieroIVec2 {
+            x: -5 << 16,
+            y: 1000 << 16,
+        };
         process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
         assert_eq!((vp.x, vp.y), (0, vp.max_y));
 
@@ -1147,9 +1299,18 @@ mod tests {
             w: 10,
             h: 10,
             pitch: 10,
-            clip: LieroRect { x1: 2, y1: 3, x2: 6, y2: 7 },
+            clip: LieroRect {
+                x1: 2,
+                y1: 3,
+                x2: 6,
+                y2: 7,
+            },
         };
-        let t = |x: i32, y: i32| LieroAiTrace { x: x << 16, y: y << 16, color: 9 };
+        let t = |x: i32, y: i32| LieroAiTrace {
+            x: x << 16,
+            y: y << 16,
+            color: 9,
+        };
         let traces = [t(0, 4), t(1, 3), t(2, 3), t(5, 6), t(6, 6), t(5, 7), t(4, 2)];
         unsafe { draw_traces(&scr, &traces, LieroIVec2 { x: 1, y: 0 }) };
         let set: Vec<(usize, usize)> = (0..100).filter(|&i| screen[i] == 9).map(|i| (i % 10, i / 10)).collect();
@@ -1217,7 +1378,13 @@ mod tests {
                 small: sprites(7, 50, 100),
                 text: sprites(4, 26, 200),
                 worm_sprites: vec![50; 16 * 16 * 84],
-                font: vec![LieroFontChar { data: [0; 56], width: 8 }; 250],
+                font: vec![
+                    LieroFontChar {
+                        data: [0; 56],
+                        width: 8
+                    };
+                    250
+                ],
                 weapons: (0..40).map(|i| weapon(if i % 2 == 0 { b"AB" } else { b"C" })).collect(),
                 worms: vec![worm(0), worm(1)],
                 bonuses: Vec::new(),
@@ -1301,7 +1468,12 @@ mod tests {
                 w: 320,
                 h: 200,
                 pitch: 320,
-                clip: LieroRect { x1: 0, y1: 0, x2: 320, y2: 200 },
+                clip: LieroRect {
+                    x1: 0,
+                    y1: 0,
+                    x2: 320,
+                    y2: 200,
+                },
             };
             unsafe { liero_viewport_draw(&mut vp, kind, 0, &scene, &scr) };
         }
@@ -1314,7 +1486,13 @@ mod tests {
     #[test]
     fn bonus_names_are_drawn_in_small_letters() {
         let mut t = TestScene::new();
-        t.bonuses.push(LieroViewBonus { x: 60 << 16, y: 60 << 16, timer: 100, frame: 0, weapon: 0 });
+        t.bonuses.push(LieroViewBonus {
+            x: 60 << 16,
+            y: 60 << 16,
+            timer: 100,
+            frame: 0,
+            weapon: 0,
+        });
         t.draw(LIERO_VIEWPORT_WORM, |_| {});
         assert_eq!(t.px(57, 57), 100);
         assert_eq!(t.px(56, 50), 1, "no name unless names on bonuses");
@@ -1328,7 +1506,15 @@ mod tests {
     #[test]
     fn weapon_34_shows_a_name_picked_by_its_slot() {
         let mut t = TestScene::new();
-        t.wobjects.push(LieroViewWObject { pos: LieroIVec2 { x: 60 << 16, y: 60 << 16 }, weapon: 34, cur_frame: 0, slot: 41 });
+        t.wobjects.push(LieroViewWObject {
+            pos: LieroIVec2 {
+                x: 60 << 16,
+                y: 60 << 16,
+            },
+            weapon: 34,
+            cur_frame: 0,
+            slot: 41,
+        });
         t.draw(LIERO_VIEWPORT_WORM, |s| s.names_on_bonuses = true);
         // Slot 41 of 40 weapons names weapon 1, "C", drawn from x = 60 - 2.
         assert_eq!(t.px(58, 50), 202);
@@ -1374,7 +1560,13 @@ mod tests {
         // drawText got 5 * multiplier as the length; past the five characters
         // only line breaks are drawn.
         let mut t = TestScene::new();
-        t.font = vec![LieroFontChar { data: [1; 56], width: 8 }; 250];
+        t.font = vec![
+            LieroFontChar {
+                data: [1; 56],
+                width: 8
+            };
+            250
+        ];
         t.worms[0].index = 0;
         t.worms[0].timer = 61;
         t.draw(LIERO_VIEWPORT_WORM, |s| s.game_mode = LIERO_GAME_GAME_OF_TAG);

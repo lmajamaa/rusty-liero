@@ -253,7 +253,9 @@ pub struct LieroKeys {
 
 impl Default for LieroKeys {
     fn default() -> Self {
-        LieroKeys { down: [false; LIERO_MAX_DOS_KEY as usize] }
+        LieroKeys {
+            down: [false; LIERO_MAX_DOS_KEY as usize],
+        }
     }
 }
 
@@ -741,23 +743,23 @@ pub extern "C" fn liero_keys_frame_skip(k: &mut LieroKeys, frame_skip: &mut i32,
 /// # Safety
 /// `buttons` must point to a joystick's 32 button states.
 #[no_mangle]
-pub unsafe extern "C" fn liero_joy_axis(buttons: *mut bool, joy: i32, axis: u8, value: i16) -> LieroKeyChanges { unsafe {
-    joy_axis(&mut *buttons.cast::<JoyButtons>(), joy, axis, value)
-}}
+pub unsafe extern "C" fn liero_joy_axis(buttons: *mut bool, joy: i32, axis: u8, value: i16) -> LieroKeyChanges {
+    unsafe { joy_axis(&mut *buttons.cast::<JoyButtons>(), joy, axis, value) }
+}
 
 /// # Safety
 /// As `liero_joy_axis`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_joy_hat(buttons: *mut bool, joy: i32, value: u8) -> LieroKeyChanges { unsafe {
-    joy_hat(&mut *buttons.cast::<JoyButtons>(), joy, value)
-}}
+pub unsafe extern "C" fn liero_joy_hat(buttons: *mut bool, joy: i32, value: u8) -> LieroKeyChanges {
+    unsafe { joy_hat(&mut *buttons.cast::<JoyButtons>(), joy, value) }
+}
 
 /// # Safety
 /// As `liero_joy_axis`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_joy_button(buttons: *mut bool, joy: i32, button: u8, pressed: bool) -> LieroKeyChanges { unsafe {
-    joy_button(&mut *buttons.cast::<JoyButtons>(), joy, button, pressed)
-}}
+pub unsafe extern "C" fn liero_joy_button(buttons: *mut bool, joy: i32, button: u8, pressed: bool) -> LieroKeyChanges {
+    unsafe { joy_button(&mut *buttons.cast::<JoyButtons>(), joy, button, pressed) }
+}
 
 #[no_mangle]
 pub extern "C" fn liero_joy_axis_key(joy: i32, axis: u8, value: i16) -> u32 {
@@ -787,14 +789,23 @@ pub unsafe extern "C" fn liero_local_controller_key(
     control_count: usize,
     key: i32,
     key_state: bool,
-) -> bool { unsafe {
-    let worms = if count == 0 { &[][..] } else { std::slice::from_raw_parts(worms, count) };
-    let controls: Vec<&[u32]> = worms.iter().map(|w| std::slice::from_raw_parts(w.controls, control_count)).collect();
-    if let Some((w, c)) = control_for_key(&controls, key as u32) {
-        apply_control(&mut *worms[w].states, &mut *worms[w].clean, c, key_state);
+) -> bool {
+    unsafe {
+        let worms = if count == 0 {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(worms, count)
+        };
+        let controls: Vec<&[u32]> = worms
+            .iter()
+            .map(|w| std::slice::from_raw_parts(w.controls, control_count))
+            .collect();
+        if let Some((w, c)) = control_for_key(&controls, key as u32) {
+            apply_control(&mut *worms[w].states, &mut *worms[w].clean, c, key_state);
+        }
+        key as u32 == LIERO_DK_ESCAPE
     }
-    key as u32 == LIERO_DK_ESCAPE
-}}
+}
 
 #[cfg(test)]
 mod tests {
@@ -967,8 +978,16 @@ mod tests {
         let mut clean = [0u32; 2];
         let key = |k: u32, s: bool, states: &mut [u32; 2], clean: &mut [u32; 2]| unsafe {
             let worms = [
-                LieroWormKeys { controls: w0.as_ptr(), states: &mut states[0], clean: &mut clean[0] },
-                LieroWormKeys { controls: w1.as_ptr(), states: &mut states[1], clean: &mut clean[1] },
+                LieroWormKeys {
+                    controls: w0.as_ptr(),
+                    states: &mut states[0],
+                    clean: &mut clean[0],
+                },
+                LieroWormKeys {
+                    controls: w1.as_ptr(),
+                    states: &mut states[1],
+                    clean: &mut clean[1],
+                },
             ];
             liero_local_controller_key(worms.as_ptr(), 2, 8, k as i32, s)
         };

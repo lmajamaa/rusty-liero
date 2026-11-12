@@ -46,7 +46,14 @@ fn hash(ai: &FollowAi) -> u64 {
     f.add(ai.rand.x);
     f.add(ai.rand.c);
     let c = &ai.current_context;
-    for v in [c.current_state.0, c.wanted_weapon, c.hidden_frames, c.facing_enemy, c.ninjarope_out, ai.evaluation_budget] {
+    for v in [
+        c.current_state.0,
+        c.wanted_weapon,
+        c.hidden_frames,
+        c.facing_enemy,
+        c.ninjarope_out,
+        ai.evaluation_budget,
+    ] {
         f.int(v);
     }
     f.add(ai.testing as u32);
@@ -112,11 +119,13 @@ pub extern "C" fn liero_worm_ai_new(controller: u32, candidates: usize, testing:
 /// # Safety
 /// `ai` must come from `liero_worm_ai_new`, or be null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_ai_free(ai: *mut LieroWormAi) { unsafe {
-    if !ai.is_null() {
-        drop(Box::from_raw(ai));
+pub unsafe extern "C" fn liero_worm_ai_free(ai: *mut LieroWormAi) {
+    unsafe {
+        if !ai.is_null() {
+            drop(Box::from_raw(ai));
+        }
     }
-}}
+}
 
 /// The bot's own generator, which C++ can seed.
 #[no_mangle]
@@ -167,21 +176,23 @@ pub unsafe extern "C" fn liero_game_process_ais(
     settings: &LieroGameSettings,
     ai_settings: &LieroAiSettings,
     hooks: Option<&LieroGameHooks>,
-) { unsafe {
-    let n = game.worm_count as usize;
-    let phase = ((*game.game).cycles % 2) as usize;
-    for i in 0..n {
-        let place = (i + phase) % n;
-        let w = *game.worms.add(place);
-        let Some(ai) = w.ai.as_mut() else { continue };
-        let start = hooks.map(|h| (h.hires_ticks)(h.ctx));
-        let controls = match ai {
-            LieroWormAi::Dumb(r) => sim::process_dumb(r, game, place as i32),
-            LieroWormAi::Follow(f) => sim::process(f, game, settings, ai_settings, place as i32),
-        };
-        (*w.data).control_states = controls;
-        if let (Some(h), Some(start), Some(stats)) = (hooks, start, game.stats.as_mut()) {
-            stats.ai_process_time((*w.data).index, (h.hires_ticks)(h.ctx).wrapping_sub(start));
+) {
+    unsafe {
+        let n = game.worm_count as usize;
+        let phase = ((*game.game).cycles % 2) as usize;
+        for i in 0..n {
+            let place = (i + phase) % n;
+            let w = *game.worms.add(place);
+            let Some(ai) = w.ai.as_mut() else { continue };
+            let start = hooks.map(|h| (h.hires_ticks)(h.ctx));
+            let controls = match ai {
+                LieroWormAi::Dumb(r) => sim::process_dumb(r, game, place as i32),
+                LieroWormAi::Follow(f) => sim::process(f, game, settings, ai_settings, place as i32),
+            };
+            (*w.data).control_states = controls;
+            if let (Some(h), Some(start), Some(stats)) = (hooks, start, game.stats.as_mut()) {
+                stats.ai_process_time((*w.data).index, (h.hires_ticks)(h.ctx).wrapping_sub(start));
+            }
         }
     }
-}}
+}

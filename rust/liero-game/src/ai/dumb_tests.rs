@@ -3,13 +3,23 @@ use super::*;
 const NEVER: [[i32; 7]; 2] = [[1 << 30; 7]; 2];
 
 fn worm(x: i32, y: i32) -> LieroDumbAiWorm {
-    LieroDumbAiWorm { pos: [x << 16, y << 16], visible: true, aiming_angle: 32 << 16, direction: 1, speed: 100, ..Default::default() }
+    LieroDumbAiWorm {
+        pos: [x << 16, y << 16],
+        visible: true,
+        aiming_angle: 32 << 16,
+        direction: 1,
+        speed: 100,
+        ..Default::default()
+    }
 }
 
 #[test]
 fn alone_it_changes_nothing() {
     let mut rand = LieroRand::new(1);
-    let w = LieroDumbAiWorm { control_states: 0b1010101, ..worm(10, 10) };
+    let w = LieroDumbAiWorm {
+        control_states: 0b1010101,
+        ..worm(10, 10)
+    };
     assert_eq!(process(&mut rand, &w, &[], &NEVER), 0b1010101);
     assert_eq!(rand, LieroRand::new(1));
 }
@@ -38,7 +48,10 @@ fn it_fires_when_close_and_stops_when_far() {
     let cs = process(&mut rand, &worm(100, 100), &[[150 << 16, 100 << 16]], &always);
     assert!(Controls(cs).pressed(FIRE));
 
-    let firing = LieroDumbAiWorm { control_states: 1 << FIRE, ..worm(100, 100) };
+    let firing = LieroDumbAiWorm {
+        control_states: 1 << FIRE,
+        ..worm(100, 100)
+    };
     let cs = process(&mut rand, &firing, &[[400 << 16, 100 << 16]], &NEVER);
     assert!(!Controls(cs).pressed(FIRE));
 }

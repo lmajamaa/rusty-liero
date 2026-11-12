@@ -20,9 +20,9 @@ use crate::deflate::{inflate, Deflater};
 use crate::fs::LieroFsNode;
 use crate::game::LieroRect;
 use crate::game_box::{
-    liero_game_add_viewport, liero_game_data, liero_game_list_worm, liero_game_new_worm, liero_game_viewport,
-    liero_game_viewport_count, liero_game_worm, liero_game_worm_count, liero_worm_data, liero_worm_set_settings,
-    liero_worm_settings, LieroGame, LieroWorm, liero_game_level, liero_game_settings,
+    liero_game_add_viewport, liero_game_data, liero_game_level, liero_game_list_worm, liero_game_new_worm,
+    liero_game_settings, liero_game_viewport, liero_game_viewport_count, liero_game_worm, liero_game_worm_count,
+    liero_worm_data, liero_worm_set_settings, liero_worm_settings, LieroGame, LieroWorm,
 };
 use crate::material::LieroMaterial;
 use crate::replay::{
@@ -30,7 +30,9 @@ use crate::replay::{
     read_checksum, read_frame, read_start, write_end, write_frame, write_start, Game, Level, LieroReplayFrameWorm,
     LieroReplayGameFields, LieroReplayStatus, ReplayError, Worm, LIERO_REPLAY_VERSION,
 };
-use crate::settings::{liero_worm_settings_box_free, liero_worm_settings_box_new, LieroSettingsBox, LieroWormSettingsBox};
+use crate::settings::{
+    liero_worm_settings_box_free, liero_worm_settings_box_new, LieroSettingsBox, LieroWormSettingsBox,
+};
 use crate::text::LieroStr;
 use crate::viewport::LIERO_VIEWPORT_WORM;
 
@@ -59,7 +61,10 @@ impl LieroReplayOutcome {
         };
         LieroReplayOutcome {
             status,
-            message: LieroStr { ptr: message.as_ptr(), len: message.len() },
+            message: LieroStr {
+                ptr: message.as_ptr(),
+                len: message.len(),
+            },
             end: false,
             settings_changed: false,
         }
@@ -83,27 +88,31 @@ unsafe fn game_worms(game: &LieroGame) -> Vec<*mut LieroWorm> {
 
 /// # Safety
 /// `w` is valid and has settings.
-unsafe fn worm_settings<'a>(w: *mut LieroWorm) -> &'a mut LieroWormSettingsBox { unsafe {
-    let s = liero_worm_settings(&*w);
-    assert!(!s.is_null(), "a worm without settings");
-    &mut *s
-}}
+unsafe fn worm_settings<'a>(w: *mut LieroWorm) -> &'a mut LieroWormSettingsBox {
+    unsafe {
+        let s = liero_worm_settings(&*w);
+        assert!(!s.is_null(), "a worm without settings");
+        &mut *s
+    }
+}
 
 /// `fastGameChecksum`: the generator and the worms' positions and
 /// velocities.
 ///
 /// # Safety
 /// `game` is valid.
-unsafe fn game_checksum(game: &mut LieroGame) -> u32 { unsafe {
-    let worms: Vec<[i32; 4]> = game_worms(game)
-        .iter()
-        .map(|&w| {
-            let d = &(*w).data;
-            [d.pos.x, d.pos.y, d.vel.x, d.vel.y]
-        })
-        .collect();
-    checksum((*liero_game_data(game)).rand.x, &worms)
-}}
+unsafe fn game_checksum(game: &mut LieroGame) -> u32 {
+    unsafe {
+        let worms: Vec<[i32; 4]> = game_worms(game)
+            .iter()
+            .map(|&w| {
+                let d = &(*w).data;
+                [d.pos.x, d.pos.y, d.vel.x, d.vel.y]
+            })
+            .collect();
+        checksum((*liero_game_data(game)).rand.x, &worms)
+    }
+}
 
 /// `Settings::updateHash`: the hash of the settings archive. Writing it
 /// sets the TC name to the default, since the archive has none.
@@ -126,16 +135,22 @@ fn worm_hash(s: &mut LieroWormSettingsBox) -> Hash {
 ///
 /// # Safety
 /// `w` is valid and has settings.
-unsafe fn frame_worm(w: *mut LieroWorm, settings_expired: bool, settings: WormSettings) -> (LieroReplayFrameWorm, WormSettings) { unsafe {
-    let d = &(*w).data;
-    let f = LieroReplayFrameWorm {
-        index: d.index,
-        control_states: d.control_states,
-        prev_control_states: d.prev_control_states,
-        settings_expired,
-    };
-    (f, settings)
-}}
+unsafe fn frame_worm(
+    w: *mut LieroWorm,
+    settings_expired: bool,
+    settings: WormSettings,
+) -> (LieroReplayFrameWorm, WormSettings) {
+    unsafe {
+        let d = &(*w).data;
+        let f = LieroReplayFrameWorm {
+            index: d.index,
+            control_states: d.control_states,
+            prev_control_states: d.prev_control_states,
+            settings_expired,
+        };
+        (f, settings)
+    }
+}
 
 // ---- Writing ----
 
@@ -149,7 +164,10 @@ struct WormData {
 
 impl Default for WormData {
     fn default() -> Self {
-        WormData { last_hash: Hash::default(), expired: true }
+        WormData {
+            last_hash: Hash::default(),
+            expired: true,
+        }
     }
 }
 
@@ -209,11 +227,13 @@ pub extern "C" fn liero_replay_writer_new(node: &LieroFsNode) -> *mut LieroRepla
 /// `w` comes from `liero_replay_writer_new`, or is null, and isn't used
 /// again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_free(w: *mut LieroReplayWriter) { unsafe {
-    if !w.is_null() {
-        drop(Box::from_raw(w));
+pub unsafe extern "C" fn liero_replay_writer_free(w: *mut LieroReplayWriter) {
+    unsafe {
+        if !w.is_null() {
+            drop(Box::from_raw(w));
+        }
     }
-}}
+}
 
 /// The version to write, before `liero_replay_writer_begin`; the hash run
 /// writes old ones.
@@ -230,69 +250,74 @@ pub extern "C" fn liero_replay_writer_set_version(w: &mut LieroReplayWriter, ver
 /// # Safety
 /// The game has its settings and TC (`liero_game_set_context`).
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut LieroGame) -> LieroReplayOutcome { unsafe {
-    let settings = &mut *liero_game_settings(game);
-    let level = &*liero_game_level(game);
-    let tc = &*game.tc_data();
-    w.game = game;
-    w.settings = settings;
+pub unsafe extern "C" fn liero_replay_writer_begin(
+    w: &mut LieroReplayWriter,
+    game: &mut LieroGame,
+) -> LieroReplayOutcome {
+    unsafe {
+        let settings = &mut *liero_game_settings(game);
+        let level = &*liero_game_level(game);
+        let tc = &*game.tc_data();
+        w.game = game;
+        w.settings = settings;
 
-    let worms = game_worms(game);
-    let datas: Vec<_> = worms.iter().map(|&p| liero_worm_data(&mut *p)).collect();
-    let d = &*liero_game_data(game);
-    let l = level.data();
-    let mut palette = [0u8; 768];
-    for (i, c) in l.origpal.iter().enumerate() {
-        palette[i * 3..i * 3 + 3].copy_from_slice(&[c.r, c.g, c.b]);
-    }
-    let mut g = Game {
-        settings: settings.settings(),
-        fields: LieroReplayGameFields {
-            cycles: d.cycles,
-            got_changed: d.got_changed,
-            last_killed: d.last_killed_idx,
-            screen_flash: d.screen_flash,
-            rand_x: d.rand.x,
-            rand_c: d.rand.c,
-        },
-        worms: worms
-            .iter()
-            .zip(&datas)
-            .map(|(&p, &data)| Worm {
-                fields: liero_replay_worm_of(&*data, datas.as_ptr(), datas.len(), tc),
-                settings: worm_settings(p).worm(),
-            })
-            .collect(),
-        list: (0..worms.len() as i32).collect(),
-        viewports: (0..liero_game_viewport_count(game, false))
-            .map(|i| liero_replay_viewport_of(&*liero_game_viewport(game, false, i)))
-            .collect(),
-        level: Level {
-            width: l.level.width as u32,
-            height: l.level.height as u32,
-            pixels: level.pixels().to_vec(),
-            palette,
-        },
-    };
-    let (bytes, r) = write_start(&mut g, w.version);
+        let worms = game_worms(game);
+        let datas: Vec<_> = worms.iter().map(|&p| liero_worm_data(&mut *p)).collect();
+        let d = &*liero_game_data(game);
+        let l = level.data();
+        let mut palette = [0u8; 768];
+        for (i, c) in l.origpal.iter().enumerate() {
+            palette[i * 3..i * 3 + 3].copy_from_slice(&[c.r, c.g, c.b]);
+        }
+        let mut g = Game {
+            settings: settings.settings(),
+            fields: LieroReplayGameFields {
+                cycles: d.cycles,
+                got_changed: d.got_changed,
+                last_killed: d.last_killed_idx,
+                screen_flash: d.screen_flash,
+                rand_x: d.rand.x,
+                rand_c: d.rand.c,
+            },
+            worms: worms
+                .iter()
+                .zip(&datas)
+                .map(|(&p, &data)| Worm {
+                    fields: liero_replay_worm_of(&*data, datas.as_ptr(), datas.len(), tc),
+                    settings: worm_settings(p).worm(),
+                })
+                .collect(),
+            list: (0..worms.len() as i32).collect(),
+            viewports: (0..liero_game_viewport_count(game, false))
+                .map(|i| liero_replay_viewport_of(&*liero_game_viewport(game, false, i)))
+                .collect(),
+            level: Level {
+                width: l.level.width as u32,
+                height: l.level.height as u32,
+                pixels: level.pixels().to_vec(),
+                palette,
+            },
+        };
+        let (bytes, r) = write_start(&mut g, w.version);
 
-    // The game's settings first: their worms can be the worms' own.
-    settings.set_settings(&g.settings);
-    for (&p, rw) in worms.iter().zip(&g.worms) {
-        worm_settings(p).set_worm(&rw.settings);
-    }
-    w.out.write(&bytes);
-    if r.is_err() {
-        return LieroReplayOutcome::new(r, "");
-    }
+        // The game's settings first: their worms can be the worms' own.
+        settings.set_settings(&g.settings);
+        for (&p, rw) in worms.iter().zip(&g.worms) {
+            worm_settings(p).set_worm(&rw.settings);
+        }
+        w.out.write(&bytes);
+        if r.is_err() {
+            return LieroReplayOutcome::new(r, "");
+        }
 
-    // They were just written, so they're up to date.
-    for &p in &worms {
-        w.worm(p).expired = false;
+        // They were just written, so they're up to date.
+        for &p in &worms {
+            w.worm(p).expired = false;
+        }
+        w.settings_expired = false;
+        LieroReplayOutcome::new(Ok(()), "")
     }
-    w.settings_expired = false;
-    LieroReplayOutcome::new(Ok(()), "")
-}}
+}
 
 /// `recordFrame`: the game's controls this tick, and any settings that
 /// changed since they were written (a worm's only with more than three
@@ -301,50 +326,63 @@ pub unsafe extern "C" fn liero_replay_writer_begin(w: &mut LieroReplayWriter, ga
 /// # Safety
 /// The game and settings `liero_replay_writer_begin` had are still valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_frame(w: &mut LieroReplayWriter) { unsafe {
-    let game = &mut *w.game;
-    let settings = &mut *w.settings;
-    let worms = game_worms(game);
-    let with_settings = worms.len() > 3;
-    let mut fw: Vec<_> = worms
-        .iter()
-        .map(|&p| {
-            let expired = with_settings && w.worm(p).expired;
-            // Converting the settings only when they're written keeps frames
-            // cheap.
-            let ws = if expired { worm_settings(p).worm() } else { WormSettings::default() };
-            frame_worm(p, expired, ws)
-        })
-        .collect();
-    let mut s = if w.settings_expired { settings.settings() } else { Settings::default() };
-    let sum = game_checksum(game);
-    let cycles = (*liero_game_data(game)).cycles;
-    let (bytes, game_written, worms_written) = write_frame(w.version, &mut s, w.settings_expired, &mut fw, cycles, sum);
+pub unsafe extern "C" fn liero_replay_writer_frame(w: &mut LieroReplayWriter) {
+    unsafe {
+        let game = &mut *w.game;
+        let settings = &mut *w.settings;
+        let worms = game_worms(game);
+        let with_settings = worms.len() > 3;
+        let mut fw: Vec<_> = worms
+            .iter()
+            .map(|&p| {
+                let expired = with_settings && w.worm(p).expired;
+                // Converting the settings only when they're written keeps frames
+                // cheap.
+                let ws = if expired {
+                    worm_settings(p).worm()
+                } else {
+                    WormSettings::default()
+                };
+                frame_worm(p, expired, ws)
+            })
+            .collect();
+        let mut s = if w.settings_expired {
+            settings.settings()
+        } else {
+            Settings::default()
+        };
+        let sum = game_checksum(game);
+        let cycles = (*liero_game_data(game)).cycles;
+        let (bytes, game_written, worms_written) =
+            write_frame(w.version, &mut s, w.settings_expired, &mut fw, cycles, sum);
 
-    if game_written {
-        settings.set_settings(&s);
-        w.settings_expired = false;
-    }
-    for ((&p, (_, ws)), written) in worms.iter().zip(&fw).zip(worms_written) {
-        if written {
-            worm_settings(p).set_worm(ws);
-            w.worm(p).expired = false;
+        if game_written {
+            settings.set_settings(&s);
+            w.settings_expired = false;
         }
+        for ((&p, (_, ws)), written) in worms.iter().zip(&fw).zip(worms_written) {
+            if written {
+                worm_settings(p).set_worm(ws);
+                w.worm(p).expired = false;
+            }
+        }
+        w.out.write(&bytes);
     }
-    w.out.write(&bytes);
-}}
+}
 
 /// The game lost focus (the menu opened): remembers the settings' hashes.
 ///
 /// # Safety
 /// As for `liero_replay_writer_frame`, once recording has begun.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) { unsafe {
-    for (p, d) in w.worms.iter_mut() {
-        d.last_hash = worm_hash(worm_settings(*p));
+pub unsafe extern "C" fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) {
+    unsafe {
+        for (p, d) in w.worms.iter_mut() {
+            d.last_hash = worm_hash(worm_settings(*p));
+        }
+        w.last_settings_hash = settings_hash(&mut *w.settings);
     }
-    w.last_settings_hash = settings_hash(&mut *w.settings);
-}}
+}
 
 /// The game has focus again: settings that changed are written with the
 /// next frame.
@@ -352,16 +390,18 @@ pub unsafe extern "C" fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) 
 /// # Safety
 /// As for `liero_replay_writer_unfocus`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_focus(w: &mut LieroReplayWriter) { unsafe {
-    for (p, d) in w.worms.iter_mut() {
-        if d.last_hash != worm_hash(worm_settings(*p)) {
-            d.expired = true;
+pub unsafe extern "C" fn liero_replay_writer_focus(w: &mut LieroReplayWriter) {
+    unsafe {
+        for (p, d) in w.worms.iter_mut() {
+            if d.last_hash != worm_hash(worm_settings(*p)) {
+                d.expired = true;
+            }
+        }
+        if w.last_settings_hash != settings_hash(&mut *w.settings) {
+            w.settings_expired = true;
         }
     }
-    if w.last_settings_hash != settings_hash(&mut *w.settings) {
-        w.settings_expired = true;
-    }
-}}
+}
 
 // ---- Reading ----
 
@@ -392,7 +432,10 @@ impl Source for ReaderSource<'_> {
 
 impl LieroReplayReader {
     fn source(&mut self) -> ReaderSource<'_> {
-        ReaderSource { data: &self.data, pos: &mut self.pos }
+        ReaderSource {
+            data: &self.data,
+            pos: &mut self.pos,
+        }
     }
 
     fn outcome(&self, r: Result<(), ReplayError>) -> LieroReplayOutcome {
@@ -408,7 +451,11 @@ pub extern "C" fn liero_replay_reader_new(node: &LieroFsNode) -> *mut LieroRepla
     Box::into_raw(Box::new(LieroReplayReader {
         data: r.data,
         pos: 0,
-        end_error: if r.error { "Error while deflating" } else { "Read error in get()" },
+        end_error: if r.error {
+            "Error while deflating"
+        } else {
+            "Read error in get()"
+        },
         version: LIERO_REPLAY_VERSION,
         game: null_mut(),
         settings: null_mut(),
@@ -419,11 +466,13 @@ pub extern "C" fn liero_replay_reader_new(node: &LieroFsNode) -> *mut LieroRepla
 /// `r` comes from `liero_replay_reader_new`, or is null, and isn't used
 /// again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_free(r: *mut LieroReplayReader) { unsafe {
-    if !r.is_null() {
-        drop(Box::from_raw(r));
+pub unsafe extern "C" fn liero_replay_reader_free(r: *mut LieroReplayReader) {
+    unsafe {
+        if !r.is_null() {
+            drop(Box::from_raw(r));
+        }
     }
-}}
+}
 
 /// How far playback has read, to go back to with `_set_pos`.
 #[no_mangle]
@@ -444,57 +493,69 @@ pub extern "C" fn liero_replay_reader_set_pos(r: &mut LieroReplayReader, pos: us
 /// # Safety
 /// The game has its settings and TC (`liero_game_set_context`).
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut LieroGame) -> LieroReplayOutcome { unsafe {
-    let settings = &mut *liero_game_settings(game);
-    let level = &mut *liero_game_level(game);
-    let tc = &*game.tc_data();
-    let (version, g) = match read_start(&mut r.source()) {
-        Ok(read) => read,
-        Err(e) => return r.outcome(Err(e)),
-    };
-    r.version = version;
-    r.game = game;
-    r.settings = settings;
+pub unsafe extern "C" fn liero_replay_reader_begin(
+    r: &mut LieroReplayReader,
+    game: &mut LieroGame,
+) -> LieroReplayOutcome {
+    unsafe {
+        let settings = &mut *liero_game_settings(game);
+        let level = &mut *liero_game_level(game);
+        let tc = &*game.tc_data();
+        let (version, g) = match read_start(&mut r.source()) {
+            Ok(read) => read,
+            Err(e) => return r.outcome(Err(e)),
+        };
+        r.version = version;
+        r.game = game;
+        r.settings = settings;
 
-    settings.set_settings(&g.settings);
-    let d = &mut *liero_game_data(game);
-    d.cycles = g.fields.cycles;
-    d.got_changed = g.fields.got_changed;
-    d.last_killed_idx = g.fields.last_killed;
-    d.screen_flash = g.fields.screen_flash;
-    d.rand.x = g.fields.rand_x;
-    d.rand.c = g.fields.rand_c;
+        settings.set_settings(&g.settings);
+        let d = &mut *liero_game_data(game);
+        d.cycles = g.fields.cycles;
+        d.got_changed = g.fields.got_changed;
+        d.last_killed_idx = g.fields.last_killed;
+        d.screen_flash = g.fields.screen_flash;
+        d.rand.x = g.fields.rand_x;
+        d.rand.c = g.fields.rand_c;
 
-    // Every worm read, including any only referred to, which the game
-    // keeps without listing.
-    let all: Vec<_> = g.worms.iter().map(|_| liero_game_new_worm(game, null_mut())).collect();
-    let datas: Vec<_> = all.iter().map(|&p| liero_worm_data(&mut *p)).collect();
-    for ((&p, &data), rw) in all.iter().zip(&datas).zip(&g.worms) {
-        liero_replay_worm_set(&mut *data, &rw.fields, datas.as_ptr(), datas.len(), tc);
-        let ws = liero_worm_settings_box_new();
-        (*ws).set_worm(&rw.settings);
-        liero_worm_set_settings(&mut *p, ws);
-        liero_worm_settings_box_free(ws);
-    }
-    for &i in &g.list {
-        liero_game_list_worm(game, if i < 0 { null_mut() } else { all[i as usize] });
-    }
+        // Every worm read, including any only referred to, which the game
+        // keeps without listing.
+        let all: Vec<_> = g.worms.iter().map(|_| liero_game_new_worm(game, null_mut())).collect();
+        let datas: Vec<_> = all.iter().map(|&p| liero_worm_data(&mut *p)).collect();
+        for ((&p, &data), rw) in all.iter().zip(&datas).zip(&g.worms) {
+            liero_replay_worm_set(&mut *data, &rw.fields, datas.as_ptr(), datas.len(), tc);
+            let ws = liero_worm_settings_box_new();
+            (*ws).set_worm(&rw.settings);
+            liero_worm_set_settings(&mut *p, ws);
+            liero_worm_settings_box_free(ws);
+        }
+        for &i in &g.list {
+            liero_game_list_worm(game, if i < 0 { null_mut() } else { all[i as usize] });
+        }
 
-    for vp in &g.viewports {
-        let rect = LieroRect { x1: 0, y1: 0, x2: 0, y2: 0 };
-        let p = liero_game_add_viewport(game, rect, 0, 0, 0, LIERO_VIEWPORT_WORM, false);
-        liero_replay_viewport_set(&mut *p, vp);
-    }
+        for vp in &g.viewports {
+            let rect = LieroRect {
+                x1: 0,
+                y1: 0,
+                x2: 0,
+                y2: 0,
+            };
+            let p = liero_game_add_viewport(game, rect, 0, 0, 0, LIERO_VIEWPORT_WORM, false);
+            liero_replay_viewport_set(&mut *p, vp);
+        }
 
-    level.resize(g.level.width as i32, g.level.height as i32);
-    level.set_pixels(&g.level.pixels, |p| LieroMaterial { flags: tc.materials[p as usize] });
-    for (i, c) in level.data_mut().origpal.iter_mut().enumerate() {
-        c.r = g.level.palette[i * 3];
-        c.g = g.level.palette[i * 3 + 1];
-        c.b = g.level.palette[i * 3 + 2];
+        level.resize(g.level.width as i32, g.level.height as i32);
+        level.set_pixels(&g.level.pixels, |p| LieroMaterial {
+            flags: tc.materials[p as usize],
+        });
+        for (i, c) in level.data_mut().origpal.iter_mut().enumerate() {
+            c.r = g.level.palette[i * 3];
+            c.g = g.level.palette[i * 3 + 1];
+            c.b = g.level.palette[i * 3 + 2];
+        }
+        r.outcome(Ok(()))
     }
-    r.outcome(Ok(()))
-}}
+}
 
 /// `playbackFrame` without the renderer: sets the worms' controls for the
 /// tick and any settings the frame changes, then checks the checksum due.
@@ -503,43 +564,48 @@ pub unsafe extern "C" fn liero_replay_reader_begin(r: &mut LieroReplayReader, ga
 /// # Safety
 /// The game and settings `liero_replay_reader_begin` had are still valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_frame(r: &mut LieroReplayReader) -> LieroReplayOutcome { unsafe {
-    let game = &mut *r.game;
-    let settings = &mut *r.settings;
-    let worms = game_worms(game);
-    let mut s = settings.settings();
-    let mut fw: Vec<_> = worms.iter().map(|&p| frame_worm(p, false, worm_settings(p).worm())).collect();
-    let mut touched = vec![false; 1 + worms.len()];
-    let version = r.version;
-    let read = read_frame(&mut r.source(), version, &mut s, &mut fw, &mut touched);
+pub unsafe extern "C" fn liero_replay_reader_frame(r: &mut LieroReplayReader) -> LieroReplayOutcome {
+    unsafe {
+        let game = &mut *r.game;
+        let settings = &mut *r.settings;
+        let worms = game_worms(game);
+        let mut s = settings.settings();
+        let mut fw: Vec<_> = worms
+            .iter()
+            .map(|&p| frame_worm(p, false, worm_settings(p).worm()))
+            .collect();
+        let mut touched = vec![false; 1 + worms.len()];
+        let version = r.version;
+        let read = read_frame(&mut r.source(), version, &mut s, &mut fw, &mut touched);
 
-    // The game's settings first, as their worms can be the worms' own.
-    if touched[0] {
-        settings.set_settings(&s);
-    }
-    for (i, (&p, (f, ws))) in worms.iter().zip(&fw).enumerate() {
-        if touched[1 + i] {
-            worm_settings(p).set_worm(ws);
+        // The game's settings first, as their worms can be the worms' own.
+        if touched[0] {
+            settings.set_settings(&s);
         }
-        (*p).data.control_states = f.control_states;
-    }
+        for (i, (&p, (f, ws))) in worms.iter().zip(&fw).enumerate() {
+            if touched[1 + i] {
+                worm_settings(p).set_worm(ws);
+            }
+            (*p).data.control_states = f.control_states;
+        }
 
-    let frame = match read {
-        Ok(frame) => frame,
-        Err(e) => return r.outcome(Err(e)),
-    };
-    if frame.end {
-        let mut o = r.outcome(Ok(()));
-        o.end = true;
-        return o;
+        let frame = match read {
+            Ok(frame) => frame,
+            Err(e) => return r.outcome(Err(e)),
+        };
+        if frame.end {
+            let mut o = r.outcome(Ok(()));
+            o.end = true;
+            return o;
+        }
+        let cycles = (*liero_game_data(game)).cycles;
+        let sum = game_checksum(game);
+        let checked = read_checksum(&mut r.source(), cycles, sum);
+        let mut o = r.outcome(checked);
+        o.settings_changed = frame.settings_changed;
+        o
     }
-    let cycles = (*liero_game_data(game)).cycles;
-    let sum = game_checksum(game);
-    let checked = read_checksum(&mut r.source(), cycles, sum);
-    let mut o = r.outcome(checked);
-    o.settings_changed = frame.settings_changed;
-    o
-}}
+}
 
 #[cfg(test)]
 #[path = "replay_file_tests.rs"]

@@ -19,7 +19,7 @@ ENV RUSTUP_HOME=/rustup \
     PATH=/cargo/bin:$PATH
 
 RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
-      --default-toolchain ${RUST_VERSION} --component clippy --target wasm32-unknown-unknown \
+      --default-toolchain ${RUST_VERSION} --component clippy,rustfmt --target wasm32-unknown-unknown \
  && rustup toolchain install ${WASM_BINDGEN_RUST_VERSION} --profile minimal \
  && cargo +${WASM_BINDGEN_RUST_VERSION} install --locked wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} \
  && rustup toolchain uninstall ${WASM_BINDGEN_RUST_VERSION} \

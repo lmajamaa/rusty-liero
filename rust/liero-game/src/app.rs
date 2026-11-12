@@ -155,9 +155,11 @@ pub extern "C" fn liero_app_settings(a: &mut LieroApp) -> *mut LieroSettingsBox 
 /// # Safety
 /// `s` is a valid box, or null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_settings(a: &mut LieroApp, s: *mut LieroSettingsBox) { unsafe {
-    a.settings = (!s.is_null()).then(|| Shared::retain(s));
-}}
+pub unsafe extern "C" fn liero_app_set_settings(a: &mut LieroApp, s: *mut LieroSettingsBox) {
+    unsafe {
+        a.settings = (!s.is_null()).then(|| Shared::retain(s));
+    }
+}
 
 /// Shows the single screen renderer, or the play one.
 #[no_mangle]
@@ -182,9 +184,11 @@ pub extern "C" fn liero_app_tc(a: &mut LieroApp) -> *mut LieroTc {
 /// # Safety
 /// `tc` comes from `liero_tc_load` and has a reference, or is null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_tc(a: &mut LieroApp, tc: *mut LieroTc) { unsafe {
-    a.tc = (!tc.is_null()).then(|| Shared::retain(tc));
-}}
+pub unsafe extern "C" fn liero_app_set_tc(a: &mut LieroApp, tc: *mut LieroTc) {
+    unsafe {
+        a.tc = (!tc.is_null()).then(|| Shared::retain(tc));
+    }
+}
 
 /// The menus the app draws.
 #[no_mangle]
@@ -195,7 +199,9 @@ pub extern "C" fn liero_app_set_menus(a: &mut LieroApp, menus: *mut crate::menus
 /// The controller, or null.
 #[no_mangle]
 pub extern "C" fn liero_app_controller(a: &mut LieroApp) -> *mut LieroController {
-    a.controller.as_deref_mut().map_or(std::ptr::null_mut(), |c| c as *mut LieroController)
+    a.controller
+        .as_deref_mut()
+        .map_or(std::ptr::null_mut(), |c| c as *mut LieroController)
 }
 
 /// Replaces the controller with `c` (from a `_new`, or null), dropping the
@@ -204,10 +210,12 @@ pub extern "C" fn liero_app_controller(a: &mut LieroApp) -> *mut LieroController
 /// # Safety
 /// `c` isn't used by C++ after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_app_set_controller(a: &mut LieroApp, c: *mut LieroController) { unsafe {
-    a.controller = None;
-    a.controller = (!c.is_null()).then(|| Box::from_raw(c));
-}}
+pub unsafe extern "C" fn liero_app_set_controller(a: &mut LieroApp, c: *mut LieroController) {
+    unsafe {
+        a.controller = None;
+        a.controller = (!c.is_null()).then(|| Box::from_raw(c));
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn liero_app_menu_cycles(a: &mut LieroApp) -> *mut u32 {
@@ -223,7 +231,9 @@ mod tests {
         let a: *mut LieroApp = app();
         assert_eq!(a, liero_app());
         app().menu_cycles = 5;
-        let other = std::thread::spawn(|| (app().menu_cycles, app() as *mut LieroApp as usize)).join().unwrap();
+        let other = std::thread::spawn(|| (app().menu_cycles, app() as *mut LieroApp as usize))
+            .join()
+            .unwrap();
         assert_eq!(other.0, 0);
         assert_ne!(other.1, a as usize);
         assert_eq!(unsafe { (*a).menu_cycles }, 5);

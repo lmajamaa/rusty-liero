@@ -37,7 +37,9 @@ fn node(path: &str) -> LieroFsNode {
 
 /// What a replay file inflates to, and whether reading on failed.
 fn inflated_file(path: &str) -> Inflated {
-    let file = Node::new(path.as_bytes()).read().unwrap_or_else(|| panic!("Could not read {path}"));
+    let file = Node::new(path.as_bytes())
+        .read()
+        .unwrap_or_else(|| panic!("Could not read {path}"));
     inflate(&file)
 }
 
@@ -111,7 +113,21 @@ fn hash_loaded(f: &mut Fnv, game: &mut LieroGame) {
     f.u32(vps.len() as u32);
     for vp in vps {
         let r = vp.rect;
-        for v in [vp.x, vp.y, vp.shake, vp.max_x, vp.max_y, vp.center_x, vp.center_y, vp.worm_idx, vp.banner_y, r.x1, r.y1, r.x2, r.y2] {
+        for v in [
+            vp.x,
+            vp.y,
+            vp.shake,
+            vp.max_x,
+            vp.max_y,
+            vp.center_x,
+            vp.center_y,
+            vp.worm_idx,
+            vp.banner_y,
+            r.x1,
+            r.y1,
+            r.x2,
+            r.y2,
+        ] {
             f.i32(v);
         }
     }
@@ -149,7 +165,11 @@ fn thrown(o: &LieroReplayOutcome) -> Option<String> {
 }
 
 /// `ReplayReader::playbackFrame`: false at the end of the replay.
-fn playback_frame(reader: &mut LieroReplayReader, game: &mut LieroGame, renderer: &mut LieroRenderer) -> Result<bool, String> {
+fn playback_frame(
+    reader: &mut LieroReplayReader,
+    game: &mut LieroGame,
+    renderer: &mut LieroRenderer,
+) -> Result<bool, String> {
     // SAFETY: the reader plays back `game`, which lives.
     let o = unsafe { liero_replay_reader_frame(reader) };
     if o.end {
@@ -181,14 +201,33 @@ fn play_back(
     // option.
     liero_game_clear_viewports(game);
     for (i, x) in [(0, 0), (1, 218)] {
-        game.worm_at(i).expect("an empty place among the replay's worms").data.stats_x = x;
+        game.worm_at(i)
+            .expect("an empty place among the replay's worms")
+            .data
+            .stats_x = x;
     }
     let r = |x1, y1, x2, y2| LieroRect { x1, y1, x2, y2 };
     let w0 = game.worm_at(0).expect("no first worm").data.index;
     let w1 = game.worm_at(1).expect("no second worm").data.index;
-    liero_game_add_viewport(game, r(0, 0, 504 + 68, 350), 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, true);
+    liero_game_add_viewport(
+        game,
+        r(0, 0, 504 + 68, 350),
+        0,
+        504,
+        350,
+        LIERO_VIEWPORT_SPECTATOR,
+        true,
+    );
     liero_game_add_viewport(game, r(0, 0, 158, 158), w0, 504, 350, LIERO_VIEWPORT_WORM, false);
-    liero_game_add_viewport(game, r(160, 0, 158 + 160, 158), w1, 504, 350, LIERO_VIEWPORT_WORM, false);
+    liero_game_add_viewport(
+        game,
+        r(160, 0, 158 + 160, 158),
+        w1,
+        504,
+        350,
+        LIERO_VIEWPORT_WORM,
+        false,
+    );
     let blood = game.settings_box().data.blood_particle_max;
     game.start(blood);
     // SAFETY: the renderer is a live one.
@@ -235,7 +274,15 @@ fn play_back(
 /// end of the replay, or the error that stopped it, with the game and
 /// settings then. With `rewind_at`, the replay is also rewound there, as R
 /// does in a replay.
-pub(super) fn hash_replay(out: &mut Out, tc: &Shared<LieroTc>, name: &str, path: &str, interval: i32, max_ticks: i32, rewind_at: i32) {
+pub(super) fn hash_replay(
+    out: &mut Out,
+    tc: &Shared<LieroTc>,
+    name: &str,
+    path: &str,
+    interval: i32,
+    max_ticks: i32,
+    rewind_at: i32,
+) {
     {
         // What the file inflates to, not its compressed bytes, which
         // depend on the compressor.
@@ -277,7 +324,17 @@ pub(super) fn hash_replay(out: &mut Out, tc: &Shared<LieroTc>, name: &str, path:
         add64(&mut f, hash_game(g));
         out.hash(&format!("{name}-replay-load"), 0, f);
 
-        play_back(out, name, r, g, &mut renderer, interval, max_ticks, rewind_at, &mut ticks)
+        play_back(
+            out,
+            name,
+            r,
+            g,
+            &mut renderer,
+            interval,
+            max_ticks,
+            rewind_at,
+            &mut ticks,
+        )
     })();
     let outcome = match result {
         Ok(()) if ticks == max_ticks => "stopped".to_string(),
@@ -329,7 +386,16 @@ fn bot_game(tc: &Shared<LieroTc>, seed: u32, game_mode: u32, ticks: i32) -> Box<
 /// recording starts as the local controller starts it, before the game
 /// starts; otherwise after that many ticks.
 #[allow(clippy::too_many_arguments)]
-fn record_game(tc: &Shared<LieroTc>, path: &str, seed: u32, game_mode: u32, start_tick: i32, ticks: i32, version: i32, changes: &[SettingsChange]) {
+fn record_game(
+    tc: &Shared<LieroTc>,
+    path: &str,
+    seed: u32,
+    game_mode: u32,
+    start_tick: i32,
+    ticks: i32,
+    version: i32,
+    changes: &[SettingsChange],
+) {
     let w = liero_replay_writer_new(&node(path));
     assert!(!w.is_null(), "Could not write {path}");
     // SAFETY: the writer is new, records the game while both live, and is
@@ -339,13 +405,19 @@ fn record_game(tc: &Shared<LieroTc>, path: &str, seed: u32, game_mode: u32, star
         liero_replay_writer_set_version(writer, version);
         let mut game = if start_tick == 0 {
             let mut game = set_up_game(tc, seed, game_mode, None);
-            assert!(thrown(&liero_replay_writer_begin(writer, &mut game)).is_none(), "the replay didn't begin");
+            assert!(
+                thrown(&liero_replay_writer_begin(writer, &mut game)).is_none(),
+                "the replay didn't begin"
+            );
             let blood = game.settings_box().data.blood_particle_max;
             game.start(blood);
             game
         } else {
             let mut game = bot_game(tc, seed, game_mode, start_tick);
-            assert!(thrown(&liero_replay_writer_begin(writer, &mut game)).is_none(), "the replay didn't begin");
+            assert!(
+                thrown(&liero_replay_writer_begin(writer, &mut game)).is_none(),
+                "the replay didn't begin"
+            );
             game
         };
 
@@ -421,7 +493,13 @@ pub fn hash_replays(out: &mut Out) {
     // Settings changed while recording, also on a checksum frame and in an
     // old version. Changing only a worm's name isn't recorded with two
     // worms.
-    let change = |tick, loading_time, max_bonuses, blood, worm_name| SettingsChange { tick, loading_time, max_bonuses, blood, worm_name };
+    let change = |tick, loading_time, max_bonuses, blood, worm_name| SettingsChange {
+        tick,
+        loading_time,
+        max_bonuses,
+        blood,
+        worm_name,
+    };
     let changes = [
         change(100, 50, 2, 300, None),
         change(101, 50, 2, 300, Some("Changed")),
@@ -483,22 +561,38 @@ pub fn hash_replays(out: &mut Out) {
 
     // Settings for the game and for each worm in the middle of the frames,
     // for worms that exist and one that doesn't.
-    let changed = Settings { loading_time: 30, lives: 3, blood: 500, ..Default::default() };
+    let changed = Settings {
+        loading_time: 30,
+        lives: 3,
+        blood: 500,
+        ..Default::default()
+    };
     let mut settings_bytes = vec![0x81];
     // Writing sets the settings too, so a copy is written.
     settings_bytes.extend(data::write_archive(&mut changed.clone()));
     play(insert(b(), frame10, &settings_bytes));
     play(insert(b(), frame10, &settings_bytes[..settings_bytes.len() / 2]));
-    play(truncate(insert(b(), frame10, &settings_bytes), frame10 + settings_bytes.len() / 2));
+    play(truncate(
+        insert(b(), frame10, &settings_bytes),
+        frame10 + settings_bytes.len() / 2,
+    ));
 
-    let ws = WormSettings { name: b"Inserted".to_vec(), color: 40, health: 50, ..WormSettings::default() };
+    let ws = WormSettings {
+        name: b"Inserted".to_vec(),
+        color: 40,
+        health: 50,
+        ..WormSettings::default()
+    };
     let worm_archive = data::write_worm(&mut ws.clone(), LIERO_REPLAY_VERSION);
     for id in [0u32, 1] {
         let mut worm_bytes = vec![0x82];
         put_u32(&mut worm_bytes, id);
         worm_bytes.extend_from_slice(&worm_archive);
         play(insert(b(), frame10, &worm_bytes));
-        play(truncate(insert(b(), frame10, &worm_bytes), frame10 + worm_bytes.len() - 3));
+        play(truncate(
+            insert(b(), frame10, &worm_bytes),
+            frame10 + worm_bytes.len() - 3,
+        ));
     }
     {
         let mut unknown = vec![0x82];

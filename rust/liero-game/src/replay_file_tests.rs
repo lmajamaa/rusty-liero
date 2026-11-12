@@ -1,9 +1,9 @@
 use super::*;
 use crate::fs::Node;
-use crate::level::LieroLevelBox;
-use crate::tc::LieroTcData;
 use crate::game_box::{liero_game_free, liero_game_new};
+use crate::level::LieroLevelBox;
 use crate::settings::{liero_settings_box_free, liero_settings_box_new};
+use crate::tc::LieroTcData;
 use crate::worm::LieroWormData;
 
 const NO_WASM: &str = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack";
@@ -21,7 +21,11 @@ impl Setup {
         // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
         let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
         tc.materials[5] = 7;
-        let s = Setup { game: liero_game_new(), settings: liero_settings_box_new(), tc };
+        let s = Setup {
+            game: liero_game_new(),
+            settings: liero_settings_box_new(),
+            tc,
+        };
         let settings = unsafe { crate::shared::Shared::retain(s.settings) };
         unsafe { (*s.game).set_context_data(Some(settings), None, &*s.tc, crate::sfx::LieroSoundOut::NONE) };
         s
@@ -49,11 +53,29 @@ impl Setup {
             }
             (*worms[0]).data.ninjarope.anchor = (&mut (*worms[1]).data as *mut LieroWormData).cast();
             for i in 0..2 {
-                let r = LieroRect { x1: 160 * i, y1: 0, x2: 160 * i + 158, y2: 158 };
+                let r = LieroRect {
+                    x1: 160 * i,
+                    y1: 0,
+                    x2: 160 * i + 158,
+                    y2: 158,
+                };
                 let vp = liero_game_add_viewport(g, r, i, 504, 350, LIERO_VIEWPORT_WORM, false);
                 (*vp).shake = 4 + i;
             }
-            liero_game_add_viewport(g, LieroRect { x1: 0, y1: 0, x2: 572, y2: 350 }, 0, 504, 350, 1, true);
+            liero_game_add_viewport(
+                g,
+                LieroRect {
+                    x1: 0,
+                    y1: 0,
+                    x2: 572,
+                    y2: 350,
+                },
+                0,
+                504,
+                350,
+                1,
+                true,
+            );
             (*liero_game_data(g)).rand.x = 1234;
             (*s.settings).data.lives = 9;
         }
@@ -127,14 +149,16 @@ fn play(path: &str, s: &mut Setup) -> *mut LieroReplayReader {
 }
 
 /// Reads a frame, carrying the controls on as the game tick would.
-unsafe fn frame(r: *mut LieroReplayReader, s: &mut Setup) -> LieroReplayOutcome { unsafe {
-    let o = liero_replay_reader_frame(&mut *r);
-    for i in 0..liero_game_worm_count(&*s.game) {
-        let d = s.worm(i);
-        d.prev_control_states = d.control_states;
+unsafe fn frame(r: *mut LieroReplayReader, s: &mut Setup) -> LieroReplayOutcome {
+    unsafe {
+        let o = liero_replay_reader_frame(&mut *r);
+        for i in 0..liero_game_worm_count(&*s.game) {
+            let d = s.worm(i);
+            d.prev_control_states = d.control_states;
+        }
+        o
     }
-    o
-}}
+}
 
 #[test]
 fn plays_back_the_game_it_recorded() {
@@ -151,14 +175,26 @@ fn plays_back_the_game_it_recorded() {
         assert_eq!(liero_game_worm_count(g), 2);
         for i in 0..2 {
             let w = liero_game_worm(g, i);
-            assert_eq!(((*w).data.index, (*w).data.pos.x, (*w).data.vel.y), (i as i32, 10 * (i as i32 + 1), -3));
+            assert_eq!(
+                ((*w).data.index, (*w).data.pos.x, (*w).data.vel.y),
+                (i as i32, 10 * (i as i32 + 1), -3)
+            );
             let ws = &*liero_worm_settings(&*w);
-            assert_eq!((ws.name.clone(), ws.data.health), (format!("worm {i}").into_bytes(), 100 + i as i32));
+            assert_eq!(
+                (ws.name.clone(), ws.data.health),
+                (format!("worm {i}").into_bytes(), 100 + i as i32)
+            );
         }
         // The rope is on the new second worm.
-        assert_eq!((*liero_game_worm(g, 0)).data.ninjarope.anchor, (&mut (*liero_game_worm(g, 1)).data as *mut LieroWormData).cast());
+        assert_eq!(
+            (*liero_game_worm(g, 0)).data.ninjarope.anchor,
+            (&mut (*liero_game_worm(g, 1)).data as *mut LieroWormData).cast()
+        );
         // The split-screen viewports, not the spectator one.
-        assert_eq!((liero_game_viewport_count(g, false), liero_game_viewport_count(g, true)), (2, 0));
+        assert_eq!(
+            (liero_game_viewport_count(g, false), liero_game_viewport_count(g, true)),
+            (2, 0)
+        );
         let vp = &*liero_game_viewport(g, false, 1);
         assert_eq!((vp.shake, vp.worm_idx, vp.rect.x1), (5, 1, 160));
         assert_eq!((*liero_game_data(g)).rand.x, 1234);
@@ -245,7 +281,10 @@ fn reports_desyncs_and_short_files() {
         ok(frame(r, &mut t));
         t.worm(1).vel.x += 1;
         let o = frame(r, &mut t);
-        assert_eq!((o.status, message(&o)), (LieroReplayStatus::CheckError, "Replay has desynced"));
+        assert_eq!(
+            (o.status, message(&o)),
+            (LieroReplayStatus::CheckError, "Replay has desynced")
+        );
         liero_replay_reader_free(r);
     }
 
@@ -257,7 +296,10 @@ fn reports_desyncs_and_short_files() {
         ok(liero_replay_reader_begin(&mut *r, &mut *u.game));
         (*r).data.truncate((*r).pos + 1);
         let o = frame(r, &mut u);
-        assert_eq!((o.status, message(&o)), (LieroReplayStatus::ReadError, "Read error in get()"));
+        assert_eq!(
+            (o.status, message(&o)),
+            (LieroReplayStatus::ReadError, "Read error in get()")
+        );
         liero_replay_reader_free(r);
     }
     assert!(!data.error);

@@ -264,7 +264,11 @@ fn corrupt_text(r: &mut Xorshift, mut b: Vec<u8>) -> Vec<u8> {
         match r.below(7) {
             // Change a byte. Clang works out the value before the place.
             0 if n > 0 => {
-                let v = if r.chance(3) { r.below(256) as u8 } else { INTERESTING[r.below(INTERESTING.len() as u32) as usize] };
+                let v = if r.chance(3) {
+                    r.below(256) as u8
+                } else {
+                    INTERESTING[r.below(INTERESTING.len() as u32) as usize]
+                };
                 let at = r.below(n as u32) as usize;
                 b[at] = v;
             }
@@ -373,7 +377,11 @@ impl<'a> Builder<'a> {
     }
 
     fn boolean(&mut self) {
-        let v = if self.r.chance(4) { self.r.below(256) } else { self.r.below(2) };
+        let v = if self.r.chance(4) {
+            self.r.below(256)
+        } else {
+            self.r.below(2)
+        };
         self.put(v);
     }
 
@@ -416,10 +424,18 @@ impl<'a> Builder<'a> {
 
     /// Lengths up to 255, with the bytes after the field read as text too.
     fn pascal(&mut self, field_len: u32) {
-        let len = if self.r.chance(4) { self.r.below(256) } else { self.r.below(field_len + 2) };
+        let len = if self.r.chance(4) {
+            self.r.below(256)
+        } else {
+            self.r.below(field_len + 2)
+        };
         self.put(len);
         for _ in 1..field_len {
-            let v = if self.r.chance(2) { u32::from(b'a') + self.r.below(26) } else { self.r.below(256) };
+            let v = if self.r.chance(2) {
+                u32::from(b'a') + self.r.below(26)
+            } else {
+                self.r.below(256)
+            };
             self.put(v);
         }
     }
@@ -572,7 +588,10 @@ fn write_settings(h: &mut Fnv, s: &mut Settings) -> Vec<u8> {
 }
 
 fn read_worm(h: &mut Fnv, data: &[u8], ws: &mut WormSettings, version: i32) {
-    attempt(h, data::read_worm(ws, version, &mut Bytes::new(data)).map_err(Thrown::from));
+    attempt(
+        h,
+        data::read_worm(ws, version, &mut Bytes::new(data)).map_err(Thrown::from),
+    );
     add_worm(h, ws);
 }
 
@@ -611,7 +630,10 @@ fn save_profile(node: &LieroFsNode, ws: &WormSettings) -> Result<(), Thrown> {
     if liero_worm_settings_box_save_profile(&mut worm_box(ws), Some(node)) {
         Ok(())
     } else {
-        Err(Thrown::Runtime(format!("Could not write {}", String::from_utf8_lossy(node.0.full_path()))))
+        Err(Thrown::Runtime(format!(
+            "Could not write {}",
+            String::from_utf8_lossy(node.0.full_path())
+        )))
     }
 }
 
@@ -622,7 +644,10 @@ fn load_profile(node: &LieroFsNode, ws: &mut WormSettings) -> Result<(), Thrown>
     let read = liero_worm_settings_box_load_profile(&mut b, Some(node), &mut status);
     *ws = b.worm();
     if !read {
-        return Err(Thrown::Runtime(format!("Could not read {}", String::from_utf8_lossy(node.0.full_path()))));
+        return Err(Thrown::Runtime(format!(
+            "Could not read {}",
+            String::from_utf8_lossy(node.0.full_path())
+        )));
     }
     match status {
         LieroSettingsStatus::ReadError => Err(ArchiveError::Read.into()),

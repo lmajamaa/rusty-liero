@@ -67,7 +67,13 @@ impl WeaponOptions {
     }
 
     fn state_names(&self) -> Vec<LieroStr> {
-        self.states.iter().map(|s| LieroStr { ptr: s.as_ptr(), len: s.len() }).collect()
+        self.states
+            .iter()
+            .map(|s| LieroStr {
+                ptr: s.as_ptr(),
+                len: s.len(),
+            })
+            .collect()
     }
 
     /// `Menu::updateItems`: every item's value.
@@ -121,7 +127,10 @@ impl Screen for WeaponOptions {
                 if self.any_on() {
                     return Tick::close(0);
                 }
-                let text = LieroStr { ptr: self.no_weapons.as_ptr(), len: self.no_weapons.len() };
+                let text = LieroStr {
+                    ptr: self.no_weapons.as_ptr(),
+                    len: self.no_weapons.len(),
+                };
                 return Tick::push(unsafe { liero_info_box_screen(text, 223, 68, false) });
             }
         }
@@ -171,39 +180,47 @@ impl Screen for WeaponOptions {
 /// `spec`'s pointers are valid for their counts, and `order`'s entries are
 /// below 40.
 #[no_mangle]
-pub unsafe extern "C" fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> LieroScreen { unsafe {
-    into_ffi(Box::new(WeaponOptions::new(spec)))
-}}
+pub unsafe extern "C" fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> LieroScreen {
+    unsafe { into_ffi(Box::new(WeaponOptions::new(spec))) }
+}
 
 impl WeaponOptions {
     /// # Safety
     /// As for `liero_weapon_options_screen`.
-    unsafe fn new(spec: &LieroWeaponOptionsSpec) -> Self { unsafe {
-        let text = |s: LieroStr| s.bytes().to_vec();
-        // Menu(179, 28) with setHeight(14), before any items.
-        let mut menu = OwnedMenu::new(LieroMenu { x: 179, y: 28, height: 14, item_height: 8, ..Default::default() });
-        menu.m.value_offset_x = 89;
-        let mut order = Vec::with_capacity(spec.count);
-        for i in 0..spec.count {
-            menu.add(text(*spec.names.add(i)), 48);
-            order.push(*spec.order.add(i) as usize);
+    unsafe fn new(spec: &LieroWeaponOptionsSpec) -> Self {
+        unsafe {
+            let text = |s: LieroStr| s.bytes().to_vec();
+            // Menu(179, 28) with setHeight(14), before any items.
+            let mut menu = OwnedMenu::new(LieroMenu {
+                x: 179,
+                y: 28,
+                height: 14,
+                item_height: 8,
+                ..Default::default()
+            });
+            menu.m.value_offset_x = 89;
+            let mut order = Vec::with_capacity(spec.count);
+            for i in 0..spec.count {
+                menu.add(text(*spec.names.add(i)), 48);
+                order.push(*spec.order.add(i) as usize);
+            }
+            let states = (0..spec.state_count).map(|i| text(*spec.states.add(i))).collect();
+            let mut screen = WeaponOptions {
+                menu,
+                order,
+                weap_table: spec.weap_table,
+                states,
+                weapon_title: text(spec.weapon_title),
+                availability_title: text(spec.availability_title),
+                no_weapons: text(spec.no_weapons),
+                shown: false,
+                resumed: false,
+            };
+            screen.menu.move_to(0);
+            screen.update_items();
+            screen
         }
-        let states = (0..spec.state_count).map(|i| text(*spec.states.add(i))).collect();
-        let mut screen = WeaponOptions {
-            menu,
-            order,
-            weap_table: spec.weap_table,
-            states,
-            weapon_title: text(spec.weapon_title),
-            availability_title: text(spec.availability_title),
-            no_weapons: text(spec.no_weapons),
-            shown: false,
-            resumed: false,
-        };
-        screen.menu.move_to(0);
-        screen.update_items();
-        screen
-    }}
+    }
 }
 
 #[cfg(test)]
@@ -229,7 +246,10 @@ mod tests {
     }
 
     fn s(b: &'static [u8]) -> LieroStr {
-        LieroStr { ptr: b.as_ptr(), len: b.len() }
+        LieroStr {
+            ptr: b.as_ptr(),
+            len: b.len(),
+        }
     }
 
     fn screen(table: &mut [u32; WEAPON_COUNT]) -> WeaponOptions {
@@ -251,7 +271,10 @@ mod tests {
     }
 
     fn host() -> Host {
-        Host(LieroScreenHost { test_key_once: Some(key_once), ..Default::default() })
+        Host(LieroScreenHost {
+            test_key_once: Some(key_once),
+            ..Default::default()
+        })
     }
 
     #[test]
@@ -271,7 +294,11 @@ mod tests {
         let mut w = screen(&mut table);
         let h = host();
         press(&[SCANCODE_ESCAPE]);
-        assert_eq!(w.tick(&h).kind, LieroTickKind::TickStay, "keys wait for the first frame");
+        assert_eq!(
+            w.tick(&h).kind,
+            LieroTickKind::TickStay,
+            "keys wait for the first frame"
+        );
         press(&[SCANCODE_ESCAPE]);
         let t = w.tick(&h);
         assert_eq!(t.kind, LieroTickKind::TickPush, "every weapon off: the message");

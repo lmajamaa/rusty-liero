@@ -19,7 +19,10 @@ pub const LIERO_RAND_DEFAULT_SEED: u32 = 0x1337;
 
 impl LieroRand {
     pub const fn new(seed: u32) -> Self {
-        LieroRand { x: seed, c: INITIAL_CARRY }
+        LieroRand {
+            x: seed,
+            c: INITIAL_CARRY,
+        }
     }
 
     pub fn seed(&mut self, seed: u32) {

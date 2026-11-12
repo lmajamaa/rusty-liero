@@ -42,7 +42,9 @@ fn read(path: &Path) -> Result<Vec<u8>, Error> {
 }
 
 fn file_name(path: &Path) -> String {
-    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// Files in `dir`, sorted by name so the result doesn't depend on the file system.
@@ -63,11 +65,17 @@ fn find_exe(dir: &Path) -> Result<PathBuf, Error> {
         if !file_name(&path).to_uppercase().contains(".EXE") {
             continue;
         }
-        if fs::metadata(&path).map(|m| EXE_SIZES.contains(&m.len())).unwrap_or(false) {
+        if fs::metadata(&path)
+            .map(|m| EXE_SIZES.contains(&m.len()))
+            .unwrap_or(false)
+        {
             return Ok(path);
         }
     }
-    Err(Error(format!("Could not find a suitable LIERO.EXE in {}", dir.display())))
+    Err(Error(format!(
+        "Could not find a suitable LIERO.EXE in {}",
+        dir.display()
+    )))
 }
 
 /// Looks up `name` in `dir`, ignoring case.

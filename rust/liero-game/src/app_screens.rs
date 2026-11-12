@@ -85,7 +85,10 @@ fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
             let mut new = new_local(a);
             let s = a.menu_settings();
             // SAFETY: the controller's level is valid while it is.
-            let old = a.controller.as_deref_mut().and_then(|c| unsafe { liero_controller_level(c).as_mut() });
+            let old = a
+                .controller
+                .as_deref_mut()
+                .and_then(|c| unsafe { liero_controller_level(c).as_mut() });
             match old {
                 Some(old)
                     if !s.data.regenerate_level
@@ -186,7 +189,11 @@ impl Screen for GameScreen {
 
         if self.next == Next::Process {
             // SAFETY: the controller is valid.
-            self.next = if unsafe { liero_controller_run(controller(app())) } { Next::Draw } else { Next::Finish };
+            self.next = if unsafe { liero_controller_run(controller(app())) } {
+                Next::Draw
+            } else {
+                Next::Finish
+            };
             if let Some(s) = self.opened() {
                 return Tick::push(s);
             }
@@ -266,7 +273,11 @@ impl Screen for MainScreen {
 /// The app's first screen.
 #[no_mangle]
 pub extern "C" fn liero_main_screen(hooks: LieroAppHooks) -> LieroScreen {
-    into_ffi(Box::new(MainScreen { h: hooks, open: Open::Nothing, selection: -1 }))
+    into_ffi(Box::new(MainScreen {
+        h: hooks,
+        open: Open::Nothing,
+        selection: -1,
+    }))
 }
 
 #[cfg(test)]

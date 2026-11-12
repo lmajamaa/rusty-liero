@@ -20,7 +20,10 @@ fn in_config(a: &LieroApp, rel: &str) -> Vec<u8> {
 }
 
 fn source(root: &str, choice: Choice) -> AppFiles {
-    AppFiles { root: Node::new(root.as_bytes()), choice }
+    AppFiles {
+        root: Node::new(root.as_bytes()),
+        choice,
+    }
 }
 
 /// The bundled TC, as the app's.
@@ -119,7 +122,10 @@ fn saving_options_writes_a_cfg_in_the_config_folder() {
     let (a, dir) = set_up("save-options");
     a.menu_settings().data.lives = 42;
     save_options(b"match");
-    assert_eq!(std::fs::read(format!("{dir}/match.cfg")).unwrap(), a.menu_settings().text());
+    assert_eq!(
+        std::fs::read(format!("{dir}/match.cfg")).unwrap(),
+        a.menu_settings().text()
+    );
     assert_eq!(settings_path(), in_config(a, "match.cfg"));
 }
 
@@ -131,11 +137,16 @@ fn the_selectors_start_where_the_game_left_off() {
 
     let (spec, _, choice) = selector_spec(LIERO_SELECTOR_LEVEL, 0);
     assert!(matches!(choice, Choice::Level));
-    assert_eq!((spec.filter.as_slice(), spec.select.as_slice(), spec.has_select), (&b"LEV"[..], &b"some/LEVEL.LEV"[..], true));
+    assert_eq!(
+        (spec.filter.as_slice(), spec.select.as_slice(), spec.has_select),
+        (&b"LEV"[..], &b"some/LEVEL.LEV"[..], true)
+    );
     assert!(spec.enter_sound && !spec.random_name.is_empty());
 
     let (spec, _, choice) = selector_spec(LIERO_SELECTOR_PROFILE, 1);
-    let Choice::Profile(ws) = choice else { panic!("not a profile") };
+    let Choice::Profile(ws) = choice else {
+        panic!("not a profile")
+    };
     assert_eq!(ws.as_ptr(), a.menu_settings().worms[1].as_ptr());
     assert_eq!((spec.select, spec.has_select), (in_config(a, "Profiles"), true));
 
@@ -153,7 +164,10 @@ fn the_selectors_start_where_the_game_left_off() {
     a.files.tc_root = Node::new(b"../../TC");
     let (spec, root, choice) = selector_spec(LIERO_SELECTOR_TC, 0);
     assert!(matches!(choice, Choice::Tc) && spec.tcs);
-    assert_eq!((spec.root.as_slice(), root.full_path()), (&b"./../../TC"[..], &b"./../../TC"[..]));
+    assert_eq!(
+        (spec.root.as_slice(), root.full_path()),
+        (&b"./../../TC"[..], &b"./../../TC"[..])
+    );
 }
 
 #[test]
@@ -178,9 +192,14 @@ fn choosing_a_replay_plays_it_and_remembers_it() {
     std::fs::write(format!("{dir}/empty.lrp"), b"").unwrap();
     let mut s = source(&dir, Choice::Replay);
     let full = format!("{dir}/empty.lrp");
-    assert_eq!(s.choose(b"empty.lrp", full.as_bytes(), b"empty", false), LIERO_MAIN_REPLAY);
+    assert_eq!(
+        s.choose(b"empty.lrp", full.as_bytes(), b"empty", false),
+        LIERO_MAIN_REPLAY
+    );
     assert_eq!(a.files.prev_replay, full.into_bytes());
-    assert!(crate::controllers::liero_controller_is_replay(a.controller.as_deref_mut().unwrap()));
+    assert!(crate::controllers::liero_controller_is_replay(
+        a.controller.as_deref_mut().unwrap()
+    ));
     a.controller = None;
 }
 

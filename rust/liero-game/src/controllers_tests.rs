@@ -155,7 +155,10 @@ fn r_rewinds_a_replay_to_its_start() {
         assert_eq!((pos(&r), r.game().unwrap().data_mut().cycles), (p1, c1));
         // The worms' stats places, which replays don't store.
         let g = r.game().unwrap();
-        assert_eq!((g.worm_at(0).unwrap().data.stats_x, g.worm_at(1).unwrap().data.stats_x), (0, 218));
+        assert_eq!(
+            (g.worm_at(0).unwrap().data.stats_x, g.worm_at(1).unwrap().data.stats_x),
+            (0, 218)
+        );
         drop(r);
         crate::tc::liero_tc_free(tc);
     }

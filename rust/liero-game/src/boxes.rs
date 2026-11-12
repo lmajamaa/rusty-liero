@@ -18,7 +18,10 @@ const SCANCODE_KP_ENTER: u32 = 88;
 const SOUND_CHOICE: i32 = 27;
 
 fn lstr(b: &[u8]) -> LieroStr {
-    LieroStr { ptr: b.as_ptr(), len: b.len() }
+    LieroStr {
+        ptr: b.as_ptr(),
+        len: b.len(),
+    }
 }
 
 /// A message over the screen, until a key is pressed.
@@ -160,9 +163,18 @@ impl Screen for InputBox {
 /// # Safety
 /// `text` must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_info_box_screen(text: LieroStr, x: i32, y: i32, clear_screen: bool) -> LieroScreen { unsafe {
-    into_ffi(Box::new(InfoBox { text: text.bytes().to_vec(), x, y, clear_screen, shown: false, waiting: false }))
-}}
+pub unsafe extern "C" fn liero_info_box_screen(text: LieroStr, x: i32, y: i32, clear_screen: bool) -> LieroScreen {
+    unsafe {
+        into_ffi(Box::new(InfoBox {
+            text: text.bytes().to_vec(),
+            x,
+            y,
+            clear_screen,
+            shown: false,
+            waiting: false,
+        }))
+    }
+}
 
 /// Waits for a key, joystick button or stick move and closes with its DOS
 /// key. Unless `extended`, keys only the extended controls have are passed
@@ -187,18 +199,20 @@ pub unsafe extern "C" fn liero_input_box_screen(
     digits_only: bool,
     done: Option<unsafe extern "C" fn(ctx: *mut c_void, text: LieroStr)>,
     ctx: *mut c_void,
-) -> LieroScreen { unsafe {
-    into_ffi(Box::new(InputBox {
-        buffer: text.bytes().to_vec(),
-        max_len,
-        x,
-        y,
-        digits_only,
-        done,
-        ctx,
-        shown: false,
-    }))
-}}
+) -> LieroScreen {
+    unsafe {
+        into_ffi(Box::new(InputBox {
+            buffer: text.bytes().to_vec(),
+            max_len,
+            x,
+            y,
+            digits_only,
+            done,
+            ctx,
+            shown: false,
+        }))
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -212,9 +226,14 @@ mod tests {
         static LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
 
-    unsafe extern "C" fn poll(out: *mut LieroEvent) -> bool { unsafe {
-        EVENTS.with(|e| e.borrow_mut().pop_front()).map(|ev| *out = ev).is_some()
-    }}
+    unsafe extern "C" fn poll(out: *mut LieroEvent) -> bool {
+        unsafe {
+            EVENTS
+                .with(|e| e.borrow_mut().pop_front())
+                .map(|ev| *out = ev)
+                .is_some()
+        }
+    }
     unsafe extern "C" fn sound(id: i32) {
         LOG.with(|l| l.borrow_mut().push(format!("sound {id}")));
     }
@@ -247,16 +266,25 @@ mod tests {
     }
 
     fn typed(c: u8) -> LieroEvent {
-        LieroEvent { text: c, ..Default::default() }
+        LieroEvent {
+            text: c,
+            ..Default::default()
+        }
     }
 
     fn down(scancode: u32) -> LieroEvent {
-        LieroEvent { key_down: true, scancode, ..Default::default() }
+        LieroEvent {
+            key_down: true,
+            scancode,
+            ..Default::default()
+        }
     }
 
-    unsafe extern "C" fn keep(ctx: *mut c_void, text: LieroStr) { unsafe {
-        *(ctx as *mut Vec<u8>) = text.bytes().to_vec();
-    }}
+    unsafe extern "C" fn keep(ctx: *mut c_void, text: LieroStr) {
+        unsafe {
+            *(ctx as *mut Vec<u8>) = text.bytes().to_vec();
+        }
+    }
 
     fn input(start: &[u8], max_len: usize, digits_only: bool, out: &mut Vec<u8>) -> InputBox {
         InputBox {
@@ -286,13 +314,27 @@ mod tests {
 
     #[test]
     fn typing_editing_and_enter() {
-        let h = host(&[typed(b'A'), typed(b'B'), down(SCANCODE_BACKSPACE), typed(b'C'), typed(b'D'), down(SCANCODE_RETURN)]);
+        let h = host(&[
+            typed(b'A'),
+            typed(b'B'),
+            down(SCANCODE_BACKSPACE),
+            typed(b'C'),
+            typed(b'D'),
+            down(SCANCODE_RETURN),
+        ]);
         let mut out = Vec::new();
         let mut b = input(b"X", 3, false, &mut out);
         // A frame first, then one per event before Enter.
         assert_eq!(run(&mut b, &h), (1, 6));
         assert_eq!(out, b"XAC");
-        assert_eq!(LOG.with(|l| l.borrow().clone()), ["text true"; 6].iter().map(|s| s.to_string()).chain(["sound 27".into(), "clear".into()]).collect::<Vec<_>>());
+        assert_eq!(
+            LOG.with(|l| l.borrow().clone()),
+            ["text true"; 6]
+                .iter()
+                .map(|s| s.to_string())
+                .chain(["sound 27".into(), "clear".into()])
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -308,9 +350,20 @@ mod tests {
     #[test]
     fn key_choice_skips_extended_keys_unless_asked() {
         let ext = (1..400).find(|&k| liero_key_is_extended(k)).unwrap();
-        let plain = LieroEvent { choice: true, key: 0x11, ..Default::default() };
-        let extended = LieroEvent { choice: true, key: ext, ..Default::default() };
-        let not_a_key = LieroEvent { key: 0x22, ..Default::default() };
+        let plain = LieroEvent {
+            choice: true,
+            key: 0x11,
+            ..Default::default()
+        };
+        let extended = LieroEvent {
+            choice: true,
+            key: ext,
+            ..Default::default()
+        };
+        let not_a_key = LieroEvent {
+            key: 0x22,
+            ..Default::default()
+        };
 
         let h = host(&[not_a_key, extended, plain]);
         assert_eq!(run(&mut KeyChoice { extended: false }, &h).0, 0x11);
@@ -321,7 +374,14 @@ mod tests {
     #[test]
     fn info_box_shows_once_and_closes_on_a_key() {
         let h = host(&[typed(b'a'), down(57)]);
-        let mut b = InfoBox { text: b"HI".to_vec(), x: 0, y: 0, clear_screen: false, shown: false, waiting: false };
+        let mut b = InfoBox {
+            text: b"HI".to_vec(),
+            x: 0,
+            y: 0,
+            clear_screen: false,
+            shown: false,
+            waiting: false,
+        };
         // The events that came before the box is shown are read once, then
         // a key closes it.
         assert_eq!(run(&mut b, &h), (0, 1));

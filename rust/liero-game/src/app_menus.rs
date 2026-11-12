@@ -6,7 +6,6 @@
 use crate::app::{app, LieroApp};
 use crate::controllers::{liero_controller_level, liero_controller_running};
 use crate::gfx::{liero_gfx_fill_rect, liero_palette_fade, liero_palette_rotate_from, liero_palette_set_worm_colour};
-use crate::text::LieroFont;
 use crate::level::liero_level_draw_miniature;
 use crate::menu::{
     liero_menu_box_count, liero_menu_box_id, liero_menu_box_move_to, liero_menu_box_set_string,
@@ -16,6 +15,7 @@ use crate::menu_screen::{LIERO_MENU_MAIN, LIERO_MENU_SETTINGS};
 use crate::menus::{liero_menus_box, liero_menus_cur, liero_menus_draw, liero_menus_set_cur, liero_menus_update_items};
 use crate::renderer::LieroRenderer;
 use crate::tc::{s as text, LieroTcData};
+use crate::text::LieroFont;
 use crate::text::LieroStr;
 use crate::weapsel::{level_line, tc_font};
 
@@ -49,7 +49,9 @@ impl LieroApp {
 
 /// The index of the item with `id`, or -1.
 fn index_of(b: &LieroMenuBox, id: i32) -> i32 {
-    (0..liero_menu_box_count(b)).find(|&i| liero_menu_box_id(b, i) == id).unwrap_or(-1)
+    (0..liero_menu_box_count(b))
+        .find(|&i| liero_menu_box_id(b, i) == id)
+        .unwrap_or(-1)
 }
 
 fn set_string(b: &mut LieroMenuBox, id: i32, s: &str) {
@@ -100,7 +102,16 @@ pub(crate) fn menu_start() -> i32 {
         if let Some(level) = unsafe { liero_controller_level(c).as_ref() } {
             let s = a.single.bmp.view();
             let l = level.data().level;
-            unsafe { liero_level_draw_miniature(&l, s.pixels, s.pitch, center_x - 126, a.single.data.render_res_y - 208, 2) };
+            unsafe {
+                liero_level_draw_miniature(
+                    &l,
+                    s.pixels,
+                    s.pitch,
+                    center_x - 126,
+                    a.single.data.render_res_y - 208,
+                    2,
+                )
+            };
         }
     }
     a.frozen_spectator.copy_from(&a.single.bmp);
@@ -117,7 +128,17 @@ pub(crate) fn draw_basic_menu() {
     let menus = a.menus();
     let disabled = liero_menus_cur(menus) != LIERO_MENU_MAIN;
     // SAFETY: the bitmap and font are valid.
-    unsafe { liero_menus_draw(menus, LIERO_MENU_MAIN, &a.play.bmp.view(), &a.font(), disabled, -1, true) };
+    unsafe {
+        liero_menus_draw(
+            menus,
+            LIERO_MENU_MAIN,
+            &a.play.bmp.view(),
+            &a.font(),
+            disabled,
+            -1,
+            true,
+        )
+    };
 }
 
 /// Who plays whom, the level and whether a game is paused, on the frozen
@@ -133,8 +154,17 @@ pub(crate) fn draw_spectator_info() {
     let w = &s.worms;
     // SAFETY: the bitmap, font and texts are valid.
     unsafe {
-        liero_menu_draw_versus(&scr, &font, LieroStr::of(&line), LieroStr::of(&w[0].name), LieroStr::of(&w[1].name),
-            w[0].data.color, w[1].data.color, cx, cy);
+        liero_menu_draw_versus(
+            &scr,
+            &font,
+            LieroStr::of(&line),
+            LieroStr::of(&w[0].name),
+            LieroStr::of(&w[1].name),
+            w[0].data.color,
+            w[1].data.color,
+            cx,
+            cy,
+        );
         let state: &[u8] = if a.running() { b"PAUSED" } else { b"SETUP" };
         font.centered(&scr, state, cx, cy + 48, 7, 2);
     }

@@ -12,10 +12,10 @@
 //! first letter (all of the path, not just the leaf).
 
 use crate::cpp_sort;
+use crate::disk;
 use crate::text::LieroStr;
 use std::collections::BTreeMap;
 use std::ffi::c_void;
-use crate::disk;
 use std::rc::Rc;
 
 /// `joinPath`: `leaf` under `root`, with a `/` between unless `root` is
@@ -119,9 +119,12 @@ impl ZipBuild {
     fn child(&mut self, part: &[u8], entry: Option<usize>, is_dir: bool) -> &mut ZipBuild {
         let path = join_path(&self.path, part);
         // The first entry for a name makes it, as `if (!c) c.reset(...)`.
-        self.children
-            .entry(part.to_vec())
-            .or_insert_with(|| ZipBuild { path, entry, is_dir, children: BTreeMap::new() })
+        self.children.entry(part.to_vec()).or_insert_with(|| ZipBuild {
+            path,
+            entry,
+            is_dir,
+            children: BTreeMap::new(),
+        })
     }
 
     fn finish(self) -> Rc<ZipNode> {
@@ -139,7 +142,10 @@ impl ZipArchive {
     /// that can't be read has none, as miniz's reader left it.
     fn open(path: &[u8]) -> (ZipArchive, Vec<(Vec<u8>, bool)>) {
         let data = disk::read(path).unwrap_or_default();
-        let mut archive = ZipArchive { data, entries: Vec::new() };
+        let mut archive = ZipArchive {
+            data,
+            entries: Vec::new(),
+        };
         let names = archive.read_directory().unwrap_or_default();
         if names.len() != archive.entries.len() {
             archive.entries.clear();
@@ -151,7 +157,9 @@ impl ZipArchive {
         let d = &self.data;
         // The end of central directory record, in the last 64 KB.
         let min = d.len().saturating_sub(22 + 0xffff);
-        let end = (min..=d.len().checked_sub(22)?).rev().find(|&i| u32_at(d, i) == Some(0x0605_4b50))?;
+        let end = (min..=d.len().checked_sub(22)?)
+            .rev()
+            .find(|&i| u32_at(d, i) == Some(0x0605_4b50))?;
         let count = u16_at(d, end + 10)? as usize;
         let mut at = u32_at(d, end + 16)? as usize;
 
@@ -207,7 +215,12 @@ impl ZipArchive {
 /// `FsNodeZipFile`'s constructor: the tree of the archive at `path`.
 fn zip_root(path: &[u8]) -> (Rc<ZipArchive>, Rc<ZipNode>) {
     let (archive, names) = ZipArchive::open(path);
-    let mut root = ZipBuild { path: path.to_vec(), entry: None, is_dir: true, children: BTreeMap::new() };
+    let mut root = ZipBuild {
+        path: path.to_vec(),
+        entry: None,
+        is_dir: true,
+        children: BTreeMap::new(),
+    };
     for (index, (name, is_dir)) in names.iter().enumerate() {
         // miniz copied a name into 260 bytes, with its terminator.
         let name = &name[..name.len().min(259)];
@@ -252,7 +265,13 @@ fn sort_listing(mut v: Vec<Entry>) -> Vec<Entry> {
     cpp_sort::sort(&mut order, &|&a: &usize, &b: &usize| v[a].name < v[b].name);
     let mut out: Vec<Entry> = Vec::with_capacity(v.len());
     for i in order {
-        let e = std::mem::replace(&mut v[i], Entry { name: Vec::new(), is_dir: false });
+        let e = std::mem::replace(
+            &mut v[i],
+            Entry {
+                name: Vec::new(),
+                is_dir: false,
+            },
+        );
         if out.last().is_none_or(|l| l.name != e.name) {
             out.push(e);
         }
@@ -276,7 +295,9 @@ impl Layer {
                 if let Some(names) = disk::list(dir) {
                     for mut name in names {
                         // Skipped if it can't be looked at, as `stat` failing.
-                        let Some(mut dir) = is_dir(&join_path(p, &name)) else { continue };
+                        let Some(mut dir) = is_dir(&join_path(p, &name)) else {
+                            continue;
+                        };
                         if name.ends_with(b".zip") {
                             name.truncate(name.len() - 4);
                             dir = true;
@@ -286,7 +307,15 @@ impl Layer {
                 }
                 sort_listing(out)
             }
-            Layer::Zip(_, n) => sort_listing(n.children.iter().map(|(k, c)| Entry { name: k.clone(), is_dir: c.is_dir }).collect()),
+            Layer::Zip(_, n) => sort_listing(
+                n.children
+                    .iter()
+                    .map(|(k, c)| Entry {
+                        name: k.clone(),
+                        is_dir: c.is_dir,
+                    })
+                    .collect(),
+            ),
         }
     }
 
@@ -433,9 +462,9 @@ fn boxed(n: Node) -> *mut LieroFsNode {
 /// # Safety
 /// `path` must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_new(path: LieroStr) -> *mut LieroFsNode { unsafe {
-    boxed(Node::new(path.bytes()))
-}}
+pub unsafe extern "C" fn liero_fs_node_new(path: LieroStr) -> *mut LieroFsNode {
+    unsafe { boxed(Node::new(path.bytes())) }
+}
 
 #[no_mangle]
 pub extern "C" fn liero_fs_node_clone(n: &LieroFsNode) -> *mut LieroFsNode {
@@ -445,20 +474,22 @@ pub extern "C" fn liero_fs_node_clone(n: &LieroFsNode) -> *mut LieroFsNode {
 /// # Safety
 /// `n` must come from a `liero_fs_node_*` function, or be null.
 #[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_free(n: *mut LieroFsNode) { unsafe {
-    if !n.is_null() {
-        drop(Box::from_raw(n));
+pub unsafe extern "C" fn liero_fs_node_free(n: *mut LieroFsNode) {
+    unsafe {
+        if !n.is_null() {
+            drop(Box::from_raw(n));
+        }
     }
-}}
+}
 
 /// `n / name`.
 ///
 /// # Safety
 /// `name` must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_go(n: &LieroFsNode, name: LieroStr) -> *mut LieroFsNode { unsafe {
-    boxed(n.0.go(name.bytes()))
-}}
+pub unsafe extern "C" fn liero_fs_node_go(n: &LieroFsNode, name: LieroStr) -> *mut LieroFsNode {
+    unsafe { boxed(n.0.go(name.bytes())) }
+}
 
 #[no_mangle]
 pub extern "C" fn liero_fs_node_is_null(n: &LieroFsNode) -> bool {
@@ -469,7 +500,10 @@ pub extern "C" fn liero_fs_node_is_null(n: &LieroFsNode) -> bool {
 #[no_mangle]
 pub extern "C" fn liero_fs_node_full_path(n: &LieroFsNode) -> LieroStr {
     let p = n.0.full_path();
-    LieroStr { ptr: p.as_ptr(), len: p.len() }
+    LieroStr {
+        ptr: p.as_ptr(),
+        len: p.len(),
+    }
 }
 
 #[no_mangle]
@@ -486,11 +520,20 @@ pub unsafe extern "C" fn liero_fs_node_list(
     n: &LieroFsNode,
     ctx: *mut c_void,
     add: unsafe extern "C" fn(ctx: *mut c_void, name: LieroStr, is_dir: bool),
-) { unsafe {
-    for e in n.0.list() {
-        add(ctx, LieroStr { ptr: e.name.as_ptr(), len: e.name.len() }, e.is_dir);
+) {
+    unsafe {
+        for e in n.0.list() {
+            add(
+                ctx,
+                LieroStr {
+                    ptr: e.name.as_ptr(),
+                    len: e.name.len(),
+                },
+                e.is_dir,
+            );
+        }
     }
-}}
+}
 
 /// Reads the node: `got(ctx, bytes)` with its contents, which are valid
 /// during the call. False, without calling it, if it can't be read.
@@ -502,24 +545,32 @@ pub unsafe extern "C" fn liero_fs_node_read(
     n: &LieroFsNode,
     ctx: *mut c_void,
     got: unsafe extern "C" fn(ctx: *mut c_void, data: LieroStr),
-) -> bool { unsafe {
-    match n.0.read() {
-        Some(d) => {
-            got(ctx, LieroStr { ptr: d.as_ptr(), len: d.len() });
-            true
+) -> bool {
+    unsafe {
+        match n.0.read() {
+            Some(d) => {
+                got(
+                    ctx,
+                    LieroStr {
+                        ptr: d.as_ptr(),
+                        len: d.len(),
+                    },
+                );
+                true
+            }
+            None => false,
         }
-        None => false,
     }
-}}
+}
 
 /// Writes `data` as the whole file. False if it can't be.
 ///
 /// # Safety
 /// `data` must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_write(n: &LieroFsNode, data: LieroStr) -> bool { unsafe {
-    n.0.write(data.bytes())
-}}
+pub unsafe extern "C" fn liero_fs_node_write(n: &LieroFsNode, data: LieroStr) -> bool {
+    unsafe { n.0.write(data.bytes()) }
+}
 
 /// Makes the node writable, creating its folders if needed, and gives the
 /// path to write it at (valid while the node lives), or an empty one if it
@@ -527,8 +578,14 @@ pub unsafe extern "C" fn liero_fs_node_write(n: &LieroFsNode, data: LieroStr) ->
 #[no_mangle]
 pub extern "C" fn liero_fs_node_prepare_write(n: &LieroFsNode) -> LieroStr {
     match n.0.prepare_write() {
-        Some(p) => LieroStr { ptr: p.as_ptr(), len: p.len() },
-        None => LieroStr { ptr: std::ptr::null(), len: 0 },
+        Some(p) => LieroStr {
+            ptr: p.as_ptr(),
+            len: p.len(),
+        },
+        None => LieroStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        },
     }
 }
 

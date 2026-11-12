@@ -33,7 +33,11 @@ impl<'a> Reader<'a> {
     }
 
     pub fn bytes(&mut self, n: usize) -> Result<&'a [u8], Error> {
-        let end = self.pos.checked_add(n).filter(|&e| e <= self.data.len()).ok_or_else(|| self.eof())?;
+        let end = self
+            .pos
+            .checked_add(n)
+            .filter(|&e| e <= self.data.len())
+            .ok_or_else(|| self.eof())?;
         let slice = &self.data[self.pos..end];
         self.pos = end;
         Ok(slice)

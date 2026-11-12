@@ -58,7 +58,10 @@ fn main() -> ExitCode {
     };
 
     let Some(tc_name) = tc_name.or_else(|| leaf(&source)) else {
-        eprintln!("tctool: can't work out a TC name from {}, use --tc-name", source.display());
+        eprintln!(
+            "tctool: can't work out a TC name from {}, use --tc-name",
+            source.display()
+        );
         return ExitCode::from(USAGE_ERROR);
     };
 

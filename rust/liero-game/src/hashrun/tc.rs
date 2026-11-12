@@ -14,13 +14,15 @@ pub(super) fn bundled() -> crate::shared::Shared<LieroTc> {
 
 /// # Safety
 /// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] { unsafe {
-    if n == 0 {
-        &[]
-    } else {
-        std::slice::from_raw_parts(p, n)
+unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
+    unsafe {
+        if n == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(p, n)
+        }
     }
-}}
+}
 
 /// A sprite set as `addSprites` hashes it.
 fn add_sprites(h: &mut Fnv, s: &LieroTcSprites) {
@@ -117,9 +119,17 @@ pub fn hash_random_tc(out: &mut Out) {
     t.randomize(0);
     let m = t.model().expect("the TC loaded");
     for i in 0..m.weapons.len() {
-        out.hash("tc-random-weapon", i as i64, Fnv::of(&save::weapon_text(m, &t.weapon_model(i))));
+        out.hash(
+            "tc-random-weapon",
+            i as i64,
+            Fnv::of(&save::weapon_text(m, &t.weapon_model(i))),
+        );
     }
     for i in 0..m.sobjects.len() {
-        out.hash("tc-random-sobject", i as i64, Fnv::of(&save::sobject_text(&t.sobject_model(i))));
+        out.hash(
+            "tc-random-sobject",
+            i as i64,
+            Fnv::of(&save::sobject_text(&t.sobject_model(i))),
+        );
     }
 }

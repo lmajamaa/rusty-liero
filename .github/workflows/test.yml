@@ -73,8 +73,14 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy,rustfmt
           rustup default "$RUST_VERSION"
+
+      - name: Formatting
+        run: |
+          for crate in rust/liero-game rust/liero-data tools/tctool; do
+            cargo fmt --check --manifest-path "$crate/Cargo.toml"
+          done
 
       - name: Clippy
         run: |

@@ -15,10 +15,21 @@ pub struct LieroBitmapBox {
 impl LieroBitmapBox {
     /// No pixels, as C++'s `Bitmap()` left it.
     pub fn new() -> Box<Self> {
-        let rect = LieroRect { x1: 0, y1: 0, x2: 0, y2: 0 };
+        let rect = LieroRect {
+            x1: 0,
+            y1: 0,
+            x2: 0,
+            y2: 0,
+        };
         Box::new(LieroBitmapBox {
             pixels: Vec::new(),
-            view: LieroBitmap { pixels: std::ptr::null_mut(), w: 0, h: 0, pitch: 0, clip: rect },
+            view: LieroBitmap {
+                pixels: std::ptr::null_mut(),
+                w: 0,
+                h: 0,
+                pitch: 0,
+                clip: rect,
+            },
         })
     }
 
@@ -36,7 +47,12 @@ impl LieroBitmapBox {
             v.pixels = self.pixels.as_mut_ptr();
             (v.w, v.h, v.pitch) = (w, h, pitch);
         }
-        v.clip = LieroRect { x1: 0, y1: 0, x2: w, y2: h };
+        v.clip = LieroRect {
+            x1: 0,
+            y1: 0,
+            x2: w,
+            y2: h,
+        };
     }
 
     /// `Bitmap::copy`: the same size and pixels as `other`.
@@ -59,11 +75,13 @@ pub extern "C" fn liero_bitmap_box_new() -> *mut LieroBitmapBox {
 /// # Safety
 /// `b` comes from `liero_bitmap_box_new`, or is null, and isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_bitmap_box_free(b: *mut LieroBitmapBox) { unsafe {
-    if !b.is_null() {
-        drop(Box::from_raw(b));
+pub unsafe extern "C" fn liero_bitmap_box_free(b: *mut LieroBitmapBox) {
+    unsafe {
+        if !b.is_null() {
+            drop(Box::from_raw(b));
+        }
     }
-}}
+}
 
 /// The bitmap's fields, at a fixed address. Its pixels move when it's
 /// reallocated.
@@ -80,11 +98,13 @@ pub extern "C" fn liero_bitmap_box_alloc(b: &mut LieroBitmapBox, w: i32, h: i32,
 /// # Safety
 /// Both are valid; they may be the same.
 #[no_mangle]
-pub unsafe extern "C" fn liero_bitmap_box_copy(to: *mut LieroBitmapBox, from: *const LieroBitmapBox) { unsafe {
-    if !std::ptr::eq(to, from) {
-        (*to).copy_from(&*from);
+pub unsafe extern "C" fn liero_bitmap_box_copy(to: *mut LieroBitmapBox, from: *const LieroBitmapBox) {
+    unsafe {
+        if !std::ptr::eq(to, from) {
+            (*to).copy_from(&*from);
+        }
     }
-}}
+}
 
 /// A renderer's palettes and size, which C++'s `Renderer` refers to.
 #[repr(C)]
@@ -147,11 +167,13 @@ pub extern "C" fn liero_renderer_new() -> *mut LieroRenderer {
 /// # Safety
 /// `r` comes from `liero_renderer_new`, or is null, and isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_renderer_free(r: *mut LieroRenderer) { unsafe {
-    if !r.is_null() {
-        drop(Box::from_raw(r));
+pub unsafe extern "C" fn liero_renderer_free(r: *mut LieroRenderer) {
+    unsafe {
+        if !r.is_null() {
+            drop(Box::from_raw(r));
+        }
     }
-}}
+}
 
 #[no_mangle]
 pub extern "C" fn liero_renderer_data(r: &mut LieroRenderer) -> *mut LieroRendererData {
@@ -206,7 +228,10 @@ mod tests {
         let mut b = LieroBitmapBox::new();
         b.alloc(5, 5, 5);
         unsafe { liero_bitmap_box_copy(&mut *b, &*a) };
-        assert_eq!((b.view().w, b.view().pitch, b.pixels()), (2, 3, &[0, 0, 0, 0, 7, 0][..]));
+        assert_eq!(
+            (b.view().w, b.view().pitch, b.pixels()),
+            (2, 3, &[0, 0, 0, 0, 7, 0][..])
+        );
         // Copying a bitmap to itself changes nothing.
         let p: *mut LieroBitmapBox = &mut *b;
         unsafe { liero_bitmap_box_copy(p, p) };
@@ -218,7 +243,10 @@ mod tests {
         let mut r = LieroRenderer::new();
         r.set_render_resolution(4, 3);
         let v = r.bmp.view();
-        assert_eq!((r.data.render_res_x, r.data.render_res_y, v.w, v.h, v.pitch), (4, 3, 4, 3, 4));
+        assert_eq!(
+            (r.data.render_res_x, r.data.render_res_y, v.w, v.h, v.pitch),
+            (4, 3, 4, 3, 4)
+        );
         unsafe { *v.pixels.add(11) = 5 };
         r.clear();
         assert_eq!(r.bmp.pixels(), &[0; 12]);

@@ -7,7 +7,12 @@ const DIRT: u8 = 1;
 const ROCK: u8 = 2;
 
 fn materials() -> Vec<LieroMaterial> {
-    let mut m = vec![LieroMaterial { flags: LIERO_MATERIAL_BACKGROUND }; 256];
+    let mut m = vec![
+        LieroMaterial {
+            flags: LIERO_MATERIAL_BACKGROUND
+        };
+        256
+    ];
     m[DIRT as usize].flags = LIERO_MATERIAL_DIRT;
     m[ROCK as usize].flags = LIERO_MATERIAL_ROCK;
     m
@@ -26,13 +31,24 @@ fn level(paint: impl Fn(i32, i32) -> u8) -> Vec<u8> {
 fn built(data: &[u8]) -> PathLevel {
     let m = materials();
     let mut l = PathLevel::default();
-    l.build(&LevelView { data, width: FULL_WIDTH, height: FULL_HEIGHT, materials: &m });
+    l.build(&LevelView {
+        data,
+        width: FULL_WIDTH,
+        height: FULL_HEIGHT,
+        materials: &m,
+    });
     l
 }
 
 #[test]
 fn cells_and_coords_round_trip() {
-    for (x, y) in [(0, 0), (WIDTH - 1, 0), (0, HEIGHT - 1), (WIDTH - 1, HEIGHT - 1), (17, 33)] {
+    for (x, y) in [
+        (0, 0),
+        (WIDTH - 1, 0),
+        (0, HEIGHT - 1),
+        (WIDTH - 1, HEIGHT - 1),
+        (17, 33),
+    ] {
         assert_eq!(PathLevel::coords(PathLevel::cell(x, y)), (x, y));
     }
     assert_eq!(PathLevel::coords_level(PathLevel::cell(2, 3)), (10, 14));
@@ -64,7 +80,12 @@ fn build_costs_air_dirt_and_rock() {
     let data = vec![AIR; (FULL_WIDTH * 341) as usize];
     let m = materials();
     let mut l = PathLevel::default();
-    l.build(&LevelView { data: &data, width: FULL_WIDTH, height: 341, materials: &m });
+    l.build(&LevelView {
+        data: &data,
+        width: FULL_WIDTH,
+        height: 341,
+        materials: &m,
+    });
     assert_eq!(l.cells[PathLevel::cell(0, 84) as usize].cost, 1);
     assert_eq!(l.cells[PathLevel::cell(0, 85) as usize].cost, -1);
 }
@@ -75,7 +96,15 @@ fn open_level_distances_are_octile() {
     let mut l = built(&data);
     let origin = PathLevel::cell(60, 40);
     l.set_origin(origin);
-    for (x, y) in [(60, 40), (61, 40), (70, 40), (65, 45), (0, 0), (WIDTH - 1, HEIGHT - 1), (63, 50)] {
+    for (x, y) in [
+        (60, 40),
+        (61, 40),
+        (70, 40),
+        (65, 45),
+        (0, 0),
+        (WIDTH - 1, HEIGHT - 1),
+        (63, 50),
+    ] {
         let c = PathLevel::cell(x, y);
         assert!(l.run(c));
         let (dx, dy) = ((x - 60).abs(), (y - 40).abs());
@@ -128,7 +157,8 @@ fn unreachable_cells_fail() {
     // A rock box around (100, 100) in cells.
     let data = level(|x, y| {
         let (cx, cy) = (x / FACTOR, y / FACTOR);
-        if (95..=105).contains(&cx) && (35..=45).contains(&cy) && !((96..=104).contains(&cx) && (36..=44).contains(&cy)) {
+        if (95..=105).contains(&cx) && (35..=45).contains(&cy) && !((96..=104).contains(&cx) && (36..=44).contains(&cy))
+        {
             ROCK
         } else {
             AIR

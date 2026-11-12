@@ -100,7 +100,10 @@ pub fn cos_sin_table() -> [LieroIVec2; LIERO_COS_SIN_ENTRIES] {
         // Simple Taylor series. Performance is not important. The sum
         // overflows 64 bits for some angles; it wraps around as in the C++
         // version, and the table depends on that.
-        let mut num = Fp { s: xf as i64, bits: scale_bits };
+        let mut num = Fp {
+            s: xf as i64,
+            bits: scale_bits,
+        };
         let mut t: i64 = 1;
         while t < 26 {
             rf = rf.wrapping_add(c.wrapping_mul(num.reduced_frac(60)));
@@ -136,10 +139,12 @@ pub extern "C" fn liero_vector_length(x: i32, y: i32) -> i32 {
 /// # Safety
 /// `out` must point to 128 writable `LieroIVec2`s.
 #[no_mangle]
-pub unsafe extern "C" fn liero_cos_sin_table(out: *mut LieroIVec2) { unsafe {
-    let out = std::slice::from_raw_parts_mut(out, LIERO_COS_SIN_ENTRIES);
-    out.copy_from_slice(&cos_sin_table());
-}}
+pub unsafe extern "C" fn liero_cos_sin_table(out: *mut LieroIVec2) {
+    unsafe {
+        let out = std::slice::from_raw_parts_mut(out, LIERO_COS_SIN_ENTRIES);
+        out.copy_from_slice(&cos_sin_table());
+    }
+}
 
 #[cfg(test)]
 mod tests {

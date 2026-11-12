@@ -28,7 +28,12 @@ pub fn save(common: &Common, path: &Path) -> Result<(), Error> {
         ("large.tga", &common.large_sprites),
         ("text.tga", &common.text_sprites),
     ] {
-        let tga = tga(sprites.width, sprites.count * sprites.height, &sprites.data, &common.palette);
+        let tga = tga(
+            sprites.width,
+            sprites.count * sprites.height,
+            &sprites.data,
+            &common.palette,
+        );
         write(&dir.join(name), &tga)?;
     }
     write(&dir.join("font.tga"), &font_tga(common))?;

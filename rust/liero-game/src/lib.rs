@@ -23,39 +23,39 @@ pub mod exp;
 pub mod fs;
 pub mod game;
 pub mod game_box;
-pub mod hashrun;
 pub mod gfx;
+pub mod hashrun;
 pub mod item;
 pub mod keys;
 pub mod level;
 pub mod material;
+pub mod math;
 pub mod menu;
 pub mod menu_screen;
 pub mod menus;
-pub mod math;
 pub mod object;
 pub mod objects;
 pub mod rand;
 pub mod renderer;
 pub mod replay;
 pub mod replay_file;
+pub mod scene;
 pub mod screen;
 pub mod selector;
 pub mod settings;
-pub mod shell;
-pub mod shared;
 pub mod sfx;
+pub mod shared;
+pub mod shell;
 pub mod stats;
 pub mod tc;
 pub mod text;
-pub mod scene;
 pub mod viewport;
 pub mod weapon;
 pub mod weapon_options;
+pub mod weapsel;
 /// The web build's shell (`wasm32-unknown-unknown` only).
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub mod web;
-pub mod weapsel;
 pub mod world;
 pub mod worm;
 
@@ -65,9 +65,7 @@ use std::ffi::c_char;
 /// "liero-game 0.1.0". The web shell prints it at startup.
 #[no_mangle]
 pub extern "C" fn liero_game_version() -> *const c_char {
-    concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0")
-        .as_ptr()
-        .cast()
+    concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
 }
 
 #[cfg(test)]

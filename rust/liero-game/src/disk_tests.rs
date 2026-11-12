@@ -116,7 +116,10 @@ fn the_tree_lists_its_files_and_starts_empty() {
         assert!(create_dir(b"d"));
         assert!(write(b"d/f", b"1"));
         assert!(write(b"e", b"2"));
-        assert_eq!(tree_files(), [(b"d/f".to_vec(), b"1".to_vec()), (b"e".to_vec(), b"2".to_vec())]);
+        assert_eq!(
+            tree_files(),
+            [(b"d/f".to_vec(), b"1".to_vec()), (b"e".to_vec(), b"2".to_vec())]
+        );
         // A new tree starts empty.
         use_tree();
         assert!(tree_files().is_empty());
@@ -140,8 +143,16 @@ fn the_file_layer_works_on_the_tree() {
         let node = Node::new(b"/cfg/Replays/x.lrp");
         assert!(node.write(b"data"), "makes the folder");
         assert_eq!(Node::new(b"cfg/Replays/x.lrp").read().unwrap(), b"data");
-        assert_eq!(Node::new(b"cfg/REPLAYS/X.LRP").read(), None, "the case tries change the whole path");
-        let names: Vec<_> = Node::new(b"cfg").list().into_iter().map(|e| (e.name, e.is_dir)).collect();
+        assert_eq!(
+            Node::new(b"cfg/REPLAYS/X.LRP").read(),
+            None,
+            "the case tries change the whole path"
+        );
+        let names: Vec<_> = Node::new(b"cfg")
+            .list()
+            .into_iter()
+            .map(|e| (e.name, e.is_dir))
+            .collect();
         assert_eq!(names, [(b"Replays".to_vec(), true)]);
     });
 }
@@ -156,13 +167,19 @@ fn changes_are_taken_once_with_what_the_files_hold() {
         assert!(!write(b"x/y", b"no folder"));
         assert_eq!(
             take_changes(),
-            [(b"d/a".to_vec(), Some(b"13".to_vec())), (b"d/b".to_vec(), Some(b"2".to_vec()))]
+            [
+                (b"d/a".to_vec(), Some(b"13".to_vec())),
+                (b"d/b".to_vec(), Some(b"2".to_vec()))
+            ]
         );
         assert!(take_changes().is_empty());
         assert!(remove_file(b"d/b"));
         assert!(!remove_file(b"d/c"));
         assert!(create(b"d/c"));
-        assert_eq!(take_changes(), [(b"d/b".to_vec(), None), (b"d/c".to_vec(), Some(Vec::new()))]);
+        assert_eq!(
+            take_changes(),
+            [(b"d/b".to_vec(), None), (b"d/c".to_vec(), Some(Vec::new()))]
+        );
     });
     assert!(take_changes().is_empty(), "nothing on disk");
 }

@@ -71,11 +71,13 @@ pub extern "C" fn liero_controller_data_new() -> *mut LieroControllerData {
 /// # Safety
 /// `c` comes from `liero_controller_data_new`, and isn't used after.
 #[no_mangle]
-pub unsafe extern "C" fn liero_controller_data_free(c: *mut LieroControllerData) { unsafe {
-    if !c.is_null() {
-        drop(Box::from_raw(c));
+pub unsafe extern "C" fn liero_controller_data_free(c: *mut LieroControllerData) {
+    unsafe {
+        if !c.is_null() {
+            drop(Box::from_raw(c));
+        }
     }
-}}
+}
 
 /// See `LieroControllerData::ticks`.
 #[no_mangle]
@@ -105,30 +107,52 @@ mod tests {
     fn new_controller_matches_cpp() {
         unsafe {
             let c = liero_controller_data_new();
-            assert_eq!(*c, LieroControllerData {
-                state: LIERO_STATE_INITIAL,
-                fade_value: 0,
-                going_to_menu: false,
-                frame_skip: 1,
-                inverse_frame_skip: false,
-                cycles: 0,
-            });
+            assert_eq!(
+                *c,
+                LieroControllerData {
+                    state: LIERO_STATE_INITIAL,
+                    fade_value: 0,
+                    going_to_menu: false,
+                    frame_skip: 1,
+                    inverse_frame_skip: false,
+                    cycles: 0,
+                }
+            );
             liero_controller_data_free(c);
         }
     }
 
     #[test]
     fn ticks_follow_the_frame_skip() {
-        let mut c = LieroControllerData { frame_skip: 3, ..Default::default() };
-        assert_eq!((0..6).map(|i| LieroControllerData { cycles: i, ..c }.ticks()).collect::<Vec<_>>(), [3; 6]);
+        let mut c = LieroControllerData {
+            frame_skip: 3,
+            ..Default::default()
+        };
+        assert_eq!(
+            (0..6)
+                .map(|i| LieroControllerData { cycles: i, ..c }.ticks())
+                .collect::<Vec<_>>(),
+            [3; 6]
+        );
         c.inverse_frame_skip = true;
         // C++: !(cycles % frameSkip).
-        assert_eq!((0..6).map(|i| LieroControllerData { cycles: i, ..c }.ticks()).collect::<Vec<_>>(), [1, 0, 0, 1, 0, 0]);
+        assert_eq!(
+            (0..6)
+                .map(|i| LieroControllerData { cycles: i, ..c }.ticks())
+                .collect::<Vec<_>>(),
+            [1, 0, 0, 1, 0, 0]
+        );
     }
 
     #[test]
     fn in_game_states() {
-        let at = |state| LieroControllerData { state, ..Default::default() }.in_game();
+        let at = |state| {
+            LieroControllerData {
+                state,
+                ..Default::default()
+            }
+            .in_game()
+        };
         assert!(!at(LIERO_STATE_INITIAL) && !at(LIERO_STATE_WEAPON_SELECTION));
         assert!(at(LIERO_STATE_GAME) && at(LIERO_STATE_GAME_ENDED));
     }

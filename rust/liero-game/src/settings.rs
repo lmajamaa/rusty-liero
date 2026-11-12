@@ -8,9 +8,11 @@
 //! written or the hash, and whether it worked. C++ copies what it needs out
 //! of the result and frees it.
 
-use crate::text::LieroStr;
 use crate::fs::LieroFsNode;
-use liero_data::settings::{self as data, ArchiveError, Bytes, Extensions, ReadError, Settings, Source, TextError, WormSettings};
+use crate::text::LieroStr;
+use liero_data::settings::{
+    self as data, ArchiveError, Bytes, Extensions, ReadError, Settings, Source, TextError, WormSettings,
+};
 use std::ffi::c_void;
 
 /// Up, down, left, right, fire, change and jump.
@@ -126,7 +128,10 @@ pub struct LieroSettingsResult {
 }
 
 pub(crate) fn str(s: &[u8]) -> LieroStr {
-    LieroStr { ptr: s.as_ptr(), len: s.len() }
+    LieroStr {
+        ptr: s.as_ptr(),
+        len: s.len(),
+    }
 }
 
 pub(crate) fn worm_view(ws: &WormSettings) -> LieroWormSettings {
@@ -182,59 +187,63 @@ pub(crate) fn settings_view(s: &Settings) -> LieroSettings {
 
 /// # Safety
 /// The view's strings must be valid.
-pub(crate) unsafe fn worm_from(v: &LieroWormSettings) -> WormSettings { unsafe {
-    WormSettings {
-        health: v.health,
-        controller: v.controller,
-        controls: v.controls,
-        weapons: v.weapons,
-        name: v.name.bytes().to_vec(),
-        rgb: v.rgb,
-        random_name: v.random_name,
-        color: v.color,
-        controls_ex: v.controls_ex,
+pub(crate) unsafe fn worm_from(v: &LieroWormSettings) -> WormSettings {
+    unsafe {
+        WormSettings {
+            health: v.health,
+            controller: v.controller,
+            controls: v.controls,
+            weapons: v.weapons,
+            name: v.name.bytes().to_vec(),
+            rgb: v.rgb,
+            random_name: v.random_name,
+            color: v.color,
+            controls_ex: v.controls_ex,
+        }
     }
-}}
+}
 
 /// # Safety
 /// The view's strings must be valid.
-pub(crate) unsafe fn settings_from(v: &LieroSettings) -> Settings { unsafe {
-    Settings {
-        ext: Extensions {
-            record_replays: v.record_replays,
-            load_powerlevel_palette: v.load_powerlevel_palette,
-            blood_particle_max: v.blood_particle_max,
-            ai_frames: v.ai_frames,
-            ai_mutations: v.ai_mutations,
-            ai_traces: v.ai_traces,
-            ai_parallels: v.ai_parallels,
-            fullscreen: v.fullscreen,
-            zone_timeout: v.zone_timeout,
-            select_bot_weapons: v.select_bot_weapons,
-            allow_viewing_spawn_point: v.allow_viewing_spawn_point,
-            single_screen_replay: v.single_screen_replay,
-            spectator_window: v.spectator_window,
-            tc: v.tc.bytes().to_vec(),
-        },
-        weap_table: v.weap_table,
-        max_bonuses: v.max_bonuses,
-        blood: v.blood,
-        time_to_lose: v.time_to_lose,
-        flags_to_win: v.flags_to_win,
-        game_mode: v.game_mode,
-        shadow: v.shadow,
-        load_change: v.load_change,
-        names_on_bonuses: v.names_on_bonuses,
-        regenerate_level: v.regenerate_level,
-        lives: v.lives,
-        loading_time: v.loading_time,
-        random_level: v.random_level,
-        level_file: v.level_file.bytes().to_vec(),
-        map: v.map,
-        screen_sync: v.screen_sync,
-        worms: [worm_from(&v.worms[0]), worm_from(&v.worms[1])],
+pub(crate) unsafe fn settings_from(v: &LieroSettings) -> Settings {
+    unsafe {
+        Settings {
+            ext: Extensions {
+                record_replays: v.record_replays,
+                load_powerlevel_palette: v.load_powerlevel_palette,
+                blood_particle_max: v.blood_particle_max,
+                ai_frames: v.ai_frames,
+                ai_mutations: v.ai_mutations,
+                ai_traces: v.ai_traces,
+                ai_parallels: v.ai_parallels,
+                fullscreen: v.fullscreen,
+                zone_timeout: v.zone_timeout,
+                select_bot_weapons: v.select_bot_weapons,
+                allow_viewing_spawn_point: v.allow_viewing_spawn_point,
+                single_screen_replay: v.single_screen_replay,
+                spectator_window: v.spectator_window,
+                tc: v.tc.bytes().to_vec(),
+            },
+            weap_table: v.weap_table,
+            max_bonuses: v.max_bonuses,
+            blood: v.blood,
+            time_to_lose: v.time_to_lose,
+            flags_to_win: v.flags_to_win,
+            game_mode: v.game_mode,
+            shadow: v.shadow,
+            load_change: v.load_change,
+            names_on_bonuses: v.names_on_bonuses,
+            regenerate_level: v.regenerate_level,
+            lives: v.lives,
+            loading_time: v.loading_time,
+            random_level: v.random_level,
+            level_file: v.level_file.bytes().to_vec(),
+            map: v.map,
+            screen_sync: v.screen_sync,
+            worms: [worm_from(&v.worms[0]), worm_from(&v.worms[1])],
+        }
     }
-}}
+}
 
 impl LieroSettingsResult {
     fn new(status: LieroSettingsStatus) -> Self {
@@ -288,24 +297,30 @@ fn archive_status(r: Result<(), ArchiveError>) -> LieroSettingsStatus {
 
 /// # Safety
 /// `data` must be valid for `len` bytes.
-unsafe fn slice<'a>(data: *const u8, len: usize) -> &'a [u8] { unsafe {
-    if len == 0 || data.is_null() {
-        &[]
-    } else {
-        std::slice::from_raw_parts(data, len)
+unsafe fn slice<'a>(data: *const u8, len: usize) -> &'a [u8] {
+    unsafe {
+        if len == 0 || data.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts(data, len)
+        }
     }
-}}
+}
 
 /// The default settings, as `Settings::Settings` makes them.
 #[no_mangle]
 pub extern "C" fn liero_settings_default() -> *mut LieroSettingsResult {
-    LieroSettingsResult::new(LieroSettingsStatus::Ok).settings(Settings::default()).finish()
+    LieroSettingsResult::new(LieroSettingsStatus::Ok)
+        .settings(Settings::default())
+        .finish()
 }
 
 /// The default worm settings, as `WormSettings::WormSettings` makes them.
 #[no_mangle]
 pub extern "C" fn liero_worm_settings_default() -> *mut LieroSettingsResult {
-    LieroSettingsResult::new(LieroSettingsStatus::Ok).worm(WormSettings::default()).finish()
+    LieroSettingsResult::new(LieroSettingsStatus::Ok)
+        .worm(WormSettings::default())
+        .finish()
 }
 
 /// Reads liero.cfg over `s`: Ok, Failed or MissingKey, with the settings
@@ -314,40 +329,54 @@ pub extern "C" fn liero_worm_settings_default() -> *mut LieroSettingsResult {
 /// # Safety
 /// `s`'s strings must be valid, and `data` valid for `len` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_read_text(s: &LieroSettings, data: *const u8, len: usize) -> *mut LieroSettingsResult { unsafe {
-    let mut settings = settings_from(s);
-    let status = match data::read_text(&mut settings, slice(data, len)) {
-        Ok(()) => LieroSettingsStatus::Ok,
-        Err(TextError::Parse(_)) => LieroSettingsStatus::Failed,
-        Err(TextError::MissingKey(_)) => LieroSettingsStatus::MissingKey,
-    };
-    LieroSettingsResult::new(status).settings(settings).finish()
-}}
+pub unsafe extern "C" fn liero_settings_read_text(
+    s: &LieroSettings,
+    data: *const u8,
+    len: usize,
+) -> *mut LieroSettingsResult {
+    unsafe {
+        let mut settings = settings_from(s);
+        let status = match data::read_text(&mut settings, slice(data, len)) {
+            Ok(()) => LieroSettingsStatus::Ok,
+            Err(TextError::Parse(_)) => LieroSettingsStatus::Failed,
+            Err(TextError::MissingKey(_)) => LieroSettingsStatus::MissingKey,
+        };
+        LieroSettingsResult::new(status).settings(settings).finish()
+    }
+}
 
 /// liero.cfg for `s`, in the result's bytes.
 ///
 /// # Safety
 /// `s`'s strings must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_write_text(s: &LieroSettings) -> *mut LieroSettingsResult { unsafe {
-    let bytes = data::write_text(&settings_from(s));
-    LieroSettingsResult::new(LieroSettingsStatus::Ok).bytes(bytes).finish()
-}}
+pub unsafe extern "C" fn liero_settings_write_text(s: &LieroSettings) -> *mut LieroSettingsResult {
+    unsafe {
+        let bytes = data::write_text(&settings_from(s));
+        LieroSettingsResult::new(LieroSettingsStatus::Ok).bytes(bytes).finish()
+    }
+}
 
 /// Reads LIERO.DAT over `s`: Ok, or Failed if it ends early.
 ///
 /// # Safety
 /// `s`'s strings must be valid, and `data` valid for `len` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_read_legacy(s: &LieroSettings, data: *const u8, len: usize) -> *mut LieroSettingsResult { unsafe {
-    let mut settings = settings_from(s);
-    let status = if data::read_legacy(&mut settings, slice(data, len)) {
-        LieroSettingsStatus::Ok
-    } else {
-        LieroSettingsStatus::Failed
-    };
-    LieroSettingsResult::new(status).settings(settings).finish()
-}}
+pub unsafe extern "C" fn liero_settings_read_legacy(
+    s: &LieroSettings,
+    data: *const u8,
+    len: usize,
+) -> *mut LieroSettingsResult {
+    unsafe {
+        let mut settings = settings_from(s);
+        let status = if data::read_legacy(&mut settings, slice(data, len)) {
+            LieroSettingsStatus::Ok
+        } else {
+            LieroSettingsStatus::Failed
+        };
+        LieroSettingsResult::new(status).settings(settings).finish()
+    }
+}
 
 /// Reads liero.cfg (or LIERO.DAT, if `legacy`) from `node` over `s`, as
 /// `liero_settings_read_text` or `liero_settings_read_legacy` would. Null if
@@ -356,22 +385,28 @@ pub unsafe extern "C" fn liero_settings_read_legacy(s: &LieroSettings, data: *co
 /// # Safety
 /// `s`'s strings must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_load(s: &LieroSettings, node: &LieroFsNode, legacy: bool) -> *mut LieroSettingsResult { unsafe {
-    match node.0.read() {
-        Some(d) if legacy => liero_settings_read_legacy(s, d.as_ptr(), d.len()),
-        Some(d) => liero_settings_read_text(s, d.as_ptr(), d.len()),
-        None => std::ptr::null_mut(),
+pub unsafe extern "C" fn liero_settings_load(
+    s: &LieroSettings,
+    node: &LieroFsNode,
+    legacy: bool,
+) -> *mut LieroSettingsResult {
+    unsafe {
+        match node.0.read() {
+            Some(d) if legacy => liero_settings_read_legacy(s, d.as_ptr(), d.len()),
+            Some(d) => liero_settings_read_text(s, d.as_ptr(), d.len()),
+            None => std::ptr::null_mut(),
+        }
     }
-}}
+}
 
 /// Writes `s` to `node` as liero.cfg. False if the file can't be written.
 ///
 /// # Safety
 /// `s`'s strings must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_save(s: &LieroSettings, node: &LieroFsNode) -> bool { unsafe {
-    node.0.write(&data::write_text(&settings_from(s)))
-}}
+pub unsafe extern "C" fn liero_settings_save(s: &LieroSettings, node: &LieroFsNode) -> bool {
+    unsafe { node.0.write(&data::write_text(&settings_from(s))) }
+}
 
 /// Loads a profile from `node` over the settings, keeping their colour,
 /// and remembers the profile (`WormSettings::loadProfile`). False, with
@@ -387,7 +422,11 @@ pub extern "C" fn liero_worm_settings_box_load_profile(
     let Some(node) = node else { return false };
     let Some(d) = node.0.read() else { return false };
     let mut worm = s.worm();
-    *status = archive_status(data::read_worm(&mut worm, crate::replay::LIERO_REPLAY_VERSION, &mut Bytes::new(&d)));
+    *status = archive_status(data::read_worm(
+        &mut worm,
+        crate::replay::LIERO_REPLAY_VERSION,
+        &mut Bytes::new(&d),
+    ));
     let color = s.data.color;
     s.profile = Some(node.0.clone());
     s.set_worm(&worm);
@@ -402,7 +441,10 @@ pub extern "C" fn liero_worm_settings_box_load_profile(
 /// (`WormSettings::saveProfile`). False, with nothing changed, if the file
 /// can't be written.
 #[no_mangle]
-pub extern "C" fn liero_worm_settings_box_save_profile(s: &mut LieroWormSettingsBox, node: Option<&LieroFsNode>) -> bool {
+pub extern "C" fn liero_worm_settings_box_save_profile(
+    s: &mut LieroWormSettingsBox,
+    node: Option<&LieroFsNode>,
+) -> bool {
     let Some(node) = node else { return false };
     // Opened before the archive is made, as `toOctetWriter` was.
     if node.0.prepare_write().is_none() {
@@ -423,11 +465,16 @@ pub extern "C" fn liero_worm_settings_box_save_profile(s: &mut LieroWormSettings
 /// # Safety
 /// `s`'s strings must be valid, and `source.get` callable with its `ctx`.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_read_archive(s: &LieroSettings, source: &LieroByteSource) -> *mut LieroSettingsResult { unsafe {
-    let mut settings = settings_from(s);
-    let status = archive_status(data::read_archive(&mut settings, &mut Hooked(source)));
-    LieroSettingsResult::new(status).settings(settings).finish()
-}}
+pub unsafe extern "C" fn liero_settings_read_archive(
+    s: &LieroSettings,
+    source: &LieroByteSource,
+) -> *mut LieroSettingsResult {
+    unsafe {
+        let mut settings = settings_from(s);
+        let status = archive_status(data::read_archive(&mut settings, &mut Hooked(source)));
+        LieroSettingsResult::new(status).settings(settings).finish()
+    }
+}
 
 /// The settings archive for `s` in the result's bytes, and the settings
 /// after writing it (with the default TC name).
@@ -435,22 +482,32 @@ pub unsafe extern "C" fn liero_settings_read_archive(s: &LieroSettings, source: 
 /// # Safety
 /// `s`'s strings must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_write_archive(s: &LieroSettings) -> *mut LieroSettingsResult { unsafe {
-    let mut settings = settings_from(s);
-    let bytes = data::write_archive(&mut settings);
-    LieroSettingsResult::new(LieroSettingsStatus::Ok).settings(settings).bytes(bytes).finish()
-}}
+pub unsafe extern "C" fn liero_settings_write_archive(s: &LieroSettings) -> *mut LieroSettingsResult {
+    unsafe {
+        let mut settings = settings_from(s);
+        let bytes = data::write_archive(&mut settings);
+        LieroSettingsResult::new(LieroSettingsStatus::Ok)
+            .settings(settings)
+            .bytes(bytes)
+            .finish()
+    }
+}
 
 /// `Settings::updateHash`: the hash, and the settings after it.
 ///
 /// # Safety
 /// `s`'s strings must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_hash(s: &LieroSettings) -> *mut LieroSettingsResult { unsafe {
-    let mut settings = settings_from(s);
-    let hash = data::archive_hash(&mut settings);
-    LieroSettingsResult::new(LieroSettingsStatus::Ok).settings(settings).hash(hash).finish()
-}}
+pub unsafe extern "C" fn liero_settings_hash(s: &LieroSettings) -> *mut LieroSettingsResult {
+    unsafe {
+        let mut settings = settings_from(s);
+        let hash = data::archive_hash(&mut settings);
+        LieroSettingsResult::new(LieroSettingsStatus::Ok)
+            .settings(settings)
+            .hash(hash)
+            .finish()
+    }
+}
 
 /// Reads a worm's archive for `replay_version` over `ws`: Ok or ReadError.
 ///
@@ -461,11 +518,13 @@ pub unsafe extern "C" fn liero_worm_settings_read_archive(
     ws: &LieroWormSettings,
     replay_version: i32,
     source: &LieroByteSource,
-) -> *mut LieroSettingsResult { unsafe {
-    let mut worm = worm_from(ws);
-    let status = archive_status(data::read_worm(&mut worm, replay_version, &mut Hooked(source)));
-    LieroSettingsResult::new(status).worm(worm).finish()
-}}
+) -> *mut LieroSettingsResult {
+    unsafe {
+        let mut worm = worm_from(ws);
+        let status = archive_status(data::read_worm(&mut worm, replay_version, &mut Hooked(source)));
+        LieroSettingsResult::new(status).worm(worm).finish()
+    }
+}
 
 /// A worm's archive for `replay_version` in the result's bytes, and the
 /// worm settings after writing it.
@@ -473,22 +532,35 @@ pub unsafe extern "C" fn liero_worm_settings_read_archive(
 /// # Safety
 /// `ws`'s name must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_write_archive(ws: &LieroWormSettings, replay_version: i32) -> *mut LieroSettingsResult { unsafe {
-    let mut worm = worm_from(ws);
-    let bytes = data::write_worm(&mut worm, replay_version);
-    LieroSettingsResult::new(LieroSettingsStatus::Ok).worm(worm).bytes(bytes).finish()
-}}
+pub unsafe extern "C" fn liero_worm_settings_write_archive(
+    ws: &LieroWormSettings,
+    replay_version: i32,
+) -> *mut LieroSettingsResult {
+    unsafe {
+        let mut worm = worm_from(ws);
+        let bytes = data::write_worm(&mut worm, replay_version);
+        LieroSettingsResult::new(LieroSettingsStatus::Ok)
+            .worm(worm)
+            .bytes(bytes)
+            .finish()
+    }
+}
 
 /// `WormSettings::updateHash`: the hash, and the worm settings after it.
 ///
 /// # Safety
 /// `ws`'s name must be valid.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_hash(ws: &LieroWormSettings) -> *mut LieroSettingsResult { unsafe {
-    let mut worm = worm_from(ws);
-    let hash = data::worm_hash(&mut worm);
-    LieroSettingsResult::new(LieroSettingsStatus::Ok).worm(worm).hash(hash).finish()
-}}
+pub unsafe extern "C" fn liero_worm_settings_hash(ws: &LieroWormSettings) -> *mut LieroSettingsResult {
+    unsafe {
+        let mut worm = worm_from(ws);
+        let hash = data::worm_hash(&mut worm);
+        LieroSettingsResult::new(LieroSettingsStatus::Ok)
+            .worm(worm)
+            .hash(hash)
+            .finish()
+    }
+}
 
 /// # Safety
 /// `r` must come from one of the functions above and not be freed.
@@ -537,11 +609,13 @@ pub unsafe extern "C" fn liero_settings_result_hash(r: &LieroSettingsResult) -> 
 /// `r` must come from one of the functions above, or be null, and not be
 /// used afterwards.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_result_free(r: *mut LieroSettingsResult) { unsafe {
-    if !r.is_null() {
-        drop(Box::from_raw(r));
+pub unsafe extern "C" fn liero_settings_result_free(r: *mut LieroSettingsResult) {
+    unsafe {
+        if !r.is_null() {
+            drop(Box::from_raw(r));
+        }
     }
-}}
+}
 
 #[cfg(test)]
 mod tests {
@@ -569,7 +643,10 @@ mod tests {
 
     #[test]
     fn control_counts_match_the_data() {
-        assert_eq!((LIERO_MAX_CONTROL, LIERO_MAX_CONTROL_EX), (data::MAX_CONTROL, data::MAX_CONTROL_EX));
+        assert_eq!(
+            (LIERO_MAX_CONTROL, LIERO_MAX_CONTROL_EX),
+            (data::MAX_CONTROL, data::MAX_CONTROL_EX)
+        );
     }
 
     #[test]
@@ -590,13 +667,19 @@ mod tests {
         let text = Owned(unsafe { liero_settings_write_text(&view) });
         let bytes = text.bytes();
         let read = Owned(unsafe { liero_settings_read_text(&view, bytes.as_ptr(), bytes.len()) });
-        assert_eq!(unsafe { liero_settings_result_status(read.r()) }, LieroSettingsStatus::Ok);
+        assert_eq!(
+            unsafe { liero_settings_result_status(read.r()) },
+            LieroSettingsStatus::Ok
+        );
         assert_eq!(read.settings(), Settings::default());
 
         // Everything up to `lives`.
         let end = bytes.windows(7).position(|w| w == b"\r\nlives").unwrap();
         let missing = Owned(unsafe { liero_settings_read_text(&view, bytes.as_ptr(), end) });
-        assert_eq!(unsafe { liero_settings_result_status(missing.r()) }, LieroSettingsStatus::MissingKey);
+        assert_eq!(
+            unsafe { liero_settings_result_status(missing.r()) },
+            LieroSettingsStatus::MissingKey
+        );
     }
 
     #[test]
@@ -605,25 +688,39 @@ mod tests {
             bytes: Vec<u8>,
             pos: usize,
         }
-        unsafe extern "C" fn get(ctx: *mut c_void) -> i32 { unsafe {
-            let d = &mut *(ctx as *mut Data);
-            let b = d.bytes.get(d.pos).map_or(-1, |&b| b as i32);
-            d.pos += 1;
-            b
-        }}
+        unsafe extern "C" fn get(ctx: *mut c_void) -> i32 {
+            unsafe {
+                let d = &mut *(ctx as *mut Data);
+                let b = d.bytes.get(d.pos).map_or(-1, |&b| b as i32);
+                d.pos += 1;
+                b
+            }
+        }
 
         let s = Owned(liero_settings_default());
         let view = unsafe { *liero_settings_result_settings(s.r()) };
         let written = Owned(unsafe { liero_settings_write_archive(&view) });
-        let mut data = Data { bytes: written.bytes(), pos: 0 };
-        let source = LieroByteSource { ctx: &mut data as *mut Data as *mut c_void, get };
+        let mut data = Data {
+            bytes: written.bytes(),
+            pos: 0,
+        };
+        let source = LieroByteSource {
+            ctx: &mut data as *mut Data as *mut c_void,
+            get,
+        };
         let read = Owned(unsafe { liero_settings_read_archive(&view, &source) });
-        assert_eq!(unsafe { liero_settings_result_status(read.r()) }, LieroSettingsStatus::Ok);
+        assert_eq!(
+            unsafe { liero_settings_result_status(read.r()) },
+            LieroSettingsStatus::Ok
+        );
         assert_eq!(read.settings(), Settings::default());
 
         data.pos = 1;
         let short = Owned(unsafe { liero_settings_read_archive(&view, &source) });
-        assert_eq!(unsafe { liero_settings_result_status(short.r()) }, LieroSettingsStatus::ReadError);
+        assert_eq!(
+            unsafe { liero_settings_result_status(short.r()) },
+            LieroSettingsStatus::ReadError
+        );
     }
 
     #[test]
@@ -632,7 +729,10 @@ mod tests {
         let view = unsafe { *liero_settings_result_settings(s.r()) };
         let written = Owned(unsafe { liero_settings_write_archive(&view) });
         let hash = Owned(unsafe { liero_settings_hash(&view) });
-        assert_eq!(unsafe { liero_settings_result_hash(hash.r()) }.value, liero_data::gash::gash(&written.bytes()));
+        assert_eq!(
+            unsafe { liero_settings_result_hash(hash.r()) }.value,
+            liero_data::gash::gash(&written.bytes())
+        );
     }
 }
 
@@ -711,9 +811,9 @@ impl WormSettingsRef {
     ///
     /// # Safety
     /// `b` is a valid box.
-    pub unsafe fn retain(b: *mut LieroWormSettingsBox) -> Self { unsafe {
-        WormSettingsRef(liero_worm_settings_box_retain(b))
-    }}
+    pub unsafe fn retain(b: *mut LieroWormSettingsBox) -> Self {
+        unsafe { WormSettingsRef(liero_worm_settings_box_retain(b)) }
+    }
 
     /// Takes over the reference `liero_worm_settings_box_new` returns.
     fn new() -> Self {
@@ -885,7 +985,6 @@ fn data_settings(b: &LieroSettingsBox) -> Settings {
     unsafe { settings_from(&v) }
 }
 
-
 /// A worm's settings, shared by the C++ `WormSettings` that refer to them
 /// and the game's worms: each holds a reference (`_retain` and `_free`).
 pub struct LieroWormSettingsBox {
@@ -906,7 +1005,12 @@ impl LieroWormSettingsBox {
 
 impl Default for LieroWormSettingsBox {
     fn default() -> Self {
-        LieroWormSettingsBox { data: LieroWormSettingsData::default(), name: Vec::new(), profile: None, refs: 1 }
+        LieroWormSettingsBox {
+            data: LieroWormSettingsData::default(),
+            name: Vec::new(),
+            profile: None,
+            refs: 1,
+        }
     }
 }
 
@@ -946,7 +1050,10 @@ impl LieroWormSettingsBox {
 
     /// The profile's file, if there is one (a null node isn't one).
     pub(crate) fn profile_path(&self) -> Option<Vec<u8>> {
-        self.profile.as_ref().filter(|n| !n.is_null()).map(|n| n.full_path().to_vec())
+        self.profile
+            .as_ref()
+            .filter(|n| !n.is_null())
+            .map(|n| n.full_path().to_vec())
     }
 
     /// Saves the settings over their profile (the menus' "save profile").
@@ -958,7 +1065,12 @@ impl LieroWormSettingsBox {
 
 impl Clone for LieroWormSettingsBox {
     fn clone(&self) -> Self {
-        LieroWormSettingsBox { data: self.data, name: self.name.clone(), profile: None, refs: 1 }
+        LieroWormSettingsBox {
+            data: self.data,
+            name: self.name.clone(),
+            profile: None,
+            refs: 1,
+        }
     }
 }
 
@@ -1025,9 +1137,11 @@ pub extern "C" fn liero_settings_box_worm(s: &LieroSettingsBox, i: usize) -> *mu
 /// # Safety
 /// `w` is a valid box.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: *mut LieroWormSettingsBox) { unsafe {
-    s.worms[i] = WormSettingsRef::retain(w);
-}}
+pub unsafe extern "C" fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: *mut LieroWormSettingsBox) {
+    unsafe {
+        s.worms[i] = WormSettingsRef::retain(w);
+    }
+}
 
 /// Another reference to `s`, to give up with `liero_settings_box_free`.
 ///
@@ -1035,9 +1149,9 @@ pub unsafe extern "C" fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i
 /// `s` comes from `liero_settings_box_new` or `_clone` and still has a
 /// reference.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_box_retain(s: *mut LieroSettingsBox) -> *mut LieroSettingsBox { unsafe {
-    crate::shared::retain_shared(s)
-}}
+pub unsafe extern "C" fn liero_settings_box_retain(s: *mut LieroSettingsBox) -> *mut LieroSettingsBox {
+    unsafe { crate::shared::retain_shared(s) }
+}
 
 #[no_mangle]
 pub extern "C" fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSettingsBox {
@@ -1050,11 +1164,13 @@ pub extern "C" fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSe
 /// # Safety
 /// `s` has a reference, or is null, and this reference isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_settings_box_free(s: *mut LieroSettingsBox) { unsafe {
-    if !s.is_null() {
-        crate::shared::release_shared(s);
+pub unsafe extern "C" fn liero_settings_box_free(s: *mut LieroSettingsBox) {
+    unsafe {
+        if !s.is_null() {
+            crate::shared::release_shared(s);
+        }
     }
-}}
+}
 
 /// The plain fields, which stay where they are for the box's life.
 #[no_mangle]
@@ -1105,10 +1221,12 @@ pub extern "C" fn liero_worm_settings_box_clone(s: &LieroWormSettingsBox) -> *mu
 /// `s` comes from `liero_worm_settings_box_new` or `_clone` and hasn't been
 /// freed.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_box_retain(s: *mut LieroWormSettingsBox) -> *mut LieroWormSettingsBox { unsafe {
-    (*s).refs += 1;
-    s
-}}
+pub unsafe extern "C" fn liero_worm_settings_box_retain(s: *mut LieroWormSettingsBox) -> *mut LieroWormSettingsBox {
+    unsafe {
+        (*s).refs += 1;
+        s
+    }
+}
 
 /// Drops a reference to `s`, freeing it with the last one.
 ///
@@ -1116,14 +1234,16 @@ pub unsafe extern "C" fn liero_worm_settings_box_retain(s: *mut LieroWormSetting
 /// `s` comes from `liero_worm_settings_box_new`, `_clone` or `_retain`, or
 /// is null, and that reference isn't used again.
 #[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_box_free(s: *mut LieroWormSettingsBox) { unsafe {
-    if !s.is_null() {
-        (*s).refs -= 1;
-        if (*s).refs == 0 {
-            drop(Box::from_raw(s));
+pub unsafe extern "C" fn liero_worm_settings_box_free(s: *mut LieroWormSettingsBox) {
+    unsafe {
+        if !s.is_null() {
+            (*s).refs -= 1;
+            if (*s).refs == 0 {
+                drop(Box::from_raw(s));
+            }
         }
     }
-}}
+}
 
 /// A new node for the settings' profile, or null with none.
 #[no_mangle]
@@ -1244,7 +1364,11 @@ mod box_tests {
             let mut status = LieroSettingsStatus::Failed;
             assert!(liero_worm_settings_box_load_profile(w, Some(&*node), &mut status));
             assert!(matches!(status, LieroSettingsStatus::Ok));
-            assert_eq!((w.data.health, w.data.color, &w.name[..]), (50, 9, &b"WORMY"[..]), "the colour stays");
+            assert_eq!(
+                (w.data.health, w.data.color, &w.name[..]),
+                (50, 9, &b"WORMY"[..]),
+                "the colour stays"
+            );
             assert_eq!(w.profile_path(), Some(path_bytes.clone()));
 
             w.data.health = 2;

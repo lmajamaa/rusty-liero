@@ -74,7 +74,9 @@ impl Out<'_> {
 }
 
 /// The sections, in the order a full run prints them.
-pub const SECTIONS: [&str; 10] = ["tc", "games", "menus", "settings", "replays", "ai", "input", "app", "levels", "randomtc"];
+pub const SECTIONS: [&str; 10] = [
+    "tc", "games", "menus", "settings", "replays", "ai", "input", "app", "levels", "randomtc",
+];
 
 /// Runs section `name`, giving its lines to `out`, with the bot games
 /// `ticks` long at most and hashed every `interval`.
@@ -127,16 +129,27 @@ unsafe extern "C" fn set_fullscreen(_: bool) {}
 /// the folder starts with only the TC.
 pub fn hash_run(ticks: i32, interval: i32, only: &[String], out: &mut dyn FnMut(&str)) -> Result<(), String> {
     if let Some(bad) = only.iter().find(|n| !SECTIONS.contains(&n.as_str())) {
-        return Err(format!("no hash section {bad}; the sections are {}", SECTIONS.join(",")));
+        return Err(format!(
+            "no hash section {bad}; the sections are {}",
+            SECTIONS.join(",")
+        ));
     }
     let a = app();
     if a.menus.is_null() {
         // The window's hooks, without a window: double size starts on, as
         // in the game.
-        a.menus = liero_menus_new(LieroMenusHooks { menu_cycles, double_res, set_double_res, set_fullscreen });
+        a.menus = liero_menus_new(LieroMenusHooks {
+            menu_cycles,
+            double_res,
+            set_double_res,
+            set_fullscreen,
+        });
     }
     let mut out = Out(out);
-    for name in SECTIONS.iter().filter(|n| only.is_empty() || only.iter().any(|o| o == *n)) {
+    for name in SECTIONS
+        .iter()
+        .filter(|n| only.is_empty() || only.iter().any(|o| o == *n))
+    {
         out.line(&format!("hash-section {name}"));
         run_section(name, ticks, interval, &mut out);
     }
