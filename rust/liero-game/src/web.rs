@@ -18,18 +18,14 @@ use crate::app::app;
 use crate::app_screens::{liero_main_screen, LieroAppHooks};
 use crate::controllers::liero_controller_on_key;
 use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, LieroColor};
-use crate::keys::{
-    liero_joy_axis, liero_joy_axis_key, liero_joy_button, liero_joy_button_key, liero_keys_clear, liero_keys_event,
-    liero_keys_test_sdl, liero_keys_test_sdl_once, liero_sdl_to_dos_keysym, JoyButtons, LieroKeyChanges,
-};
+use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, LieroKeyChanges};
 use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks, LIERO_MENU_HIDDEN};
 use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items, LieroMenusHooks};
-use crate::rand::liero_rand_seed;
 use crate::screen::{
     liero_app_frame, liero_app_new, liero_app_push, liero_screen_set_host, LieroAppHost, LieroEvent, LieroScreen,
     LieroScreenHost, LieroTypedKey,
 };
-use crate::sfx::{liero_mixer_mix, liero_mixer_new, LieroMixer, LieroSoundOut};
+use crate::sfx::{LieroMixer, LieroSoundOut};
 use crate::tc::liero_tc_randomize;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -57,11 +53,23 @@ const AUDIO_FRAMES: u32 = 2048;
 #[derive(Clone, Copy)]
 enum Ev {
     /// `sym` is the key code the layout gives, for the menus' typing search.
-    Key { down: bool, scancode: i32, sym: i32 },
+    Key {
+        down: bool,
+        scancode: i32,
+        sym: i32,
+    },
     /// A character typed in a text box, in the DOS code page.
     Text(u8),
-    JoyAxis { joy: i32, axis: u8, value: i16 },
-    JoyButton { joy: i32, button: u8, down: bool },
+    JoyAxis {
+        joy: i32,
+        axis: u8,
+        value: i16,
+    },
+    JoyButton {
+        joy: i32,
+        button: u8,
+        down: bool,
+    },
 }
 
 /// A gamepad as last read, to make events of what changed.
@@ -122,13 +130,22 @@ fn scancode(code: &str) -> i32 {
         let c = rest.as_bytes();
         (c.len() == 1).then(|| base + c[0] as i32)
     };
-    if let Some(n) = code.strip_prefix("Key").and_then(|r| letter_or_digit(r, 4 - b'A' as i32)) {
+    if let Some(n) = code
+        .strip_prefix("Key")
+        .and_then(|r| letter_or_digit(r, 4 - b'A' as i32))
+    {
         return n;
     }
-    if let Some(d) = code.strip_prefix("Digit").and_then(|r| letter_or_digit(r, -(b'0' as i32))) {
+    if let Some(d) = code
+        .strip_prefix("Digit")
+        .and_then(|r| letter_or_digit(r, -(b'0' as i32)))
+    {
         return if d == 0 { 39 } else { 29 + d };
     }
-    if let Some(d) = code.strip_prefix("Numpad").and_then(|r| letter_or_digit(r, -(b'0' as i32))) {
+    if let Some(d) = code
+        .strip_prefix("Numpad")
+        .and_then(|r| letter_or_digit(r, -(b'0' as i32)))
+    {
         return if d == 0 { 98 } else { 88 + d };
     }
     if let Some(n) = code.strip_prefix('F').and_then(|r| r.parse::<i32>().ok()) {
@@ -239,7 +256,11 @@ fn on_key(e: &KeyboardEvent, down: bool) {
     let key = e.key();
     shell(|s| {
         if sc != 0 {
-            s.events.push_back(Ev::Key { down, scancode: sc, sym: key_code(&key, sc) });
+            s.events.push_back(Ev::Key {
+                down,
+                scancode: sc,
+                sym: key_code(&key, sc),
+            });
         }
         // SDL's text input: after the key, the character it typed.
         if down && s.text_input && !e.ctrl_key() {
@@ -256,7 +277,9 @@ fn on_key(e: &KeyboardEvent, down: bool) {
 /// Reads the gamepads into events, as SDL's joystick events: a button
 /// pressed or let go, or an axis moved, from -32767 to 32767.
 fn poll_gamepads() {
-    let Ok(pads) = window().navigator().get_gamepads() else { return };
+    let Ok(pads) = window().navigator().get_gamepads() else {
+        return;
+    };
     let mut events = Vec::new();
     shell(|s| {
         for i in 0..pads.length() {
@@ -268,10 +291,16 @@ fn poll_gamepads() {
                 s.pads[i as usize] = None;
                 continue;
             };
-            let buttons: Vec<bool> =
-                pad.buttons().iter().map(|b| b.dyn_into::<GamepadButton>().is_ok_and(|b| b.pressed())).collect();
-            let axes: Vec<i16> =
-                pad.axes().iter().map(|a| (a.as_f64().unwrap_or(0.0).clamp(-1.0, 1.0) * 32767.0) as i16).collect();
+            let buttons: Vec<bool> = pad
+                .buttons()
+                .iter()
+                .map(|b| b.dyn_into::<GamepadButton>().is_ok_and(|b| b.pressed()))
+                .collect();
+            let axes: Vec<i16> = pad
+                .axes()
+                .iter()
+                .map(|a| (a.as_f64().unwrap_or(0.0).clamp(-1.0, 1.0) * 32767.0) as i16)
+                .collect();
             let joy = i as i32;
             let last = s.pads[i as usize].get_or_insert_with(|| Pad {
                 buttons: vec![false; buttons.len()],
@@ -281,13 +310,21 @@ fn poll_gamepads() {
             for (b, (&now, was)) in buttons.iter().zip(last.buttons.iter_mut()).enumerate() {
                 if now != *was {
                     *was = now;
-                    events.push(Ev::JoyButton { joy, button: b as u8, down: now });
+                    events.push(Ev::JoyButton {
+                        joy,
+                        button: b as u8,
+                        down: now,
+                    });
                 }
             }
             for (a, (&now, was)) in axes.iter().zip(last.axes.iter_mut()).enumerate() {
                 if now != *was {
                     *was = now;
-                    events.push(Ev::JoyAxis { joy, axis: a as u8, value: now });
+                    events.push(Ev::JoyAxis {
+                        joy,
+                        axis: a as u8,
+                        value: now,
+                    });
                 }
             }
         }
@@ -315,8 +352,14 @@ fn send_keys(to_controller: bool, changes: LieroKeyChanges) {
 }
 
 /// The app's view of gamepad `joy`'s buttons.
-fn pad_state(joy: i32) -> *mut bool {
-    shell(|s| s.pads.get_mut(joy as usize).and_then(Option::as_mut).map_or(std::ptr::null_mut(), |p| p.state.as_mut_ptr()))
+/// `f` on pad `joy`'s button states as the app sees them, if it's there.
+fn on_pad(joy: i32, f: impl FnOnce(&mut JoyButtons) -> LieroKeyChanges) -> Option<LieroKeyChanges> {
+    shell(|s| {
+        s.pads
+            .get_mut(joy as usize)
+            .and_then(Option::as_mut)
+            .map(|p| f(&mut p.state))
+    })
 }
 
 fn process_event(ev: Ev, to_controller: bool) {
@@ -325,11 +368,14 @@ fn process_event(ev: Ev, to_controller: bool) {
             if down {
                 shell(|s| {
                     if s.key_buf.len() < 32 {
-                        s.key_buf.push(LieroTypedKey { sym, scancode: scancode as u32 });
+                        s.key_buf.push(LieroTypedKey {
+                            sym,
+                            scancode: scancode as u32,
+                        });
                     }
                 });
             }
-            let dos = liero_keys_event(&mut app().keys, scancode, down);
+            let dos = app().keys.event(scancode, down);
             send_key(to_controller, dos, down);
             if down && scancode == SC_F11 {
                 set_fullscreen(!crate::shell::liero_shell_fullscreen(app()), true);
@@ -337,17 +383,13 @@ fn process_event(ev: Ev, to_controller: bool) {
         }
         Ev::Text(_) => {}
         Ev::JoyAxis { joy, axis, value } => {
-            let state = pad_state(joy);
-            if !state.is_null() {
-                // SAFETY: the pad's button states, which outlive the call.
-                send_keys(to_controller, unsafe { liero_joy_axis(state, joy, axis, value) });
+            if let Some(changes) = on_pad(joy, |b| joy_axis(b, joy, axis, value)) {
+                send_keys(to_controller, changes);
             }
         }
         Ev::JoyButton { joy, button, down } => {
-            let state = pad_state(joy);
-            if !state.is_null() {
-                // SAFETY: as above.
-                send_keys(to_controller, unsafe { liero_joy_button(state, joy, button, down) });
+            if let Some(changes) = on_pad(joy, |b| joy_button(b, joy, button, down)) {
+                send_keys(to_controller, changes);
             }
         }
     }
@@ -439,17 +481,17 @@ fn set_double_res(on: bool, update_menu: bool) {
 fn show_frame() {
     let a = app();
     let r = if a.primary_single { &mut *a.single } else { &mut *a.play };
-    // SAFETY: the renderer's bitmap, which outlives the frame.
-    let bmp = unsafe { &*crate::renderer::liero_bitmap_box_view(&mut r.bmp) };
+    let bmp = r.bmp.view();
     let d = &r.data;
     let mut real = [LieroColor::default(); 256];
-    // SAFETY: both have 256 colours.
-    unsafe { liero_palette_activate(d.pal.as_ptr(), real.as_mut_ptr()) };
+    liero_palette_activate(&d.pal, &mut real);
     // RGBA in memory, as ImageData has it.
     let pal32: [u32; 256] = std::array::from_fn(|i| u32::from_le_bytes([real[i].r, real[i].g, real[i].b, 255]));
     let (res_x, res_y) = (d.render_res_x, d.render_res_y);
     shell(|s| {
-        let (Some(canvas), Some(ctx)) = (&s.canvas, &s.ctx) else { return };
+        let (Some(canvas), Some(ctx)) = (&s.canvas, &s.ctx) else {
+            return;
+        };
         let (w, h) = (canvas.width() as i32, canvas.height() as i32);
         let (mut ox, mut oy) = (0, 0);
         let mag = liero_gfx_fit_screen(w, h, res_x, res_y, &mut ox, &mut oy);
@@ -460,12 +502,10 @@ fn show_frame() {
         s.prev_mag = mag;
         let pitch = w as usize * 4;
         if mag > 0 {
-            // SAFETY: the frame is `res_x` x `res_y` of the bitmap, which fits
-            // the canvas `mag` times from the offset (`liero_gfx_fit_screen`).
-            unsafe {
-                let dest = s.rgba.as_mut_ptr().add(oy as usize * pitch + ox as usize * 4);
-                liero_gfx_scale_draw(bmp.pixels, res_x, res_y, bmp.pitch as usize, dest, pitch, mag, pal32.as_ptr());
-            }
+            // The frame is `res_x` x `res_y` of the bitmap, which fits the
+            // canvas `mag` times from the offset (`liero_gfx_fit_screen`).
+            let dest = &mut s.rgba[oy as usize * pitch + ox as usize * 4..];
+            liero_gfx_scale_draw(bmp.pixels, res_x, res_y, bmp.pitch as usize, dest, pitch, mag, &pal32);
         }
         if let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&s.rgba), w as u32, h as u32) {
             let _ = ctx.put_image_data(&img, 0.0, 0.0);
@@ -475,148 +515,164 @@ fn show_frame() {
 
 // ---- What the screens call (LieroScreenHost)
 
-unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool {
-    let Some(ev) = next_event() else { return false };
-    process_event(ev, false);
-    let mut e = LieroEvent::default();
-    match ev {
-        Ev::Key { down, scancode, .. } => {
-            e.key_down = down;
-            if down {
-                e.scancode = scancode as u32;
-                e.choice = true;
-                e.key = liero_sdl_to_dos_keysym(scancode);
+unsafe fn host_poll_event(out: *mut LieroEvent) -> bool {
+    unsafe {
+        let Some(ev) = next_event() else { return false };
+        process_event(ev, false);
+        let mut e = LieroEvent::default();
+        match ev {
+            Ev::Key { down, scancode, .. } => {
+                e.key_down = down;
+                if down {
+                    e.scancode = scancode as u32;
+                    e.choice = true;
+                    e.key = sdl_to_dos_keysym(scancode);
+                }
+            }
+            Ev::Text(c) => e.text = c,
+            Ev::JoyAxis { joy, axis, value } => {
+                e.key = joy_axis_key(joy, axis, value);
+                e.choice = e.key != 0;
+            }
+            Ev::JoyButton { joy, button, down } => {
+                if down {
+                    e.key = joy_button_key(joy, button);
+                    e.choice = true;
+                }
             }
         }
-        Ev::Text(c) => e.text = c,
-        Ev::JoyAxis { joy, axis, value } => {
-            e.key = liero_joy_axis_key(joy, axis, value);
-            e.choice = e.key != 0;
-        }
-        Ev::JoyButton { joy, button, down } => {
-            if down {
-                e.key = liero_joy_button_key(joy, button);
-                e.choice = true;
-            }
-        }
+        *out = e;
+        true
     }
-    *out = e;
-    true
 }
 
-unsafe extern "C" fn host_process() {
+unsafe fn host_process() {
     process(false);
 }
 
-unsafe extern "C" fn host_clear_keys() {
-    liero_keys_clear(&mut app().keys);
+unsafe fn host_clear_keys() {
+    app().keys.clear();
 }
 
 fn mixer() -> *mut LieroMixer {
     shell(|s| s.mixer).unwrap_or(std::ptr::null_mut())
 }
 
-unsafe extern "C" fn host_play_sound(id: i32) {
-    crate::shell::liero_shell_play_sound(app(), mixer(), id);
+unsafe fn host_play_sound(id: i32) {
+    unsafe {
+        crate::shell::liero_shell_play_sound(app(), mixer(), id);
+    }
 }
 
-unsafe extern "C" fn host_text_input(on: bool) {
+unsafe fn host_text_input(on: bool) {
     shell(|s| s.text_input = on);
 }
 
-unsafe extern "C" fn host_test_key_once(scancode: u32) -> bool {
-    liero_keys_test_sdl_once(&mut app().keys, scancode as i32)
+unsafe fn host_test_key_once(scancode: u32) -> bool {
+    app().keys.test_sdl_once(scancode as i32)
 }
 
-unsafe extern "C" fn host_test_key(scancode: u32) -> bool {
-    liero_keys_test_sdl(&app().keys, scancode as i32)
+unsafe fn host_test_key(scancode: u32) -> bool {
+    app().keys.test_sdl(scancode as i32)
 }
 
-unsafe extern "C" fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
-    shell(|s| {
-        let n = s.key_buf.len().min(cap);
-        std::ptr::copy_nonoverlapping(s.key_buf.as_ptr(), out, n);
-        n
-    })
+unsafe fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
+    unsafe {
+        shell(|s| {
+            let n = s.key_buf.len().min(cap);
+            std::ptr::copy_nonoverlapping(s.key_buf.as_ptr(), out, n);
+            n
+        })
+    }
 }
 
-unsafe extern "C" fn host_ticks() -> u32 {
+unsafe fn host_ticks() -> u32 {
     (now_ms() - shell(|s| s.start_ms)) as u32
 }
 
-unsafe extern "C" fn host_hires_ticks() -> u64 {
+unsafe fn host_hires_ticks() -> u64 {
     (now_ms() * 1_000_000.0) as u64
 }
 
-unsafe extern "C" fn host_time() -> i64 {
+unsafe fn host_time() -> i64 {
     (js_sys::Date::now() / 1000.0) as i64
 }
 
 /// `t` as "%Y-%m-%d %H.%M.%S" in local time, as `strftime` wrote it.
-unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
-    let d = js_sys::Date::new(&JsValue::from_f64(t as f64 * 1000.0));
-    let s = format!(
-        "{:04}-{:02}-{:02} {:02}.{:02}.{:02}",
-        d.get_full_year(),
-        d.get_month() + 1,
-        d.get_date(),
-        d.get_hours(),
-        d.get_minutes(),
-        d.get_seconds()
-    );
-    // strftime writes nothing if the text and its 0 don't fit.
-    if s.len() >= cap {
-        return 0;
+unsafe fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
+    unsafe {
+        let d = js_sys::Date::new(&JsValue::from_f64(t as f64 * 1000.0));
+        let s = format!(
+            "{:04}-{:02}-{:02} {:02}.{:02}.{:02}",
+            d.get_full_year(),
+            d.get_month() + 1,
+            d.get_date(),
+            d.get_hours(),
+            d.get_minutes(),
+            d.get_seconds()
+        );
+        // strftime writes nothing if the text and its 0 don't fit.
+        if s.len() >= cap {
+            return 0;
+        }
+        std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len());
+        *out.add(s.len()) = 0;
+        s.len()
     }
-    std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len());
-    *out.add(s.len()) = 0;
-    s.len()
 }
 
-unsafe extern "C" fn host_sound() -> LieroSoundOut {
-    LieroSoundOut { mixer: mixer(), report: None }
+unsafe fn host_sound() -> LieroSoundOut {
+    LieroSoundOut {
+        mixer: mixer(),
+        report: None,
+    }
 }
 
-unsafe extern "C" fn host_show(_: *mut c_void) {
+unsafe fn host_show(_: *mut c_void) {
     show_frame();
 }
 
 /// The next step comes with a later animation frame, by which time the
 /// event may have come.
-unsafe extern "C" fn host_idle(_: *mut c_void) {}
+unsafe fn host_idle(_: *mut c_void) {}
 
 // ---- The menus' and app's hooks
 
-unsafe extern "C" fn menus_menu_cycles() -> u32 {
+unsafe fn menus_menu_cycles() -> u32 {
     app().menu_cycles
 }
 
-unsafe extern "C" fn menus_double_res() -> *mut bool {
+unsafe fn menus_double_res() -> *mut bool {
     DOUBLE_RES.with(Cell::as_ptr)
 }
 
 // The options menu shows the change itself.
-unsafe extern "C" fn menus_set_double_res(on: bool) {
+unsafe fn menus_set_double_res(on: bool) {
     set_double_res(on, false);
 }
 
-unsafe extern "C" fn menus_set_fullscreen(on: bool) {
+unsafe fn menus_set_fullscreen(on: bool) {
     set_fullscreen(on, false);
 }
 
-unsafe extern "C" fn app_process() {
+unsafe fn app_process() {
     process(true);
 }
 
 /// F8 on the menu: the developers' random TC.
-unsafe extern "C" fn randomize_tc() {
-    if app().tc.is_some() {
-        liero_tc_randomize(&mut *app().menu_tc(), (js_sys::Math::random() * 4_294_967_296.0) as u32);
+unsafe fn randomize_tc() {
+    unsafe {
+        if app().tc.is_some() {
+            liero_tc_randomize(&mut *app().menu_tc(), (js_sys::Math::random() * 4_294_967_296.0) as u32);
+        }
     }
 }
 
-unsafe extern "C" fn menu_screen() -> LieroScreen {
-    liero_menu_screen(LieroMenuScreenHooks { menus: app().menus, randomize_tc })
+unsafe fn menu_screen() -> LieroScreen {
+    liero_menu_screen(LieroMenuScreenHooks {
+        menus: app().menus,
+        randomize_tc,
+    })
 }
 
 // ---- Sound
@@ -644,7 +700,7 @@ fn start_audio(mixer: *mut LieroMixer) -> Option<AudioContext> {
         floats.resize(n, 0.0);
         // SAFETY: the mixer lives as long as the page, and nothing else
         // uses it during this call.
-        unsafe { liero_mixer_mix(&mut *mixer, samples.as_mut_ptr(), n) };
+        unsafe { (*mixer).mix(&mut samples) };
         for (f, &s) in floats.iter_mut().zip(&samples) {
             *f = f32::from(s) / 32768.0;
         }
@@ -660,10 +716,14 @@ fn start_audio(mixer: *mut LieroMixer) -> Option<AudioContext> {
 
 /// Gives the page every save that changed since the last call.
 fn persist_changes() {
-    let Some(persist) = shell(|s| s.persist.clone()) else { return };
+    let Some(persist) = shell(|s| s.persist.clone()) else {
+        return;
+    };
     for (path, data) in crate::disk::take_changes() {
         // Only the config folder's files are saves; the TC is bundled.
-        let Some(rest) = path.strip_prefix(b"liero/") else { continue };
+        let Some(rest) = path.strip_prefix(b"liero/") else {
+            continue;
+        };
         let path = JsValue::from_str(&format!("/liero/{}", js_path(rest)));
         let data = data.map_or(JsValue::NULL, |d| js_sys::Uint8Array::from(d.as_slice()).into());
         if let Err(e) = persist.call2(&JsValue::NULL, &path, &data) {
@@ -790,7 +850,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
 
     let a = app();
     // TODO from the C++: better seeding.
-    liero_rand_seed(&mut a.rand, (js_sys::Date::now() / 1000.0) as u32);
+    a.rand.seed((js_sys::Date::now() / 1000.0) as u32);
     let menus = liero_menus_new(LieroMenusHooks {
         menu_cycles: menus_menu_cycles,
         double_res: menus_double_res,
@@ -814,7 +874,8 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
         show_fullscreen(true);
     }
 
-    let mixer = liero_mixer_new();
+    // Kept for the page's life.
+    let mixer: *mut LieroMixer = Box::into_raw(Box::default());
     match start_audio(mixer) {
         Some(audio) => shell(|s| {
             s.mixer = Some(mixer);
@@ -855,7 +916,13 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     });
     let stack = liero_app_new();
     // SAFETY: just made.
-    liero_app_push(unsafe { &mut *stack }, liero_main_screen(LieroAppHooks { process: app_process, menu_screen }));
+    liero_app_push(
+        unsafe { &mut *stack },
+        liero_main_screen(LieroAppHooks {
+            process: app_process,
+            menu_screen,
+        }),
+    );
     run_frames(stack);
     Ok(())
 }
@@ -867,7 +934,11 @@ type FrameFn = Closure<dyn FnMut()>;
 /// with the 14 ms steps due, until they close; then saves the settings, as
 /// the game does when it ends.
 fn run_frames(stack: *mut crate::screen::LieroApp) {
-    let host = LieroAppHost { data: std::ptr::null_mut(), show: Some(host_show), idle: Some(host_idle) };
+    let host = LieroAppHost {
+        data: std::ptr::null_mut(),
+        show: Some(host_show),
+        idle: Some(host_idle),
+    };
     let next: Rc<RefCell<Option<FrameFn>>> = Rc::new(RefCell::new(None));
     let again = next.clone();
     *next.borrow_mut() = Some(Closure::new(move || {
@@ -884,10 +955,8 @@ fn run_frames(stack: *mut crate::screen::LieroApp) {
         }
         // SAFETY: closed; nothing uses it after this.
         unsafe { crate::screen::liero_app_free(stack) };
-        if !crate::shell::liero_shell_save_settings(app()) {
-            // SAFETY: the message is valid until the next call.
-            let msg = unsafe { crate::shell::liero_shell_error().bytes().to_vec() };
-            web_sys::console::error_1(&String::from_utf8_lossy(&msg).as_ref().into());
+        if let Err(e) = app().save_settings_at_end() {
+            web_sys::console::error_1(&e.into());
         }
         persist_changes();
         if let Some(audio) = shell(|s| s.audio.take()) {

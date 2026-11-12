@@ -9,7 +9,11 @@ fn sample() -> Vec<u8> {
     (0..200_000)
         .map(|i| {
             x = x.wrapping_mul(1_103_515_245).wrapping_add(12345);
-            if i % 7 == 0 { (x >> 24) as u8 } else { (i / 100) as u8 }
+            if i % 7 == 0 {
+                (x >> 24) as u8
+            } else {
+                (i / 100) as u8
+            }
         })
         .collect()
 }
@@ -61,18 +65,42 @@ fn a_cut_stream_gives_the_whole_pieces_then_fails() {
 
 #[test]
 fn what_isnt_zlib_fails_at_once() {
-    assert_eq!(inflate(b"This is not a replay."), Inflated { data: Vec::new(), error: true });
-    assert_eq!(inflate(b""), Inflated { data: Vec::new(), error: true });
+    assert_eq!(
+        inflate(b"This is not a replay."),
+        Inflated {
+            data: Vec::new(),
+            error: true
+        }
+    );
+    assert_eq!(
+        inflate(b""),
+        Inflated {
+            data: Vec::new(),
+            error: true
+        }
+    );
     // zlib.compress(b"hi") from Python.
     let hi = [0x78, 0x9c, 0xcb, 0xc8, 0x04, 0x00, 0x01, 0x3b, 0x00, 0xd2];
-    assert_eq!(inflate(&hi), Inflated { data: b"hi".to_vec(), error: false });
+    assert_eq!(
+        inflate(&hi),
+        Inflated {
+            data: b"hi".to_vec(),
+            error: false
+        }
+    );
 }
 
 #[test]
 fn nothing_written_leaves_an_empty_file() {
     let z = compressed("empty", b"", 1);
     assert!(z.is_empty());
-    assert_eq!(inflate(&z), Inflated { data: Vec::new(), error: true });
+    assert_eq!(
+        inflate(&z),
+        Inflated {
+            data: Vec::new(),
+            error: true
+        }
+    );
 }
 
 /// 300 KB that don't compress, so each call has more than a piece to give.

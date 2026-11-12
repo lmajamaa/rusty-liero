@@ -36,7 +36,13 @@ fn make_folder(root: &Path) -> std::io::Result<()> {
 /// Puts `TC/openliero` from the disk into the tree, at the same path.
 fn load_tree(from: &Path, to: &str) -> std::io::Result<()> {
     use liero_game::disk;
-    let made = |ok: bool| if ok { Ok(()) } else { Err(std::io::Error::other(format!("can't make {to} in the tree"))) };
+    let made = |ok: bool| {
+        if ok {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(format!("can't make {to} in the tree")))
+        }
+    };
     made(disk::create_dir(to.as_bytes()))?;
     for e in std::fs::read_dir(from)? {
         let e = e?;
@@ -55,7 +61,11 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let tree = args.iter().any(|a| a == "--tree");
     args.retain(|a| a != "--tree");
-    let number = |i: usize, default: i32| args.get(i).map_or(Ok(default), |a| a.parse::<i32>().map_err(|_| format!("not a number: {a}")));
+    let number = |i: usize, default: i32| {
+        args.get(i).map_or(Ok(default), |a| {
+            a.parse::<i32>().map_err(|_| format!("not a number: {a}"))
+        })
+    };
     let (ticks, interval) = match (number(0, 30000), number(1, 100)) {
         (Ok(t), Ok(i)) => (t, i),
         (Err(e), _) | (_, Err(e)) => {
@@ -63,7 +73,10 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let only: Vec<String> = args.get(2).map(|s| s.split(',').filter(|n| !n.is_empty()).map(str::to_owned).collect()).unwrap_or_default();
+    let only: Vec<String> = args
+        .get(2)
+        .map(|s| s.split(',').filter(|n| !n.is_empty()).map(str::to_owned).collect())
+        .unwrap_or_default();
 
     // The run's own folder, as `/` is in the browser: a tree, or a
     // temporary folder on disk.

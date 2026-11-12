@@ -4,10 +4,16 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 fn tc_files(dir: &Path, rel: &str, out: &mut Vec<(String, PathBuf)>) {
-    let mut entries: Vec<_> = std::fs::read_dir(dir).expect("can't list TC/openliero").flatten().collect();
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .expect("can't list TC/openliero")
+        .flatten()
+        .collect();
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
-        let name = format!("{rel}/{}", e.file_name().to_str().expect("a TC file name that isn't UTF-8"));
+        let name = format!(
+            "{rel}/{}",
+            e.file_name().to_str().expect("a TC file name that isn't UTF-8")
+        );
         if e.file_type().expect("can't read a TC entry").is_dir() {
             tc_files(&e.path(), &name, out);
         } else {
@@ -24,10 +30,17 @@ fn main() {
         println!("cargo:rerun-if-changed={}", tc.display());
         let mut files = Vec::new();
         tc_files(&tc, "TC/openliero", &mut files);
-        let mut src = String::from("/// The bundled TC's files, by path from the game's root.\npub const TC_FILES: &[(&str, &[u8])] = &[\n");
+        let mut src = String::from(
+            "/// The bundled TC's files, by path from the game's root.\npub const TC_FILES: &[(&str, &[u8])] = &[\n",
+        );
         for (name, path) in &files {
             println!("cargo:rerun-if-changed={}", path.display());
-            writeln!(src, "    ({name:?}, include_bytes!({:?})),", path.canonicalize().expect("a TC file").display()).unwrap();
+            writeln!(
+                src,
+                "    ({name:?}, include_bytes!({:?})),",
+                path.canonicalize().expect("a TC file").display()
+            )
+            .unwrap();
         }
         src.push_str("];\n");
         let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("tc_files.rs");

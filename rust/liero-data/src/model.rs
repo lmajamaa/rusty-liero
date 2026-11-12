@@ -174,6 +174,12 @@ pub struct Common {
 /// Lowercases ASCII letters and digits and turns everything else into `_`.
 pub fn to_id(name: &[u8]) -> String {
     name.iter()
-        .map(|&c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() as char } else { '_' })
+        .map(|&c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase() as char
+            } else {
+                '_'
+            }
+        })
         .collect()
 }

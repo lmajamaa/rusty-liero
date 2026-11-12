@@ -11,7 +11,12 @@ pub struct Writer {
 
 impl Writer {
     pub fn new() -> Self {
-        Writer { out: Vec::new(), indent: 0, chain: Vec::new(), in_object: false }
+        Writer {
+            out: Vec::new(),
+            indent: 0,
+            chain: Vec::new(),
+            in_object: false,
+        }
     }
 
     pub fn finish(self) -> Vec<u8> {

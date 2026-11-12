@@ -237,7 +237,12 @@ fn partition_with_equals_on_right<T: Copy>(
 /// Partitions around the pivot `v[first]` with equal elements on the left,
 /// for a range whose left neighbour equals the pivot. Returns the start of
 /// the elements greater than the pivot.
-fn partition_with_equals_on_left<T: Copy>(v: &mut [T], mut first: usize, mut last: usize, c: &impl Fn(&T, &T) -> bool) -> usize {
+fn partition_with_equals_on_left<T: Copy>(
+    v: &mut [T],
+    mut first: usize,
+    mut last: usize,
+    c: &impl Fn(&T, &T) -> bool,
+) -> usize {
     let begin = first;
     let pivot = v[first];
     if c(&pivot, &v[last - 1]) {
@@ -498,7 +503,10 @@ mod tests {
                         5 => 0,
                         _ => r.below(keys),
                     };
-                    Item { key: key as i32, id: i as i32 }
+                    Item {
+                        key: key as i32,
+                        id: i as i32,
+                    }
                 })
                 .collect();
             if pattern == 4 && n > 1 {
@@ -533,7 +541,10 @@ mod tests {
 
     #[test]
     fn heap_sorts_like_libcxx() {
-        assert_eq!(order_hash(4243, |v, c| heap_sort(v, &|a, b| c(a, b))), EXPECTED_HEAP_SORT);
+        assert_eq!(
+            order_hash(4243, |v, c| heap_sort(v, &|a, b| c(a, b))),
+            EXPECTED_HEAP_SORT
+        );
     }
 
     #[test]

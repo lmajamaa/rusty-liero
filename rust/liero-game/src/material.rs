@@ -13,6 +13,7 @@ pub const LIERO_MATERIAL_WORM: u8 = 1 << 5;
 /// Material flags of one palette index or level pixel. C++'s `Material`
 /// inherits from this struct and keeps its tests inline, because the
 /// renderer and AI call them for every pixel.
+// `repr(C)`: the TC's material bytes are read as these.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroMaterial {

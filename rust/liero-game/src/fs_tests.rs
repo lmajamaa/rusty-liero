@@ -72,7 +72,10 @@ fn zip(files: &[(&str, &[u8], bool)], bad_crc: bool) -> Vec<u8> {
 }
 
 fn names(n: &Node) -> Vec<(String, bool)> {
-    n.list().into_iter().map(|e| (String::from_utf8(e.name).unwrap(), e.is_dir)).collect()
+    n.list()
+        .into_iter()
+        .map(|e| (String::from_utf8(e.name).unwrap(), e.is_dir))
+        .collect()
 }
 
 #[test]
@@ -99,7 +102,11 @@ fn a_zip_reads_as_a_folder_joined_with_one_of_its_name() {
             &[
                 ("both.txt", b"from the zip", false),
                 ("sounds/", b"", false),
-                ("sounds/a.wav", b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true),
+                (
+                    "sounds/a.wav",
+                    b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    true,
+                ),
                 ("zipped.txt", b"zip", true),
             ],
             false,
@@ -111,7 +118,14 @@ fn a_zip_reads_as_a_folder_joined_with_one_of_its_name() {
 
     let tc = Node::new(format!("{dir}/TC").as_bytes());
     // Other.zip lists as a folder, without its extension; Mod is listed once.
-    assert_eq!(names(&tc), [("Mod".into(), true), ("Other".into(), true), ("notes.txt".into(), false)]);
+    assert_eq!(
+        names(&tc),
+        [
+            ("Mod".into(), true),
+            ("Other".into(), true),
+            ("notes.txt".into(), false)
+        ]
+    );
 
     let m = tc.go(b"Mod");
     assert_eq!(m.full_path(), format!("./{dir}/TC/Mod").as_bytes());
@@ -172,9 +186,18 @@ fn writing_makes_the_folders() {
 #[test]
 fn a_listing_keeps_the_first_of_a_name() {
     let v = vec![
-        Entry { name: b"b".to_vec(), is_dir: false },
-        Entry { name: b"a".to_vec(), is_dir: true },
-        Entry { name: b"a".to_vec(), is_dir: false },
+        Entry {
+            name: b"b".to_vec(),
+            is_dir: false,
+        },
+        Entry {
+            name: b"a".to_vec(),
+            is_dir: true,
+        },
+        Entry {
+            name: b"a".to_vec(),
+            is_dir: false,
+        },
     ];
     let s = sort_listing(v);
     assert_eq!(s.len(), 2);

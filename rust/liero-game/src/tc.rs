@@ -5,16 +5,15 @@
 //! result into `Common` from the `LieroTcData` views here, which point into
 //! the `LieroTc` until it's freed.
 
-use crate::level::{LieroTexture, LIERO_TEXTURE_COUNT};
+use crate::fs::Node;
 use crate::gfx::LieroColor;
+use crate::level::{LieroTexture, LIERO_TEXTURE_COUNT};
 use crate::rand::LieroRand;
 use crate::sfx::samples_from_tc;
 use crate::text::LieroStr;
 use liero_data::model::{self, Common};
 use liero_data::Error;
-use crate::fs::{LieroFsNode, Node};
 
-#[repr(C)]
 pub struct LieroTcWeapon {
     /// Its index in the TC's weapons.
     pub id: i32,
@@ -71,7 +70,6 @@ pub struct LieroTcWeapon {
     pub chain_explosion: bool,
 }
 
-#[repr(C)]
 pub struct LieroTcNObject {
     pub id: i32,
     pub id_str: LieroStr,
@@ -105,7 +103,6 @@ pub struct LieroTcNObject {
     pub time_to_explo_v: i32,
 }
 
-#[repr(C)]
 pub struct LieroTcSObject {
     pub id: i32,
     pub id_str: LieroStr,
@@ -123,7 +120,6 @@ pub struct LieroTcSObject {
     pub dirt_effect: i32,
 }
 
-#[repr(C)]
 pub struct LieroTcSound {
     pub name: LieroStr,
     /// Signed 8-bit samples.
@@ -137,26 +133,21 @@ pub struct LieroTcSound {
     pub sample_count: usize,
 }
 
-#[repr(C)]
+/// A TC's sprites: `count` of `width` x `height` pixels, one after the
+/// other. Only this module makes them, pointing into storage the TC owns,
+/// and they live in the TC's `LieroTcData`, so a borrow of one is a borrow
+/// of the TC.
 pub struct LieroTcSprites {
-    pub data: *const u8,
+    data: *const u8,
     pub width: i32,
     pub height: i32,
     pub count: i32,
-}
-
-#[repr(C)]
-pub struct LieroTcFontChar {
-    /// 7x8 pixels, row-major: 8 where set.
-    pub data: [u8; 56],
-    pub width: i32,
 }
 
 /// Characters in the font (`Font::chars`).
 pub const LIERO_TC_FONT_CHARS: usize = 250;
 
 /// Everything `Common` gets from a TC.
-#[repr(C)]
 pub struct LieroTcData {
     pub weapons: *const LieroTcWeapon,
     pub weapon_count: usize,
@@ -179,7 +170,7 @@ pub struct LieroTcData {
     pub palette_colors: [LieroColor; 256],
     /// (from, to) for each of 4 colour animations.
     pub color_anim: [i32; 8],
-    pub materials: [u8; 256],
+    pub materials: [crate::material::LieroMaterial; 256],
     pub textures: [LieroTexture; LIERO_TEXTURE_COUNT],
     /// [bonus * 2 + (0 = timer, 1 = timerV)].
     pub bonus_rand_timer: [i32; 4],
@@ -190,7 +181,7 @@ pub struct LieroTcData {
     pub small_sprites: LieroTcSprites,
     pub large_sprites: LieroTcSprites,
     pub text_sprites: LieroTcSprites,
-    pub font: [LieroTcFontChar; LIERO_TC_FONT_CHARS],
+    pub font: [crate::gfx::LieroFontChar; LIERO_TC_FONT_CHARS],
     /// Precomputed: weapon indexes sorted by name, and the worm and fire cone
     /// sprites facing both ways (`Common::precompute`).
     pub weap_order: *const i32,
@@ -217,11 +208,39 @@ pub struct LieroTc {
 }
 
 fn str(s: &[u8]) -> LieroStr {
-    LieroStr { ptr: s.as_ptr(), len: s.len() }
+    LieroStr {
+        ptr: s.as_ptr(),
+        len: s.len(),
+    }
+}
+
+impl LieroTcSprites {
+    /// Every sprite's pixels.
+    pub fn pixels(&self) -> &[u8] {
+        let len = (self.width.max(0) * self.height.max(0) * self.count.max(0)) as usize;
+        if len == 0 {
+            return &[];
+        }
+        // SAFETY: `data` points to the sprites, which the TC owns and keeps
+        // for as long as its data, which `self` is borrowed from.
+        unsafe { std::slice::from_raw_parts(self.data, len) }
+    }
+
+    /// Sprite `frame`'s pixels. Panics on a frame there isn't.
+    pub fn frame(&self, frame: i32) -> &[u8] {
+        assert!(0 <= frame && frame < self.count, "no sprite {frame}");
+        let size = (self.width * self.height) as usize;
+        &self.pixels()[frame as usize * size..][..size]
+    }
 }
 
 fn sprites(s: &model::SpriteSet) -> LieroTcSprites {
-    LieroTcSprites { data: s.data.as_ptr(), width: s.width as i32, height: s.height as i32, count: s.count as i32 }
+    LieroTcSprites {
+        data: s.data.as_ptr(),
+        width: s.width as i32,
+        height: s.height as i32,
+        count: s.count as i32,
+    }
 }
 
 /// Weapon indexes sorted by name, as bytes. (The C++ used `std::sort`, which
@@ -477,8 +496,14 @@ impl LieroTc {
             r_frame: t.r_frame,
         });
         let font = std::array::from_fn(|i| match c.font.get(i) {
-            Some(ch) => LieroTcFontChar { data: ch.data, width: ch.width as i32 },
-            None => LieroTcFontChar { data: [0; 56], width: 0 },
+            Some(ch) => crate::gfx::LieroFontChar {
+                data: ch.data,
+                width: ch.width as i32,
+            },
+            None => crate::gfx::LieroFontChar {
+                data: [0; 56],
+                width: 0,
+            },
         });
 
         let data = LieroTcData {
@@ -504,7 +529,7 @@ impl LieroTc {
                 unused: 0,
             }),
             color_anim,
-            materials: c.materials,
+            materials: c.materials.map(|flags| crate::material::LieroMaterial { flags }),
             textures,
             bonus_rand_timer: [
                 c.bonus_rand_timer[0][0],
@@ -520,8 +545,18 @@ impl LieroTc {
             text_sprites: sprites(&c.text_sprites),
             font,
             weap_order: tc.weap_order.as_ptr(),
-            worm_sprites: LieroTcSprites { data: tc.worm_sprites.as_ptr(), width: 16, height: 16, count: 2 * 2 * 21 },
-            fire_cone_sprites: LieroTcSprites { data: tc.fire_cone_sprites.as_ptr(), width: 16, height: 16, count: 2 * 7 },
+            worm_sprites: LieroTcSprites {
+                data: tc.worm_sprites.as_ptr(),
+                width: 16,
+                height: 16,
+                count: 2 * 2 * 21,
+            },
+            fire_cone_sprites: LieroTcSprites {
+                data: tc.fire_cone_sprites.as_ptr(),
+                width: 16,
+                height: 16,
+                count: 2 * 7,
+            },
         };
         tc.data = Some(Box::new(data));
         // The views point into `common`'s heap data, which moving it keeps.
@@ -532,12 +567,11 @@ impl LieroTc {
 
 impl LieroTcData {
     /// What levels are made with (`Common::levelCommon`).
-    pub(crate) fn level_common(&self) -> crate::level::LieroLevelCommon {
-        crate::level::LieroLevelCommon {
-            materials: self.materials.as_ptr().cast(),
-            textures: self.textures.as_ptr(),
-            large_sprites: self.large_sprites.data,
-            large_sprite_count: self.large_sprites.count,
+    pub(crate) fn level_common(&self) -> crate::level::Common<'_> {
+        crate::level::Common {
+            materials: &self.materials,
+            textures: &self.textures,
+            large_sprites: self.large_sprites.pixels(),
         }
     }
 }
@@ -639,7 +673,11 @@ impl LieroTc {
             n.speed = r(150);
             n.splinter_amount = if idx > 0 && r(5) == 0 { r(10) } else { 0 };
             n.splinter_colour = r(256);
-            n.splinter_type = if idx > 0 { order[r(idx as u32) as usize] as i32 } else { 0 };
+            n.splinter_type = if idx > 0 {
+                order[r(idx as u32) as usize] as i32
+            } else {
+                0
+            };
             n.time_to_explo = 50 + r(70 * 3);
             n.time_to_explo_v = r(30);
             n.worm_destroy = r(3) == 0;
@@ -668,8 +706,7 @@ impl LieroTc {
 ///
 /// # Safety
 /// `tc` must come from `liero_tc_load`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_randomize(tc: &mut LieroTc, shuffle_seed: u32) {
+pub unsafe fn liero_tc_randomize(tc: &mut LieroTc, shuffle_seed: u32) {
     tc.randomize(shuffle_seed);
 }
 
@@ -677,7 +714,10 @@ pub unsafe extern "C" fn liero_tc_randomize(tc: &mut LieroTc, shuffle_seed: u32)
 /// folders).
 fn load(node: &Node) -> LieroTc {
     let mut read = |path: &str| {
-        let file = path.as_bytes().split(|&c| c == b'/').fold(node.clone(), |n, part| n.go(part));
+        let file = path
+            .as_bytes()
+            .split(|&c| c == b'/')
+            .fold(node.clone(), |n, part| n.go(part));
         file.read().ok_or_else(|| Error(format!("Could not read {path}")))
     };
     match liero_data::load::load(&mut read).and_then(LieroTc::new) {
@@ -687,27 +727,16 @@ fn load(node: &Node) -> LieroTc {
 }
 
 /// Loads the TC in `node` (`Common::load`). Always returns a TC to free with
-/// `liero_tc_free`; `liero_tc_error` says whether loading failed.
-#[no_mangle]
-pub extern "C" fn liero_tc_load(node: &LieroFsNode) -> *mut LieroTc {
-    crate::shared::new_shared(load(&node.0))
-}
-
-/// Why loading failed, or an empty string.
-///
-/// # Safety
-/// `tc` must come from `liero_tc_load`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_error(tc: &LieroTc) -> LieroStr {
-    str(tc.error.as_bytes())
+/// `liero_tc_free`; its `error` says whether loading failed.
+pub fn liero_tc_load(node: &Node) -> *mut LieroTc {
+    crate::shared::new_shared(load(node))
 }
 
 /// The loaded data, or null if loading failed. Valid until `liero_tc_free`.
 ///
 /// # Safety
 /// `tc` must come from `liero_tc_load`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
+pub unsafe fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
     match &tc.data {
         Some(d) => &**d,
         None => std::ptr::null(),
@@ -716,10 +745,11 @@ pub unsafe extern "C" fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
 
 /// # Safety
 /// `tc` must come from `liero_tc_load` and not be used afterwards.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_free(tc: *mut LieroTc) {
-    if !tc.is_null() {
-        crate::shared::release_shared(tc);
+pub unsafe fn liero_tc_free(tc: *mut LieroTc) {
+    unsafe {
+        if !tc.is_null() {
+            crate::shared::release_shared(tc);
+        }
     }
 }
 
@@ -738,13 +768,59 @@ impl LieroTc {
     pub(crate) fn weapon_model(&self, i: usize) -> model::Weapon {
         let mut m = self.common.as_ref().expect("the TC didn't load").weapons[i].clone();
         let w = &self.weapons[i];
-        copy_fields!(m, w, detect_distance, affect_by_worm, blow_away, gravity, shadow, laser_sight, launch_sound,
-            loop_sound, explo_sound, speed, add_speed, distribution, parts, recoil, mult_speed, delay, loading_time,
-            ammo, create_on_exp, dirt_effect, leave_shells, leave_shell_delay, play_reload_sound, worm_explode,
-            expl_ground, worm_collide, fire_cone, collide_with_objects, affect_by_explosions, bounce, time_to_explo,
-            time_to_explo_v, hit_damage, blood_on_hit, start_frame, num_frames, loop_anim, shot_type, color_bullets,
-            splinter_amount, splinter_colour, splinter_type, splinter_scatter, obj_trail_type, obj_trail_delay,
-            part_trail_type, part_trail_obj, part_trail_delay, chain_explosion);
+        copy_fields!(
+            m,
+            w,
+            detect_distance,
+            affect_by_worm,
+            blow_away,
+            gravity,
+            shadow,
+            laser_sight,
+            launch_sound,
+            loop_sound,
+            explo_sound,
+            speed,
+            add_speed,
+            distribution,
+            parts,
+            recoil,
+            mult_speed,
+            delay,
+            loading_time,
+            ammo,
+            create_on_exp,
+            dirt_effect,
+            leave_shells,
+            leave_shell_delay,
+            play_reload_sound,
+            worm_explode,
+            expl_ground,
+            worm_collide,
+            fire_cone,
+            collide_with_objects,
+            affect_by_explosions,
+            bounce,
+            time_to_explo,
+            time_to_explo_v,
+            hit_damage,
+            blood_on_hit,
+            start_frame,
+            num_frames,
+            loop_anim,
+            shot_type,
+            color_bullets,
+            splinter_amount,
+            splinter_colour,
+            splinter_type,
+            splinter_scatter,
+            obj_trail_type,
+            obj_trail_delay,
+            part_trail_type,
+            part_trail_obj,
+            part_trail_delay,
+            chain_explosion
+        );
         m
     }
 
@@ -752,19 +828,24 @@ impl LieroTc {
     pub(crate) fn sobject_model(&self, i: usize) -> model::SObject {
         let mut m = self.common.as_ref().expect("the TC didn't load").sobjects[i].clone();
         let o = &self.sobjects[i];
-        copy_fields!(m, o, start_sound, num_sounds, anim_delay, start_frame, num_frames, detect_range, damage,
-            blow_away, shadow, shake, flash, dirt_effect);
+        copy_fields!(
+            m,
+            o,
+            start_sound,
+            num_sounds,
+            anim_delay,
+            start_frame,
+            num_frames,
+            detect_range,
+            damage,
+            blow_away,
+            shadow,
+            shake,
+            flash,
+            dirt_effect
+        );
         m
     }
-}
-
-/// Another reference to `tc`, to give up with `liero_tc_free`.
-///
-/// # Safety
-/// `tc` must come from `liero_tc_load` and still have a reference.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_retain(tc: *mut LieroTc) -> *mut LieroTc {
-    crate::shared::retain_shared(tc)
 }
 
 /// Loads the TC in `node` as `Common::load` did, or the message it threw:
@@ -783,7 +864,6 @@ pub fn load_checked(node: &Node) -> Result<crate::shared::Shared<LieroTc>, Strin
     }
     Ok(tc)
 }
-
 
 const fn str_eq(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -912,7 +992,9 @@ mod tests {
         let c = bundled();
         let order = weapon_order(&c.weapons);
         assert_eq!(order.len(), 40);
-        assert!(order.windows(2).all(|w| c.weapons[w[0] as usize].name <= c.weapons[w[1] as usize].name));
+        assert!(order
+            .windows(2)
+            .all(|w| c.weapons[w[0] as usize].name <= c.weapons[w[1] as usize].name));
     }
 
     /// A zip of the files under `dir`, stored, with `/` between folders.
@@ -977,8 +1059,8 @@ mod tests {
         let tc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../TC/openliero");
         std::fs::write(format!("{dir}/openliero.zip"), stored_zip(&tc)).unwrap();
 
-        let from_folder = LieroFsNode(Node::new(b"../../TC/openliero"));
-        let from_zip = LieroFsNode(Node::new(format!("{dir}/openliero").as_bytes()));
+        let from_folder = Node::new(b"../../TC/openliero");
+        let from_zip = Node::new(format!("{dir}/openliero").as_bytes());
         unsafe {
             let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
             assert!((*b).error.is_empty(), "{}", (*b).error);
@@ -997,7 +1079,7 @@ mod tests {
     #[test]
     fn loads_from_a_node_and_reports_errors() {
         // Relative to the crate, where the tests run.
-        let node = LieroFsNode(Node::new(b"../../TC/openliero"));
+        let node = Node::new(b"../../TC/openliero");
         unsafe {
             let tc = liero_tc_load(&node);
             assert!((*tc).error.is_empty(), "{}", (*tc).error);
@@ -1006,15 +1088,15 @@ mod tests {
             assert_eq!(data.font[b'A' as usize].width, 5);
             liero_tc_free(tc);
 
-            assert!(load_checked(&node.0).is_ok());
+            assert!(load_checked(&node).is_ok());
             assert_eq!(
                 load_checked(&Node::new(b"target/no-such-tc")).err().as_deref(),
                 Some("Could not load the TC: Could not read tc.cfg")
             );
 
-            let missing = LieroFsNode(Node::new(b"target/no-such-tc"));
+            let missing = Node::new(b"target/no-such-tc");
             let tc = liero_tc_load(&missing);
-            assert_eq!(liero_tc_error(&*tc).bytes(), b"Could not read tc.cfg");
+            assert_eq!((*tc).error, "Could not read tc.cfg");
             assert!(liero_tc_data(&*tc).is_null());
             liero_tc_free(tc);
         }

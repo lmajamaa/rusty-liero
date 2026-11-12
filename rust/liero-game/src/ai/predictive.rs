@@ -41,7 +41,6 @@ fn pressed(cs: u32, control: u32) -> bool {
 const PI: f64 = std::f64::consts::PI;
 
 /// A worm weapon, as the AI reads it.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroAiWeapon {
     pub ammo: i32,
@@ -53,7 +52,6 @@ pub struct LieroAiWeapon {
 }
 
 /// What the AI reads of a worm.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroAiWorm {
     pub index: i32,
@@ -75,7 +73,6 @@ pub struct LieroAiWorm {
 }
 
 /// What the AI reads of a game.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroAiGame {
     pub game_mode: u32,
@@ -251,7 +248,15 @@ pub struct Weights {
 
 impl Default for Weights {
     fn default() -> Self {
-        Weights { health: 1.0, aim: 1.0, distance: 1.0, ammo: 1.0, missile: 1.0, defense: 1.3, firing: 1.0 }
+        Weights {
+            health: 1.0,
+            aim: 1.0,
+            distance: 1.0,
+            ammo: 1.0,
+            missile: 1.0,
+            defense: 1.3,
+            firing: 1.0,
+        }
     }
 }
 
@@ -261,7 +266,18 @@ fn select<const N: usize>(n: i32, values: [f64; N]) -> f64 {
 
 /// `transToM`: the chance of a move/jump/fire state given the previous one.
 #[allow(clippy::too_many_arguments)]
-fn trans_to_m(weights: &Weights, p: &mut f64, pa: i32, pb: i32, pc: i32, facing_enemy: i32, ninjarope_out: i32, pa2: i32, pb2: i32, pc2: i32) {
+fn trans_to_m(
+    weights: &Weights,
+    p: &mut f64,
+    pa: i32,
+    pb: i32,
+    pc: i32,
+    facing_enemy: i32,
+    ninjarope_out: i32,
+    pa2: i32,
+    pb2: i32,
+    pc2: i32,
+) {
     match pa {
         0 => *p *= select(pa2, [0.1, 0.45, 0.45]),
         1 => *p *= select(pa2, [0.025, 0.9, 0.075]),
@@ -278,11 +294,18 @@ fn trans_to_m(weights: &Weights, p: &mut f64, pa: i32, pb: i32, pc: i32, facing_
 
     let start_shoot_facing = 0.15 * weights.firing;
     let start_shoot_unfacing = 0.03 * weights.firing;
-    let start_shoot = if facing_enemy != 0 { start_shoot_facing } else { start_shoot_unfacing };
+    let start_shoot = if facing_enemy != 0 {
+        start_shoot_facing
+    } else {
+        start_shoot_unfacing
+    };
     *p *= select((pc & 2) | ((pc2 & 2) >> 1), [1.0 - start_shoot, start_shoot, 0.4, 0.6]);
 
     let start_jump = if ninjarope_out != 0 { 0.015 } else { 0.1 };
-    *p *= select(((pc & 1) << 1) | (pc2 & 1), [1.0 - start_jump, start_jump, 0.999, 0.001]);
+    *p *= select(
+        ((pc & 1) << 1) | (pc2 & 1),
+        [1.0 - start_jump, start_jump, 0.999, 0.001],
+    );
 }
 
 /// `TransModel`: for each context, a weight for each next state.
@@ -422,7 +445,10 @@ fn total_ammo_worth(w: &LieroAiWorm) -> f64 {
 }
 
 fn ready_weapons(w: &LieroAiWorm) -> i32 {
-    w.weapons.iter().filter(|weap| weap.loading_left == 0 && weap.delay_left < 70).count() as i32
+    w.weapons
+        .iter()
+        .filter(|weap| weap.loading_left == 0 && weap.delay_left < 70)
+        .count() as i32
 }
 
 fn worm_distance(from: &LieroAiWorm, to: &LieroAiWorm) -> i32 {
@@ -542,7 +568,8 @@ fn simple_ai<W: Games>(games: &mut W, g: W::G, place: i32, initial: u32) {
         let tolerance = 2.0 * PI / 32.0;
         let aim_diff = radian_diff(angle_to_target, current_aim);
 
-        let fire = aim_diff >= -tolerance && aim_diff <= tolerance && obstacles_worms(&games.level(g), &worm, &target) < 4;
+        let fire =
+            aim_diff >= -tolerance && aim_diff <= tolerance && obstacles_worms(&games.level(g), &worm, &target) < 4;
 
         cs = initial;
         set(&mut cs, DOWN, aim_diff < -tolerance);
@@ -601,7 +628,6 @@ enum Mutation {
 }
 
 /// A traced position, the copy's worm in fixed point, and its colour.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroAiTrace {
     pub x: i32,
@@ -773,7 +799,17 @@ impl FollowAi {
     /// changing them as `ms` says and making up any it doesn't have, and
     /// scores them into `result`.
     #[allow(clippy::too_many_arguments)]
-    fn evaluate<W: Games>(&mut self, result: &mut EvaluateResult, games: &mut W, org: W::G, me: i32, target: i32, plan: &mut Vec<InputState>, plan_size: usize, ms: Mutation) {
+    fn evaluate<W: Games>(
+        &mut self,
+        result: &mut EvaluateResult,
+        games: &mut W,
+        org: W::G,
+        me: i32,
+        target: i32,
+        plan: &mut Vec<InputState>,
+        plan_size: usize,
+        ms: Mutation,
+    ) {
         let copy = games.clone_game(org);
         let me_copy = games.worm(org, me).index;
         let target_copy = games.worm(org, target).index;
@@ -825,7 +861,8 @@ impl FollowAi {
                                 let mut loaded_distance = 5;
                                 for lw in 0..5 {
                                     if w.weapons[lw].loading_left == 0 {
-                                        loaded_distance = loaded_distance.min(weapon_change_offset(lw as i32, wi as i32).abs());
+                                        loaded_distance =
+                                            loaded_distance.min(weapon_change_offset(lw as i32, wi as i32).abs());
                                     }
                                 }
                                 if distance_from_current + loaded_distance <= weapon_changes_left[i] {
@@ -848,7 +885,11 @@ impl FollowAi {
             if ai_traces {
                 let t = 119 - (i * (119 - 104 + 1) / plan_size) as i32;
                 let w = games.worm(copy, me_copy);
-                self.evaluate_positions.push(LieroAiTrace { x: w.pos[0], y: w.pos[1], color: t as u8 });
+                self.evaluate_positions.push(LieroAiTrace {
+                    x: w.pos[0],
+                    y: w.pos[1],
+                    color: t as u8,
+                });
             }
 
             result.score_over_time[i + 1] = s - prev_s;
@@ -861,7 +902,16 @@ impl FollowAi {
     /// Replays `candidate` with new states from a random range, mostly one
     /// that ends where its last score was lowest.
     #[allow(clippy::too_many_arguments)]
-    fn mutate<W: Games>(&mut self, result: &mut EvaluateResult, games: &mut W, org: W::G, me: i32, target: i32, candidate: &mut Vec<InputState>, prev_result: &EvaluateResult) {
+    fn mutate<W: Games>(
+        &mut self,
+        result: &mut EvaluateResult,
+        games: &mut W,
+        org: W::G,
+        me: i32,
+        target: i32,
+        candidate: &mut Vec<InputState>,
+        prev_result: &EvaluateResult,
+    ) {
         let len = candidate.len() as u32;
         let s = &prev_result.score_over_time;
         // The lowest sum of a suffix.
@@ -888,7 +938,16 @@ impl FollowAi {
         }
 
         let frames = games.game(org).ai_frames as usize;
-        self.evaluate(result, games, org, me, target, candidate, frames, Mutation::Range(start, stop));
+        self.evaluate(
+            result,
+            games,
+            org,
+            me,
+            target,
+            candidate,
+            frames,
+            Mutation::Range(start, stop),
+        );
     }
 
     /// One tick for the worm at `me` in `org`: the controls to press.
@@ -918,14 +977,31 @@ impl FollowAi {
         self.evaluate_positions.clear();
         self.evaluation_budget += (info.ai_mutations + 1) * frames;
 
-        let first = if self.testing { Mutation::Optimize } else { Mutation::Identity };
+        let first = if self.testing {
+            Mutation::Optimize
+        } else {
+            Mutation::Identity
+        };
         let mut prio = Vec::with_capacity(self.cand_plan.len());
         for i in 0..self.cand_plan.len() {
             let mut cand = std::mem::take(&mut self.cand_plan[i]);
             if cand.prev_result_age < 2 && !cand.prev_result.score_over_time.is_empty() {
             } else {
-                let size = if cand.prev_result.score_over_time.is_empty() { frames } else { frames / 2 };
-                self.evaluate(&mut cand.prev_result, games, org, me, target, &mut cand.plan, size as usize, first);
+                let size = if cand.prev_result.score_over_time.is_empty() {
+                    frames
+                } else {
+                    frames / 2
+                };
+                self.evaluate(
+                    &mut cand.prev_result,
+                    games,
+                    org,
+                    me,
+                    target,
+                    &mut cand.plan,
+                    size as usize,
+                    first,
+                );
                 self.evaluation_budget -= size;
                 cand.prev_result_age = 0;
             }

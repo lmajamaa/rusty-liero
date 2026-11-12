@@ -3,6 +3,10 @@
 // prints a Markdown table comparing them.
 //
 //   bun tools/rust-patterns/report.ts <base-dir> <head-dir>
+//   bun tools/rust-patterns/report.ts --fail-on-rise <base-dir> <head-dir>
+//
+// With --fail-on-rise it exits with 1 if any pattern's count is higher in
+// head than in base: in phase 4 of PLAN.md the counts only go down.
 //
 // Comments and string literals are skipped, so "unsafe" in a doc comment or a
 // message doesn't count. Files under target/ are ignored.
@@ -24,6 +28,11 @@ const PATTERNS: Pattern[] = [
   { name: "`extern \"C\"` blocks", re: /\bextern\s+"C"\s*\{/g },
   { name: "`#[no_mangle]`", re: /#\[\s*(?:unsafe\s*\(\s*)?no_mangle/g },
   { name: "`#[repr(C)]`", re: /#\[\s*repr\s*\(\s*C\b/g },
+  { name: "`c_void`", re: /\bc_void\b/g },
+  { name: "`from_raw_parts`", re: /\bfrom_raw_parts(?:_mut)?\b/g },
+  { name: "`Box::into_raw` / `Box::from_raw`", re: /\bBox::(?:into_raw|from_raw)\b/g },
+  { name: "`UnsafeCell`", re: /\bUnsafeCell\b/g },
+  { name: "`&'static mut`", re: /&\s*'static\s+mut\b/g },
 ];
 
 // Replaces comments and string and char literals with spaces, keeping line
@@ -137,11 +146,28 @@ export function table(base: Counts, head: Counts): string {
   return lines.join("\n") + "\n";
 }
 
+/// The patterns whose count is higher in head than in base.
+export function risen(base: Counts, head: Counts): string[] {
+  return PATTERNS.filter((_, k) => head.patterns[k] > base.patterns[k]).map((p) => p.name);
+}
+
 if (import.meta.main) {
-  const [baseDir, headDir] = Bun.argv.slice(2);
+  const args = Bun.argv.slice(2);
+  const failOnRise = args[0] === "--fail-on-rise";
+  const [baseDir, headDir] = failOnRise ? args.slice(1) : args;
   if (!baseDir || !headDir) {
-    console.error("usage: bun tools/rust-patterns/report.ts <base-dir> <head-dir>");
+    console.error("usage: bun tools/rust-patterns/report.ts [--fail-on-rise] <base-dir> <head-dir>");
     process.exit(2);
   }
-  process.stdout.write(table(await count(baseDir), await count(headDir)));
+  const [base, head] = [await count(baseDir), await count(headDir)];
+  if (failOnRise) {
+    const up = risen(base, head);
+    if (up.length) {
+      console.error(`These counts went up, and in phase 4 they only go down: ${up.join(", ")}`);
+      process.exit(1);
+    }
+    console.log("No count went up.");
+  } else {
+    process.stdout.write(table(base, head));
+  }
 }

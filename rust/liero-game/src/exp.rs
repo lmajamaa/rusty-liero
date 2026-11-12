@@ -205,7 +205,9 @@ fn special_case(tmp: f64, sbits: u64, ki: u64) -> f64 {
 /// e to the power `x`, as musl gives it.
 pub fn exp(x: f64) -> f64 {
     let mut abstop = top12(x) & 0x7ff;
-    if abstop.wrapping_sub(top12(f64::from_bits(0x3c90000000000000))) >= top12(512.0) - top12(f64::from_bits(0x3c90000000000000)) {
+    if abstop.wrapping_sub(top12(f64::from_bits(0x3c90000000000000)))
+        >= top12(512.0) - top12(f64::from_bits(0x3c90000000000000))
+    {
         if abstop.wrapping_sub(top12(f64::from_bits(0x3c90000000000000))) >= 0x8000_0000 {
             // Tiny x; 0 is common.
             return 1.0 + x;

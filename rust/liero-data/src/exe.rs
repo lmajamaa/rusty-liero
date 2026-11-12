@@ -10,10 +10,7 @@ use std::collections::HashMap;
 type R<'a, 'b> = &'a mut Reader<'b>;
 
 // Constants as (name, offset of low word, offset of high part).
-const SINT32: &[(&str, usize, usize)] = &[
-    ("NRInitialLength", 0x32D7, 0x32DD),
-    ("NRAttachLength", 0xA679, 0xA67F),
-];
+const SINT32: &[(&str, usize, usize)] = &[("NRInitialLength", 0x32D7, 0x32DD), ("NRAttachLength", 0xA679, 0xA67F)];
 
 const SINT24: &[(&str, usize, usize)] = &[
     ("MinBounceUp", 0x3B7D, 0x3B74),
@@ -104,21 +101,78 @@ const SINT8: &[(&str, usize)] = &[
 
 /// Constants in the order they are written to tc.cfg (LIERO_CDEFS).
 pub const CONSTANT_ORDER: &[&str] = &[
-    "NRInitialLength", "NRAttachLength", "MinBounceUp", "MinBounceDown", "MinBounceLeft",
-    "MinBounceRight", "WormGravity", "WalkVelLeft", "MaxVelLeft", "WalkVelRight", "MaxVelRight",
-    "JumpForce", "MaxAimVelLeft", "AimAccLeft", "MaxAimVelRight", "AimAccRight",
-    "NinjaropeGravity", "NRMinLength", "NRMaxLength", "BonusGravity", "WormFricMult",
-    "WormFricDiv", "WormMinSpawnDistLast", "WormMinSpawnDistEnemy", "WormSpawnRectX",
-    "WormSpawnRectY", "WormSpawnRectW", "WormSpawnRectH", "AimFricMult", "AimFricDiv",
-    "NRThrowVelX", "NRThrowVelY", "NRForceShlX", "NRForceDivX", "NRForceShlY", "NRForceDivY",
-    "NRForceLenShl", "BonusBounceMul", "BonusBounceDiv", "BonusFlickerTime", "AimMaxRight",
-    "AimMinRight", "AimMaxLeft", "AimMinLeft", "NRPullVel", "NRReleaseVel", "NRColourBegin",
-    "NRColourEnd", "BonusExplodeRisk", "BonusHealthVar", "BonusMinHealth", "LaserWeapon",
-    "FirstBloodColour", "NumBloodColours", "BObjGravity", "BonusDropChance",
-    "SplinterLarpaVelDiv", "SplinterCracklerVelDiv", "BloodStepUp", "BloodStepDown",
-    "BloodLimit", "FallDamageRight", "FallDamageLeft", "FallDamageDown", "FallDamageUp",
-    "WormFloatLevel", "WormFloatPower", "BonusSpawnRectX", "BonusSpawnRectY",
-    "BonusSpawnRectW", "BonusSpawnRectH", "RemExpObject",
+    "NRInitialLength",
+    "NRAttachLength",
+    "MinBounceUp",
+    "MinBounceDown",
+    "MinBounceLeft",
+    "MinBounceRight",
+    "WormGravity",
+    "WalkVelLeft",
+    "MaxVelLeft",
+    "WalkVelRight",
+    "MaxVelRight",
+    "JumpForce",
+    "MaxAimVelLeft",
+    "AimAccLeft",
+    "MaxAimVelRight",
+    "AimAccRight",
+    "NinjaropeGravity",
+    "NRMinLength",
+    "NRMaxLength",
+    "BonusGravity",
+    "WormFricMult",
+    "WormFricDiv",
+    "WormMinSpawnDistLast",
+    "WormMinSpawnDistEnemy",
+    "WormSpawnRectX",
+    "WormSpawnRectY",
+    "WormSpawnRectW",
+    "WormSpawnRectH",
+    "AimFricMult",
+    "AimFricDiv",
+    "NRThrowVelX",
+    "NRThrowVelY",
+    "NRForceShlX",
+    "NRForceDivX",
+    "NRForceShlY",
+    "NRForceDivY",
+    "NRForceLenShl",
+    "BonusBounceMul",
+    "BonusBounceDiv",
+    "BonusFlickerTime",
+    "AimMaxRight",
+    "AimMinRight",
+    "AimMaxLeft",
+    "AimMinLeft",
+    "NRPullVel",
+    "NRReleaseVel",
+    "NRColourBegin",
+    "NRColourEnd",
+    "BonusExplodeRisk",
+    "BonusHealthVar",
+    "BonusMinHealth",
+    "LaserWeapon",
+    "FirstBloodColour",
+    "NumBloodColours",
+    "BObjGravity",
+    "BonusDropChance",
+    "SplinterLarpaVelDiv",
+    "SplinterCracklerVelDiv",
+    "BloodStepUp",
+    "BloodStepDown",
+    "BloodLimit",
+    "FallDamageRight",
+    "FallDamageLeft",
+    "FallDamageDown",
+    "FallDamageUp",
+    "WormFloatLevel",
+    "WormFloatPower",
+    "BonusSpawnRectX",
+    "BonusSpawnRectY",
+    "BonusSpawnRectW",
+    "BonusSpawnRectH",
+    "RemExpObject",
 ];
 
 /// Pascal strings, in the order they are written to tc.cfg (LIERO_SDEFS).
@@ -168,7 +222,10 @@ pub const TEXTS: &[(&str, usize)] = &[
 /// A hack is active when all of its (offset, byte) indicators match.
 /// Listed in the order they are written to tc.cfg (LIERO_HDEFS).
 pub const HACKS: &[(&str, &[(usize, u8)])] = &[
-    ("FallDamage", &[(0x3A0A, 0x26), (0x3A87, 0x26), (0x3B04, 0x26), (0x3B81, 0x26)]),
+    (
+        "FallDamage",
+        &[(0x3A0A, 0x26), (0x3A87, 0x26), (0x3B04, 0x26), (0x3B81, 0x26)],
+    ),
     // One byte only, because ProMode has a silly jump destination
     ("BonusReloadOnly", &[(0x2DB1, 0xEB)]),
     // First bytes of the add instructions that offset the spawn
@@ -321,7 +378,14 @@ pub fn load(exe: &[u8], chr: &[u8], snd: &[u8]) -> Result<Common, Error> {
 #[allow(clippy::type_complexity)]
 fn load_constants(
     exe: R,
-) -> Result<(Vec<(&'static str, i32)>, Vec<(&'static str, Vec<u8>)>, Vec<(&'static str, bool)>), Error> {
+) -> Result<
+    (
+        Vec<(&'static str, i32)>,
+        Vec<(&'static str, Vec<u8>)>,
+        Vec<(&'static str, bool)>,
+    ),
+    Error,
+> {
     let mut values: HashMap<&str, i32> = HashMap::new();
 
     for &(name, lo, hi) in SINT32 {
@@ -395,7 +459,10 @@ fn load_font(exe: R) -> Result<Vec<FontChar>, Error> {
                     data[y * 7 + x] = ptr[y * 8 + x];
                 }
             }
-            FontChar { data, width: ptr[63] as usize }
+            FontChar {
+                data,
+                width: ptr[63] as usize,
+            }
         })
         .collect())
 }
@@ -506,7 +573,10 @@ fn load_objects(exe: R) -> Result<Objects, Error> {
 
     let mut s: Vec<SObject> = SOBJECT_NAMES
         .iter()
-        .map(|name| SObject { id_str: to_id(name.as_bytes()), ..Default::default() })
+        .map(|name| SObject {
+            id_str: to_id(name.as_bytes()),
+            ..Default::default()
+        })
         .collect();
 
     exe.seek(115218)?;
@@ -528,7 +598,10 @@ fn load_objects(exe: R) -> Result<Objects, Error> {
 
     let mut n: Vec<NObject> = NOBJECT_NAMES
         .iter()
-        .map(|name| NObject { id_str: to_id(name.as_bytes()), ..Default::default() })
+        .map(|name| NObject {
+            id_str: to_id(name.as_bytes()),
+            ..Default::default()
+        })
         .collect();
 
     exe.seek(111430)?;
@@ -591,7 +664,12 @@ fn read_sprite_set(chr: R, size: usize, count: usize) -> Result<SpriteSet, Error
         }
     }
 
-    Ok(SpriteSet { width: size, height: size, count, data })
+    Ok(SpriteSet {
+        width: size,
+        height: size,
+        count,
+        data,
+    })
 }
 
 fn load_sprites(chr: R) -> Result<(SpriteSet, SpriteSet, SpriteSet), Error> {

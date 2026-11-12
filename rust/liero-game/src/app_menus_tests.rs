@@ -1,21 +1,21 @@
 use super::*;
-use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::controller::LIERO_STATE_GAME;
+use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::fs::Node;
 use crate::menus::{liero_menus_new, LieroMenusHooks};
 use crate::settings::liero_settings_box_new;
 use crate::shared::Shared;
 
-unsafe extern "C" fn zero() -> u32 {
+unsafe fn zero() -> u32 {
     0
 }
-unsafe extern "C" fn double_res() -> *mut bool {
+unsafe fn double_res() -> *mut bool {
     thread_local! {
         static ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     ON.with(|b| b.as_ptr())
 }
-unsafe extern "C" fn set(_: bool) {}
+unsafe fn set(_: bool) {}
 
 /// This thread's app with menus, the bundled TC, its screens sized, and a
 /// match that hasn't started, on a level of colour 7.
@@ -29,7 +29,12 @@ fn set_up() -> &'static mut LieroApp {
         a.tc = Some(crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap());
     }
     if a.menus.is_null() {
-        let hooks = LieroMenusHooks { menu_cycles: zero, double_res, set_double_res: set, set_fullscreen: set };
+        let hooks = LieroMenusHooks {
+            menu_cycles: zero,
+            double_res,
+            set_double_res: set,
+            set_fullscreen: set,
+        };
         let menus = liero_menus_new(hooks);
         crate::menus::liero_menus_load(unsafe { &mut *menus });
         crate::app::liero_app_set_menus(a, menus);
@@ -51,7 +56,10 @@ fn the_menu_starts_black_with_the_levels_miniature_behind_it() {
     a.single.data.fade_value = 20;
     a.menu_cycles = 9;
     menu_start();
-    assert_eq!((a.play.data.fade_value, a.single.data.fade_value, a.menu_cycles), (0, 0, 0));
+    assert_eq!(
+        (a.play.data.fade_value, a.single.data.fade_value, a.menu_cycles),
+        (0, 0, 0)
+    );
 
     // The miniature at half size, 126 left of the middle and 208 up from
     // the bottom.
@@ -59,7 +67,10 @@ fn the_menu_starts_black_with_the_levels_miniature_behind_it() {
     let px = |x: i32, y: i32| a.frozen_spectator.pixels()[(y * s.pitch + x) as usize];
     let (x0, y0) = (320 - 126, 400 - 208);
     assert_eq!((px(x0, y0), px(x0 + 251, y0 + 174)), (7, 7));
-    assert_eq!((px(x0 - 1, y0), px(x0, y0 - 1), px(x0 + 252, y0), px(x0, y0 + 175)), (0, 0, 0, 0));
+    assert_eq!(
+        (px(x0 - 1, y0), px(x0, y0 - 1), px(x0 + 252, y0), px(x0, y0 + 175)),
+        (0, 0, 0, 0)
+    );
     a.controller = None;
 }
 
@@ -72,7 +83,7 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
     // Drawing the same words again changes nothing; other words do.
     let shows = |a: &mut LieroApp, words: &[u8]| {
         let before = a.single.bmp.pixels().to_vec();
-        unsafe { font.centered(&a.single.bmp.view(), words, cx, cy + 48, 7, 2) };
+        font.centered(&a.single.bmp.view(), words, cx, cy + 48, 7, 2);
         a.single.bmp.pixels() == before
     };
 

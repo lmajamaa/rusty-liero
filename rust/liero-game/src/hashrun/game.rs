@@ -31,10 +31,28 @@ fn hash_worm(f: &mut Fnv, w: &LieroWorm) {
     f.i32(w.hotspot_y);
     f.i32(w.aiming_angle);
     f.i32(w.aiming_speed);
-    for b in [w.able_to_jump, w.able_to_dig, w.key_change_pressed, w.movable, w.animate, w.visible, w.ready, w.flag, w.make_sight_green] {
+    for b in [
+        w.able_to_jump,
+        w.able_to_dig,
+        w.key_change_pressed,
+        w.movable,
+        w.animate,
+        w.visible,
+        w.ready,
+        w.flag,
+        w.make_sight_green,
+    ] {
         f.bool(b);
     }
-    for v in [w.health, w.lives, w.kills, w.timer, w.killed_timer, w.current_frame, w.flags] {
+    for v in [
+        w.health,
+        w.lives,
+        w.kills,
+        w.timer,
+        w.killed_timer,
+        w.current_frame,
+        w.flags,
+    ] {
         f.i32(v);
     }
 
@@ -78,7 +96,18 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
     f.bool(g.got_changed);
 
     let z = &g.holdazone;
-    for v in [z.rect.x1, z.rect.y1, z.rect.x2, z.rect.y2, z.holder_idx, z.contender_idx, z.contender_frames, z.timeout_left, z.zone_width, z.zone_height] {
+    for v in [
+        z.rect.x1,
+        z.rect.y1,
+        z.rect.x2,
+        z.rect.y2,
+        z.holder_idx,
+        z.contender_idx,
+        z.contender_frames,
+        z.timeout_left,
+        z.zone_width,
+        z.zone_height,
+    ] {
         f.i32(v);
     }
 
@@ -142,8 +171,9 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
 pub(super) fn add_screen(f: &mut Fnv, r: &LieroRenderer) {
     let v = r.bmp.view();
     let (w, pitch) = (v.w as usize, v.pitch as usize);
+    let pixels = r.bmp.pixels();
     for y in 0..v.h as usize {
-        f.bytes(&r.bmp.pixels()[y * pitch..y * pitch + w]);
+        f.bytes(&pixels[y * pitch..y * pitch + w]);
     }
     for c in &r.data.pal {
         for x in [c.r, c.g, c.b] {
@@ -185,7 +215,14 @@ pub fn hash_stats(s: &LieroStats) -> u64 {
             f.i32(l[1]);
         }
         for ws in &w.weapons {
-            for v in [ws.potential_hp, ws.actual_hp, ws.potential_hits, ws.actual_hits, ws.total_hp, ws.index] {
+            for v in [
+                ws.potential_hp,
+                ws.actual_hp,
+                ws.potential_hits,
+                ws.actual_hits,
+                ws.total_hp,
+                ws.index,
+            ] {
                 f.i32(v);
             }
         }

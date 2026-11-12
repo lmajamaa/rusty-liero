@@ -113,7 +113,9 @@ impl Tree {
 
     /// Every file, by path from the root, in byte order of the paths.
     pub fn files(&self) -> impl Iterator<Item = (&[u8], &[u8])> {
-        self.entries.iter().filter_map(|(k, v)| Some((k.as_slice(), v.as_deref()?)))
+        self.entries
+            .iter()
+            .filter_map(|(k, v)| Some((k.as_slice(), v.as_deref()?)))
     }
 }
 
@@ -126,17 +128,24 @@ pub fn take_changes() -> Vec<(Vec<u8>, Option<Vec<u8>>)> {
         let mut t = t.borrow_mut();
         let Some(t) = t.as_mut() else { return Vec::new() };
         let changed = std::mem::take(&mut t.changed);
-        changed.into_iter().map(|k| {
-            let now = t.entries.get(&k).cloned().flatten();
-            (k, now)
-        }).collect()
+        changed
+            .into_iter()
+            .map(|k| {
+                let now = t.entries.get(&k).cloned().flatten();
+                (k, now)
+            })
+            .collect()
     })
 }
 
 /// The tree's files, by path from its root (see `Tree::files`), or nothing
 /// without a tree.
 pub fn tree_files() -> Vec<(Vec<u8>, Vec<u8>)> {
-    TREE.with(|t| t.borrow().as_ref().map_or_else(Vec::new, |t| t.files().map(|(k, v)| (k.to_vec(), v.to_vec())).collect()))
+    TREE.with(|t| {
+        t.borrow()
+            .as_ref()
+            .map_or_else(Vec::new, |t| t.files().map(|(k, v)| (k.to_vec(), v.to_vec())).collect())
+    })
 }
 
 /// The path for `std::fs`: its bytes as they are where names are bytes
@@ -155,7 +164,10 @@ fn path_str(p: &[u8]) -> &std::path::Path {
 
 /// Whether `p` is a folder, if it's there.
 pub fn is_dir(p: &[u8]) -> Option<bool> {
-    on(|t| t.get(p).map(Option::is_none), || fs::metadata(path_str(p)).ok().map(|m| m.is_dir()))
+    on(
+        |t| t.get(p).map(Option::is_none),
+        || fs::metadata(path_str(p)).ok().map(|m| m.is_dir()),
+    )
 }
 
 pub fn exists(p: &[u8]) -> bool {
@@ -190,7 +202,11 @@ pub fn list(p: &[u8]) -> Option<Vec<Vec<u8>>> {
             if !k.is_empty() && !matches!(t.entries.get(&k), Some(None)) {
                 return None;
             }
-            let prefix = if k.is_empty() { Vec::new() } else { [k.as_slice(), b"/"].concat() };
+            let prefix = if k.is_empty() {
+                Vec::new()
+            } else {
+                [k.as_slice(), b"/"].concat()
+            };
             let names = t
                 .entries
                 .range(prefix.clone()..)
@@ -201,7 +217,15 @@ pub fn list(p: &[u8]) -> Option<Vec<Vec<u8>>> {
                 .collect();
             Some(names)
         },
-        || Some(fs::read_dir(path_str(p)).ok()?.flatten().map(|e| e.file_name().into_encoded_bytes()).collect()),
+        || {
+            Some(
+                fs::read_dir(path_str(p))
+                    .ok()?
+                    .flatten()
+                    .map(|e| e.file_name().into_encoded_bytes())
+                    .collect(),
+            )
+        },
     )
 }
 
@@ -235,12 +259,20 @@ pub fn append(p: &[u8], data: &[u8]) -> bool {
     on(
         |t| {
             let Some(k) = key(p) else { return false };
-            let Some(Some(f)) = t.entries.get_mut(&k) else { return false };
+            let Some(Some(f)) = t.entries.get_mut(&k) else {
+                return false;
+            };
             f.extend_from_slice(data);
             t.changed.insert(k);
             true
         },
-        || fs::OpenOptions::new().append(true).open(path_str(p)).and_then(|mut f| f.write_all(data)).is_ok(),
+        || {
+            fs::OpenOptions::new()
+                .append(true)
+                .open(path_str(p))
+                .and_then(|mut f| f.write_all(data))
+                .is_ok()
+        },
     )
 }
 

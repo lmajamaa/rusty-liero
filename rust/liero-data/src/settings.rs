@@ -142,13 +142,20 @@ impl Default for Settings {
         // Player 2: I, K, J, L, Slash, Right Alt, Right Shift. The original
         // arrows and Right Ctrl don't work on a Mac: there is no Right Ctrl,
         // and with player 1 holding Left Ctrl, Ctrl+arrows switch Spaces.
-        const CONTROLS: [[u32; MAX_CONTROL]; 2] =
-            [[0x13, 0x21, 0x20, 0x22, 0x1D, 0x2A, 0x38], [0x17, 0x25, 0x24, 0x26, 0x35, 0x90, 0x36]];
+        const CONTROLS: [[u32; MAX_CONTROL]; 2] = [
+            [0x13, 0x21, 0x20, 0x22, 0x1D, 0x2A, 0x38],
+            [0x17, 0x25, 0x24, 0x26, 0x35, 0x90, 0x36],
+        ];
         const RGB: [[i32; 3]; 2] = [[26, 26, 63], [15, 43, 15]];
         const COLORS: [i32; 2] = [32, 41];
 
         let worms = [0, 1].map(|i| {
-            let mut ws = WormSettings { color: COLORS[i], rgb: RGB[i], controls: CONTROLS[i], ..Default::default() };
+            let mut ws = WormSettings {
+                color: COLORS[i],
+                rgb: RGB[i],
+                controls: CONTROLS[i],
+                ..Default::default()
+            };
             ws.controls_ex[..MAX_CONTROL].copy_from_slice(&CONTROLS[i]);
             ws
         });
@@ -202,7 +209,13 @@ pub enum TextError {
 /// were read before an error keep their new values.
 pub fn read_text(s: &mut Settings, data: &[u8]) -> Result<(), TextError> {
     let mut r = Reader::parse(data, "liero.cfg").map_err(|e| TextError::Parse(e.0))?;
-    read_text_fields(s, &mut r).map_err(|e| if r.missing_key() { TextError::MissingKey(e.0) } else { TextError::Parse(e.0) })
+    read_text_fields(s, &mut r).map_err(|e| {
+        if r.missing_key() {
+            TextError::MissingKey(e.0)
+        } else {
+            TextError::Parse(e.0)
+        }
+    })
 }
 
 fn read_text_fields(s: &mut Settings, r: &mut Reader) -> Result<(), crate::Error> {
@@ -675,7 +688,11 @@ pub fn archive_hash(s: &mut Settings) -> Hash {
 
 /// Reads a worm's settings as stored in replays of `replay_version` and in
 /// .lpf profiles (`archive(in_archive, WormSettings&)`).
-pub fn read_worm<S: Source + ?Sized>(ws: &mut WormSettings, replay_version: i32, src: &mut S) -> Result<(), ArchiveError> {
+pub fn read_worm<S: Source + ?Sized>(
+    ws: &mut WormSettings,
+    replay_version: i32,
+    src: &mut S,
+) -> Result<(), ArchiveError> {
     let mut r = In(src);
     ws.color = r.u32()? as i32;
     ws.health = r.u32()? as i32;
@@ -757,7 +774,11 @@ mod tests {
     use super::*;
 
     fn odd_settings() -> Settings {
-        let mut s = Settings { max_bonuses: -3, game_mode: 0xffff_fff0, ..Default::default() };
+        let mut s = Settings {
+            max_bonuses: -3,
+            game_mode: 0xffff_fff0,
+            ..Default::default()
+        };
         s.level_file = b"a\"b\\c\x01\xff".to_vec();
         s.ext.tc = b"my tc".to_vec();
         s.weap_table[3] = 2;
@@ -805,12 +826,18 @@ mod tests {
         let text = String::from_utf8(write_text(&odd_settings())).unwrap();
         let missing = text.replace("lives = 15", "");
         let mut t = Settings::default();
-        assert!(matches!(read_text(&mut t, missing.as_bytes()), Err(TextError::MissingKey(_))));
+        assert!(matches!(
+            read_text(&mut t, missing.as_bytes()),
+            Err(TextError::MissingKey(_))
+        ));
         assert_eq!((t.max_bonuses, t.lives), (-3, 15));
 
         let wrong_type = text.replace("blood = 100", "blood = true");
         let mut t = Settings::default();
-        assert!(matches!(read_text(&mut t, wrong_type.as_bytes()), Err(TextError::Parse(_))));
+        assert!(matches!(
+            read_text(&mut t, wrong_type.as_bytes()),
+            Err(TextError::Parse(_))
+        ));
         assert!(t.random_level);
 
         let short = text.replace("weapTable = [0, 0, 0, 2", "weapTable = [0, 0, 2");
@@ -839,21 +866,34 @@ mod tests {
     fn archive_checks_its_checkpoint_and_end() {
         let mut bytes = write_archive(&mut Settings::default());
         let n = bytes.len();
-        assert_eq!(read_archive(&mut Settings::default(), &mut Bytes::new(&bytes[..n - 1])), Err(ArchiveError::Read));
+        assert_eq!(
+            read_archive(&mut Settings::default(), &mut Bytes::new(&bytes[..n - 1])),
+            Err(ArchiveError::Read)
+        );
         bytes[n - 1] ^= 1;
-        assert_eq!(read_archive(&mut Settings::default(), &mut Bytes::new(&bytes)), Err(ArchiveError::Check));
+        assert_eq!(
+            read_archive(&mut Settings::default(), &mut Bytes::new(&bytes)),
+            Err(ArchiveError::Check)
+        );
     }
 
     #[test]
     #[should_panic(expected = "16 bits")]
     fn archive_asserts_that_fields_fit() {
-        let mut s = Settings { lives: 0x10000, ..Default::default() };
+        let mut s = Settings {
+            lives: 0x10000,
+            ..Default::default()
+        };
         write_archive(&mut s);
     }
 
     #[test]
     fn worm_archive_round_trips() {
-        let mut ws = WormSettings { name: b"Name".to_vec(), controls_ex: [1, 2, 3, 4, 5, 6, 7, 8], ..Default::default() };
+        let mut ws = WormSettings {
+            name: b"Name".to_vec(),
+            controls_ex: [1, 2, 3, 4, 5, 6, 7, 8],
+            ..Default::default()
+        };
         let bytes = write_worm(&mut ws, REPLAY_VERSION);
         let mut t = WormSettings::default();
         read_worm(&mut t, REPLAY_VERSION, &mut Bytes::new(&bytes)).unwrap();
@@ -868,7 +908,11 @@ mod tests {
 
     #[test]
     fn old_worm_archives_copy_the_controls_and_the_first_weapon() {
-        let mut ws = WormSettings { controls: [1, 2, 3, 4, 5, 6, 7], weapons: [40, 0, 0, 0, 0], ..Default::default() };
+        let mut ws = WormSettings {
+            controls: [1, 2, 3, 4, 5, 6, 7],
+            weapons: [40, 0, 0, 0, 0],
+            ..Default::default()
+        };
         let mut bytes = write_worm(&mut ws, REPLAY_VERSION);
         let version_at = bytes.len() - 1 - 14 - 32;
         bytes.truncate(version_at);

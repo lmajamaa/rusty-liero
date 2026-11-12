@@ -265,7 +265,9 @@ impl<'a> Parser<'a> {
                 self.skipws();
                 let v = self.val()?;
                 self.skipws();
-                let Value::Obj(o) = self.find(&cur, &name, false, true)? else { return Err(self.error()) };
+                let Value::Obj(o) = self.find(&cur, &name, false, true)? else {
+                    return Err(self.error());
+                };
                 o.borrow_mut().entry(name.last().unwrap().clone()).or_insert(v);
             }
             if !(self.test(b'\n') || self.test(b'\r')) {
@@ -298,9 +300,18 @@ pub struct Reader {
 
 impl Reader {
     pub fn parse(data: &[u8], name: &str) -> Result<Self, Error> {
-        let mut p = Parser { data, pos: 0, c: 0, name };
+        let mut p = Parser {
+            data,
+            pos: 0,
+            c: 0,
+            name,
+        };
         let root = p.parse()?;
-        Ok(Reader { cur: root, name: name.to_string(), missing: Cell::new(false) })
+        Ok(Reader {
+            cur: root,
+            name: name.to_string(),
+            missing: Cell::new(false),
+        })
     }
 
     fn error(&self, what: &str) -> Error {
@@ -319,7 +330,9 @@ impl Reader {
         match name {
             None => Ok(self.cur.clone()),
             Some(name) => {
-                let Value::Obj(o) = &self.cur else { return Err(self.error(&format!("{name} is not in a table"))) };
+                let Value::Obj(o) = &self.cur else {
+                    return Err(self.error(&format!("{name} is not in a table")));
+                };
                 let v = o.borrow().get(name.as_bytes()).cloned();
                 v.ok_or_else(|| {
                     let e = self.error(&format!("missing {name}"));
@@ -341,7 +354,9 @@ impl Reader {
     /// An array (or array of tables): calls `item` with each element as the
     /// current value.
     pub fn arr<T>(&mut self, name: &str, mut item: impl FnMut(&mut Self) -> Result<T, Error>) -> Result<Vec<T>, Error> {
-        let Value::Arr(a) = self.f(Some(name))? else { return Err(self.error(&format!("{name} is not an array"))) };
+        let Value::Arr(a) = self.f(Some(name))? else {
+            return Err(self.error(&format!("{name} is not an array")));
+        };
         let elements = a.borrow().clone();
         let parent = self.cur.clone();
         let mut out = Vec::with_capacity(elements.len());
@@ -365,7 +380,8 @@ impl Reader {
         item: impl FnMut(&mut Self) -> Result<T, Error>,
     ) -> Result<[T; N], Error> {
         let v = self.arr(name, item)?;
-        v.try_into().map_err(|v: Vec<T>| self.error(&format!("{name} has {} entries, not {N}", v.len())))
+        v.try_into()
+            .map_err(|v: Vec<T>| self.error(&format!("{name} has {} entries, not {N}", v.len())))
     }
 
     /// An array that must have exactly `len` elements, checked before any
@@ -377,7 +393,9 @@ impl Reader {
         len: usize,
         mut item: impl FnMut(&mut Self, usize) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        let Value::Arr(a) = self.f(Some(name))? else { return Err(self.error(&format!("{name} is not an array"))) };
+        let Value::Arr(a) = self.f(Some(name))? else {
+            return Err(self.error(&format!("{name} is not an array")));
+        };
         let elements = a.borrow().clone();
         if elements.len() != len {
             return Err(self.error(&format!("{name} has {} entries, not {len}", elements.len())));
@@ -441,7 +459,10 @@ mod tests {
 
     #[test]
     fn reads_tables_arrays_and_values() {
-        let mut r = parse("\r\n[a]\r\nx = -12\r\ny = true\r\n\r\n[a.b]\r\ns = \"q\\\"\\u00e5\"\r\nl = [1, 2,\r\n 3]\r\nn = null").unwrap();
+        let mut r = parse(
+            "\r\n[a]\r\nx = -12\r\ny = true\r\n\r\n[a.b]\r\ns = \"q\\\"\\u00e5\"\r\nl = [1, 2,\r\n 3]\r\nn = null",
+        )
+        .unwrap();
         r.obj(Some("a"), |r| {
             assert_eq!(r.i32(Some("x"))?, -12);
             assert!(r.b("y")?);

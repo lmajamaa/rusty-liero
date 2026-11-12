@@ -98,7 +98,10 @@ fn the_bundled_tc_reads_and_writes_back() {
     save::save(&common, &dir).unwrap();
     let read_back = load::load_dir(&dir).unwrap();
     fs::remove_dir_all(&dir).unwrap();
-    assert!(read_back == without_hidden_font_pixels(load::load_dir(&tc).unwrap()), "the TC read back differently");
+    assert!(
+        read_back == without_hidden_font_pixels(load::load_dir(&tc).unwrap()),
+        "the TC read back differently"
+    );
 
     // And the files match the bundled ones, apart from what the format drops.
     let bundled = files(&tc);
@@ -122,7 +125,9 @@ fn the_bundled_tc_reads_and_writes_back() {
 fn full_width_font_characters_read_back_with_width_0() {
     let common = load::load_dir(&bundled_tc()).unwrap();
     assert_eq!(common.font.len(), 250);
-    let full_width: Vec<usize> = (0..250).filter(|&i| common.font[i].width == 0 && common.font[i].data != [0; 56]).collect();
+    let full_width: Vec<usize> = (0..250)
+        .filter(|&i| common.font[i].width == 0 && common.font[i].data != [0; 56])
+        .collect();
     assert_eq!(full_width, [27]);
     assert_eq!(common.font[b'A' as usize].width, 5);
 }

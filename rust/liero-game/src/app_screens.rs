@@ -25,14 +25,13 @@ const MAIN_REPLAY: i32 = 8;
 const MAIN_TC: i32 = 9;
 
 /// What the app's screens call in C++.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroAppHooks {
     /// Reads the frame's events, passing keys to the controller
     /// (`Gfx::process(controller)`).
-    pub process: unsafe extern "C" fn(),
+    pub process: unsafe fn(),
     /// The main menu screen.
-    pub menu_screen: unsafe extern "C" fn() -> LieroScreen,
+    pub menu_screen: unsafe fn() -> LieroScreen,
 }
 
 fn controller(a: &mut LieroApp) -> &mut crate::controllers::LieroController {
@@ -60,7 +59,7 @@ fn new_level(a: &mut LieroApp) -> Box<LieroLevelBox> {
 fn swap_level(c: &mut crate::controllers::LieroController, level: &mut LieroLevelBox) {
     let current = liero_controller_level(c);
     // SAFETY: the controller's level is valid while it is.
-    unsafe { crate::level::liero_level_box_swap(current.as_mut().expect("no level"), level) };
+    std::mem::swap(unsafe { current.as_mut() }.expect("no level"), level);
 }
 
 /// A new controller with a new level behind the menu (`restartApp`).
@@ -85,7 +84,10 @@ fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
             let mut new = new_local(a);
             let s = a.menu_settings();
             // SAFETY: the controller's level is valid while it is.
-            let old = a.controller.as_deref_mut().and_then(|c| unsafe { liero_controller_level(c).as_mut() });
+            let old = a
+                .controller
+                .as_deref_mut()
+                .and_then(|c| unsafe { liero_controller_level(c).as_mut() });
             match old {
                 Some(old)
                     if !s.data.regenerate_level
@@ -186,7 +188,11 @@ impl Screen for GameScreen {
 
         if self.next == Next::Process {
             // SAFETY: the controller is valid.
-            self.next = if unsafe { liero_controller_run(controller(app())) } { Next::Draw } else { Next::Finish };
+            self.next = if unsafe { liero_controller_run(controller(app())) } {
+                Next::Draw
+            } else {
+                Next::Finish
+            };
             if let Some(s) = self.opened() {
                 return Tick::push(s);
             }
@@ -264,9 +270,12 @@ impl Screen for MainScreen {
 }
 
 /// The app's first screen.
-#[no_mangle]
-pub extern "C" fn liero_main_screen(hooks: LieroAppHooks) -> LieroScreen {
-    into_ffi(Box::new(MainScreen { h: hooks, open: Open::Nothing, selection: -1 }))
+pub fn liero_main_screen(hooks: LieroAppHooks) -> LieroScreen {
+    into_ffi(Box::new(MainScreen {
+        h: hooks,
+        open: Open::Nothing,
+        selection: -1,
+    }))
 }
 
 #[cfg(test)]

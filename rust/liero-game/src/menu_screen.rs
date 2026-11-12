@@ -50,13 +50,12 @@ pub const LIERO_MAIN_TC: i32 = 9;
 
 /// What the menu screen calls in C++. Menus are named by the
 /// `LIERO_MENU_*` constants.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroMenuScreenHooks {
     /// The menus, which outlive the screen.
     pub menus: *mut LieroMenus,
     /// F8: the developers' random TC.
-    pub randomize_tc: unsafe extern "C" fn(),
+    pub randomize_tc: unsafe fn(),
 }
 
 /// Where a pass stopped for a screen an item opened.
@@ -125,7 +124,9 @@ impl MenuScreen {
 
     fn move_main_to(&self, id: i32) {
         let main = self.menu(LIERO_MENU_MAIN);
-        let i = (0..main.0.len()).find(|&i| main.0.ids[i] == id).map_or(-1, |i| i as i32);
+        let i = (0..main.0.len())
+            .find(|&i| main.0.ids[i] == id)
+            .map_or(-1, |i| i as i32);
         main.0.move_to(i);
     }
 
@@ -271,8 +272,8 @@ impl MenuScreen {
             if host.test_key(key) && !self.menus().left_right(self.cur(), dir) {
                 // Let go of them, so they act once (`resetLeftRight`).
                 let keys = &mut crate::app::app().keys;
-                crate::keys::liero_keys_release_sdl(keys, SCANCODE_LEFT as i32);
-                crate::keys::liero_keys_release_sdl(keys, SCANCODE_RIGHT as i32);
+                keys.release_sdl(SCANCODE_LEFT as i32);
+                keys.release_sdl(SCANCODE_RIGHT as i32);
             }
         }
 
@@ -355,8 +356,7 @@ impl Screen for MenuScreen {
 }
 
 /// The main menu screen.
-#[no_mangle]
-pub extern "C" fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> LieroScreen {
+pub fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> LieroScreen {
     crate::screen::into_ffi(Box::new(MenuScreen {
         h: hooks,
         phase: Phase::Start,

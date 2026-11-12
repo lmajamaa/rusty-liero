@@ -40,7 +40,9 @@ const INACTIVE: u32 = 0xffff_ffff;
 /// as many samples.
 pub fn samples_from_tc(data: &[u8], out: &mut [i16]) {
     assert_eq!(out.len(), data.len() * 2);
-    let Some((&first, rest)) = data.split_first() else { return };
+    let Some((&first, rest)) = data.split_first() else {
+        return;
+    };
     let mut prev = (first as i8) as i32 * 30;
     out[0] = prev as i16;
     for (j, &b) in rest.iter().enumerate() {
@@ -178,7 +180,11 @@ impl LieroMixer {
                 continue;
             }
             // SAFETY: `add` requires the samples to outlive the channel.
-            let sound: &[i16] = if ch.len == 0 { &[] } else { unsafe { std::slice::from_raw_parts(ch.sound, ch.len) } };
+            let sound: &[i16] = if ch.len == 0 {
+                &[]
+            } else {
+                unsafe { std::slice::from_raw_parts(ch.sound, ch.len) }
+            };
             if !ch.add_to(out, now, sound) {
                 ch.flags = INACTIVE;
                 ch.id = 0;
@@ -188,32 +194,19 @@ impl LieroMixer {
     }
 }
 
-/// Fills `out` with the `2 * len` samples of an 8-bit TC sound of `len`
-/// bytes (`SfxSample::createSound`).
-///
-/// # Safety
-/// `data` must point to `len` bytes and `out` to `2 * len` samples, or both
-/// be anything with `len` 0.
-#[no_mangle]
-pub unsafe extern "C" fn liero_sound_from_tc(data: *const u8, len: usize, out: *mut i16) {
-    if len == 0 {
-        return;
-    }
-    samples_from_tc(std::slice::from_raw_parts(data, len), std::slice::from_raw_parts_mut(out, len * 2));
-}
-
-/// A mixer with every channel free. Free it with `liero_mixer_free`.
 /// Where a game's sounds go: a mixer, or none (`SoundPlayer`), and a
 /// function told of each sound started (the hash run's app driver).
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroSoundOut {
     pub mixer: *mut LieroMixer,
-    pub report: Option<unsafe extern "C" fn(sound: i32)>,
+    pub report: Option<unsafe fn(sound: i32)>,
 }
 
 impl LieroSoundOut {
-    pub const NONE: LieroSoundOut = LieroSoundOut { mixer: std::ptr::null_mut(), report: None };
+    pub const NONE: LieroSoundOut = LieroSoundOut {
+        mixer: std::ptr::null_mut(),
+        report: None,
+    };
 
     /// Plays the TC's `sound` as `id`'s, at the mixer's time, looping when
     /// `loops` isn't 0 (`playOnMixer`).
@@ -221,93 +214,44 @@ impl LieroSoundOut {
     /// # Safety
     /// The mixer, if any, is valid, and `sound` is one of `tc`'s.
     pub unsafe fn play(&self, tc: &crate::tc::LieroTcData, sound: i32, id: *mut c_void, loops: i32) {
-        if let Some(report) = self.report {
-            report(sound);
-        }
-        if let Some(m) = self.mixer.as_mut() {
-            assert!((sound as usize) < tc.sound_count);
-            let s = &*tc.sounds.add(sound as usize);
-            let now = liero_mixer_now(m) as u32;
-            liero_mixer_add(m, s.samples, s.sample_count, now, id, if loops != 0 { LIERO_SOUND_LOOP } else { LIERO_SOUND_NORMAL });
+        unsafe {
+            if let Some(report) = self.report {
+                report(sound);
+            }
+            if let Some(m) = self.mixer.as_mut() {
+                assert!((sound as usize) < tc.sound_count);
+                let s = &*tc.sounds.add(sound as usize);
+                let now = m.now() as u32;
+                m.add(
+                    s.samples,
+                    s.sample_count,
+                    now,
+                    id as usize,
+                    if loops != 0 {
+                        LIERO_SOUND_LOOP
+                    } else {
+                        LIERO_SOUND_NORMAL
+                    },
+                );
+            }
         }
     }
 
     /// # Safety
     /// The mixer, if any, is valid.
     pub unsafe fn playing(&self, id: *mut c_void) -> bool {
-        self.mixer.as_ref().is_some_and(|m| liero_mixer_is_playing(m, id))
+        unsafe { self.mixer.as_ref().is_some_and(|m| m.is_playing(id as usize)) }
     }
 
     /// # Safety
     /// The mixer, if any, is valid.
     pub unsafe fn stop(&self, id: *mut c_void) {
-        if let Some(m) = self.mixer.as_mut() {
-            liero_mixer_stop(m, id);
+        unsafe {
+            if let Some(m) = self.mixer.as_mut() {
+                m.stop(id as usize);
+            }
         }
     }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_mixer_new() -> *mut LieroMixer {
-    Box::into_raw(Box::default())
-}
-
-/// # Safety
-/// `m` must come from `liero_mixer_new`, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_mixer_free(m: *mut LieroMixer) {
-    if !m.is_null() {
-        drop(Box::from_raw(m));
-    }
-}
-
-/// The frame time the next mix starts at.
-#[no_mangle]
-pub extern "C" fn liero_mixer_now(m: &LieroMixer) -> i32 {
-    m.now()
-}
-
-/// Plays the `len` samples at `samples` from frame `time` with `id` and
-/// `flags` (`LIERO_SOUND_LOOP`). Returns `id`, or null when every channel
-/// is busy.
-///
-/// # Safety
-/// `samples` must point to `len` samples (or be anything with `len` 0)
-/// that stay alive while the mixer plays them.
-#[no_mangle]
-pub unsafe extern "C" fn liero_mixer_add(m: &mut LieroMixer, samples: *const i16, len: usize, time: u32, id: *mut c_void, flags: u32) -> *mut c_void {
-    if m.add(samples, len, time, id as usize, flags) {
-        id
-    } else {
-        std::ptr::null_mut()
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_mixer_stop(m: &mut LieroMixer, id: *mut c_void) {
-    m.stop(id as usize);
-}
-
-#[no_mangle]
-pub extern "C" fn liero_mixer_is_playing(m: &LieroMixer, id: *mut c_void) -> bool {
-    m.is_playing(id as usize)
-}
-
-#[no_mangle]
-pub extern "C" fn liero_mixer_set_volume(m: &mut LieroMixer, id: *mut c_void, volume: f64) {
-    m.set_volume(id as usize, volume);
-}
-
-/// Mixes the next `frames` frames into `out`.
-///
-/// # Safety
-/// `out` must point to `frames` samples.
-#[no_mangle]
-pub unsafe extern "C" fn liero_mixer_mix(m: &mut LieroMixer, out: *mut i16, frames: usize) {
-    if frames == 0 {
-        return;
-    }
-    m.mix(std::slice::from_raw_parts_mut(out, frames));
 }
 
 #[cfg(test)]
@@ -391,7 +335,10 @@ mod tests {
         let s = sound(&[1, 2, 3]);
         let mut m = LieroMixer::default();
         add(&mut m, &s, 0, 1, LIERO_SOUND_LOOP);
-        let out = LieroSoundOut { mixer: &mut m, report: None };
+        let out = LieroSoundOut {
+            mixer: &mut m,
+            report: None,
+        };
         unsafe {
             assert!(out.playing(1 as *mut c_void));
             out.stop(1 as *mut c_void);
@@ -481,9 +428,7 @@ mod tests {
         // end, and crashed on a TC sound that failed to load.)
         let mut m = LieroMixer::default();
         add(&mut m, &[], 0, 1, 0);
-        unsafe {
-            assert_eq!(liero_mixer_add(&mut m, std::ptr::null(), 0, 0, 2 as *mut c_void, LIERO_SOUND_LOOP), 2 as *mut c_void);
-        }
+        assert!(unsafe { m.add(std::ptr::null(), 0, 0, 2, LIERO_SOUND_LOOP) });
         assert_eq!(mix(&mut m, 2), vec![0, 0]);
         assert!(!m.is_playing(1));
         // Looping, it keeps its channel.
@@ -493,29 +438,12 @@ mod tests {
     #[test]
     fn time_wraps() {
         let s = sound(&[7, 8]);
-        let mut m = LieroMixer { base_frame: i32::MAX - 1, ..Default::default() };
+        let mut m = LieroMixer {
+            base_frame: i32::MAX - 1,
+            ..Default::default()
+        };
         add(&mut m, &s, (i32::MAX as u32) + 1, 1, 0);
         assert_eq!(mix(&mut m, 4), vec![0, 0, 7, 8]);
         assert_eq!(m.now(), i32::MIN + 2);
-    }
-
-    #[test]
-    fn ffi() {
-        unsafe {
-            let mut s = [0i16; 4];
-            liero_sound_from_tc([1u8, 2].as_ptr(), 2, s.as_mut_ptr());
-            assert_eq!(s, [30, 45, 60, 60]);
-            s[0] = 99;
-            liero_sound_from_tc(std::ptr::null(), 0, std::ptr::null_mut());
-            let m = liero_mixer_new();
-            let id = 42 as *mut c_void;
-            assert_eq!(liero_mixer_add(&mut *m, s.as_ptr(), 4, 0, id, LIERO_SOUND_NORMAL), id);
-            assert!(liero_mixer_is_playing(&*m, id));
-            let mut out = [0i16; 5];
-            liero_mixer_mix(&mut *m, out.as_mut_ptr(), 5);
-            assert_eq!(out, [99, 45, 60, 60, 0]);
-            assert_eq!(liero_mixer_now(&*m), 5);
-            liero_mixer_free(m);
-        }
     }
 }

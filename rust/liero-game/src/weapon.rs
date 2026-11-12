@@ -18,7 +18,10 @@ use crate::rand::LieroRand;
 
 /// `v * m / d` on both components, rounding towards zero like C++.
 fn mul_div(v: LieroIVec2, m: i32, d: i32) -> LieroIVec2 {
-    LieroIVec2 { x: v.x.wrapping_mul(m) / d, y: v.y.wrapping_mul(m) / d }
+    LieroIVec2 {
+        x: v.x.wrapping_mul(m) / d,
+        y: v.y.wrapping_mul(m) / d,
+    }
 }
 
 /// `Weapon::shotType`.
@@ -33,7 +36,6 @@ pub const LIERO_SHOT_LASER: i32 = 4;
 const ENDLESS_LASER_ID: i32 = 28;
 
 /// The parts of a C++ `Weapon` that Rust uses.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroWeapon {
     pub id: i32,
@@ -82,7 +84,6 @@ pub struct LieroWeapon {
 }
 
 /// A worm's weapon slot, laid out like C++'s `WormWeapon`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroWormWeapon {
     /// The C++ `Weapon`.
@@ -96,7 +97,6 @@ pub struct LieroWormWeapon {
 pub const LIERO_SELECTABLE_WEAPONS: usize = 5;
 
 /// How a new weapon object starts, from `Weapon::fire`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroLaunch {
     pub vel: LieroIVec2,
@@ -152,24 +152,15 @@ impl LieroWeapon {
             time_left -= rand.below(self.time_to_explo_v as u32) as i32;
         }
 
-        LieroLaunch { vel: v, cur_frame, time_left }
+        LieroLaunch {
+            vel: v,
+            cur_frame,
+            time_left,
+        }
     }
 }
 
-/// The start of a shot: C++'s `Weapon::fire` without the object list and
-/// stats.
-pub fn liero_weapon_launch(
-    w: &LieroWeapon,
-    rand: &mut LieroRand,
-    angle: i32,
-    vel: LieroIVec2,
-    speed: i32,
-) -> LieroLaunch {
-    w.launch(rand, angle, vel, speed)
-}
-
 /// Pointers to the fields of a C++ `Worm` that firing and reloading use.
-#[repr(C)]
 pub struct LieroWormFiring {
     pub pos: *mut LieroIVec2,
     pub vel: *mut LieroIVec2,
@@ -183,17 +174,16 @@ pub struct LieroWormFiring {
 }
 
 /// What C++ does when a worm fires or reloads.
-#[repr(C)]
 pub struct LieroWormFiringHooks {
     pub ctx: *mut c_void,
     /// The weapon's launch sound, looping or not.
-    pub launch_sound: unsafe extern "C" fn(ctx: *mut c_void),
+    pub launch_sound: unsafe fn(ctx: *mut c_void),
     /// `Weapon::fire` for the current weapon: one part of a shot.
-    pub fire_part: unsafe extern "C" fn(ctx: *mut c_void, angle: i32, vel: LieroIVec2, speed: i32, pos: LieroIVec2),
+    pub fire_part: unsafe fn(ctx: *mut c_void, angle: i32, vel: LieroIVec2, speed: i32, pos: LieroIVec2),
     /// Plays sound `sound`.
-    pub play_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32),
+    pub play_sound: unsafe fn(ctx: *mut c_void, sound: i32),
     /// `NObjectType::create1` for nobject type `kind`, owned by the worm.
-    pub create_nobject1: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+    pub create_nobject1: unsafe fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
 }
 
 /// Fires the worm's current weapon `w`: C++'s `Worm::fire`.
@@ -209,46 +199,48 @@ pub unsafe fn liero_worm_fire(
     signed_recoil: bool,
     hooks: &LieroWormFiringHooks,
 ) {
-    let ww = worm.weapons.add(worm.current_weapon as usize);
-    let angle = ftoi(worm.aiming_angle);
-    let ctx = hooks.ctx;
+    unsafe {
+        let ww = worm.weapons.add(worm.current_weapon as usize);
+        let angle = ftoi(worm.aiming_angle);
+        let ctx = hooks.ctx;
 
-    (*ww).ammo -= 1;
-    (*ww).delay_left = w.delay;
+        (*ww).ammo -= 1;
+        (*ww).delay_left = w.delay;
 
-    *worm.fire_cone = w.fire_cone;
+        *worm.fire_cone = w.fire_cone;
 
-    let firing = sub(
-        add(mul_div(cos_sin(angle), w.detect_distance + 5, 1), *worm.pos),
-        LieroIVec2 { x: 0, y: itof(1) },
-    );
+        let firing = sub(
+            add(mul_div(cos_sin(angle), w.detect_distance + 5, 1), *worm.pos),
+            LieroIVec2 { x: 0, y: itof(1) },
+        );
 
-    if w.leave_shells > 0 && (*rand).below(w.leave_shells as u32) == 0 {
-        *worm.leave_shell_timer = w.leave_shell_delay;
-    }
-
-    (hooks.launch_sound)(ctx);
-
-    let mut speed = w.speed;
-    let mut firing_vel = LieroIVec2::default();
-
-    if w.affect_by_worm {
-        if speed < 100 {
-            speed = 100;
+        if w.leave_shells > 0 && (*rand).below(w.leave_shells as u32) == 0 {
+            *worm.leave_shell_timer = w.leave_shell_delay;
         }
-        firing_vel = mul_div(*worm.vel, 100, speed);
-    }
 
-    for _ in 0..w.parts.max(0) {
-        (hooks.fire_part)(ctx, angle, firing_vel, speed, firing);
-    }
+        (hooks.launch_sound)(ctx);
 
-    let mut recoil = w.recoil;
-    if signed_recoil && recoil >= 128 {
-        recoil -= 256;
-    }
+        let mut speed = w.speed;
+        let mut firing_vel = LieroIVec2::default();
 
-    *worm.vel = sub(*worm.vel, mul_div(cos_sin(angle), recoil, 100));
+        if w.affect_by_worm {
+            if speed < 100 {
+                speed = 100;
+            }
+            firing_vel = mul_div(*worm.vel, 100, speed);
+        }
+
+        for _ in 0..w.parts.max(0) {
+            (hooks.fire_part)(ctx, angle, firing_vel, speed, firing);
+        }
+
+        let mut recoil = w.recoil;
+        if signed_recoil && recoil >= 128 {
+            recoil -= 256;
+        }
+
+        *worm.vel = sub(*worm.vel, mul_div(cos_sin(angle), recoil, 100));
+    }
 }
 
 /// Counts down weapon delays and reloads, the fire cone and the shell
@@ -265,46 +257,47 @@ pub unsafe fn liero_worm_process_weapons(
     rand: *mut LieroRand,
     hooks: &LieroWormFiringHooks,
 ) {
-    let ctx = hooks.ctx;
+    unsafe {
+        let ctx = hooks.ctx;
 
-    for i in 0..LIERO_SELECTABLE_WEAPONS {
-        let ww = worm.weapons.add(i);
-        if (*ww).delay_left >= 0 {
-            (*ww).delay_left -= 1;
+        for i in 0..LIERO_SELECTABLE_WEAPONS {
+            let ww = worm.weapons.add(i);
+            if (*ww).delay_left >= 0 {
+                (*ww).delay_left -= 1;
+            }
         }
-    }
 
-    let ww = worm.weapons.add(worm.current_weapon as usize);
+        let ww = worm.weapons.add(worm.current_weapon as usize);
 
-    if (*ww).ammo <= 0 {
-        (*ww).loading_left = current.computed_loading_time(loading_time_percent);
-        (*ww).ammo = current.ammo;
-    }
-
-    // The computed loading time is never 0, so this works.
-    if (*ww).loading_left > 0 {
-        (*ww).loading_left -= 1;
-        if (*ww).loading_left <= 0 && current.play_reload_sound {
-            (hooks.play_sound)(ctx, 24);
+        if (*ww).ammo <= 0 {
+            (*ww).loading_left = current.computed_loading_time(loading_time_percent);
+            (*ww).ammo = current.ammo;
         }
-    }
 
-    if *worm.fire_cone > 0 {
-        *worm.fire_cone -= 1;
-    }
+        // The computed loading time is never 0, so this works.
+        if (*ww).loading_left > 0 {
+            (*ww).loading_left -= 1;
+            if (*ww).loading_left <= 0 && current.play_reload_sound {
+                (hooks.play_sound)(ctx, 24);
+            }
+        }
 
-    if *worm.leave_shell_timer > 0 {
-        *worm.leave_shell_timer -= 1;
-        if *worm.leave_shell_timer <= 0 {
-            let vel_y = -((*rand).below(20000) as i32);
-            let vel_x = (*rand).below(16000) as i32 - 8000;
-            (hooks.create_nobject1)(ctx, 7, LieroIVec2 { x: vel_x, y: vel_y }, *worm.pos, 0);
+        if *worm.fire_cone > 0 {
+            *worm.fire_cone -= 1;
+        }
+
+        if *worm.leave_shell_timer > 0 {
+            *worm.leave_shell_timer -= 1;
+            if *worm.leave_shell_timer <= 0 {
+                let vel_y = -((*rand).below(20000) as i32);
+                let vel_x = (*rand).below(16000) as i32 - 8000;
+                (hooks.create_nobject1)(ctx, 7, LieroIVec2 { x: vel_x, y: vel_y }, *worm.pos, 0);
+            }
         }
     }
 }
 
 /// Pointers to the fields of one C++ `WObject`.
-#[repr(C)]
 pub struct LieroWObjectFields {
     pub pos: *mut LieroIVec2,
     pub vel: *mut LieroIVec2,
@@ -313,29 +306,28 @@ pub struct LieroWObjectFields {
 }
 
 /// What C++ does for a `WObject`. `ctx` is passed back to each function.
-#[repr(C)]
 pub struct LieroWObjectHooks {
     pub ctx: *mut c_void,
     /// Whether the owner is steering the object: visible and holding up.
-    pub owner_steers: unsafe extern "C" fn(ctx: *mut c_void) -> bool,
+    pub owner_steers: unsafe fn(ctx: *mut c_void) -> bool,
     /// `SObjectType::create` for sobject type `kind`, owned like the object.
-    pub create_sobject: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
+    pub create_sobject: unsafe fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
     /// `NObjectType::create1` for nobject type `kind`, owned like the object.
-    pub create_nobject1: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+    pub create_nobject1: unsafe fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
     /// `NObjectType::create2` for nobject type `kind`, owned like the object.
     pub create_nobject2:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+        unsafe fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
     /// Adds `impulse` to the other objects within 2 pixels.
-    pub push_objects: unsafe extern "C" fn(ctx: *mut c_void, impulse: LieroIVec2),
+    pub push_objects: unsafe fn(ctx: *mut c_void, impulse: LieroIVec2),
     /// The worm loop in `WObject::process`: hurts the worms the object hits.
     /// Returns `LIERO_HIT_*` flags.
-    pub hit_worms: unsafe extern "C" fn(ctx: *mut c_void) -> u32,
+    pub hit_worms: unsafe fn(ctx: *mut c_void) -> u32,
     /// `WObject::blowUpObject` with the owner as the cause.
-    pub blow_up: unsafe extern "C" fn(ctx: *mut c_void),
+    pub blow_up: unsafe fn(ctx: *mut c_void),
     /// Frees the object.
-    pub free: unsafe extern "C" fn(ctx: *mut c_void),
+    pub free: unsafe fn(ctx: *mut c_void),
     /// Whether the object is still in use.
-    pub used: unsafe extern "C" fn(ctx: *mut c_void) -> bool,
+    pub used: unsafe fn(ctx: *mut c_void) -> bool,
 }
 
 /// `hit_worms` result: the object should explode.
@@ -344,7 +336,6 @@ pub const LIERO_HIT_EXPLODE: u32 = 1;
 pub const LIERO_HIT_REMOVE: u32 = 2;
 
 /// Everything else weapon objects read from the game.
-#[repr(C)]
 pub struct LieroWObjectEnv {
     pub level: LieroLevel,
     pub common: LieroLevelCommon,
@@ -390,171 +381,172 @@ pub unsafe fn liero_wobject_process(
     env: &LieroWObjectEnv,
     hooks: &LieroWObjectHooks,
 ) {
-    let ctx = hooks.ctx;
-    let (pos, vel) = (obj.pos, obj.vel);
-    let mut iter = 0;
+    unsafe {
+        let ctx = hooks.ctx;
+        let (pos, vel) = (obj.pos, obj.vel);
+        let mut iter = 0;
 
-    loop {
-        iter += 1;
-        let mut do_explode = false;
-        let mut do_remove = false;
+        loop {
+            iter += 1;
+            let mut do_explode = false;
+            let mut do_remove = false;
 
-        *pos = add(*pos, *vel);
+            *pos = add(*pos, *vel);
 
-        if w.shot_type == LIERO_SHOT_STEERABLE {
-            let dir = cos_sin(*obj.cur_frame);
-            let mut new_vel = mul_div(dir, w.speed, 100);
+            if w.shot_type == LIERO_SHOT_STEERABLE {
+                let dir = cos_sin(*obj.cur_frame);
+                let mut new_vel = mul_div(dir, w.speed, 100);
 
-            if (hooks.owner_steers)(ctx) {
-                new_vel = add(new_vel, mul_div(dir, w.add_speed, 100));
+                if (hooks.owner_steers)(ctx) {
+                    new_vel = add(new_vel, mul_div(dir, w.add_speed, 100));
+                }
+
+                *vel = div(add(mul_div(*vel, 8, 1), new_vel), 9);
+            } else if w.shot_type == LIERO_SHOT_DTYPE2 {
+                let dir = cos_sin(*obj.cur_frame);
+                *vel = add(*vel, mul_div(dir, w.add_speed, 100));
+
+                if w.distribution != 0 {
+                    (*vel).x = (*vel).x.wrapping_add(env.spread(w.distribution));
+                    (*vel).y = (*vel).y.wrapping_add(env.spread(w.distribution));
+                }
             }
 
-            *vel = div(add(mul_div(*vel, 8, 1), new_vel), 9);
-        } else if w.shot_type == LIERO_SHOT_DTYPE2 {
-            let dir = cos_sin(*obj.cur_frame);
-            *vel = add(*vel, mul_div(dir, w.add_speed, 100));
+            if w.bounce > 0 {
+                let ipos = ftoi_vec(*pos);
+                let inew_pos = ftoi_vec(add(*pos, *vel));
 
-            if w.distribution != 0 {
-                (*vel).x = (*vel).x.wrapping_add(env.spread(w.distribution));
-                (*vel).y = (*vel).y.wrapping_add(env.spread(w.distribution));
+                // TODO in C++: read the 4/5 from the EXE.
+                if env.blocked(inew_pos.x, ipos.y) {
+                    if w.bounce != 100 {
+                        (*vel).x = (*vel).x.wrapping_neg().wrapping_mul(w.bounce) / 100;
+                        (*vel).y = (*vel).y.wrapping_mul(4) / 5;
+                    } else {
+                        (*vel).x = (*vel).x.wrapping_neg();
+                    }
+                }
+
+                if env.blocked(ipos.x, inew_pos.y) {
+                    if w.bounce != 100 {
+                        (*vel).y = (*vel).y.wrapping_neg().wrapping_mul(w.bounce) / 100;
+                        (*vel).x = (*vel).x.wrapping_mul(4) / 5;
+                    } else {
+                        (*vel).y = (*vel).y.wrapping_neg();
+                    }
+                }
             }
-        }
 
-        if w.bounce > 0 {
-            let ipos = ftoi_vec(*pos);
+            if w.mult_speed != 100 {
+                *vel = mul_div(*vel, w.mult_speed, 100);
+            }
+
+            if w.obj_trail_type >= 0 && env.cycles % w.obj_trail_delay == 0 {
+                let p = *pos;
+                (hooks.create_sobject)(ctx, w.obj_trail_type, ftoi(p.x), ftoi(p.y));
+            }
+
+            if w.part_trail_obj >= 0 && env.cycles % w.part_trail_delay == 0 {
+                if w.part_trail_type == 1 {
+                    (hooks.create_nobject1)(ctx, w.part_trail_obj, div(*vel, env.larpa_vel_div), *pos, 0);
+                } else {
+                    let angle = env.rand(128) as i32;
+                    (hooks.create_nobject2)(ctx, w.part_trail_obj, angle, div(*vel, env.crackler_vel_div), *pos, 0);
+                }
+            }
+
+            if w.collide_with_objects {
+                (hooks.push_objects)(ctx, mul_div(*vel, w.blow_away, 100));
+            }
+
             let inew_pos = ftoi_vec(add(*pos, *vel));
 
-            // TODO in C++: read the 4/5 from the EXE.
-            if env.blocked(inew_pos.x, ipos.y) {
-                if w.bounce != 100 {
-                    (*vel).x = (*vel).x.wrapping_neg().wrapping_mul(w.bounce) / 100;
-                    (*vel).y = (*vel).y.wrapping_mul(4) / 5;
-                } else {
-                    (*vel).x = (*vel).x.wrapping_neg();
-                }
+            if inew_pos.x < 0 {
+                (*pos).x = 0;
+            }
+            if inew_pos.y < 0 {
+                (*pos).y = 0;
+            }
+            if inew_pos.x >= env.level.width {
+                (*pos).x = itof(env.level.width - 1);
+            }
+            if inew_pos.y >= env.level.height {
+                (*pos).y = itof(env.level.height - 1);
             }
 
-            if env.blocked(ipos.x, inew_pos.y) {
-                if w.bounce != 100 {
-                    (*vel).y = (*vel).y.wrapping_neg().wrapping_mul(w.bounce) / 100;
-                    (*vel).x = (*vel).x.wrapping_mul(4) / 5;
-                } else {
-                    (*vel).y = (*vel).y.wrapping_neg();
+            if env.blocked(inew_pos.x, inew_pos.y) {
+                if w.bounce == 0 {
+                    if w.expl_ground {
+                        do_explode = true;
+                    } else {
+                        *vel = LieroIVec2::default();
+                    }
                 }
-            }
-        }
-
-        if w.mult_speed != 100 {
-            *vel = mul_div(*vel, w.mult_speed, 100);
-        }
-
-        if w.obj_trail_type >= 0 && env.cycles % w.obj_trail_delay == 0 {
-            let p = *pos;
-            (hooks.create_sobject)(ctx, w.obj_trail_type, ftoi(p.x), ftoi(p.y));
-        }
-
-        if w.part_trail_obj >= 0 && env.cycles % w.part_trail_delay == 0 {
-            if w.part_trail_type == 1 {
-                (hooks.create_nobject1)(ctx, w.part_trail_obj, div(*vel, env.larpa_vel_div), *pos, 0);
             } else {
-                let angle = env.rand(128) as i32;
-                (hooks.create_nobject2)(ctx, w.part_trail_obj, angle, div(*vel, env.crackler_vel_div), *pos, 0);
+                // The original tested gravity first, which doesn't seem like a
+                // gain.
+                (*vel).y = (*vel).y.wrapping_add(w.gravity);
+
+                if w.num_frames > 0 && (env.cycles & 7) == 0 {
+                    let f = obj.cur_frame;
+                    // Without loop_anim the frames always run forwards; with
+                    // it they follow the direction of travel.
+                    if !w.loop_anim || (*vel).x > 0 {
+                        *f += 1;
+                        if *f > w.num_frames {
+                            *f = 0;
+                        }
+                    } else if (*vel).x < 0 {
+                        *f -= 1;
+                        if *f < 0 {
+                            *f = w.num_frames;
+                        }
+                    }
+                }
             }
-        }
 
-        if w.collide_with_objects {
-            (hooks.push_objects)(ctx, mul_div(*vel, w.blow_away, 100));
-        }
-
-        let inew_pos = ftoi_vec(add(*pos, *vel));
-
-        if inew_pos.x < 0 {
-            (*pos).x = 0;
-        }
-        if inew_pos.y < 0 {
-            (*pos).y = 0;
-        }
-        if inew_pos.x >= env.level.width {
-            (*pos).x = itof(env.level.width - 1);
-        }
-        if inew_pos.y >= env.level.height {
-            (*pos).y = itof(env.level.height - 1);
-        }
-
-        if env.blocked(inew_pos.x, inew_pos.y) {
-            if w.bounce == 0 {
-                if w.expl_ground {
+            if w.time_to_explo > 0 {
+                *obj.time_left -= 1;
+                if *obj.time_left < 0 {
                     do_explode = true;
-                } else {
-                    *vel = LieroIVec2::default();
                 }
             }
-        } else {
-            // The original tested gravity first, which doesn't seem like a
-            // gain.
-            (*vel).y = (*vel).y.wrapping_add(w.gravity);
 
-            if w.num_frames > 0 && (env.cycles & 7) == 0 {
-                let f = obj.cur_frame;
-                // Without loop_anim the frames always run forwards; with
-                // it they follow the direction of travel.
-                if !w.loop_anim || (*vel).x > 0 {
-                    *f += 1;
-                    if *f > w.num_frames {
-                        *f = 0;
-                    }
-                } else if (*vel).x < 0 {
-                    *f -= 1;
-                    if *f < 0 {
-                        *f = w.num_frames;
-                    }
-                }
-            }
-        }
-
-        if w.time_to_explo > 0 {
-            *obj.time_left -= 1;
-            if *obj.time_left < 0 {
+            let hit = (hooks.hit_worms)(ctx);
+            if hit & LIERO_HIT_EXPLODE != 0 {
                 do_explode = true;
             }
-        }
+            if hit & LIERO_HIT_REMOVE != 0 {
+                do_remove = true;
+            }
 
-        let hit = (hooks.hit_worms)(ctx);
-        if hit & LIERO_HIT_EXPLODE != 0 {
-            do_explode = true;
-        }
-        if hit & LIERO_HIT_REMOVE != 0 {
-            do_remove = true;
-        }
+            if do_explode {
+                (hooks.blow_up)(ctx);
+                return;
+            } else if do_remove {
+                (hooks.free)(ctx);
+                return;
+            }
 
-        if do_explode {
-            (hooks.blow_up)(ctx);
-            return;
-        } else if do_remove {
-            (hooks.free)(ctx);
-            return;
-        }
-
-        if !(w.shot_type == LIERO_SHOT_LASER && (hooks.used)(ctx) && (iter < 8 || w.id == ENDLESS_LASER_ID)) {
-            return;
+            if !(w.shot_type == LIERO_SHOT_LASER && (hooks.used)(ctx) && (iter < 8 || w.id == ENDLESS_LASER_ID)) {
+                return;
+            }
         }
     }
 }
 
 /// What C++ does when a weapon object blows up.
-#[repr(C)]
 pub struct LieroBlowUpHooks {
     pub ctx: *mut c_void,
     /// `SObjectType::create` for sobject type `kind` at (x, y), caused by
     /// the exploding object.
-    pub create_sobject: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
+    pub create_sobject: unsafe fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
     /// Plays sound `sound`.
-    pub play_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32),
+    pub play_sound: unsafe fn(ctx: *mut c_void, sound: i32),
     /// `NObjectType::create1` for nobject type `kind`.
-    pub create_nobject1: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+    pub create_nobject1: unsafe fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
     /// `NObjectType::create2` for nobject type `kind`.
     pub create_nobject2:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+        unsafe fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
 }
 
 /// The effects of a weapon object blowing up at `pos` with `vel`: C++'s
@@ -570,41 +562,43 @@ pub unsafe fn liero_wobject_blow_up(
     env: &LieroWObjectEnv,
     hooks: &LieroBlowUpHooks,
 ) {
-    let ctx = hooks.ctx;
-    let (x, y) = (pos.x, pos.y);
+    unsafe {
+        let ctx = hooks.ctx;
+        let (x, y) = (pos.x, pos.y);
 
-    if w.create_on_exp >= 0 {
-        (hooks.create_sobject)(ctx, w.create_on_exp, ftoi(x), ftoi(y));
-    }
-
-    if w.explo_sound >= 0 {
-        (hooks.play_sound)(ctx, w.explo_sound);
-    }
-
-    for _ in 0..w.splinter_amount.max(0) {
-        if w.splinter_scatter == 0 {
-            let angle = env.rand(128) as i32;
-            let color_sub = env.rand(2) as i32;
-            (hooks.create_nobject2)(
-                ctx,
-                w.splinter_type,
-                angle,
-                LieroIVec2::default(),
-                pos,
-                w.splinter_colour - color_sub,
-            );
-        } else {
-            let color_sub = env.rand(2) as i32;
-            (hooks.create_nobject1)(ctx, w.splinter_type, vel, pos, w.splinter_colour - color_sub);
+        if w.create_on_exp >= 0 {
+            (hooks.create_sobject)(ctx, w.create_on_exp, ftoi(x), ftoi(y));
         }
-    }
 
-    if w.dirt_effect >= 0 {
-        let (ix, iy) = (ftoi(x), ftoi(y));
-        let (mut lv, cv) = (env.level.get(), env.common.get());
-        lv.draw_dirt_effect(&cv, &mut *env.rand, w.dirt_effect, ix - 7, iy - 7);
-        if env.shadow {
-            lv.correct_shadow(&cv, ix - 10, iy - 10, ix + 11, iy + 11);
+        if w.explo_sound >= 0 {
+            (hooks.play_sound)(ctx, w.explo_sound);
+        }
+
+        for _ in 0..w.splinter_amount.max(0) {
+            if w.splinter_scatter == 0 {
+                let angle = env.rand(128) as i32;
+                let color_sub = env.rand(2) as i32;
+                (hooks.create_nobject2)(
+                    ctx,
+                    w.splinter_type,
+                    angle,
+                    LieroIVec2::default(),
+                    pos,
+                    w.splinter_colour - color_sub,
+                );
+            } else {
+                let color_sub = env.rand(2) as i32;
+                (hooks.create_nobject1)(ctx, w.splinter_type, vel, pos, w.splinter_colour - color_sub);
+            }
+        }
+
+        if w.dirt_effect >= 0 {
+            let (ix, iy) = (ftoi(x), ftoi(y));
+            let (mut lv, cv) = (env.level.get(), env.common.get());
+            lv.draw_dirt_effect(&cv, &mut *env.rand, w.dirt_effect, ix - 7, iy - 7);
+            if env.shadow {
+                lv.correct_shadow(&cv, ix - 10, iy - 10, ix + 11, iy + 11);
+            }
         }
     }
 }
@@ -614,12 +608,20 @@ mod tests {
     use super::*;
 
     fn weapon() -> LieroWeapon {
-        LieroWeapon { speed: 100, start_frame: -1, color_bullets: 40, ..Default::default() }
+        LieroWeapon {
+            speed: 100,
+            start_frame: -1,
+            color_bullets: 40,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn loading_time_is_at_least_one_tick() {
-        let w = LieroWeapon { loading_time: 3, ..weapon() };
+        let w = LieroWeapon {
+            loading_time: 3,
+            ..weapon()
+        };
         assert_eq!(w.computed_loading_time(100), 3);
         assert_eq!(w.computed_loading_time(10), 1);
         assert_eq!(w.computed_loading_time(200), 6);
@@ -638,7 +640,11 @@ mod tests {
 
     #[test]
     fn dtype1_frame_follows_the_angle() {
-        let w = LieroWeapon { start_frame: 0, shot_type: LIERO_SHOT_DTYPE1, ..weapon() };
+        let w = LieroWeapon {
+            start_frame: 0,
+            shot_type: LIERO_SHOT_DTYPE1,
+            ..weapon()
+        };
         let mut rand = LieroRand::new(1);
         let frames: Vec<i32> = [0, 12, 20, 64, 65, 127]
             .iter()

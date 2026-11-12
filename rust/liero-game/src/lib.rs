@@ -4,6 +4,10 @@
 //! The modules still talk through the plain C functions (`liero_*`) that C++
 //! once called; phase 4 of PLAN.md turns them into Rust ones.
 
+// Every unsafe operation is in an `unsafe` block, even in an `unsafe fn`,
+// so they can be counted and removed (PLAN.md, phase 4).
+#![deny(unsafe_op_in_unsafe_fn)]
+
 pub mod ai;
 pub mod app;
 pub mod app_files;
@@ -19,39 +23,39 @@ pub mod exp;
 pub mod fs;
 pub mod game;
 pub mod game_box;
-pub mod hashrun;
 pub mod gfx;
+pub mod hashrun;
 pub mod item;
 pub mod keys;
 pub mod level;
 pub mod material;
+pub mod math;
 pub mod menu;
 pub mod menu_screen;
 pub mod menus;
-pub mod math;
 pub mod object;
 pub mod objects;
 pub mod rand;
 pub mod renderer;
 pub mod replay;
 pub mod replay_file;
+pub mod scene;
 pub mod screen;
 pub mod selector;
 pub mod settings;
-pub mod shell;
-pub mod shared;
 pub mod sfx;
+pub mod shared;
+pub mod shell;
 pub mod stats;
 pub mod tc;
 pub mod text;
-pub mod scene;
 pub mod viewport;
 pub mod weapon;
 pub mod weapon_options;
+pub mod weapsel;
 /// The web build's shell (`wasm32-unknown-unknown` only).
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub mod web;
-pub mod weapsel;
 pub mod world;
 pub mod worm;
 
@@ -59,11 +63,8 @@ use std::ffi::c_char;
 
 /// Name and version of this library as a NUL-terminated string, e.g.
 /// "liero-game 0.1.0". The web shell prints it at startup.
-#[no_mangle]
-pub extern "C" fn liero_game_version() -> *const c_char {
-    concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0")
-        .as_ptr()
-        .cast()
+pub fn liero_game_version() -> *const c_char {
+    concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
 }
 
 #[cfg(test)]

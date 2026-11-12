@@ -40,21 +40,57 @@ pub fn load(read: &mut dyn FnMut(&str) -> Result<Vec<u8>, Error>) -> Result<Comm
     }
 
     let (size, count) = SMALL_SPRITES;
-    common.small_sprites = SpriteSet { width: size, height: size, count, data: vec![0; size * size * count] };
+    common.small_sprites = SpriteSet {
+        width: size,
+        height: size,
+        count,
+        data: vec![0; size * size * count],
+    };
     let file = read("sprites/small.tga")?;
     let mut palette = [[0u8; 3]; 256];
-    tga(&file, "sprites/small.tga", size, size * count, &mut common.small_sprites.data, Some(&mut palette))?;
+    tga(
+        &file,
+        "sprites/small.tga",
+        size,
+        size * count,
+        &mut common.small_sprites.data,
+        Some(&mut palette),
+    )?;
     common.palette = palette;
 
     let (size, count) = LARGE_SPRITES;
-    common.large_sprites = SpriteSet { width: size, height: size, count, data: vec![0; size * size * count] };
+    common.large_sprites = SpriteSet {
+        width: size,
+        height: size,
+        count,
+        data: vec![0; size * size * count],
+    };
     let file = read("sprites/large.tga")?;
-    tga(&file, "sprites/large.tga", size, size * count, &mut common.large_sprites.data, None)?;
+    tga(
+        &file,
+        "sprites/large.tga",
+        size,
+        size * count,
+        &mut common.large_sprites.data,
+        None,
+    )?;
 
     let (size, count) = TEXT_SPRITES;
-    common.text_sprites = SpriteSet { width: size, height: size, count, data: vec![0; size * size * count] };
+    common.text_sprites = SpriteSet {
+        width: size,
+        height: size,
+        count,
+        data: vec![0; size * size * count],
+    };
     let file = read("sprites/text.tga")?;
-    tga(&file, "sprites/text.tga", size, size * count, &mut common.text_sprites.data, None)?;
+    tga(
+        &file,
+        "sprites/text.tga",
+        size,
+        size * count,
+        &mut common.text_sprites.data,
+        None,
+    )?;
 
     let file = read("sprites/font.tga")?;
     common.font = font(&file)?;
@@ -92,10 +128,30 @@ fn id(r: &mut Reader) -> Result<String, Error> {
 
 fn tc_cfg(r: &mut Reader) -> Result<Common, Error> {
     let (sounds, weapons, nobjects, sobjects) = r.obj(Some("types"), |r| {
-        let sounds = r.arr("sounds", |r| Ok(Sound { name: id(r)?, data: None }))?;
-        let weapons = r.arr("weapons", |r| Ok(Weapon { id_str: id(r)?, ..Default::default() }))?;
-        let nobjects = r.arr("nobjects", |r| Ok(NObject { id_str: id(r)?, ..Default::default() }))?;
-        let sobjects = r.arr("sobjects", |r| Ok(SObject { id_str: id(r)?, ..Default::default() }))?;
+        let sounds = r.arr("sounds", |r| {
+            Ok(Sound {
+                name: id(r)?,
+                data: None,
+            })
+        })?;
+        let weapons = r.arr("weapons", |r| {
+            Ok(Weapon {
+                id_str: id(r)?,
+                ..Default::default()
+            })
+        })?;
+        let nobjects = r.arr("nobjects", |r| {
+            Ok(NObject {
+                id_str: id(r)?,
+                ..Default::default()
+            })
+        })?;
+        let sobjects = r.arr("sobjects", |r| {
+            Ok(SObject {
+                id_str: id(r)?,
+                ..Default::default()
+            })
+        })?;
         Ok((sounds, weapons, nobjects, sobjects))
     })?;
     let sobject_ids: Vec<String> = sobjects.iter().map(|s| s.id_str.clone()).collect();
@@ -107,7 +163,12 @@ fn tc_cfg(r: &mut Reader) -> Result<Common, Error> {
 
     let (textures, color_anim, materials, constants) = r.obj(Some("constants"), |r| {
         let bonuses: [(i32, i32, i32, i32); 2] = r.arr_n("bonuses", |r| {
-            Ok((r.i32(Some("timer"))?, r.i32(Some("timerV"))?, r.i32(Some("frame"))?, r.reference("sobj", &sobject_ids)?))
+            Ok((
+                r.i32(Some("timer"))?,
+                r.i32(Some("timerV"))?,
+                r.i32(Some("frame"))?,
+                r.reference("sobj", &sobject_ids)?,
+            ))
         })?;
         for (i, &(timer, timer_v, frame, sobj)) in bonuses.iter().enumerate() {
             bonus_rand_timer[i] = [timer, timer_v];
@@ -148,8 +209,12 @@ fn tc_cfg(r: &mut Reader) -> Result<Common, Error> {
         Ok((textures, color_anim, materials, constants))
     })?;
 
-    let texts = r.obj(Some("texts"), |r| TEXTS.iter().map(|&(name, _)| Ok((name, r.str(Some(name))?))).collect())?;
-    let hacks = r.obj(Some("hacks"), |r| HACKS.iter().map(|&(name, _)| Ok((name, r.b(name)?))).collect())?;
+    let texts = r.obj(Some("texts"), |r| {
+        TEXTS.iter().map(|&(name, _)| Ok((name, r.str(Some(name))?))).collect()
+    })?;
+    let hacks = r.obj(Some("hacks"), |r| {
+        HACKS.iter().map(|&(name, _)| Ok((name, r.b(name)?))).collect()
+    })?;
 
     Ok(Common {
         constants,
@@ -166,9 +231,24 @@ fn tc_cfg(r: &mut Reader) -> Result<Common, Error> {
         bonus_sobjects,
         bonus_frames,
         ai_params,
-        large_sprites: SpriteSet { width: 0, height: 0, count: 0, data: Vec::new() },
-        small_sprites: SpriteSet { width: 0, height: 0, count: 0, data: Vec::new() },
-        text_sprites: SpriteSet { width: 0, height: 0, count: 0, data: Vec::new() },
+        large_sprites: SpriteSet {
+            width: 0,
+            height: 0,
+            count: 0,
+            data: Vec::new(),
+        },
+        small_sprites: SpriteSet {
+            width: 0,
+            height: 0,
+            count: 0,
+            data: Vec::new(),
+        },
+        text_sprites: SpriteSet {
+            width: 0,
+            height: 0,
+            count: 0,
+            data: Vec::new(),
+        },
         font: Vec::new(),
         sounds,
     })
@@ -382,7 +462,10 @@ fn font(file: &[u8]) -> Result<Vec<FontChar>, Error> {
     Ok(pixels
         .chunks(56)
         .map(|src| {
-            let mut ch = FontChar { data: [0; 56], width: 0 };
+            let mut ch = FontChar {
+                data: [0; 56],
+                width: 0,
+            };
             for y in 0..8 {
                 for x in 0..7 {
                     match src[y * 7 + x] {
@@ -429,7 +512,11 @@ mod tests {
         let bump = c.sounds.iter().find(|s| s.name == "bump").unwrap();
         assert!(bump.data.is_none());
         assert!(c.sounds.iter().filter(|s| s.name != "bump").all(|s| s.data.is_some()));
-        assert!(load_with("sounds/bump.wav", |_| b"RIFX".to_vec()).unwrap().sounds.iter().any(|s| s.data.is_none()));
+        assert!(load_with("sounds/bump.wav", |_| b"RIFX".to_vec())
+            .unwrap()
+            .sounds
+            .iter()
+            .any(|s| s.data.is_none()));
     }
 
     #[test]
@@ -465,15 +552,30 @@ mod tests {
         let replace = |from: &'static str, to: &'static str| {
             move |d: Vec<u8>| String::from_utf8(d).unwrap().replacen(from, to, 1).into_bytes()
         };
-        assert!(load_with("weapons/bazooka.cfg", replace("bounce", "bounse")).is_err(), "a missing key");
-        assert!(load_with("weapons/bazooka.cfg", replace("= true", "= 1")).is_err(), "a wrong type");
-        assert!(load_with("weapons/bazooka.cfg", replace("\"large_explosion\"", "\"nothing\"")).is_err(), "an unknown id");
-        assert!(load_with("tc.cfg", replace("materials = [", "materials = [0, ")).is_err(), "257 materials");
-        assert!(load_with("weapons/bazooka.cfg", |mut d| {
-            d.push(b'\n');
-            d
-        })
-        .is_err(), "a line break at the end");
+        assert!(
+            load_with("weapons/bazooka.cfg", replace("bounce", "bounse")).is_err(),
+            "a missing key"
+        );
+        assert!(
+            load_with("weapons/bazooka.cfg", replace("= true", "= 1")).is_err(),
+            "a wrong type"
+        );
+        assert!(
+            load_with("weapons/bazooka.cfg", replace("\"large_explosion\"", "\"nothing\"")).is_err(),
+            "an unknown id"
+        );
+        assert!(
+            load_with("tc.cfg", replace("materials = [", "materials = [0, ")).is_err(),
+            "257 materials"
+        );
+        assert!(
+            load_with("weapons/bazooka.cfg", |mut d| {
+                d.push(b'\n');
+                d
+            })
+            .is_err(),
+            "a line break at the end"
+        );
         assert!(load_with("missing", |d| d).is_ok());
     }
 
@@ -482,7 +584,10 @@ mod tests {
         let c = load_with("", |d| d).unwrap();
         let bazooka = c.weapons.iter().find(|w| w.id_str == "bazooka").unwrap();
         assert_eq!(c.sobjects[bazooka.create_on_exp as usize].id_str, "large_explosion");
-        assert_eq!(c.nobjects[bazooka.splinter_type as usize].id_str, "particle__small_damage");
+        assert_eq!(
+            c.nobjects[bazooka.splinter_type as usize].id_str,
+            "particle__small_damage"
+        );
         assert!(c.weapons.iter().any(|w| w.obj_trail_type == -1), "null reads as -1");
         assert!(c.materials.iter().any(|&m| m != 0));
     }

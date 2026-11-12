@@ -43,8 +43,7 @@ pub fn hash_level_files(out: &mut Out) {
 
             let mut rand = LieroRand::new(1234 + i as u32);
             let mut lev = LieroLevelBox::new();
-            // SAFETY: the TC's tables live as long as it does.
-            unsafe { lev.generate_from_settings(&d.level_common(), &d.palette_colors, s, &mut rand) };
+            lev.generate_from_settings(&d.level_common(), &d.palette_colors, s, &mut rand);
 
             let l = &lev.data().level;
             let mut h = Fnv::default();

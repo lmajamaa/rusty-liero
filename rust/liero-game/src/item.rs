@@ -16,7 +16,6 @@ const SOUND_ENTER: i32 = 27;
 
 /// What an item edits.
 ///
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LieroItemKind {
     /// On or off: `flag`, shown with `names` (off, on).
@@ -28,14 +27,13 @@ pub enum LieroItemKind {
     Enum,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroItemBehavior {
     pub kind: LieroItemKind,
     /// The switch's setting.
     pub flag: *mut bool,
     /// Called with a switch's new value in place of writing `flag`.
-    pub set_flag: Option<unsafe extern "C" fn(bool)>,
+    pub set_flag: Option<unsafe fn(bool)>,
     /// The number's or enum's setting (enums are `uint32_t`, read as is).
     pub value: *mut i32,
     pub min: i32,
@@ -52,7 +50,6 @@ pub struct LieroItemBehavior {
 }
 
 /// What C++ does after a key on an item.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroItemAction {
     /// For left and right: whether the menu goes on to its own handling of
@@ -88,55 +85,71 @@ impl LieroItemBehavior {
     /// # Safety
     /// `flag` (and `set_flag`) are valid.
     unsafe fn toggle(&self) {
-        let v = !*self.flag;
-        match self.set_flag {
-            Some(set) => set(v),
-            None => *self.flag = v,
+        unsafe {
+            let v = !*self.flag;
+            match self.set_flag {
+                Some(set) => set(v),
+                None => *self.flag = v,
+            }
         }
     }
 
     /// # Safety
     /// `value` is valid.
     unsafe fn change_enum(&self, dir: i32) -> LieroItemAction {
-        let v = *self.value as u32;
-        let new_v = liero_menu_enum_change(v, self.min as u32, self.max as u32, dir);
-        if new_v != v {
-            *self.value = new_v as i32;
-            return LieroItemAction { update_menu: true, ..Default::default() };
+        unsafe {
+            let v = *self.value as u32;
+            let new_v = liero_menu_enum_change(v, self.min as u32, self.max as u32, dir);
+            if new_v != v {
+                *self.value = new_v as i32;
+                return LieroItemAction {
+                    update_menu: true,
+                    ..Default::default()
+                };
+            }
+            LieroItemAction::default()
         }
-        LieroItemAction::default()
     }
 
     /// # Safety
     /// As for `liero_item_left_right`.
     pub unsafe fn left_right(&self, dir: i32, menu_cycles: u32) -> LieroItemAction {
-        let host = current_host();
-        let side_sound = || host.play_sound(if dir > 0 { SOUND_RIGHT } else { SOUND_LEFT });
-        match self.kind {
-            LieroItemKind::Switch => {
-                side_sound();
-                self.toggle();
-                LieroItemAction { update_item: true, ..Default::default() }
-            }
-            LieroItemKind::Integer => {
-                let v = *self.value;
-                let new_v = liero_menu_integer_left_right(
-                    v,
-                    self.min,
-                    self.max,
-                    self.step,
-                    dir,
-                    menu_cycles,
-                    self.scroll_interval,
-                );
-                if new_v != v {
-                    *self.value = new_v;
+        unsafe {
+            let host = current_host();
+            let side_sound = || host.play_sound(if dir > 0 { SOUND_RIGHT } else { SOUND_LEFT });
+            match self.kind {
+                LieroItemKind::Switch => {
+                    side_sound();
+                    self.toggle();
+                    LieroItemAction {
+                        update_item: true,
+                        ..Default::default()
+                    }
                 }
-                LieroItemAction { keep_going: true, update_item: new_v != v, ..Default::default() }
-            }
-            LieroItemKind::Enum => {
-                side_sound();
-                self.change_enum(dir)
+                LieroItemKind::Integer => {
+                    let v = *self.value;
+                    let new_v = liero_menu_integer_left_right(
+                        v,
+                        self.min,
+                        self.max,
+                        self.step,
+                        dir,
+                        menu_cycles,
+                        self.scroll_interval,
+                    );
+                    if new_v != v {
+                        *self.value = new_v;
+                    }
+                    LieroItemAction {
+                        keep_going: true,
+                        update_item: new_v != v,
+                        ..Default::default()
+                    }
+                }
+                LieroItemKind::Enum => {
+                    side_sound();
+                    self.change_enum(dir)
+                }
             }
         }
     }
@@ -144,20 +157,28 @@ impl LieroItemBehavior {
     /// # Safety
     /// As for `liero_item_enter`.
     pub unsafe fn enter(&self) -> LieroItemAction {
-        current_host().play_sound(SOUND_ENTER);
-        match self.kind {
-            LieroItemKind::Switch => {
-                self.toggle();
-                LieroItemAction { update_item: true, ..Default::default() }
-            }
-            LieroItemKind::Integer => {
-                if !self.allow_entry {
-                    return LieroItemAction::default();
+        unsafe {
+            current_host().play_sound(SOUND_ENTER);
+            match self.kind {
+                LieroItemKind::Switch => {
+                    self.toggle();
+                    LieroItemAction {
+                        update_item: true,
+                        ..Default::default()
+                    }
                 }
-                let digits = 1 + (self.max as f64).log10().floor() as i32;
-                LieroItemAction { enter_digits: digits, ..Default::default() }
+                LieroItemKind::Integer => {
+                    if !self.allow_entry {
+                        return LieroItemAction::default();
+                    }
+                    let digits = 1 + (self.max as f64).log10().floor() as i32;
+                    LieroItemAction {
+                        enter_digits: digits,
+                        ..Default::default()
+                    }
+                }
+                LieroItemKind::Enum => self.change_enum(1),
             }
-            LieroItemKind::Enum => self.change_enum(1),
         }
     }
 
@@ -166,17 +187,19 @@ impl LieroItemBehavior {
     /// # Safety
     /// As for `liero_item_value_text`.
     pub unsafe fn value_text(&self) -> Vec<u8> {
-        let name = |i: usize| {
-            assert!(i < self.name_count, "item value {i} has no name");
-            (*self.names.add(i)).bytes().to_vec()
-        };
-        match self.kind {
-            LieroItemKind::Switch => name(*self.flag as usize),
-            LieroItemKind::Enum if self.name_count > 0 => name(*self.value as u32 as usize),
-            LieroItemKind::Integer | LieroItemKind::Enum => {
-                let mut buf = [0u8; 32];
-                let len = liero_menu_value_text(*self.value, self.value_kind, buf.as_mut_ptr(), buf.len());
-                buf[..len].to_vec()
+        unsafe {
+            let name = |i: usize| {
+                assert!(i < self.name_count, "item value {i} has no name");
+                (*self.names.add(i)).bytes().to_vec()
+            };
+            match self.kind {
+                LieroItemKind::Switch => name(*self.flag as usize),
+                LieroItemKind::Enum if self.name_count > 0 => name(*self.value as u32 as usize),
+                LieroItemKind::Integer | LieroItemKind::Enum => {
+                    let mut buf = [0u8; 32];
+                    let len = liero_menu_value_text(*self.value, self.value_kind, buf.as_mut_ptr(), buf.len());
+                    buf[..len].to_vec()
+                }
             }
         }
     }
@@ -187,18 +210,16 @@ impl LieroItemBehavior {
 ///
 /// # Safety
 /// The item's setting pointer for its kind is valid, and its names too.
-#[no_mangle]
-pub unsafe extern "C" fn liero_item_left_right(b: &LieroItemBehavior, dir: i32, menu_cycles: u32) -> LieroItemAction {
-    b.left_right(dir, menu_cycles)
+pub unsafe fn liero_item_left_right(b: &LieroItemBehavior, dir: i32, menu_cycles: u32) -> LieroItemAction {
+    unsafe { b.left_right(dir, menu_cycles) }
 }
 
 /// Enter on an item.
 ///
 /// # Safety
 /// As for `liero_item_left_right`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_item_enter(b: &LieroItemBehavior) -> LieroItemAction {
-    b.enter()
+pub unsafe fn liero_item_enter(b: &LieroItemBehavior) -> LieroItemAction {
+    unsafe { b.enter() }
 }
 
 /// Writes the item's value text into `out` (cut to `cap` bytes) and returns
@@ -206,12 +227,13 @@ pub unsafe extern "C" fn liero_item_enter(b: &LieroItemBehavior) -> LieroItemAct
 ///
 /// # Safety
 /// As for `liero_item_left_right`, and `out` holds `cap` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_item_value_text(b: &LieroItemBehavior, out: *mut u8, cap: usize) -> usize {
-    let text = b.value_text();
-    let n = text.len().min(cap);
-    std::ptr::copy_nonoverlapping(text.as_ptr(), out, n);
-    text.len()
+pub unsafe fn liero_item_value_text(b: &LieroItemBehavior, out: *mut u8, cap: usize) -> usize {
+    unsafe {
+        let text = b.value_text();
+        let n = text.len().min(cap);
+        std::ptr::copy_nonoverlapping(text.as_ptr(), out, n);
+        text.len()
+    }
 }
 
 #[cfg(test)]
@@ -220,7 +242,10 @@ mod tests {
     use crate::menu::{LIERO_MENU_VALUE_FRAMES, LIERO_MENU_VALUE_PERCENTAGE, LIERO_MENU_VALUE_TIME};
 
     fn s(b: &'static [u8]) -> LieroStr {
-        LieroStr { ptr: b.as_ptr(), len: b.len() }
+        LieroStr {
+            ptr: b.as_ptr(),
+            len: b.len(),
+        }
     }
 
     fn text(b: &LieroItemBehavior) -> String {
@@ -238,14 +263,20 @@ mod tests {
         b.name_count = 2;
         assert_eq!(text(&b), "OFF");
         let a = unsafe { b.left_right(-1, 0) };
-        assert_eq!(a, LieroItemAction { update_item: true, ..Default::default() });
+        assert_eq!(
+            a,
+            LieroItemAction {
+                update_item: true,
+                ..Default::default()
+            }
+        );
         assert_eq!(text(&b), "ON");
         unsafe { b.enter() };
         assert_eq!(text(&b), "OFF");
     }
 
     static SET: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
-    unsafe extern "C" fn set(v: bool) {
+    unsafe fn set(v: bool) {
         SET.store(v as i32, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -266,9 +297,23 @@ mod tests {
         let mut v = 5;
         let mut b = LieroItemBehavior::integer(&mut v, 1, 999);
         let a = unsafe { b.left_right(1, 0) };
-        assert_eq!(a, LieroItemAction { keep_going: true, update_item: true, ..Default::default() });
+        assert_eq!(
+            a,
+            LieroItemAction {
+                keep_going: true,
+                update_item: true,
+                ..Default::default()
+            }
+        );
         let a = unsafe { b.left_right(1, 1) };
-        assert_eq!(a, LieroItemAction { keep_going: true, ..Default::default() }, "waits for the repeat");
+        assert_eq!(
+            a,
+            LieroItemAction {
+                keep_going: true,
+                ..Default::default()
+            },
+            "waits for the repeat"
+        );
         assert_eq!(unsafe { b.enter() }.enter_digits, 3);
         b.max = 1000;
         assert_eq!(unsafe { b.enter() }.enter_digits, 4);
@@ -296,7 +341,13 @@ mod tests {
         b.name_count = 3;
         assert_eq!(text(&b), "C");
         let a = unsafe { b.enter() };
-        assert_eq!(a, LieroItemAction { update_menu: true, ..Default::default() });
+        assert_eq!(
+            a,
+            LieroItemAction {
+                update_menu: true,
+                ..Default::default()
+            }
+        );
         assert_eq!(text(&b), "A");
         unsafe { b.left_right(-1, 0) };
         assert_eq!(text(&b), "C");

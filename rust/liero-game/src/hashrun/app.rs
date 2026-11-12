@@ -23,13 +23,12 @@ use crate::app::app;
 use crate::app_screens::{liero_main_screen, LieroAppHooks};
 use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
-use crate::keys::{liero_keys_clear, liero_keys_event, liero_keys_test_sdl, liero_keys_test_sdl_once, liero_sdl_to_dos_keysym};
+use crate::keys::sdl_to_dos_keysym;
 use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks};
 use crate::menus::{liero_menus_load, liero_menus_reset};
-use crate::rand::liero_rand_seed;
 use crate::screen::{
-    liero_app_free, liero_app_new, liero_app_push, liero_app_step, liero_screen_set_host, LieroAppHost, LieroEvent, LieroScreen,
-    LieroScreenHost, LieroTypedKey,
+    liero_app_free, liero_app_new, liero_app_push, liero_app_step, liero_screen_set_host, LieroAppHost, LieroEvent,
+    LieroScreen, LieroScreenHost, LieroTypedKey,
 };
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
@@ -133,11 +132,14 @@ fn process_event(ev: Ev, to_controller: bool) {
     if down {
         driver(|d| {
             if d.key_buf.len() < 32 {
-                d.key_buf.push(LieroTypedKey { sym: key_code(scancode), scancode: scancode as u32 });
+                d.key_buf.push(LieroTypedKey {
+                    sym: key_code(scancode),
+                    scancode: scancode as u32,
+                });
             }
         });
     }
-    let dos = liero_keys_event(&mut app().keys, scancode, down);
+    let dos = app().keys.event(scancode, down);
     if dos != 0 && to_controller {
         if let Some(c) = app().controller.as_deref_mut() {
             // SAFETY: the app's controller is a live one.
@@ -154,66 +156,70 @@ fn process(to_controller: bool) {
     }
 }
 
-unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool {
-    let Some(ev) = next_event() else { return false };
-    process_event(ev, false);
-    let mut e = LieroEvent::default();
-    match ev {
-        Ev::Key { down, scancode } => {
-            e.key_down = down;
-            if down {
-                e.scancode = scancode as u32;
-                e.choice = true;
-                e.key = liero_sdl_to_dos_keysym(scancode);
+unsafe fn host_poll_event(out: *mut LieroEvent) -> bool {
+    unsafe {
+        let Some(ev) = next_event() else { return false };
+        process_event(ev, false);
+        let mut e = LieroEvent::default();
+        match ev {
+            Ev::Key { down, scancode } => {
+                e.key_down = down;
+                if down {
+                    e.scancode = scancode as u32;
+                    e.choice = true;
+                    e.key = sdl_to_dos_keysym(scancode);
+                }
             }
+            // The script types only ASCII, which is the same in DOS.
+            Ev::Text(c) => e.text = c,
         }
-        // The script types only ASCII, which is the same in DOS.
-        Ev::Text(c) => e.text = c,
+        *out = e;
+        true
     }
-    *out = e;
-    true
 }
 
-unsafe extern "C" fn host_process() {
+unsafe fn host_process() {
     process(false);
 }
 
-unsafe extern "C" fn host_clear_keys() {
-    liero_keys_clear(&mut app().keys);
+unsafe fn host_clear_keys() {
+    app().keys.clear();
 }
 
-unsafe extern "C" fn report_sound(id: i32) {
+unsafe fn report_sound(id: i32) {
     driver(|d| {
         let line = format!("app-sound {} {:016x}", d.shown, id as u32);
         d.lines.push(line);
     });
 }
 
-unsafe extern "C" fn host_test_key_once(scancode: u32) -> bool {
-    liero_keys_test_sdl_once(&mut app().keys, scancode as i32)
+unsafe fn host_test_key_once(scancode: u32) -> bool {
+    app().keys.test_sdl_once(scancode as i32)
 }
 
-unsafe extern "C" fn host_test_key(scancode: u32) -> bool {
-    liero_keys_test_sdl(&app().keys, scancode as i32)
+unsafe fn host_test_key(scancode: u32) -> bool {
+    app().keys.test_sdl(scancode as i32)
 }
 
-unsafe extern "C" fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
-    driver(|d| {
-        let n = d.key_buf.len().min(cap);
-        std::ptr::copy_nonoverlapping(d.key_buf.as_ptr(), out, n);
-        n
-    })
+unsafe fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
+    unsafe {
+        driver(|d| {
+            let n = d.key_buf.len().min(cap);
+            std::ptr::copy_nonoverlapping(d.key_buf.as_ptr(), out, n);
+            n
+        })
+    }
 }
 
-unsafe extern "C" fn host_ticks() -> u32 {
+unsafe fn host_ticks() -> u32 {
     driver(|d| (d.now as u32).wrapping_mul(14))
 }
 
-unsafe extern "C" fn host_hires_ticks() -> u64 {
-    u64::from(host_ticks()) * 1_000_000
+unsafe fn host_hires_ticks() -> u64 {
+    unsafe { u64::from(host_ticks()) * 1_000_000 }
 }
 
-unsafe extern "C" fn host_time() -> i64 {
+unsafe fn host_time() -> i64 {
     // 2001-09-09, then 70 frames a second.
     driver(|d| 1_000_000_000 + i64::from(d.now / 70))
 }
@@ -231,27 +237,37 @@ fn utc_text(t: i64) -> String {
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + i64::from(month <= 2);
-    format!("{year:04}-{month:02}-{day:02} {:02}.{:02}.{:02}", secs / 3600, secs / 60 % 60, secs % 60)
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}.{:02}.{:02}",
+        secs / 3600,
+        secs / 60 % 60,
+        secs % 60
+    )
 }
 
-unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
-    let s = utc_text(t);
-    // strftime writes nothing if the text and its 0 don't fit.
-    if s.len() >= cap {
-        return 0;
+unsafe fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
+    unsafe {
+        let s = utc_text(t);
+        // strftime writes nothing if the text and its 0 don't fit.
+        if s.len() >= cap {
+            return 0;
+        }
+        std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len());
+        *out.add(s.len()) = 0;
+        s.len()
     }
-    std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len());
-    *out.add(s.len()) = 0;
-    s.len()
 }
 
-unsafe extern "C" fn host_sound() -> LieroSoundOut {
+unsafe fn host_sound() -> LieroSoundOut {
     // No mixer: the hash run has no sound.
-    LieroSoundOut { mixer: std::ptr::null_mut(), report: Some(report_sound) }
+    LieroSoundOut {
+        mixer: std::ptr::null_mut(),
+        report: Some(report_sound),
+    }
 }
 
 /// A frame shown: the screen's pixels and palette.
-unsafe extern "C" fn host_show(_: *mut c_void) {
+unsafe fn host_show(_: *mut c_void) {
     let a = app();
     let r = if a.primary_single { &*a.single } else { &*a.play };
     let mut f = Fnv::default();
@@ -269,7 +285,7 @@ unsafe extern "C" fn host_show(_: *mut c_void) {
 }
 
 /// The top screen waits for an event: skip to the next one.
-unsafe extern "C" fn host_idle(_: *mut c_void) {
+unsafe fn host_idle(_: *mut c_void) {
     driver(|d| match d.steps.front() {
         Some(s) => {
             d.now = d.now.max(s.at);
@@ -279,23 +295,29 @@ unsafe extern "C" fn host_idle(_: *mut c_void) {
             }
         }
         None => {
-            d.failed.get_or_insert("the app waited for an event after its script ended");
+            d.failed
+                .get_or_insert("the app waited for an event after its script ended");
         }
     });
 }
 
 /// The frame's events, with their keys for the controller.
-unsafe extern "C" fn app_process() {
+unsafe fn app_process() {
     process(true);
 }
 
-unsafe extern "C" fn randomize_tc() {
-    // F8 isn't in the script; the game seeds it from the system.
-    liero_tc_randomize(&mut *app().menu_tc(), 0);
+unsafe fn randomize_tc() {
+    unsafe {
+        // F8 isn't in the script; the game seeds it from the system.
+        liero_tc_randomize(&mut *app().menu_tc(), 0);
+    }
 }
 
-unsafe extern "C" fn menu_screen() -> LieroScreen {
-    liero_menu_screen(LieroMenuScreenHooks { menus: app().menus, randomize_tc })
+unsafe fn menu_screen() -> LieroScreen {
+    liero_menu_screen(LieroMenuScreenHooks {
+        menus: app().menus,
+        randomize_tc,
+    })
 }
 
 /// Builds the timeline: `t` is the frame the next event happens on.
@@ -306,7 +328,10 @@ struct Script {
 
 impl Script {
     fn key(&mut self, scancode: i32, down: bool) {
-        self.steps.push_back(Step { at: self.t, ev: Ev::Key { down, scancode } });
+        self.steps.push_back(Step {
+            at: self.t,
+            ev: Ev::Key { down, scancode },
+        });
     }
 
     /// Held for `hold` frames, then `gap` frames before the next event.
@@ -329,7 +354,10 @@ impl Script {
 
     fn type_text(&mut self, text: &str) {
         for c in text.bytes() {
-            self.steps.push_back(Step { at: self.t, ev: Ev::Text(c) });
+            self.steps.push_back(Step {
+                at: self.t,
+                ev: Ev::Text(c),
+            });
             self.t += 4;
         }
     }
@@ -489,7 +517,13 @@ pub fn hash_app(out: &mut Out) {
     for dir in ["", "/Profiles", "/Replays"] {
         crate::disk::create_dir(super::on_disk(&format!("{root}{dir}")).as_bytes());
     }
-    assert!(crate::disk::write(super::on_disk(&format!("{root}/Replays/BROKEN.lrp")).as_bytes(), b"This is not a replay."), "can't write the broken replay");
+    assert!(
+        crate::disk::write(
+            super::on_disk(&format!("{root}/Replays/BROKEN.lrp")).as_bytes(),
+            b"This is not a replay."
+        ),
+        "can't write the broken replay"
+    );
 
     // Fresh menus, as the game starts with: the menu checks before this one
     // leave items hidden and selected.
@@ -507,18 +541,25 @@ pub fn hash_app(out: &mut Out) {
     a.files.config = Node::new(root.as_bytes());
     a.files.tc_root = Node::new(b"TC");
     a.files.settings_node = Node::new(format!("{root}/liero.cfg").as_bytes());
-    liero_rand_seed(&mut a.rand, 77);
+    a.rand.seed(77);
     a.primary_single = false;
     // As in the browser, where the lines were recorded.
     a.save_settings_on_change = true;
     a.menu_settings().data.spectator_window = false;
-    liero_keys_clear(&mut a.keys);
+    a.keys.clear();
     // SAFETY: as above.
     liero_menus_load(unsafe { &mut *a.menus });
 
-    let mut script = Script { steps: VecDeque::new(), t: 0 };
+    let mut script = Script {
+        steps: VecDeque::new(),
+        t: 0,
+    };
     build_script(&mut script);
-    DRIVER.set(Driver { limit: script.t + 2000, steps: script.steps, ..Default::default() });
+    DRIVER.set(Driver {
+        limit: script.t + 2000,
+        steps: script.steps,
+        ..Default::default()
+    });
 
     liero_screen_set_host(&LieroScreenHost {
         poll_event: Some(host_poll_event),
@@ -536,12 +577,22 @@ pub fn hash_app(out: &mut Out) {
         sound: Some(host_sound),
         ..Default::default()
     });
-    let host = LieroAppHost { data: std::ptr::null_mut(), show: Some(host_show), idle: Some(host_idle) };
+    let host = LieroAppHost {
+        data: std::ptr::null_mut(),
+        show: Some(host_show),
+        idle: Some(host_idle),
+    };
 
     // SAFETY: the screens and the host are Rust's.
     unsafe {
         let stack = liero_app_new();
-        liero_app_push(&mut *stack, liero_main_screen(LieroAppHooks { process: app_process, menu_screen }));
+        liero_app_push(
+            &mut *stack,
+            liero_main_screen(LieroAppHooks {
+                process: app_process,
+                menu_screen,
+            }),
+        );
         while liero_app_step(&mut *stack, &host) && driver(|d| d.failed.is_none()) {}
         liero_app_free(stack);
     }

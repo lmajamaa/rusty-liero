@@ -1,6 +1,7 @@
 # Counts unsafe Rust and FFI patterns in the pull request and its base branch,
 # and posts the comparison as a comment on the pull request, updating the same
-# comment on later pushes.
+# comment on later pushes. In phase 4 of PLAN.md the counts only go down, so
+# the check fails if one went up.
 #
 # The counting job runs the pull request's code with a read-only token. Only
 # the commenting job can write, and it runs no code from the repository. Pull
@@ -58,10 +59,21 @@ jobs:
             echo "REPORT_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Once the base branch has --fail-on-rise, which the PR that added it
+      # couldn't pass: making every unsafe operation explicit added blocks.
+      - name: Check no count went up
+        run: |
+          if grep -q -- "--fail-on-rise" base/tools/rust-patterns/report.ts; then
+            bun head/tools/rust-patterns/report.ts --fail-on-rise base head
+          else
+            echo "The base branch doesn't check yet."
+          fi
+
   comment:
     name: Comment on the pull request
     needs: count
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # The table is posted even when a count went up.
+    if: ${{ !cancelled() && needs.count.outputs.report != '' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write

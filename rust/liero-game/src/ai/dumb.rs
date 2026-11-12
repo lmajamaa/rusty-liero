@@ -13,7 +13,6 @@ const RF_LEFT: usize = 1;
 const RF_RIGHT: usize = 3;
 
 /// What the bot reads of its worm.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroDumbAiWorm {
     pub pos: [i32; 2],
@@ -58,7 +57,9 @@ impl Controls {
 pub fn process(rand: &mut LieroRand, worm: &LieroDumbAiWorm, others: &[[i32; 2]], k: &[[i32; 7]; 2]) -> u32 {
     let mut cs = Controls(worm.control_states);
     // A chance of one in k[pressed][control] ticks.
-    let chance = |rand: &mut LieroRand, pressed: bool, control: u32| rand.below(k[pressed as usize][control as usize] as u32) == 0;
+    let chance = |rand: &mut LieroRand, pressed: bool, control: u32| {
+        rand.below(k[pressed as usize][control as usize] as u32) == 0
+    };
 
     // The nearest worm, the first of any as near. C++ read a null worm
     // when there were no others.

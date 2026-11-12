@@ -1,19 +1,19 @@
 use super::*;
 use crate::controllers::{liero_controller_is_replay, LieroController};
-use crate::fs::{LieroFsNode, Node};
+use crate::fs::Node;
 use crate::settings::{liero_settings_box_new, LieroSettingsBox};
 use crate::tc::LieroTc;
 
 thread_local! {
     static SETTINGS: *mut LieroSettingsBox = liero_settings_box_new();
-    static TC: *mut LieroTc = crate::tc::liero_tc_load(&LieroFsNode(Node::new(b"../../TC/openliero")));
+    static TC: *mut LieroTc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
 }
 
-unsafe extern "C" fn settings() -> *mut LieroSettingsBox {
+unsafe fn settings() -> *mut LieroSettingsBox {
     SETTINGS.with(|s| *s)
 }
 
-unsafe extern "C" fn tc() -> *mut LieroTc {
+unsafe fn tc() -> *mut LieroTc {
     TC.with(|t| *t)
 }
 
@@ -36,7 +36,7 @@ fn replay() -> Box<LieroController> {
     std::fs::create_dir_all(dir).unwrap();
     let path = format!("{dir}/empty.lrp");
     std::fs::write(&path, b"").unwrap();
-    let c = unsafe { crate::controllers::liero_replay_controller_new(&LieroFsNode(Node::new(path.as_bytes())), tc()) };
+    let c = unsafe { crate::controllers::liero_replay_controller_new(&Node::new(path.as_bytes()), tc()) };
     assert!(!c.is_null());
     unsafe { Box::from_raw(c) }
 }
@@ -68,17 +68,25 @@ fn resuming_a_replay_shows_the_single_screen() {
 fn a_finished_game_goes_back_to_the_play_screen() {
     let a = set_up();
     a.primary_single = true;
-    let hooks = LieroAppHooks { process: no_process, menu_screen: no_menu };
-    let mut g = GameScreen { h: hooks, next: Next::Finish, shown: false, resumed: true };
+    let hooks = LieroAppHooks {
+        process: no_process,
+        menu_screen: no_menu,
+    };
+    let mut g = GameScreen {
+        h: hooks,
+        next: Next::Finish,
+        shown: false,
+        resumed: true,
+    };
     let t = g.tick(&Host(Default::default()));
     assert_eq!((t.kind, t.shown), (crate::screen::LieroTickKind::TickClose, false));
     assert!(!a.primary_single);
     a.controller = None;
 }
 
-unsafe extern "C" fn no_process() {}
+unsafe fn no_process() {}
 
-unsafe extern "C" fn no_menu() -> LieroScreen {
+unsafe fn no_menu() -> LieroScreen {
     LieroScreen::empty()
 }
 

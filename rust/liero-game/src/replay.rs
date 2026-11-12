@@ -16,9 +16,9 @@ use crate::math::LieroIVec2;
 use crate::tc::{LieroTcData, LieroTcWeapon};
 use crate::viewport::LieroViewport;
 use crate::worm::LieroWormData;
-use std::ffi::c_void;
 use liero_data::settings::{self as data, ArchiveError, In, Out, ReadError, Settings, Source, WormSettings};
 use std::collections::HashMap;
+use std::ffi::c_void;
 
 /// "LRPF".
 const MAGIC: u32 = u32::from_be_bytes(*b"LRPF");
@@ -37,7 +37,6 @@ const END: u8 = 0x83;
 
 /// Why a replay call failed.
 ///
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LieroReplayStatus {
     Ok,
@@ -73,7 +72,6 @@ impl From<ArchiveError> for ReplayError {
 }
 
 /// A worm weapon's state.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroReplayWeapon {
     pub ammo: i32,
@@ -85,7 +83,6 @@ pub struct LieroReplayWeapon {
 
 /// What a replay stores of a `Worm`, in the archive's order. Worms refer to
 /// each other by their place in the list of worms passed or returned, or -1.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroReplayWorm {
     pub pos: [i32; 2],
@@ -132,7 +129,6 @@ pub struct LieroReplayWorm {
 }
 
 /// What a replay stores of a `Viewport`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroReplayViewport {
     pub x: i32,
@@ -150,7 +146,6 @@ pub struct LieroReplayViewport {
 
 /// The `Game` fields a replay stores, apart from the settings, worms,
 /// viewports and level.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroReplayGameFields {
     pub cycles: i32,
@@ -247,10 +242,28 @@ impl GameWriter<'_> {
         }
         self.i32(f.aiming_angle);
         self.i32(f.aiming_speed);
-        for b in [f.able_to_jump, f.able_to_dig, f.key_change_pressed, f.movable, f.animate, f.visible, f.ready, f.flag, f.make_sight_green] {
+        for b in [
+            f.able_to_jump,
+            f.able_to_dig,
+            f.key_change_pressed,
+            f.movable,
+            f.animate,
+            f.visible,
+            f.ready,
+            f.flag,
+            f.make_sight_green,
+        ] {
             self.w.b(b);
         }
-        for v in [f.health, f.lives, f.kills, f.timer, f.killed_timer, f.current_frame, f.flags] {
+        for v in [
+            f.health,
+            f.lives,
+            f.kills,
+            f.timer,
+            f.killed_timer,
+            f.current_frame,
+            f.flags,
+        ] {
             self.i32(v);
         }
 
@@ -360,7 +373,13 @@ pub fn write_start(game: &mut Game, version: i32) -> (Vec<u8>, Result<(), Replay
     w.u32(MAGIC);
     // `put` keeps the low byte.
     w.0.push(version as u8);
-    let mut gw = GameWriter { w, version, game, ids: HashMap::new(), next_id: 1 };
+    let mut gw = GameWriter {
+        w,
+        version,
+        game,
+        ids: HashMap::new(),
+        next_id: 1,
+    };
     let r = gw.game();
     (gw.w.0, r)
 }
@@ -407,15 +426,18 @@ pub fn write_frame(
 
     let mut worms_written = vec![false; worms.len()];
     let write_states = worms.len() <= 3
-        || worms.iter_mut().zip(&mut worms_written).fold(false, |changed, ((f, ws), written)| {
-            if f.settings_expired {
-                w.0.push(WORM_SETTINGS);
-                w.u32(f.index as u32);
-                w.0.extend_from_slice(&data::write_worm(ws, version));
-                *written = true;
-            }
-            changed || f.control_states != f.prev_control_states
-        });
+        || worms
+            .iter_mut()
+            .zip(&mut worms_written)
+            .fold(false, |changed, ((f, ws), written)| {
+                if f.settings_expired {
+                    w.0.push(WORM_SETTINGS);
+                    w.u32(f.index as u32);
+                    w.0.extend_from_slice(&data::write_worm(ws, version));
+                    *written = true;
+                }
+                changed || f.control_states != f.prev_control_states
+            });
 
     if write_states {
         for (f, _) in worms.iter() {
@@ -607,7 +629,12 @@ impl<S: Source + ?Sized> GameReader<'_, S> {
             pixels.push(self.r.0.get()?);
         }
         self.palette(&mut palette)?;
-        self.game.level = Level { width, height, pixels, palette };
+        self.game.level = Level {
+            width,
+            height,
+            pixels,
+            palette,
+        };
         Ok(())
     }
 }
@@ -619,7 +646,12 @@ fn empty_game() -> Game {
         worms: Vec::new(),
         list: Vec::new(),
         viewports: Vec::new(),
-        level: Level { width: 0, height: 0, pixels: Vec::new(), palette: [0; 768] },
+        level: Level {
+            width: 0,
+            height: 0,
+            pixels: Vec::new(),
+            palette: [0; 768],
+        },
     }
 }
 
@@ -634,7 +666,12 @@ pub fn read_start<S: Source + ?Sized>(src: &mut S) -> Result<(i32, Game), Replay
     if version > LIERO_REPLAY_VERSION {
         return Err(ReplayError::Check("Replay version is too recent"));
     }
-    let mut gr = GameReader { r, version, game: empty_game(), ids: HashMap::new() };
+    let mut gr = GameReader {
+        r,
+        version,
+        game: empty_game(),
+        ids: HashMap::new(),
+    };
     gr.game()?;
     Ok((version, gr.game))
 }
@@ -710,10 +747,12 @@ pub fn read_checksum<S: Source + ?Sized>(src: &mut S, cycles: i32, actual: u32) 
 // ---- The game's worms and viewports, as replays hold them ----
 
 unsafe fn slice<'a, T>(p: *const T, len: usize) -> &'a [T] {
-    if len == 0 || p.is_null() {
-        &[]
-    } else {
-        std::slice::from_raw_parts(p, len)
+    unsafe {
+        if len == 0 || p.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts(p, len)
+        }
     }
 }
 
@@ -734,59 +773,61 @@ pub unsafe fn liero_replay_worm_of(
     count: usize,
     tc: &LieroTcData,
 ) -> LieroReplayWorm {
-    let worms = slice(worms, count);
-    let anchor = worm.ninjarope.anchor as *mut LieroWormData;
-    let rope = &worm.ninjarope;
-    LieroReplayWorm {
-        pos: [worm.pos.x, worm.pos.y],
-        vel: [worm.vel.x, worm.vel.y],
-        logic_respawn: [worm.logic_respawn.x, worm.logic_respawn.y],
-        hotspot: [worm.hotspot_x, worm.hotspot_y],
-        aiming_angle: worm.aiming_angle,
-        aiming_speed: worm.aiming_speed,
-        able_to_jump: worm.able_to_jump,
-        able_to_dig: worm.able_to_dig,
-        key_change_pressed: worm.key_change_pressed,
-        movable: worm.movable,
-        animate: worm.animate,
-        visible: worm.visible,
-        ready: worm.ready,
-        flag: worm.flag,
-        make_sight_green: worm.make_sight_green,
-        health: worm.health,
-        lives: worm.lives,
-        kills: worm.kills,
-        timer: worm.timer,
-        killed_timer: worm.killed_timer,
-        current_frame: worm.current_frame,
-        flags: worm.flags,
-        // The game's ropes only attach to its own worms.
-        rope_anchor: if anchor.is_null() {
-            -1
-        } else {
-            worms.iter().position(|&w| w == anchor).map_or(-1, |i| i as i32)
-        },
-        rope_attached: rope.attached,
-        rope_cur_len: rope.cur_len,
-        rope_length: rope.length,
-        rope_out: rope.out,
-        rope_vel: [rope.vel.x, rope.vel.y],
-        rope_pos: [rope.pos.x, rope.pos.y],
-        current_weapon: worm.current_weapon,
-        last_killed_by: worm.last_killed_by_idx,
-        fire_cone: worm.fire_cone,
-        leave_shell_timer: worm.leave_shell_timer,
-        index: worm.index,
-        reacts: worm.reacts,
-        weapons: worm.weapons.map(|w| LieroReplayWeapon {
-            ammo: w.ammo,
-            delay_left: w.delay_left,
-            weapon: weapon_place(w.kind, tc),
-            loading_left: w.loading_left,
-        }),
-        direction: worm.direction,
-        control_states: worm.control_states,
-        prev_control_states: worm.prev_control_states,
+    unsafe {
+        let worms = slice(worms, count);
+        let anchor = worm.ninjarope.anchor as *mut LieroWormData;
+        let rope = &worm.ninjarope;
+        LieroReplayWorm {
+            pos: [worm.pos.x, worm.pos.y],
+            vel: [worm.vel.x, worm.vel.y],
+            logic_respawn: [worm.logic_respawn.x, worm.logic_respawn.y],
+            hotspot: [worm.hotspot_x, worm.hotspot_y],
+            aiming_angle: worm.aiming_angle,
+            aiming_speed: worm.aiming_speed,
+            able_to_jump: worm.able_to_jump,
+            able_to_dig: worm.able_to_dig,
+            key_change_pressed: worm.key_change_pressed,
+            movable: worm.movable,
+            animate: worm.animate,
+            visible: worm.visible,
+            ready: worm.ready,
+            flag: worm.flag,
+            make_sight_green: worm.make_sight_green,
+            health: worm.health,
+            lives: worm.lives,
+            kills: worm.kills,
+            timer: worm.timer,
+            killed_timer: worm.killed_timer,
+            current_frame: worm.current_frame,
+            flags: worm.flags,
+            // The game's ropes only attach to its own worms.
+            rope_anchor: if anchor.is_null() {
+                -1
+            } else {
+                worms.iter().position(|&w| w == anchor).map_or(-1, |i| i as i32)
+            },
+            rope_attached: rope.attached,
+            rope_cur_len: rope.cur_len,
+            rope_length: rope.length,
+            rope_out: rope.out,
+            rope_vel: [rope.vel.x, rope.vel.y],
+            rope_pos: [rope.pos.x, rope.pos.y],
+            current_weapon: worm.current_weapon,
+            last_killed_by: worm.last_killed_by_idx,
+            fire_cone: worm.fire_cone,
+            leave_shell_timer: worm.leave_shell_timer,
+            index: worm.index,
+            reacts: worm.reacts,
+            weapons: worm.weapons.map(|w| LieroReplayWeapon {
+                ammo: w.ammo,
+                delay_left: w.delay_left,
+                weapon: weapon_place(w.kind, tc),
+                loading_left: w.loading_left,
+            }),
+            direction: worm.direction,
+            control_states: worm.control_states,
+            prev_control_states: worm.prev_control_states,
+        }
     }
 }
 
@@ -802,54 +843,75 @@ pub unsafe fn liero_replay_worm_set(
     count: usize,
     tc: &LieroTcData,
 ) {
-    let all = slice(all, count);
-    worm.pos = LieroIVec2 { x: f.pos[0], y: f.pos[1] };
-    worm.vel = LieroIVec2 { x: f.vel[0], y: f.vel[1] };
-    worm.logic_respawn = LieroIVec2 { x: f.logic_respawn[0], y: f.logic_respawn[1] };
-    worm.hotspot_x = f.hotspot[0];
-    worm.hotspot_y = f.hotspot[1];
-    worm.aiming_angle = f.aiming_angle;
-    worm.aiming_speed = f.aiming_speed;
-    worm.able_to_jump = f.able_to_jump;
-    worm.able_to_dig = f.able_to_dig;
-    worm.key_change_pressed = f.key_change_pressed;
-    worm.movable = f.movable;
-    worm.animate = f.animate;
-    worm.visible = f.visible;
-    worm.ready = f.ready;
-    worm.flag = f.flag;
-    worm.make_sight_green = f.make_sight_green;
-    worm.health = f.health;
-    worm.lives = f.lives;
-    worm.kills = f.kills;
-    worm.timer = f.timer;
-    worm.killed_timer = f.killed_timer;
-    worm.current_frame = f.current_frame;
-    worm.flags = f.flags;
+    unsafe {
+        let all = slice(all, count);
+        worm.pos = LieroIVec2 {
+            x: f.pos[0],
+            y: f.pos[1],
+        };
+        worm.vel = LieroIVec2 {
+            x: f.vel[0],
+            y: f.vel[1],
+        };
+        worm.logic_respawn = LieroIVec2 {
+            x: f.logic_respawn[0],
+            y: f.logic_respawn[1],
+        };
+        worm.hotspot_x = f.hotspot[0];
+        worm.hotspot_y = f.hotspot[1];
+        worm.aiming_angle = f.aiming_angle;
+        worm.aiming_speed = f.aiming_speed;
+        worm.able_to_jump = f.able_to_jump;
+        worm.able_to_dig = f.able_to_dig;
+        worm.key_change_pressed = f.key_change_pressed;
+        worm.movable = f.movable;
+        worm.animate = f.animate;
+        worm.visible = f.visible;
+        worm.ready = f.ready;
+        worm.flag = f.flag;
+        worm.make_sight_green = f.make_sight_green;
+        worm.health = f.health;
+        worm.lives = f.lives;
+        worm.kills = f.kills;
+        worm.timer = f.timer;
+        worm.killed_timer = f.killed_timer;
+        worm.current_frame = f.current_frame;
+        worm.flags = f.flags;
 
-    let rope = &mut worm.ninjarope;
-    rope.anchor = if f.rope_anchor < 0 { std::ptr::null_mut() } else { all[f.rope_anchor as usize].cast() };
-    rope.attached = f.rope_attached;
-    rope.cur_len = f.rope_cur_len;
-    rope.length = f.rope_length;
-    rope.out = f.rope_out;
-    rope.vel = LieroIVec2 { x: f.rope_vel[0], y: f.rope_vel[1] };
-    rope.pos = LieroIVec2 { x: f.rope_pos[0], y: f.rope_pos[1] };
-    worm.current_weapon = f.current_weapon;
-    worm.last_killed_by_idx = f.last_killed_by;
-    worm.fire_cone = f.fire_cone;
-    worm.leave_shell_timer = f.leave_shell_timer;
-    worm.index = f.index;
-    worm.reacts = f.reacts;
-    for (w, r) in worm.weapons.iter_mut().zip(&f.weapons) {
-        w.ammo = r.ammo;
-        w.delay_left = r.delay_left;
-        w.kind = tc.weapons.wrapping_offset(r.weapon as isize).cast();
-        w.loading_left = r.loading_left;
+        let rope = &mut worm.ninjarope;
+        rope.anchor = if f.rope_anchor < 0 {
+            std::ptr::null_mut()
+        } else {
+            all[f.rope_anchor as usize].cast()
+        };
+        rope.attached = f.rope_attached;
+        rope.cur_len = f.rope_cur_len;
+        rope.length = f.rope_length;
+        rope.out = f.rope_out;
+        rope.vel = LieroIVec2 {
+            x: f.rope_vel[0],
+            y: f.rope_vel[1],
+        };
+        rope.pos = LieroIVec2 {
+            x: f.rope_pos[0],
+            y: f.rope_pos[1],
+        };
+        worm.current_weapon = f.current_weapon;
+        worm.last_killed_by_idx = f.last_killed_by;
+        worm.fire_cone = f.fire_cone;
+        worm.leave_shell_timer = f.leave_shell_timer;
+        worm.index = f.index;
+        worm.reacts = f.reacts;
+        for (w, r) in worm.weapons.iter_mut().zip(&f.weapons) {
+            w.ammo = r.ammo;
+            w.delay_left = r.delay_left;
+            w.kind = tc.weapons.wrapping_offset(r.weapon as isize).cast();
+            w.loading_left = r.loading_left;
+        }
+        worm.direction = f.direction;
+        worm.control_states = f.control_states;
+        worm.prev_control_states = f.prev_control_states;
     }
-    worm.direction = f.direction;
-    worm.control_states = f.control_states;
-    worm.prev_control_states = f.prev_control_states;
 }
 
 /// A split-screen viewport as replays hold it (`viewportFields`).
@@ -879,7 +941,12 @@ pub fn liero_replay_viewport_set(vp: &mut LieroViewport, f: &LieroReplayViewport
     vp.center_y = f.center_y;
     vp.worm_idx = f.worm_idx;
     vp.banner_y = f.banner_y;
-    vp.rect = LieroRect { x1: f.rect[0], y1: f.rect[1], x2: f.rect[2], y2: f.rect[3] };
+    vp.rect = LieroRect {
+        x1: f.rect[0],
+        y1: f.rect[1],
+        x2: f.rect[2],
+        y2: f.rect[3],
+    };
 }
 
 #[cfg(test)]
@@ -897,18 +964,31 @@ mod tests {
         }
 
         fn words(&mut self, n: usize) -> Vec<i32> {
-            self.bytes(n * 4).chunks(4).map(|c| i32::from_be_bytes(c.try_into().unwrap())).collect()
+            self.bytes(n * 4)
+                .chunks(4)
+                .map(|c| i32::from_be_bytes(c.try_into().unwrap()))
+                .collect()
         }
     }
 
     fn worm(index: i32) -> Worm {
-        let mut fields = LieroReplayWorm { index, rope_anchor: -1, last_killed_by: -1, health: 100 + index, ..Default::default() };
+        let mut fields = LieroReplayWorm {
+            index,
+            rope_anchor: -1,
+            last_killed_by: -1,
+            health: 100 + index,
+            ..Default::default()
+        };
         fields.pos = [index * 1000, 2000];
         fields.weapons[2].weapon = 39;
         fields.direction = 1;
         fields.control_states = 0x15;
         fields.prev_control_states = 0x05;
-        let settings = WormSettings { name: format!("worm {index}").into_bytes(), controls_ex: [3; 8], ..Default::default() };
+        let settings = WormSettings {
+            name: format!("worm {index}").into_bytes(),
+            controls_ex: [3; 8],
+            ..Default::default()
+        };
         Worm { fields, settings }
     }
 
@@ -916,13 +996,30 @@ mod tests {
         let mut g = empty_game();
         g.list = (0..worms.len() as i32).collect();
         g.worms = worms;
-        g.fields = LieroReplayGameFields { cycles: 77, got_changed: true, last_killed: -1, screen_flash: 3, rand_x: 0xdead_beef, rand_c: 42 };
-        g.viewports = vec![LieroReplayViewport { x: 5, worm_idx: 1, rect: [0, 0, 158, 158], ..Default::default() }];
+        g.fields = LieroReplayGameFields {
+            cycles: 77,
+            got_changed: true,
+            last_killed: -1,
+            screen_flash: 3,
+            rand_x: 0xdead_beef,
+            rand_c: 42,
+        };
+        g.viewports = vec![LieroReplayViewport {
+            x: 5,
+            worm_idx: 1,
+            rect: [0, 0, 158, 158],
+            ..Default::default()
+        }];
         let mut palette = [0; 768];
         for (i, p) in palette.iter_mut().enumerate() {
             *p = (i % 64) as u8;
         }
-        g.level = Level { width: 3, height: 2, pixels: vec![1, 2, 3, 4, 5, 6], palette };
+        g.level = Level {
+            width: 3,
+            height: 2,
+            pixels: vec![1, 2, 3, 4, 5, 6],
+            palette,
+        };
         g
     }
 
@@ -952,7 +1049,10 @@ mod tests {
             if version == LIERO_REPLAY_VERSION {
                 assert_eq!(back.worms, written.worms);
             }
-            assert_eq!((back.list, back.viewports, back.level, back.fields), (written.list, written.viewports, written.level, written.fields));
+            assert_eq!(
+                (back.list, back.viewports, back.level, back.fields),
+                (written.list, written.viewports, written.level, written.fields)
+            );
         }
     }
 
@@ -966,7 +1066,11 @@ mod tests {
             n += 1;
             n
         };
-        let mut f = LieroReplayWorm { rope_anchor: -1, last_killed_by: -1, ..Default::default() };
+        let mut f = LieroReplayWorm {
+            rope_anchor: -1,
+            last_killed_by: -1,
+            ..Default::default()
+        };
         f.pos = [next(), next()];
         f.vel = [next(), next()];
         f.logic_respawn = [next(), next()];
@@ -990,7 +1094,12 @@ mod tests {
         f.index = next();
         f.reacts = [next(), next(), next(), next()];
         for w in &mut f.weapons {
-            *w = LieroReplayWeapon { ammo: next(), delay_left: next(), weapon: next(), loading_left: next() };
+            *w = LieroReplayWeapon {
+                ammo: next(),
+                delay_left: next(),
+                weapon: next(),
+                loading_left: next(),
+            };
         }
         f.direction = next();
         f.control_states = next() as u32;
@@ -999,7 +1108,10 @@ mod tests {
         f.visible = true;
         f.rope_out = true;
 
-        let mut g = game(vec![Worm { fields: f, settings: WormSettings::default() }]);
+        let mut g = game(vec![Worm {
+            fields: f,
+            settings: WormSettings::default(),
+        }]);
         let (bytes, _) = write_start(&mut g, LIERO_REPLAY_VERSION);
         let settings = data::write_archive(&mut Settings::default()).len();
         let worm_settings = data::write_worm(&mut WormSettings::default(), LIERO_REPLAY_VERSION).len();
@@ -1021,7 +1133,10 @@ mod tests {
         c.bytes(worm_settings);
         assert_eq!(c.words(5), range(27, 31));
         for first in (32..52).step_by(4) {
-            assert_eq!((c.words(1), c.bytes(1), c.words(3)), (vec![first], vec![0], range(first + 1, first + 3)));
+            assert_eq!(
+                (c.words(1), c.bytes(1), c.words(3)),
+                (vec![first], vec![0], range(first + 1, first + 3))
+            );
         }
         assert_eq!(c.bytes(3), [52, 53, 54]);
         assert_eq!(c.words(1), [CHECKPOINT as i32]);
@@ -1072,10 +1187,16 @@ mod tests {
         let (bytes, _) = write_start(&mut game(vec![worm(0), worm(1)]), LIERO_REPLAY_VERSION);
         let mut magic = bytes.clone();
         magic[0] = b'X';
-        assert_eq!(read(&magic).unwrap_err(), ReplayError::Check("File does not appear to be a replay"));
+        assert_eq!(
+            read(&magic).unwrap_err(),
+            ReplayError::Check("File does not appear to be a replay")
+        );
         let mut version = bytes.clone();
         version[4] = 5;
-        assert_eq!(read(&version).unwrap_err(), ReplayError::Check("Replay version is too recent"));
+        assert_eq!(
+            read(&version).unwrap_err(),
+            ReplayError::Check("Replay version is too recent")
+        );
         for len in [0, 4, 5, 100, bytes.len() - 1] {
             assert_eq!(read(&bytes[..len]).unwrap_err(), ReplayError::Read, "{len}");
         }
@@ -1083,12 +1204,23 @@ mod tests {
         let mut check = bytes.clone();
         let pos = check.windows(4).position(|w| w == CHECKPOINT.to_be_bytes()).unwrap();
         check[pos] ^= 1;
-        assert_eq!(read(&check).unwrap_err(), ReplayError::Check("Expected checkpoint here"));
+        assert_eq!(
+            read(&check).unwrap_err(),
+            ReplayError::Check("Expected checkpoint here")
+        );
     }
 
     fn frame_worm(index: i32, state: u32, prev: u32, expired: bool) -> (LieroReplayFrameWorm, WormSettings) {
-        let ws = WormSettings { name: format!("w{index}").into_bytes(), ..Default::default() };
-        let f = LieroReplayFrameWorm { index, control_states: state, prev_control_states: prev, settings_expired: expired };
+        let ws = WormSettings {
+            name: format!("w{index}").into_bytes(),
+            ..Default::default()
+        };
+        let f = LieroReplayFrameWorm {
+            index,
+            control_states: state,
+            prev_control_states: prev,
+            settings_expired: expired,
+        };
         (f, ws)
     }
 
@@ -1096,7 +1228,10 @@ mod tests {
     fn frames_read_back_as_written() {
         // Two worms always write their states; a checksum follows on 1050.
         let mut worms = vec![frame_worm(0, 0x11, 0x01, true), frame_worm(1, 0x02, 0x02, true)];
-        let mut settings = Settings { max_bonuses: 9, ..Default::default() };
+        let mut settings = Settings {
+            max_bonuses: 9,
+            ..Default::default()
+        };
         let (bytes, game_written, worms_written) = write_frame(4, &mut settings, true, &mut worms, 1050, 0x0102_0304);
         assert!(game_written);
         assert_eq!(worms_written, vec![false, false]);
@@ -1107,10 +1242,19 @@ mod tests {
         let mut touched = vec![false; 3];
         let mut src = Bytes::new(&bytes);
         let r = read_frame(&mut src, 4, &mut read_settings, &mut read_worms, &mut touched).unwrap();
-        assert_eq!(r, FrameRead { end: false, settings_changed: true });
+        assert_eq!(
+            r,
+            FrameRead {
+                end: false,
+                settings_changed: true
+            }
+        );
         assert_eq!(touched, vec![true, false, false]);
         assert_eq!(read_settings.max_bonuses, 9);
-        assert_eq!(read_worms.iter().map(|(f, _)| f.control_states).collect::<Vec<_>>(), vec![0x11, 0x02]);
+        assert_eq!(
+            read_worms.iter().map(|(f, _)| f.control_states).collect::<Vec<_>>(),
+            vec![0x11, 0x02]
+        );
         assert_eq!(read_checksum(&mut src, 1050, 0x0102_0304), Ok(()));
     }
 
@@ -1129,13 +1273,26 @@ mod tests {
         // past the four and skipped (C++ read past its worms there).
         let mut read_worms: Vec<_> = (0..4).map(|i| frame_worm(i, 3, 3, false)).collect();
         let mut touched = vec![false; 5];
-        let r = read_frame(&mut Bytes::new(&bytes[..5]), 4, &mut settings, &mut read_worms, &mut touched);
+        let r = read_frame(
+            &mut Bytes::new(&bytes[..5]),
+            4,
+            &mut settings,
+            &mut read_worms,
+            &mut touched,
+        );
         assert_eq!(r, Err(ReplayError::Read));
         assert_eq!(touched, vec![false; 5]);
 
         let mut by_place = bytes.clone();
         by_place[1..5].copy_from_slice(&2u32.to_be_bytes());
-        let r = read_frame(&mut Bytes::new(&by_place), 4, &mut settings, &mut read_worms, &mut touched).unwrap();
+        let r = read_frame(
+            &mut Bytes::new(&by_place),
+            4,
+            &mut settings,
+            &mut read_worms,
+            &mut touched,
+        )
+        .unwrap();
         assert!(r.settings_changed);
         assert_eq!(touched, vec![false, false, false, true, false]);
         assert_eq!(read_worms[2].1.name, b"w12");
@@ -1149,17 +1306,33 @@ mod tests {
         let mut worms = vec![frame_worm(0, 0, 0, false)];
         let mut touched = vec![false; 2];
         let mut frame = |bytes: &[u8]| read_frame(&mut Bytes::new(bytes), 4, &mut settings, &mut worms, &mut touched);
-        assert_eq!(frame(&[END]), Ok(FrameRead { end: true, settings_changed: false }));
+        assert_eq!(
+            frame(&[END]),
+            Ok(FrameRead {
+                end: true,
+                settings_changed: false
+            })
+        );
         assert_eq!(frame(&[0x84]), Err(ReplayError::Check("Unexpected header byte")));
         assert_eq!(frame(&[]), Err(ReplayError::Read));
         // An index that's negative as an int is skipped too.
-        assert_eq!(frame(&[WORM_SETTINGS, 0xff, 0xff, 0xff, 0xff, EMPTY_FRAME]), Ok(FrameRead::default()));
+        assert_eq!(
+            frame(&[WORM_SETTINGS, 0xff, 0xff, 0xff, 0xff, EMPTY_FRAME]),
+            Ok(FrameRead::default())
+        );
         assert_eq!(write_end(), vec![END]);
         // Later worms' bytes aren't headers, so they can have the top bit,
         // which reading drops.
         let mut two = vec![frame_worm(0, 0, 0x01, false), frame_worm(1, 0, 0x03, false)];
         let mut touched = vec![false; 3];
-        read_frame(&mut Bytes::new(&[0x00, 0xff]), 4, &mut Settings::default(), &mut two, &mut touched).unwrap();
+        read_frame(
+            &mut Bytes::new(&[0x00, 0xff]),
+            4,
+            &mut Settings::default(),
+            &mut two,
+            &mut touched,
+        )
+        .unwrap();
         assert_eq!((two[0].0.control_states, two[1].0.control_states), (0x01, 0x7c));
     }
 
@@ -1172,6 +1345,9 @@ mod tests {
         }
         assert_eq!(checksum(5, &worms), c);
         assert_eq!(read_checksum(&mut Bytes::new(&[]), 1049, 0), Ok(()));
-        assert_eq!(read_checksum(&mut Bytes::new(&[0, 0, 0, 1]), 2100, 2), Err(ReplayError::Check("Replay has desynced")));
+        assert_eq!(
+            read_checksum(&mut Bytes::new(&[0, 0, 0, 1]), 2100, 2),
+            Err(ReplayError::Check("Replay has desynced"))
+        );
     }
 }

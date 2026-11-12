@@ -7,8 +7,8 @@
 //! setting, and a setup or profile that can't be written.
 
 use crate::app::{app, LieroApp};
-use crate::fs::{join_path, LieroFsNode, Node};
-use crate::level::{liero_level_draw_miniature, LieroLevelBox};
+use crate::fs::{join_path, Node};
+use crate::level::LieroLevelBox;
 use crate::menus::{
     LIERO_MAIN_REPLAY, LIERO_SELECTOR_LEVEL, LIERO_SELECTOR_OPTIONS, LIERO_SELECTOR_PROFILE, LIERO_SELECTOR_REPLAY,
 };
@@ -20,7 +20,6 @@ use crate::settings::{
 };
 use crate::shared::Shared;
 use crate::tc::{s as text, LieroTc};
-use crate::text::LieroStr;
 
 /// The app's folders and files.
 #[derive(Default)]
@@ -127,18 +126,13 @@ fn preview_level(node: &Node) {
     let tc = a.tc_data();
     let mut level = LieroLevelBox::new();
     let powerlevel = a.menu_settings().data.load_powerlevel_palette;
-    // SAFETY: the TC's data lives as long as it does.
-    if !unsafe { level.load(&tc.level_common(), &tc.palette_colors, powerlevel, &bytes) } {
+    if !level.load(&tc.level_common(), &tc.palette_colors, powerlevel, &bytes) {
         return;
     }
-    let l = level.data().level;
     let center_x = a.single.data.render_res_x / 2;
     let (play, spectator) = (a.frozen.view(), a.frozen_spectator.view());
-    // SAFETY: the miniatures fit the frozen screens.
-    unsafe {
-        liero_level_draw_miniature(&l, play.pixels, play.pitch, 134, 162, 10);
-        liero_level_draw_miniature(&l, spectator.pixels, spectator.pitch, center_x - 126, a.single.data.render_res_y - 208, 2);
-    }
+    level.draw_miniature(&play, 134, 162, 10);
+    level.draw_miniature(&spectator, center_x - 126, a.single.data.render_res_y - 208, 2);
 }
 
 impl FileSource for AppFiles {
@@ -167,7 +161,7 @@ impl FileSource for AppFiles {
             }
             Choice::Profile(ws) => {
                 let mut status = LieroSettingsStatus::Ok;
-                if !liero_worm_settings_box_load_profile(ws, Some(&LieroFsNode(node.clone())), &mut status) {
+                if !liero_worm_settings_box_load_profile(ws, Some(&node.clone()), &mut status) {
                     panic!("Could not read {}", path(&node));
                 }
                 // A profile that ends early, or fails its checkpoint, threw
@@ -184,7 +178,7 @@ impl FileSource for AppFiles {
                 // be recording it
                 a.controller = None;
                 // SAFETY: the app's TC has a reference.
-                let c = unsafe { crate::controllers::liero_replay_controller_new(&LieroFsNode(node.clone()), a.menu_tc()) };
+                let c = unsafe { crate::controllers::liero_replay_controller_new(&node.clone(), a.menu_tc()) };
                 if c.is_null() {
                     panic!("Could not read {}", path(&node));
                 }
@@ -237,7 +231,11 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
             (spec, config, Choice::Level)
         }
         LIERO_SELECTOR_PROFILE => {
-            let spec = Spec { select: join_path(&config_path, b"Profiles"), has_select: true, ..spec(b"LPF", b"Select profile:") };
+            let spec = Spec {
+                select: join_path(&config_path, b"Profiles"),
+                has_select: true,
+                ..spec(b"LPF", b"Select profile:")
+            };
             let ws = a.menu_settings().worms[player as usize].clone();
             (spec, config, Choice::Profile(ws))
         }
@@ -254,7 +252,12 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
         LIERO_SELECTOR_OPTIONS => (spec(b"CFG", b"Select options:"), config, Choice::Options),
         _ => {
             let root = a.files.tc_root.clone();
-            let spec = Spec { root: root.full_path().to_vec(), title: b"Select TC:".to_vec(), tcs: true, ..Default::default() };
+            let spec = Spec {
+                root: root.full_path().to_vec(),
+                title: b"Select TC:".to_vec(),
+                tcs: true,
+                ..Default::default()
+            };
             (spec, root, Choice::Tc)
         }
     }
@@ -295,77 +298,9 @@ pub(crate) fn save_profile_as(player: i32, name: &[u8]) {
     file.extend_from_slice(b".lpf");
     let node = a.files.config.go(b"Profiles").go(&file);
     let ws = &mut *a.menu_settings().worms[player as usize];
-    if !liero_worm_settings_box_save_profile(ws, Some(&LieroFsNode(node.clone()))) {
+    if !liero_worm_settings_box_save_profile(ws, Some(&node.clone())) {
         panic!("Could not write {}", path(&node));
     }
-}
-
-// What C++ calls: the folders, and the settings at the start and end.
-
-/// # Safety
-/// `text` is valid.
-unsafe fn node_of(text: LieroStr) -> Node {
-    Node::new(text.bytes())
-}
-
-/// Sets the config folder (`Gfx::setConfigPath`).
-///
-/// # Safety
-/// `path` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_set_config_path(a: &mut LieroApp, path: LieroStr) {
-    a.files.config = node_of(path);
-}
-
-/// Sets the folder of TCs (`Gfx::setTcPath`).
-///
-/// # Safety
-/// `path` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_set_tc_path(a: &mut LieroApp, path: LieroStr) {
-    a.files.tc_root = node_of(path);
-}
-
-/// The TC folder `TC` in the config folder.
-#[no_mangle]
-pub extern "C" fn liero_app_set_tc_in_config(a: &mut LieroApp) {
-    a.files.tc_root = a.files.config.go(b"TC");
-}
-
-/// A new node for the config folder.
-#[no_mangle]
-pub extern "C" fn liero_app_config(a: &mut LieroApp) -> *mut LieroFsNode {
-    Box::into_raw(Box::new(LieroFsNode(a.files.config.clone())))
-}
-
-/// A new node for the folder of TCs.
-#[no_mangle]
-pub extern "C" fn liero_app_tc_root(a: &mut LieroApp) -> *mut LieroFsNode {
-    Box::into_raw(Box::new(LieroFsNode(a.files.tc_root.clone())))
-}
-
-/// Sets the settings file the menu shows, without reading it.
-#[no_mangle]
-pub extern "C" fn liero_app_set_settings_node(a: &mut LieroApp, node: Option<&LieroFsNode>) {
-    a.files.settings_node = node.map(|n| n.0.clone()).unwrap_or_default();
-}
-
-/// `LieroApp::load_settings`.
-#[no_mangle]
-pub extern "C" fn liero_app_load_settings(a: &mut LieroApp, node: Option<&LieroFsNode>, legacy: bool) -> bool {
-    a.load_settings(node.map(|n| &n.0), legacy)
-}
-
-/// `LieroApp::save_settings`.
-#[no_mangle]
-pub extern "C" fn liero_app_save_settings(a: &mut LieroApp, node: &LieroFsNode) -> bool {
-    a.save_settings(&node.0)
-}
-
-/// `LieroApp::mark_settings_saved`.
-#[no_mangle]
-pub extern "C" fn liero_app_mark_settings_saved(a: &mut LieroApp) {
-    a.mark_settings_saved();
 }
 
 #[cfg(test)]

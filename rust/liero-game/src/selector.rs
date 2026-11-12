@@ -95,7 +95,9 @@ fn ci_less(a: &[u8], b: &[u8]) -> bool {
 }
 
 fn extension(name: &[u8]) -> &[u8] {
-    name.iter().rposition(|&c| c == b'.').map_or(&[][..], |i| &name[i + 1..])
+    name.iter()
+        .rposition(|&c| c == b'.')
+        .map_or(&[][..], |i| &name[i + 1..])
 }
 
 fn basename(name: &[u8]) -> &[u8] {
@@ -113,7 +115,13 @@ fn join_path(root: &[u8], leaf: &[u8]) -> Vec<u8> {
 
 /// `Menu(178, 28)` with `setHeight(14)`, as a file list is.
 fn file_list() -> OwnedMenu {
-    OwnedMenu::new(LieroMenu { x: LIST_X, y: 28, height: 14, item_height: 8, ..Default::default() })
+    OwnedMenu::new(LieroMenu {
+        x: LIST_X,
+        y: 28,
+        height: 14,
+        item_height: 8,
+        ..Default::default()
+    })
 }
 
 /// A file or folder in the tree (`FileNode`).
@@ -167,7 +175,11 @@ impl Selector {
         let mut children = Vec::new();
         for (name, is_dir) in entries {
             let full_path = join_path(&self.nodes[n].full_path, &name);
-            let rel = if self.nodes[n].rel.is_empty() { name.clone() } else { join_path(&self.nodes[n].rel, &name) };
+            let rel = if self.nodes[n].rel.is_empty() {
+                name.clone()
+            } else {
+                join_path(&self.nodes[n].rel, &name)
+            };
             if is_dir {
                 children.push(self.node(name, full_path, rel, true, Some(n)));
             } else if self.filter.is_empty() || ci_eq(extension(&name), &self.filter) {
@@ -307,11 +319,9 @@ impl Selector {
     }
 
     fn framed_text(scr: &LieroBitmap, font: &LieroFont, text: &[u8], x: i32, y: i32) {
-        unsafe {
-            let width = font.dims(text).0;
-            liero_gfx_draw_rounded_box(scr, x, y, 0, 7, width);
-            font.text(scr, text, x + 2, y + 1, TITLE_COLOR, 1);
-        }
+        let width = font.dims(text).0;
+        liero_gfx_draw_rounded_box(scr, x, y, 0, 7, width);
+        font.text(scr, text, x + 2, y + 1, TITLE_COLOR, 1);
     }
 
     /// Previews the file under the cursor if it's new there.
@@ -368,8 +378,8 @@ fn restore_frozen(host: &Host) {
     };
     let len = |b: &LieroBitmap| b.pitch.max(0) as usize * b.h.max(0) as usize;
     let n = len(&scr).min(len(&frozen));
-    if n > 0 && !scr.pixels.is_null() && !frozen.pixels.is_null() {
-        unsafe { std::ptr::copy_nonoverlapping(frozen.pixels, scr.pixels, n) };
+    for (to, from) in scr.pixels[..n].iter().zip(&frozen.pixels[..n]) {
+        to.set(from.get());
     }
 }
 
@@ -487,7 +497,10 @@ mod tests {
 
         fn choose(&mut self, rel: &[u8], full: &[u8], name: &[u8], random: bool) -> i32 {
             let s = |x: &[u8]| String::from_utf8(x.to_vec()).unwrap();
-            CHOSEN.with(|c| c.borrow_mut().push(format!("{}|{}|{}|{}", s(rel), s(full), s(name), random)));
+            CHOSEN.with(|c| {
+                c.borrow_mut()
+                    .push(format!("{}|{}|{}|{}", s(rel), s(full), s(name), random))
+            });
             5
         }
     }
@@ -521,28 +534,50 @@ mod tests {
     }
 
     fn names(sel: &mut Selector, n: usize) -> Vec<String> {
-        sel.menu(n).names.iter().map(|b| String::from_utf8(b.clone()).unwrap()).collect()
+        sel.menu(n)
+            .names
+            .iter()
+            .map(|b| String::from_utf8(b.clone()).unwrap())
+            .collect()
     }
 
     #[test]
     fn lists_folders_first_filtered_and_sorted_without_case() {
-        tree(&[("", &[("b.LEV", false), ("zeta", true), ("A.lev", false), ("notes.txt", false), ("Alpha", true)])]);
+        tree(&[(
+            "",
+            &[
+                ("b.LEV", false),
+                ("zeta", true),
+                ("A.lev", false),
+                ("notes.txt", false),
+                ("Alpha", true),
+            ],
+        )]);
         let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), tree_source());
         assert_eq!(names(&mut sel, ROOT), ["Random", "Alpha", "zeta", "A", "b"]);
     }
 
     #[test]
     fn selects_a_file_in_a_subfolder_and_chooses_it() {
-        tree(&[("", &[("Replays", true), ("x.lrp", false)]), ("Replays", &[("one.lrp", false), ("two.lrp", false)])]);
+        tree(&[
+            ("", &[("Replays", true), ("x.lrp", false)]),
+            ("Replays", &[("one.lrp", false), ("two.lrp", false)]),
+        ]);
         let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/two.lrp", b"", false), tree_source());
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
         assert_eq!(sel.cur_sel().map(|c| sel.nodes[c].name.clone()), Some(b"two".to_vec()));
         assert_eq!(sel.choose(&Host(Default::default())), Some(5));
-        assert_eq!(CHOSEN.with(|c| c.borrow().clone()), ["Replays/two.lrp|/cfg/Replays/two.lrp|two|false"]);
+        assert_eq!(
+            CHOSEN.with(|c| c.borrow().clone()),
+            ["Replays/two.lrp|/cfg/Replays/two.lrp|two|false"]
+        );
         // Out to the root, where Replays stays selected.
         sel.exit();
         assert_eq!(sel.current, ROOT);
-        assert_eq!(sel.cur_sel().map(|c| sel.nodes[c].name.clone()), Some(b"Replays".to_vec()));
+        assert_eq!(
+            sel.cur_sel().map(|c| sel.nodes[c].name.clone()),
+            Some(b"Replays".to_vec())
+        );
     }
 
     #[test]
@@ -563,7 +598,11 @@ mod tests {
 
     #[test]
     fn tcs_are_folders_with_a_tc_cfg_chosen_as_files() {
-        tree(&[("", &[("good", true), ("bad", true)]), ("good", &[("tc.cfg", false)]), ("bad", &[])]);
+        tree(&[
+            ("", &[("good", true), ("bad", true)]),
+            ("good", &[("tc.cfg", false)]),
+            ("bad", &[]),
+        ]);
         let mut sel = Selector::new(&spec(b"", b"", b"", true), tree_source());
         assert_eq!(names(&mut sel, ROOT), ["good"]);
         assert_eq!(sel.choose(&Host(Default::default())), Some(5));
@@ -575,7 +614,7 @@ mod tests {
         static PREVIEWS: RefCell<u32> = const { RefCell::new(0) };
     }
 
-    unsafe extern "C" fn key_once(sc: u32) -> bool {
+    unsafe fn key_once(sc: u32) -> bool {
         KEYS.with(|k| {
             let mut k = k.borrow_mut();
             let found = k.iter().position(|&x| x == sc);
@@ -583,14 +622,16 @@ mod tests {
         })
     }
 
-    unsafe extern "C" fn typed(out: *mut crate::screen::LieroTypedKey, cap: usize) -> usize {
-        TYPED.with(|t| {
-            let t = std::mem::take(&mut *t.borrow_mut());
-            for (i, k) in t.iter().take(cap).enumerate() {
-                *out.add(i) = *k;
-            }
-            t.len().min(cap)
-        })
+    unsafe fn typed(out: *mut crate::screen::LieroTypedKey, cap: usize) -> usize {
+        unsafe {
+            TYPED.with(|t| {
+                let t = std::mem::take(&mut *t.borrow_mut());
+                for (i, k) in t.iter().take(cap).enumerate() {
+                    *out.add(i) = *k;
+                }
+                t.len().min(cap)
+            })
+        }
     }
 
     fn key_host(keys: &[u32], typed_text: &[u8]) -> Host {
@@ -598,7 +639,10 @@ mod tests {
         TYPED.with(|t| {
             *t.borrow_mut() = typed_text
                 .iter()
-                .map(|&c| crate::screen::LieroTypedKey { sym: i32::from(c), scancode: 0 })
+                .map(|&c| crate::screen::LieroTypedKey {
+                    sym: i32::from(c),
+                    scancode: 0,
+                })
                 .collect()
         });
         Host(crate::screen::LieroScreenHost {
@@ -625,7 +669,10 @@ mod tests {
         let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), tree_source());
         // "mm" is only inside "gamma".
         assert!(sel.process(&key_host(&[], b"mm")));
-        assert_eq!(sel.cur_sel().map(|c| sel.nodes[c].name.clone()), Some(b"gamma".to_vec()));
+        assert_eq!(
+            sel.cur_sel().map(|c| sel.nodes[c].name.clone()),
+            Some(b"gamma".to_vec())
+        );
     }
 
     #[test]

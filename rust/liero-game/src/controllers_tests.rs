@@ -1,12 +1,12 @@
 use super::*;
 use crate::fs::Node;
-use crate::keys::{liero_keys_set, sdl_to_dos};
+use crate::keys::sdl_to_dos;
 use crate::settings::LieroSettingsBox;
 use crate::tc::liero_tc_data;
 
 /// The bundled TC, with one reference for the test.
 fn tc() -> *mut LieroTc {
-    let tc = crate::tc::liero_tc_load(&LieroFsNode(Node::new(b"../../TC/openliero")));
+    let tc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
     assert!(!unsafe { liero_tc_data(&*tc) }.is_null());
     tc
 }
@@ -95,9 +95,8 @@ fn the_stats_screen_shows_each_worm_facing_the_middle() {
     unsafe {
         let s = stats_scene(game, &app().play.data, &[]);
         let sprites = &(*game.tc_data()).worm_sprites;
-        let size = (sprites.width * sprites.height) as usize;
-        assert_eq!(s.worm_sprites[0].mem, sprites.data.add(23 * size));
-        assert_eq!(s.worm_sprites[1].mem, sprites.data.add(44 * size));
+        assert_eq!(s.worm_sprites[0].mem, sprites.frame(23));
+        assert_eq!(s.worm_sprites[1].mem, sprites.frame(44));
         assert_eq!((s.names[0].bytes(), s.names[1].bytes()), (&b"left"[..], &b"right"[..]));
         assert_eq!((s.game_mode, s.game_mode_name.bytes()), (2, &b"Holdazone"[..]));
     }
@@ -110,7 +109,7 @@ fn r_rewinds_a_replay_to_its_start() {
     let dir = "target/controllers-tests/rewind";
     let _ = std::fs::remove_dir_all(dir);
     let path = format!("{dir}/x.lrp");
-    let node = LieroFsNode(Node::new(path.as_bytes()));
+    let node = Node::new(path.as_bytes());
     let tc = tc();
     unsafe {
         // A short game recorded.
@@ -150,12 +149,15 @@ fn r_rewinds_a_replay_to_its_start() {
             assert!(r.process());
         }
         assert_ne!(pos(&r), p1);
-        liero_keys_set(&mut app().keys, sdl_to_dos(SCANCODE_R), true);
+        app().keys.set(sdl_to_dos(SCANCODE_R), true);
         assert!(r.process());
         assert_eq!((pos(&r), r.game().unwrap().data_mut().cycles), (p1, c1));
         // The worms' stats places, which replays don't store.
         let g = r.game().unwrap();
-        assert_eq!((g.worm_at(0).unwrap().data.stats_x, g.worm_at(1).unwrap().data.stats_x), (0, 218));
+        assert_eq!(
+            (g.worm_at(0).unwrap().data.stats_x, g.worm_at(1).unwrap().data.stats_x),
+            (0, 218)
+        );
         drop(r);
         crate::tc::liero_tc_free(tc);
     }
