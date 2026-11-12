@@ -110,20 +110,25 @@ fn removing_takes_only_files() {
 }
 
 #[test]
-fn the_tree_is_this_threads_and_lists_its_files() {
+fn the_tree_lists_its_files_and_starts_empty() {
     in_tree(|| {
         assert!(uses_tree());
         assert!(create_dir(b"d"));
         assert!(write(b"d/f", b"1"));
         assert!(write(b"e", b"2"));
         assert_eq!(tree_files(), [(b"d/f".to_vec(), b"1".to_vec()), (b"e".to_vec(), b"2".to_vec())]);
-        std::thread::spawn(|| assert!(!uses_tree())).join().unwrap();
         // A new tree starts empty.
         use_tree();
         assert!(tree_files().is_empty());
     });
     assert!(!uses_tree());
     assert!(tree_files().is_empty());
+}
+
+#[test]
+#[cfg_attr(target_os = "emscripten", ignore = "the wasm build has no threads")]
+fn the_tree_is_this_threads() {
+    in_tree(|| std::thread::spawn(|| assert!(!uses_tree())).join().unwrap());
 }
 
 /// The file layer on the tree: writing a file and its folders, the case
