@@ -739,7 +739,7 @@ mod tests {
             };
             unsafe {
                 liero_game_start(&f, &settings(LIERO_GAME_KILL_EM_ALL), 300);
-                assert_eq!(((*f.game).bobjects.limit, (*f.game).bobjects.count), (300, 0));
+                assert_eq!(((*f.game).bobjects.limit(), (*f.game).bobjects.count), (300, 0));
                 // No zone outside Holdazone.
                 assert_eq!((*f.game).holdazone.rect.x2, 0);
             }
@@ -760,7 +760,7 @@ mod tests {
                 (-1, -1, 50, 34)
             );
             assert_eq!(
-                ((*g).wobjects.count, (*g).bobjects.limit, (*g).bobjects.count),
+                ((*g).wobjects.count, (*g).bobjects.limit(), (*g).bobjects.count),
                 (0, 1, 0)
             );
             assert!((*g).nobjects.sentinel.used && (*g).bonuses.arr[5].frame == -1);
@@ -771,15 +771,15 @@ mod tests {
             (*g).rand.next_u32();
             (*g).sobjects.arr[3].used = true;
             (*g).wobjects.count = 2;
-            crate::objects::liero_bobject_list_resize(&mut (*g).bobjects, 3);
+            (*g).bobjects.resize(3);
             (*g).bobjects.count = 2;
-            (*(*g).bobjects.arr.add(1)).color = 9;
+            (*g).bobjects.arr[1].color = 9;
             let c = liero_game_data_clone(&*g);
             // Every field is copied, and the blood is separate.
             assert_eq!(format!("{:?}", *c), format!("{:?}", *g));
             (*c).cycles = 1;
-            (*(*c).bobjects.arr.add(1)).color = 1;
-            assert_eq!(((*g).cycles, (*(*g).bobjects.arr.add(1)).color), (7, 9));
+            (*c).bobjects.arr[1].color = 1;
+            assert_eq!(((*g).cycles, (*g).bobjects.arr[1].color), (7, 9));
 
             // Assigning copies everything back.
             liero_game_data_assign(&mut *c, &*g);

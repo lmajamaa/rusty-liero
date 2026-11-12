@@ -15,6 +15,7 @@ use std::ffi::c_void;
 
 use crate::level::{LieroLevel, LieroLevelCommon};
 use crate::math::{ftoi, itof, vector_length, LieroIVec2};
+use crate::objects::{LieroBonus, LieroSObject};
 use crate::rand::LieroRand;
 
 pub(crate) fn add(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
@@ -103,21 +104,6 @@ impl LieroBObject {
     }
 }
 
-/// Moves blood particle `obj` one tick: C++'s `BObject::process`. Returns
-/// false when C++ should free it.
-///
-/// # Safety
-/// See `LieroLevel` and `LieroLevelCommon`.
-pub unsafe fn liero_bobject_process(
-    obj: &mut LieroBObject,
-    level: &LieroLevel,
-    common: &LieroLevelCommon,
-    rand: &mut LieroRand,
-    gravity: i32,
-) -> bool {
-    obj.process(level, common, rand, gravity)
-}
-
 /// Constants for bonuses, from the TC (`LC(Bonus...)` in C++).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroBonusConstants {
@@ -126,59 +112,55 @@ pub struct LieroBonusConstants {
     pub bounce_div: i32,
 }
 
-/// Moves a bonus box one tick: falling, bouncing on the ground and counting
-/// down `timer`. Returns true when the timer ran out, so C++ explodes it.
-/// `x` is fixed-point and must be inside the level.
-///
-/// # Safety
-/// See `LieroLevel`.
-pub unsafe fn liero_bonus_process(
-    x: i32,
-    y: &mut i32,
-    vel_y: &mut i32,
-    timer: &mut i32,
-    level: &LieroLevel,
-    constants: &LieroBonusConstants,
-) -> bool {
-    unsafe {
-        let lv = level.get();
+impl LieroBonus {
+    /// Moves the bonus box one tick: falling, bouncing on the ground and
+    /// counting down `timer`. Returns true when the timer ran out, so C++
+    /// explodes it. `x` must be inside the level.
+    ///
+    /// # Safety
+    /// See `LieroLevel`.
+    pub unsafe fn process(&mut self, level: &LieroLevel, constants: &LieroBonusConstants) -> bool {
+        // SAFETY: as the caller promises.
+        let lv = unsafe { level.get() };
 
-        *y = y.wrapping_add(*vel_y);
+        self.y = self.y.wrapping_add(self.vel_y);
 
-        let ix = ftoi(x);
-        let iy = ftoi(*y);
+        let ix = ftoi(self.x);
+        let iy = ftoi(self.y);
 
         if inside(level, ix, iy + 1) && lv.mat(ix, iy + 1).background() {
-            *vel_y = vel_y.wrapping_add(constants.gravity);
+            self.vel_y = self.vel_y.wrapping_add(constants.gravity);
         }
 
-        let inew_y = ftoi(y.wrapping_add(*vel_y));
+        let inew_y = ftoi(self.y.wrapping_add(self.vel_y));
         if inew_y < 0 || inew_y >= level.height - 1 || lv.mat(ix, inew_y).dirt_rock() {
-            *vel_y = -(vel_y.wrapping_mul(constants.bounce_mul)) / constants.bounce_div;
+            self.vel_y = -(self.vel_y.wrapping_mul(constants.bounce_mul)) / constants.bounce_div;
 
             // TODO in C++: read from the EXE.
-            if vel_y.abs() < 100 {
-                *vel_y = 0;
+            if self.vel_y.abs() < 100 {
+                self.vel_y = 0;
             }
         }
 
-        *timer -= 1;
-        *timer <= 0
+        self.timer -= 1;
+        self.timer <= 0
     }
 }
 
-/// Advances an explosion's animation one tick. Returns true when the
-/// animation is over, so C++ frees the object.
-pub fn liero_sobject_animate(cur_frame: &mut i32, anim_delay: &mut i32, type_anim_delay: i32, num_frames: i32) -> bool {
-    *anim_delay -= 1;
-    if *anim_delay <= 0 {
-        *anim_delay = type_anim_delay;
-        *cur_frame += 1;
-        if *cur_frame > num_frames {
-            return true;
+impl LieroSObject {
+    /// Advances the explosion's animation one tick. Returns true when the
+    /// animation is over, so C++ frees the object.
+    pub fn animate(&mut self, type_anim_delay: i32, num_frames: i32) -> bool {
+        self.anim_delay -= 1;
+        if self.anim_delay <= 0 {
+            self.anim_delay = type_anim_delay;
+            self.cur_frame += 1;
+            if self.cur_frame > num_frames {
+                return true;
+            }
         }
+        false
     }
-    false
 }
 
 /// Whether integer position (px, py) is strictly within `range` of (x, y)
@@ -679,13 +661,20 @@ mod tests {
 
     #[test]
     fn sobject_animation_ends_after_last_frame() {
-        let (mut frame, mut delay) = (0, 1);
+        let mut o = LieroSObject {
+            used: true,
+            x: 0,
+            y: 0,
+            id: 0,
+            cur_frame: 0,
+            anim_delay: 1,
+        };
         let mut ticks = 0;
-        while !liero_sobject_animate(&mut frame, &mut delay, 2, 3) {
+        while !o.animate(2, 3) {
             ticks += 1;
         }
         // Frames 1, 2 and 3 each last 2 ticks after the first.
-        assert_eq!((ticks, frame), (6, 4));
+        assert_eq!((ticks, o.cur_frame), (6, 4));
     }
 
     #[test]

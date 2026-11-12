@@ -157,9 +157,7 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
 
     let b = &g.bobjects;
     f.u32(b.count as u32);
-    // SAFETY: the list holds `limit` particles, and the first `count` are
-    // in use.
-    for p in unsafe { std::slice::from_raw_parts(b.arr, b.count) } {
+    for p in b.used() {
         f.vec(p.pos);
         f.vec(p.vel);
         f.i32(p.color);

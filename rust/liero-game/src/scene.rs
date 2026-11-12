@@ -318,7 +318,9 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
                 start_frame: (*(o.kind as *const LieroTcNObject)).start_frame,
             })
             .collect();
-        let bobjects: Vec<LieroViewBObject> = slice(d.bobjects.arr, d.bobjects.count as i32)
+        let bobjects: Vec<LieroViewBObject> = d
+            .bobjects
+            .used()
             .iter()
             .map(|b| LieroViewBObject {
                 pos: b.pos,
@@ -464,7 +466,7 @@ mod tests {
             d.sobjects.arr[7].id = 1;
             d.nobjects.arr[0].used = true;
             d.nobjects.arr[0].kind = (&*(*f.tc).nobjects as *const LieroTcNObject).cast();
-            crate::objects::liero_bobject_list_resize(&mut d.bobjects, 4);
+            d.bobjects.resize(4);
             d.bobjects.count = 3;
             (**f.viewports.add(1)).banner_y = 5;
 
