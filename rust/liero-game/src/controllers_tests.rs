@@ -116,10 +116,9 @@ fn r_rewinds_a_replay_to_its_start() {
         let mut c = local(tc, ["a", "b"]);
         let game = c.game().unwrap();
         // Weapons, as weapon selection gives them.
-        let weapons = (*game.tc_data()).weapons.as_ptr();
         for w in game.listed_worms() {
             for (i, ww) in w.unwrap().data.weapons.iter_mut().enumerate() {
-                ww.kind = weapons.add(i).cast();
+                ww.kind = i as i32;
             }
         }
         let blood = game.settings_box().data.blood_particle_max;

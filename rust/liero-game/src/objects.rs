@@ -11,8 +11,6 @@
 //! The lists are 74 KB in all, more than the web build's 64 KB stack, so
 //! they are only ever made and copied on the heap.
 
-use std::ffi::c_void;
-
 use crate::math::LieroIVec2;
 use crate::object::LieroBObject;
 
@@ -67,8 +65,8 @@ pub struct LieroWObject {
     pub used: bool,
     pub pos: LieroIVec2,
     pub vel: LieroIVec2,
-    /// The C++ `Weapon`.
-    pub kind: *const c_void,
+    /// The weapon that fired it: its index in the TC's weapons.
+    pub kind: i32,
     pub owner_idx: i32,
     pub cur_frame: i32,
     pub time_left: i32,
@@ -84,8 +82,8 @@ pub struct LieroNObject {
     pub pos: LieroIVec2,
     pub vel: LieroIVec2,
     pub time_left: i32,
-    /// The C++ `NObjectType`.
-    pub kind: *const c_void,
+    /// Its type: the index in the TC's non-weapon objects.
+    pub kind: i32,
     pub owner_idx: i32,
     pub cur_frame: i32,
     /// The weapon slot that fired it, for stats.

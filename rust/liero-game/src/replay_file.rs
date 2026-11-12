@@ -257,7 +257,6 @@ pub unsafe fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut Li
     unsafe {
         let settings = &mut *liero_game_settings(game);
         let level = &*liero_game_level(game);
-        let tc = &*game.tc_data();
         w.game = game;
         w.settings = settings;
 
@@ -284,7 +283,7 @@ pub unsafe fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut Li
                 .iter()
                 .zip(&datas)
                 .map(|(&p, &data)| Worm {
-                    fields: liero_replay_worm_of(&*data, &ids, tc),
+                    fields: liero_replay_worm_of(&*data, &ids),
                     settings: worm_settings(p).worm(),
                 })
                 .collect(),
@@ -513,7 +512,7 @@ pub unsafe fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut Li
         let all: Vec<_> = g.worms.iter().map(|_| liero_game_new_worm(game, null_mut())).collect();
         for (&id, rw) in all.iter().zip(&g.worms) {
             let w = game.worm_mut(id);
-            liero_replay_worm_set(&mut w.data, &rw.fields, &all, tc);
+            liero_replay_worm_set(&mut w.data, &rw.fields, &all);
             let ws = liero_worm_settings_box_new();
             (*ws).set_worm(&rw.settings);
             liero_worm_set_settings(w, ws);

@@ -22,8 +22,7 @@ impl<'a> World<'a> {
 
     /// The weapon of weapon object `slot`.
     fn wobj_weapon(&self, slot: usize) -> &'a LieroTcWeapon {
-        // SAFETY: a weapon object's weapon is the TC's.
-        unsafe { &*(self.wobj(slot).kind as *const LieroTcWeapon) }
+        self.weapon(self.wobj(slot).kind)
     }
 
     fn spread(&mut self, d: i32) -> i32 {
@@ -45,7 +44,7 @@ impl<'a> World<'a> {
         let slot = self.g.data.wobjects.new_object_reuse();
 
         self.update_wobj(slot, |o| {
-            o.kind = (kind as *const LieroTcWeapon).cast();
+            o.kind = kind.id;
             o.pos = pos;
             o.owner_idx = owner_idx;
 
@@ -132,9 +131,7 @@ impl<'a> World<'a> {
     pub(super) fn process_wobject(&mut self, slot: usize) {
         let o = self.wobj(slot);
         let owner_idx = o.owner_idx;
-        let kind = self.wobj_weapon(slot);
-        let index = ((kind as *const LieroTcWeapon as usize).wrapping_sub(self.tc.weapons.as_ptr() as usize)
-            / std::mem::size_of::<LieroTcWeapon>()) as i32;
+        let (kind, index) = (self.wobj_weapon(slot), o.kind);
 
         // As liero would do this while rendering, we try to do it as early as possible
         if self.hack(h("RemExp"))

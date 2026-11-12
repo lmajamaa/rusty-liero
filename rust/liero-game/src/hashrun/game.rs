@@ -7,7 +7,6 @@ use crate::game_box::{LieroGame, LieroWorm};
 use crate::math::LieroIVec2;
 use crate::renderer::LieroRenderer;
 use crate::stats::{Heatmap, LieroStats};
-use crate::tc::{LieroTcNObject, LieroTcWeapon};
 
 impl Fnv {
     fn vec(&mut self, v: LieroIVec2) {
@@ -75,8 +74,7 @@ fn hash_worm(f: &mut Fnv, w: &LieroWorm, anchor_index: i32) {
         f.i32(ww.ammo);
         f.i32(ww.delay_left);
         f.i32(ww.loading_left);
-        // SAFETY: a slot's weapon is the TC's.
-        f.i32(unsafe { ww.kind.cast::<LieroTcWeapon>().as_ref() }.map_or(-1, |k| k.id));
+        f.i32(ww.kind);
     }
 
     f.i32(w.direction);
@@ -137,8 +135,7 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
     for o in used(&g.wobjects.arr, |o| o.used) {
         f.vec(o.pos);
         f.vec(o.vel);
-        // SAFETY: a weapon object's weapon is the TC's.
-        f.i32(unsafe { &*o.kind.cast::<LieroTcWeapon>() }.id);
+        f.i32(o.kind);
         for v in [o.owner_idx, o.cur_frame, o.time_left] {
             f.i32(v);
         }
@@ -148,8 +145,7 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
     for o in used(&g.nobjects.arr, |o| o.used) {
         f.vec(o.pos);
         f.vec(o.vel);
-        // SAFETY: an object's type is the TC's.
-        f.i32(unsafe { &*o.kind.cast::<LieroTcNObject>() }.id);
+        f.i32(o.kind);
         for v in [o.owner_idx, o.cur_frame, o.time_left] {
             f.i32(v);
         }

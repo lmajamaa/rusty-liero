@@ -22,8 +22,7 @@ impl<'a> World<'a> {
 
     /// The type of non-weapon object `slot`.
     fn nobj_type(&self, slot: usize) -> &'a LieroTcNObject {
-        // SAFETY: an object's type is the TC's.
-        unsafe { &*(self.nobj(slot).kind as *const LieroTcNObject) }
+        self.nobject_type(self.nobj(slot).kind)
     }
 
     /// `Game::pixelMat`: whether the pixel's colour is dirt or rock. This
@@ -52,7 +51,7 @@ impl<'a> World<'a> {
         let slot = self.g.data.nobjects.new_object_reuse();
 
         self.update_nobj(slot, |o| {
-            o.kind = (t as *const LieroTcNObject).cast();
+            o.kind = kind;
             o.owner_idx = owner_idx;
             o.pos = pos;
             o.vel = vel;

@@ -175,8 +175,7 @@ impl Worm<'_, '_> {
 
     /// The current weapon's TC weapon.
     fn tc_weapon(&self) -> &LieroTcWeapon {
-        // SAFETY: a slot's weapon is the TC's.
-        unsafe { &*(self.slot().kind as *const LieroTcWeapon) }
+        self.world.weapon(self.slot().kind)
     }
 
     /// The current weapon's type.
@@ -296,7 +295,7 @@ impl Worm<'_, '_> {
     fn give_weapon(&mut self, slot: i32, weapon: i32) {
         let kind = self.world.weapon(weapon);
         let ww = &mut self.w_mut().weapons[slot as usize];
-        ww.kind = std::ptr::from_ref(kind).cast();
+        ww.kind = weapon;
         ww.ammo = kind.ammo;
     }
 
@@ -349,8 +348,7 @@ impl Worm<'_, '_> {
 
         for _ in 0..w.parts.max(0) {
             // `Weapon::fire`: one part of the shot.
-            // SAFETY: a slot's weapon is the TC's.
-            let kind = unsafe { &*(self.slot().kind as *const LieroTcWeapon) };
+            let kind = self.world.weapon(self.slot().kind);
             let (index, fired_by) = (self.index(), self.fired_by());
             self.world
                 .fire_weapon(kind, angle, firing_vel, speed, firing, index, fired_by);

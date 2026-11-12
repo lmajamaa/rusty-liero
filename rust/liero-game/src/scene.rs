@@ -5,7 +5,7 @@
 use crate::ai::{liero_worm_ai_traces, LieroWormAi};
 use crate::game::{LieroGameFields, LieroGameSettings};
 use crate::gfx::LieroBitmap;
-use crate::tc::{c, h, s, LieroTcData, LieroTcNObject, LieroTcSprites, LieroTcWeapon};
+use crate::tc::{c, h, s, LieroTcData, LieroTcSprites};
 use crate::text::LieroStr;
 use crate::viewport::{
     liero_viewport_draw, liero_viewport_process, LieroScene, LieroSpriteSet, LieroViewBObject, LieroViewBonus,
@@ -51,17 +51,6 @@ fn lstr(b: &[u8]) -> LieroStr {
     LieroStr {
         ptr: b.as_ptr(),
         len: b.len(),
-    }
-}
-
-/// The index of the TC weapon a worm's slot or a shot points to, or -1.
-unsafe fn weapon_index(kind: *const std::ffi::c_void) -> i32 {
-    unsafe {
-        if kind.is_null() {
-            -1
-        } else {
-            (*(kind as *const LieroTcWeapon)).id
-        }
     }
 }
 
@@ -111,7 +100,7 @@ pub(crate) unsafe fn view_worms(f: &LieroGameFields) -> Vec<LieroViewWorm> {
                     last_killed_by_idx: w.last_killed_by_idx,
                     current_weapon: w.current_weapon,
                     weapons: w.weapons.map(|ww| LieroViewWormWeapon {
-                        weapon: weapon_index(ww.kind),
+                        weapon: ww.kind,
                         ammo: ww.ammo,
                         loading_left: ww.loading_left,
                     }),
@@ -299,7 +288,7 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
             .filter(|(_, o)| o.used)
             .map(|(i, o)| LieroViewWObject {
                 pos: o.pos,
-                weapon: weapon_index(o.kind),
+                weapon: o.kind,
                 cur_frame: o.cur_frame,
                 slot: i as i32,
             })
@@ -312,7 +301,7 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
             .map(|o| LieroViewNObject {
                 pos: o.pos,
                 cur_frame: o.cur_frame,
-                start_frame: (*(o.kind as *const LieroTcNObject)).start_frame,
+                start_frame: tc.nobjects[o.kind as usize].start_frame,
             })
             .collect();
         let bobjects: Vec<LieroViewBObject> = d
@@ -356,6 +345,7 @@ mod tests {
     use crate::level::LieroLevel;
     use crate::sfx::LieroSoundOut;
     use crate::tc::LieroTcSObject;
+    use crate::tc::{LieroTcNObject, LieroTcWeapon};
     use crate::viewport::{liero_viewport_free, liero_viewport_new, LIERO_VIEWPORT_SPECTATOR};
     use crate::worm::LieroWormData;
 
@@ -365,7 +355,7 @@ mod tests {
 
     /// Runs `f` on a game of two worms named A and B in a TC of three
     /// weapons, with a split-screen viewport per worm and a spectator one.
-    fn with_game(f: impl FnOnce(&mut LieroGameFields, &mut [LieroWormData; 2], &[LieroTcWeapon])) {
+    fn with_game(f: impl FnOnce(&mut LieroGameFields, &mut [LieroWormData; 2])) {
         let mut weapons: Vec<LieroTcWeapon> = zeroed(3);
         for (i, (w, t)) in weapons.iter_mut().zip([0, 1, 250]).enumerate() {
             w.id = i as i32;
@@ -436,7 +426,7 @@ mod tests {
         // The worms are reached through `fields` while `f` changes them, as
         // the tick does.
         let data_ptr: *mut [LieroWormData; 2] = &mut data;
-        f(&mut fields, unsafe { &mut *data_ptr }, &tc.weapons);
+        f(&mut fields, unsafe { &mut *data_ptr });
         for vp in vps.into_iter().chain(spectators) {
             unsafe { liero_viewport_free(vp) };
         }
@@ -444,20 +434,20 @@ mod tests {
 
     #[test]
     fn lists_follow_the_game() {
-        with_game(|f, worms, weapons| unsafe {
+        with_game(|f, worms| unsafe {
             let d = &mut *f.game;
             worms[1].control_states = 1 << LIERO_CONTROL_FIRE;
-            worms[0].weapons[2].kind = (&weapons[2] as *const LieroTcWeapon).cast();
+            worms[0].weapons[2].kind = 2;
             for slot in [5, 2] {
                 d.wobjects.arr[slot].used = true;
-                d.wobjects.arr[slot].kind = (&weapons[1] as *const LieroTcWeapon).cast();
+                d.wobjects.arr[slot].kind = 1;
             }
             d.bonuses.arr[3].used = true;
             d.bonuses.arr[3].weapon = 2;
             d.sobjects.arr[7].used = true;
             d.sobjects.arr[7].id = 1;
             d.nobjects.arr[0].used = true;
-            d.nobjects.arr[0].kind = (*f.tc).nobjects.as_ptr().cast();
+            d.nobjects.arr[0].kind = 0;
             d.bobjects.resize(4);
             d.bobjects.count = 3;
             (**f.viewports.add(1)).banner_y = 5;
@@ -496,7 +486,7 @@ mod tests {
 
     #[test]
     fn viewports_are_processed_by_kind() {
-        with_game(|f, worms, _| unsafe {
+        with_game(|f, worms| unsafe {
             worms[0].visible = true;
             worms[0].pos = crate::math::LieroIVec2 {
                 x: 300 << 16,

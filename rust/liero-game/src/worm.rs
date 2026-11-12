@@ -134,7 +134,7 @@ impl Default for LieroWormData {
             index: 0,
             reacts: [0; 4],
             weapons: [LieroWormWeapon {
-                kind: std::ptr::null(),
+                kind: -1,
                 ammo: 0,
                 delay_left: 0,
                 loading_left: 0,

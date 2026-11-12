@@ -216,8 +216,7 @@ impl<'a> World<'a> {
         if by.worm < 0 {
             -1
         } else {
-            let ww = &self.g.pool_worm(WormId(by.worm as u32)).weapons[by.slot as usize];
-            unsafe { (*(ww.kind as *const LieroTcWeapon)).id }
+            self.g.pool_worm(WormId(by.worm as u32)).weapons[by.slot as usize].kind
         }
     }
 
@@ -363,8 +362,7 @@ impl<'a> World<'a> {
             let mut wr = Cursor::default();
             while let Some(n) = wr.next(&self.g.data.wobjects) {
                 let i = &mut self.g.data.wobjects.arr[n];
-                // SAFETY: a weapon object's weapon is the TC's.
-                let weapon = unsafe { &*(i.kind as *const LieroTcWeapon) };
+                let weapon = &self.tc.weapons[i.kind as usize];
 
                 if weapon.affect_by_explosions
                     && liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away)
@@ -377,8 +375,7 @@ impl<'a> World<'a> {
             let mut nr = Cursor::default();
             while let Some(n) = nr.next(&self.g.data.nobjects) {
                 let i = &mut self.g.data.nobjects.arr[n];
-                // SAFETY: a non-weapon object's type is the TC's.
-                let nt = unsafe { &*(i.kind as *const LieroTcNObject) };
+                let nt = &self.tc.nobjects[i.kind as usize];
                 if nt.affect_by_explosions {
                     liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away);
                 }

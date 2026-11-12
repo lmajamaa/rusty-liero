@@ -38,7 +38,6 @@ use crate::rand::LieroRand;
 use crate::renderer::{LieroBitmapBox, LieroRenderer};
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
-use crate::tc::LieroTcWeapon;
 use crate::text::LieroStr;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{
@@ -675,8 +674,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
             let w = w.expect("an empty place among the game's worms");
             for j in 0..5 {
                 f.u32(w.settings().data.weapons[j]);
-                // SAFETY: a slot's weapon is the TC's.
-                f.i32(unsafe { w.data.weapons[j].kind.cast::<LieroTcWeapon>().as_ref() }.map_or(-1, |k| k.id));
+                f.i32(w.data.weapons[j].kind);
             }
         }
 
