@@ -13,9 +13,12 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# The versions match .github/workflows/test.yml's.
 env:
-  EMSDK_VERSION: 4.0.0
   RUST_VERSION: 1.87.0
+  WASM_BINDGEN_VERSION: 0.2.129
+  WASM_BINDGEN_RUST_VERSION: 1.88.0
+  BUN_VERSION: 1.4.4
 
 jobs:
   build:
@@ -29,34 +32,31 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-unknown-emscripten
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-unknown-unknown
           rustup default "$RUST_VERSION"
 
-      - name: Install Emscripten
-        uses: emscripten-core/setup-emsdk@v15
+      - name: Install the wasm-bindgen CLI
+        run: |
+          rustup toolchain install "$WASM_BINDGEN_RUST_VERSION" --profile minimal
+          cargo +"$WASM_BINDGEN_RUST_VERSION" install --locked wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: ${{ env.EMSDK_VERSION }}
-          actions-cache-folder: emsdk-cache
+          bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Build the game
+      - name: Build the site
         run: |
-          emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/web -j
-
-      - name: Collect the site files
-        run: |
-          mkdir -p build/site
-          cp build/web/openliero.html build/site/index.html
-          cp build/web/openliero.js build/web/openliero.wasm build/web/openliero.data build/site/
+          bun tools/web/build.ts --out=build/site
           ls -l build/site
 
       - name: Check the page only uses relative URLs
         run: |
-          if grep -nE '(src|href)="/' build/site/index.html; then
+          if grep -nE '(src|href)="/|from "/' build/site/index.html; then
             echo "index.html has root-relative URLs, which break under /rusty-liero/" >&2
             exit 1
           fi
-          grep -q 'src="openliero.js"' build/site/index.html
+          grep -q 'from "./liero_game.js"' build/site/index.html
 
       - name: Upload the site
         uses: actions/upload-pages-artifact@v5

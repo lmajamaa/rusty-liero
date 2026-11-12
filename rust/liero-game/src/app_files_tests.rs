@@ -124,7 +124,6 @@ fn saving_options_writes_a_cfg_in_the_config_folder() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn the_selectors_start_where_the_game_left_off() {
     let (a, _) = set_up("specs");
     a.menu_settings().level_file = b"some/LEVEL.LEV".to_vec();
@@ -158,7 +157,6 @@ fn the_selectors_start_where_the_game_left_off() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn a_chosen_tc_is_switched_to_once() {
     let (a, _) = set_up("tc");
     with_tc(a);
@@ -174,7 +172,6 @@ fn a_chosen_tc_is_switched_to_once() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn choosing_a_replay_plays_it_and_remembers_it() {
     let (a, dir) = set_up("replay");
     with_tc(a);
@@ -188,7 +185,6 @@ fn choosing_a_replay_plays_it_and_remembers_it() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn a_level_is_previewed_in_miniature_on_both_screens() {
     let (a, dir) = set_up("preview");
     with_tc(a);

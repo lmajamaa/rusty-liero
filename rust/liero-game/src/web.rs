@@ -717,7 +717,14 @@ fn set_up_files() {
         return;
     }
     crate::disk::use_tree();
-    for dir in [&b"/TC"[..], b"/TC/openliero", CONFIG] {
+    put_tc();
+    crate::disk::create_dir(CONFIG);
+    crate::disk::take_changes();
+}
+
+/// Puts the bundled TC into the tree, at /TC/openliero.
+fn put_tc() {
+    for dir in [&b"/TC"[..], b"/TC/openliero"] {
         crate::disk::create_dir(dir);
     }
     for (path, data) in TC_FILES {
@@ -730,7 +737,23 @@ fn set_up_files() {
         }
         crate::disk::write(format!("/{path}").as_bytes(), data);
     }
-    crate::disk::take_changes();
+}
+
+/// The hash run on this build (`tools/hashrun/run.ts --wasm`), with the
+/// files in a tree holding only the TC, as the native run's folder does.
+/// `out` is called with each line it prints. `only` is a comma-separated
+/// list of sections, or empty for all.
+#[cfg(feature = "hashrun-export")]
+#[wasm_bindgen]
+pub fn liero_web_hash_run(ticks: i32, interval: i32, only: &str, out: &js_sys::Function) -> Result<(), JsValue> {
+    report_panics();
+    crate::disk::use_tree();
+    put_tc();
+    let only: Vec<String> = only.split(',').filter(|n| !n.is_empty()).map(str::to_owned).collect();
+    crate::hashrun::hash_run(ticks, interval, &only, &mut |line| {
+        out.call1(&JsValue::NULL, &line.into()).expect("can't print a line");
+    })
+    .map_err(|e| JsValue::from_str(&e))
 }
 
 // ---- Starting
@@ -840,7 +863,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
 /// The function each animation frame calls.
 type FrameFn = Closure<dyn FnMut()>;
 
-/// Runs the screens every animation frame (`emscripten_set_main_loop`),
+/// Runs the screens every animation frame (as the C++ shell's `emscripten_set_main_loop` did),
 /// with the 14 ms steps due, until they close; then saves the settings, as
 /// the game does when it ends.
 fn run_frames(stack: *mut crate::screen::LieroApp) {

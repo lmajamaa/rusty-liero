@@ -137,7 +137,6 @@ unsafe fn frame(r: *mut LieroReplayReader, s: &mut Setup) -> LieroReplayOutcome 
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn plays_back_the_game_it_recorded() {
     let _ = NO_WASM;
     let p = path("round-trip");
@@ -181,7 +180,6 @@ fn plays_back_the_game_it_recorded() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn rewinds_to_a_position() {
     let p = path("rewind");
     let mut s = Setup::new();
@@ -202,7 +200,6 @@ fn rewinds_to_a_position() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn writes_settings_changed_while_unfocused() {
     let p = path("settings");
     let s = Setup::new();
@@ -236,7 +233,6 @@ fn writes_settings_changed_while_unfocused() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn reports_desyncs_and_short_files() {
     let p = path("errors");
     let mut s = Setup::new();
@@ -281,7 +277,6 @@ fn reports_desyncs_and_short_files() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn writes_a_worms_changed_settings_with_more_than_three_worms() {
     let p = path("worm-settings");
     let s = Setup::new();

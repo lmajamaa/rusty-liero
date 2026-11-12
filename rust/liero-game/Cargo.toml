@@ -3,13 +3,16 @@ name = "liero-game"
 version = "0.1.0"
 edition = "2021"
 license = "BSD-2-Clause"
-description = "Game code ported from C++ to Rust, linked into openliero as a static library, and the hash run"
+description = "The game, its web shell and the hash run"
 
 [lib]
 name = "liero_game"
 path = "src/lib.rs"
-# rlib for the hash run (src/bin/liero-hashrun.rs).
-crate-type = ["staticlib", "rlib"]
+
+[features]
+# The web build's hash run export (`liero_web_hash_run`), for
+# `tools/hashrun/run.ts --wasm`; the site's build leaves it out.
+hashrun-export = []
 
 [dependencies]
 liero-data = { path = "../liero-data" }

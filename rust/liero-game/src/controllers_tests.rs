@@ -33,7 +33,6 @@ fn local(tc: *mut LieroTc, names: [&str; 2]) -> Box<LieroController> {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn escape_fades_to_the_menu_once() {
     let tc = tc();
     let mut c = local(tc, ["a", "b"]);
@@ -62,7 +61,6 @@ fn escape_fades_to_the_menu_once() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn replays_are_named_after_four_characters_of_each_name() {
     let tc = tc();
     let mut c = local(tc, ["Ab!cdef", "x-y z9"]);
@@ -73,7 +71,6 @@ fn replays_are_named_after_four_characters_of_each_name() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn focus_starts_weapon_selection_and_sets_both_palettes() {
     let tc = tc();
     let mut c = local(tc, ["a", "b"]);
@@ -90,7 +87,6 @@ fn focus_starts_weapon_selection_and_sets_both_palettes() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn the_stats_screen_shows_each_worm_facing_the_middle() {
     let tc = tc();
     let mut c = local(tc, ["left", "right"]);
@@ -110,7 +106,6 @@ fn the_stats_screen_shows_each_worm_facing_the_middle() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn r_rewinds_a_replay_to_its_start() {
     let dir = "target/controllers-tests/rewind";
     let _ = std::fs::remove_dir_all(dir);
@@ -167,7 +162,6 @@ fn r_rewinds_a_replay_to_its_start() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn the_game_fades_in_to_fully_shown() {
     let tc = tc();
     let mut c = local(tc, ["a", "b"]);

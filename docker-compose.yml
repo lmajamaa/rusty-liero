@@ -2,7 +2,7 @@
 #
 #   docker compose run --rm native                  # build tctool for Linux
 #   docker compose run --rm native tools/tctool/target/release/tctool <path-to-tc>
-#   docker compose run --rm web                     # shell with emcc, emcmake and bun
+#   docker compose run --rm web                     # shell with cargo, wasm-bindgen and bun
 
 services:
   native:
@@ -19,9 +19,4 @@ services:
       dockerfile: Dockerfile.web
     volumes:
       - .:/src
-      # Keeps Emscripten's compiled ports (SDL2, SDL2_image) between runs.
-      - emcache:/emsdk/upstream/emscripten/cache
     command: bash
-
-volumes:
-  emcache:

@@ -140,7 +140,7 @@ pub fn tree_files() -> Vec<(Vec<u8>, Vec<u8>)> {
 }
 
 /// The path for `std::fs`: its bytes as they are where names are bytes
-/// (Linux, macOS, Emscripten); elsewhere only UTF-8 can name a file, so
+/// (Linux, macOS); elsewhere only UTF-8 can name a file, so
 /// anything else reads as missing.
 #[cfg(unix)]
 fn path_str(p: &[u8]) -> &std::path::Path {

@@ -1,11 +1,5 @@
-// Build-time setup for two targets:
-// - Emscripten: link options for the hash run's wasm build
-//   (src/bin/liero-hashrun.rs), which CI runs with Bun as well as natively:
-//   the files it reads and writes are the disk's, through Node's file
-//   system, and every function checks for a stack overflow, as the web build
-//   CI makes does (LIERO_STACK_CHECK).
-// - wasm32-unknown-unknown, the web build (src/web): the bundled TC, listed
-//   for `include_bytes!`, since the browser has no disk to read it from.
+// For the web build (wasm32-unknown-unknown, src/web.rs): the bundled TC,
+// listed for `include_bytes!`, since the browser has no disk to read it from.
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
@@ -25,10 +19,6 @@ fn tc_files(dir: &Path, rel: &str, out: &mut Vec<(String, PathBuf)>) {
 fn main() {
     let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-    if os == "emscripten" {
-        println!("cargo:rustc-link-arg-bin=liero-hashrun=-sNODERAWFS=1");
-        println!("cargo:rustc-link-arg-bin=liero-hashrun=-sSTACK_OVERFLOW_CHECK=2");
-    }
     if arch == "wasm32" && os == "unknown" {
         let tc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../TC/openliero");
         println!("cargo:rerun-if-changed={}", tc.display());

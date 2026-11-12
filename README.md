@@ -1,4 +1,4 @@
-The game is only built for the web, with Docker (see below). tctool, written
+The game is only built for the web, with Docker (see below), from Rust. tctool, written
 in Rust, is a native command-line tool.
 
 Bots
@@ -76,47 +76,31 @@ docker compose run --rm native cargo test --manifest-path tools/tctool/Cargo.tom
 After an intended change to the output, rewrite the listings with
 `TCTOOL_UPDATE_LISTINGS=1` and say why in the commit.
 
-Shell with the web build tools (Emscripten and Bun):
+Shell with the web build tools (Rust, wasm-bindgen and Bun):
 ```bash
 docker compose run --rm web
 ```
 
-Web build of openliero (writes `build/web/openliero.html`, `.js`, `.wasm` and `.data`):
-```bash
-docker compose run --rm web sh -c "emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release && cmake --build build/web -j"
-```
-
-Serving the web build locally with Bun (then open http://localhost:8080):
-```bash
-bun web/serve.ts build/web
-```
-
-The web build with the Rust shell (`rust/liero-game/src/web.rs`) on
-`wasm32-unknown-unknown` instead of Emscripten, which will replace it (writes
-`build/www/index.html`, `liero_game.js` and `liero_game_bg.wasm`, with the TC
-inside the wasm). Its page is `web/index.html`; saves are kept in IndexedDB,
-and the first start copies the Emscripten build's:
+Web build of the game (writes `build/www/index.html`, `liero_game.js` and
+`liero_game_bg.wasm`, with the TC inside the wasm):
 ```bash
 docker compose run --rm web bun tools/web/build.ts
 ```
+The game is `rust/liero-game`, built for `wasm32-unknown-unknown`; its shell
+in the browser is `rust/liero-game/src/web.rs` and its page `web/index.html`.
+Saves are kept in IndexedDB, and the first start copies those of the earlier
+Emscripten build.
+
+Serving the web build locally with Bun (then open http://localhost:8080):
 ```bash
-bun web/serve.ts build/www --port 8082
+bun web/serve.ts build/www
 ```
 
 With Rust installed locally, `cargo run --release --manifest-path tools/tctool/Cargo.toml -- <path-to-tc>` works too.
 
-Game code ported to Rust lives in `rust/liero-game`. The web build compiles it
-with cargo for `wasm32-unknown-emscripten` and links it into openliero. After
-changing its `extern "C"` functions, regenerate the C header:
-```bash
-docker compose run --rm web sh -c "cd rust/liero-game && cbindgen --config cbindgen.toml --output include/liero_game.h"
-```
-Its tests, natively and as wasm (run with Bun):
+The game's tests run natively:
 ```bash
 docker compose run --rm web sh -c "cd rust/liero-game && cargo test"
-```
-```bash
-docker compose run --rm web sh -c "cd rust/liero-game && cargo test --target wasm32-unknown-emscripten"
 ```
 CI also runs clippy on every crate and fails on any warning:
 ```bash
@@ -134,9 +118,10 @@ frames, and `tools/hashrun/run.ts` builds it, runs it and compares them with
 ```bash
 docker compose run --rm web bun tools/hashrun/run.ts
 ```
-`--wasm` runs it as wasm with Bun instead, with the web build's stack and a
-check for overflowing it. `--tree` keeps the game's files in memory instead
-of a folder on disk, as the web build will (`rust/liero-game/src/disk.rs`). For a quick check of one part, such as a planted
+`--wasm` runs it on the web build instead, with Bun: the same wasm, with its
+64 KB stack and its files in memory. `--tree` keeps the game's files in
+memory natively too, as the web build does (`rust/liero-game/src/disk.rs`),
+instead of a folder on disk. For a quick check of one part, such as a planted
 bug, `--only=` runs just those sections (`tc`, `games`, `menus`, `settings`,
 `replays`, `ai`, `input`, `app`, `levels`, `randomtc`); a full run is still the
 check for a commit.
@@ -176,8 +161,12 @@ of this project.
 
 Some bundled parts keep their own licenses:
 * `TC/openliero/sounds`: WTFPL, see `TC/openliero/sounds/sounds.txt`
+* `rust/liero-game/src/exp.rs`: ported from musl's `exp`, MIT, Copyright (c)
+  2018 Arm Limited (see the file)
 
-The game also compiles in two Rust crates, under licenses of their choosing:
-`miniz_oxide` (MIT, Zlib or Apache-2.0) and `adler2` (0BSD, MIT or Apache-2.0).
+The game also compiles in Rust crates, under licenses of their choosing:
+`miniz_oxide` (MIT, Zlib or Apache-2.0) and `adler2` (0BSD, MIT or
+Apache-2.0), and in the web build `wasm-bindgen`, `js-sys` and `web-sys`
+(MIT or Apache-2.0).
 
 The original Liero game data is not included. Convert your own copy with tctool.

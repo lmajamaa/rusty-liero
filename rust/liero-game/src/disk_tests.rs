@@ -126,7 +126,6 @@ fn the_tree_lists_its_files_and_starts_empty() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "the wasm build has no threads")]
 fn the_tree_is_this_threads() {
     in_tree(|| std::thread::spawn(|| assert!(!uses_tree())).join().unwrap());
 }
@@ -186,7 +185,7 @@ fn dos_names_work_in_the_tree() {
 }
 
 #[test]
-#[cfg_attr(any(target_os = "emscripten", target_os = "macos"), ignore = "file names there are UTF-8")]
+#[cfg_attr(target_os = "macos", ignore = "file names there are UTF-8")]
 fn dos_names_work_on_the_disk() {
     let dir = std::env::temp_dir().join(format!("liero-disk-test-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();

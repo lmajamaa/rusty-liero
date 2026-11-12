@@ -29,7 +29,6 @@ fn compressed(name: &str, data: &[u8], chunk: usize) -> Vec<u8> {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn round_trips_whatever_the_writes() {
     let _ = NO_WASM;
     let data = sample();
@@ -43,7 +42,6 @@ fn round_trips_whatever_the_writes() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn a_cut_stream_gives_the_whole_pieces_then_fails() {
     let data = sample();
     let z = compressed("cut", &data, data.len());
@@ -71,7 +69,6 @@ fn what_isnt_zlib_fails_at_once() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn nothing_written_leaves_an_empty_file() {
     let z = compressed("empty", b"", 1);
     assert!(z.is_empty());
@@ -92,7 +89,6 @@ fn noise() -> Vec<u8> {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn more_than_a_piece_at_a_time_round_trips() {
     let data = noise();
     let z = compressed("noise", &data, data.len());
@@ -101,7 +97,6 @@ fn more_than_a_piece_at_a_time_round_trips() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack")]
 fn the_stream_is_miniz_oxide_0_9_1_at_level_6() {
     // Pinned so a level or crate change shows. Replay files differ from
     // what miniz.c 1.14 wrote anyway; the hashes check what they inflate to.

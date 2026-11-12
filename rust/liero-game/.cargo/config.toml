@@ -1,4 +1,0 @@
-# `cargo test --target wasm32-unknown-emscripten` runs the tests as wasm, the
-# way the game runs them, with Bun executing Emscripten's JavaScript loader.
-[target.wasm32-unknown-emscripten]
-runner = "bun"

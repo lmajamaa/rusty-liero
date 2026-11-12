@@ -5,13 +5,12 @@
 //! added at a frame time with an id (any pointer, only compared) and plays
 //! one sample per frame from that time, at a 4.12 fixed-point volume, until
 //! it ends or is stopped; a looping sound starts over. `liero_mixer_mix`
-//! fills a buffer and advances the mixer's time; SDL's audio callback calls it
-//! from C++ (`sfx.cpp`).
+//! fills a buffer and advances the mixer's time; the web shell's audio node
+//! calls it (`web.rs`).
 //!
 //! The C mixer was written so a game thread could add sounds while an audio
-//! thread mixed. The game only builds for wasm without threads, where
-//! Emscripten's SDL runs the audio callback on the main thread, so here the
-//! two never overlap.
+//! thread mixed. The game only builds for wasm without threads, where the
+//! audio node runs on the page's thread, so here the two never overlap.
 //!
 //! Quirks kept from the C mixer:
 //! - Stopping a channel doesn't clear its id, so `liero_mixer_is_playing`

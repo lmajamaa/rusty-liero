@@ -13,14 +13,14 @@
 // of expected.txt's, for quick checks such as planted bugs. A full run is still
 // the check for a commit.
 //
-// --wasm builds it for wasm32-unknown-emscripten instead and runs it with
-// Bun, with the web build's 64 KB stack and every function checking for an
-// overflow (rust/liero-game/build.rs), which a native run can't see. CI runs
-// both.
+// --wasm runs it on the web build instead (tools/web/build.ts --hashrun,
+// into build/hashrun-wasm), with Bun: the game's wasm as it ships, with its
+// 64 KB stack and its files in memory, plus the export that runs the hash
+// run (tools/hashrun/wasm.ts). CI runs both.
 //
 // --tree keeps the game's files in a tree in memory instead of a folder on
-// disk, as the web build will (rust/liero-game/src/disk.rs), to show the tree
-// gives the same lines. It can be used with the others.
+// disk, as the web build does (rust/liero-game/src/disk.rs), to show the tree
+// gives the same lines natively. The wasm run always does.
 //
 // Only regenerate expected.txt from a build whose game logic is known to be
 // right, such as the commit before a port.
@@ -52,13 +52,11 @@ const runArgs = [...(tree ? ["--tree"] : []), String(TICKS), String(INTERVAL), .
 const cargo = ["cargo", "build", "--quiet", "--release", "--manifest-path", "rust/liero-game/Cargo.toml", "--bin", "liero-hashrun"];
 let run;
 if (wasm) {
-  // Built and run in two steps: cargo's runner for the wasm target is set
-  // in rust/liero-game, but the run starts here, where the TC is.
-  const target = "wasm32-unknown-emscripten";
-  const build = Bun.spawnSync([...cargo, "--target", target], { stdout: "inherit", stderr: "inherit" });
+  const out = "build/hashrun-wasm";
+  const build = Bun.spawnSync([process.execPath, "tools/web/build.ts", "--hashrun", `--out=${out}`], { stdout: "inherit", stderr: "inherit" });
   if (build.exitCode !== 0) process.exit(1);
-  const js = `rust/liero-game/target/${target}/release/liero-hashrun.js`;
-  run = Bun.spawnSync([process.execPath, js, ...runArgs], { stdout: "pipe", stderr: "pipe" });
+  const wasmArgs = [String(TICKS), String(INTERVAL), only];
+  run = Bun.spawnSync([process.execPath, join(import.meta.dir, "wasm.ts"), out, ...wasmArgs], { stdout: "pipe", stderr: "pipe" });
 } else {
   const build = Bun.spawnSync(cargo, { stdout: "inherit", stderr: "inherit" });
   if (build.exitCode !== 0) process.exit(1);

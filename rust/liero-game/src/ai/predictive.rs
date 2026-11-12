@@ -516,7 +516,8 @@ fn obstacles_worms(level: &LevelView, from: &LieroAiWorm, to: &LieroAiWorm) -> i
 }
 
 fn sigmoid(x: f64) -> f64 {
-    1.0 / (1.0 + (-x).exp())
+    // musl's exp, which the recorded hashes used, on every target.
+    1.0 / (1.0 + crate::exp::exp(-x))
 }
 
 /// 0 at 0, about 0.5 at 1 and 1 at infinity.

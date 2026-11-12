@@ -880,7 +880,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn worm_sprites_face_both_ways_in_both_colours() {
         let c = bundled();
         let s = worm_sprites(&c.large_sprites);
@@ -909,7 +908,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn weapons_are_ordered_by_name() {
         let c = bundled();
         let order = weapon_order(&c.weapons);
@@ -972,7 +970,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn a_zipped_tc_loads_as_its_folder_does() {
         let dir = "target/tc-tests/zipped";
         let _ = std::fs::remove_dir_all(dir);
@@ -998,7 +995,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
     fn loads_from_a_node_and_reports_errors() {
         // Relative to the crate, where the tests run.
         let node = LieroFsNode(Node::new(b"../../TC/openliero"));

@@ -72,7 +72,6 @@ pub struct LieroSettings {
 
 /// What a settings call did.
 ///
-/// cbindgen:prefix-with-name
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LieroSettingsStatus {

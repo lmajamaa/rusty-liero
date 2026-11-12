@@ -45,7 +45,6 @@ fn set_up() -> &'static mut LieroApp {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn the_menu_starts_black_with_the_levels_miniature_behind_it() {
     let a = set_up();
     a.play.data.fade_value = 20;
@@ -65,7 +64,6 @@ fn the_menu_starts_black_with_the_levels_miniature_behind_it() {
 }
 
 #[test]
-#[cfg_attr(target_os = "emscripten", ignore = "reads the bundled TC from the host")]
 fn the_spectator_screen_says_whether_a_game_is_paused() {
     let a = set_up();
     a.frozen_spectator.copy_from(&a.single.bmp);

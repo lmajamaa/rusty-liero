@@ -2,23 +2,23 @@
 // Bun picking the MIME type from the extension (application/wasm for .wasm) and
 // no COOP/COEP headers, so anything that needs threads fails here as it would there.
 //
-//   bun web/serve.ts [dir] [--port N]     # dir defaults to build/web
+//   bun web/serve.ts [dir] [--port N]     # dir defaults to build/www
 //
-// A folder's page is its index.html, or the Emscripten build's openliero.html.
+// A folder's page is its index.html.
 
 import { resolve, join, sep } from "node:path";
 
 const args = process.argv.slice(2);
 const portFlag = args.indexOf("--port");
 const port = portFlag >= 0 ? Number(args.splice(portFlag, 2)[1]) : 8080;
-const root = resolve(args[0] ?? "build/web");
+const root = resolve(args[0] ?? "build/www");
 
 const server = Bun.serve({
   port,
   async fetch(req) {
     let path = decodeURIComponent(new URL(req.url).pathname);
     if (path.endsWith("/")) {
-      path += (await Bun.file(join(root, path, "index.html")).exists()) ? "index.html" : "openliero.html";
+      path += "index.html";
     }
 
     const full = join(root, path);

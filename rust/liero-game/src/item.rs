@@ -16,7 +16,6 @@ const SOUND_ENTER: i32 = 27;
 
 /// What an item edits.
 ///
-/// cbindgen:prefix-with-name
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LieroItemKind {
