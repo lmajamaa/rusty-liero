@@ -37,7 +37,6 @@ const END: u8 = 0x83;
 
 /// Why a replay call failed.
 ///
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LieroReplayStatus {
     Ok,
@@ -73,7 +72,6 @@ impl From<ArchiveError> for ReplayError {
 }
 
 /// A worm weapon's state.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroReplayWeapon {
     pub ammo: i32,
@@ -85,7 +83,6 @@ pub struct LieroReplayWeapon {
 
 /// What a replay stores of a `Worm`, in the archive's order. Worms refer to
 /// each other by their place in the list of worms passed or returned, or -1.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroReplayWorm {
     pub pos: [i32; 2],
@@ -132,7 +129,6 @@ pub struct LieroReplayWorm {
 }
 
 /// What a replay stores of a `Viewport`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroReplayViewport {
     pub x: i32,
@@ -150,7 +146,6 @@ pub struct LieroReplayViewport {
 
 /// The `Game` fields a replay stores, apart from the settings, worms,
 /// viewports and level.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroReplayGameFields {
     pub cycles: i32,

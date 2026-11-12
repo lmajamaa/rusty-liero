@@ -239,7 +239,7 @@ impl Ops {
             // SAFETY: the bitmap is the renderer's.
             Ops::Menus(kind) => unsafe { liero_menus_draw(menus(a), *kind, &scr, &font, disabled, x, show) },
             Ops::Availability(_) => {
-                unsafe extern "C" fn no_overlay(_: *mut std::ffi::c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
+                unsafe fn no_overlay(_: *mut std::ffi::c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
                 let hooks = LieroMenuHooks {
                     ctx: std::ptr::null_mut(),
                     draw_overlay: no_overlay,

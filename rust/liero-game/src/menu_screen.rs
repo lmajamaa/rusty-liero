@@ -50,13 +50,12 @@ pub const LIERO_MAIN_TC: i32 = 9;
 
 /// What the menu screen calls in C++. Menus are named by the
 /// `LIERO_MENU_*` constants.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroMenuScreenHooks {
     /// The menus, which outlive the screen.
     pub menus: *mut LieroMenus,
     /// F8: the developers' random TC.
-    pub randomize_tc: unsafe extern "C" fn(),
+    pub randomize_tc: unsafe fn(),
 }
 
 /// Where a pass stopped for a screen an item opened.
@@ -357,8 +356,7 @@ impl Screen for MenuScreen {
 }
 
 /// The main menu screen.
-#[no_mangle]
-pub extern "C" fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> LieroScreen {
+pub fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> LieroScreen {
     crate::screen::into_ffi(Box::new(MenuScreen {
         h: hooks,
         phase: Phase::Start,

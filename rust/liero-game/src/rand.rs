@@ -6,7 +6,6 @@
 /// Generator state. C++'s `Rand` inherits from this struct, so the state stays
 /// a plain value inside `Game`, `Worm` and the other objects that own one:
 /// they are copied for the AI and written into replays.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LieroRand {
     pub x: u32,
@@ -59,29 +58,8 @@ impl Default for LieroRand {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_rand_seed(rand: &mut LieroRand, seed: u32) {
+pub fn liero_rand_seed(rand: &mut LieroRand, seed: u32) {
     rand.seed(seed);
-}
-
-#[no_mangle]
-pub extern "C" fn liero_rand_next(rand: &mut LieroRand) -> u32 {
-    rand.next_u32()
-}
-
-#[no_mangle]
-pub extern "C" fn liero_rand_below(rand: &mut LieroRand, max: u32) -> u32 {
-    rand.below(max)
-}
-
-#[no_mangle]
-pub extern "C" fn liero_rand_range(rand: &mut LieroRand, min: u32, max: u32) -> u32 {
-    rand.range(min, max)
-}
-
-#[no_mangle]
-pub extern "C" fn liero_rand_double_below(rand: &mut LieroRand, max: f64) -> f64 {
-    rand.double_below(max)
 }
 
 #[cfg(test)]

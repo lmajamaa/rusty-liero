@@ -302,8 +302,7 @@ impl LieroGame {
 }
 
 /// A new game with no worms or viewports (`Game::Game`).
-#[no_mangle]
-pub extern "C" fn liero_game_new() -> *mut LieroGame {
+pub fn liero_game_new() -> *mut LieroGame {
     Box::into_raw(Box::new(LieroGame {
         data: LieroGameData::new_boxed(),
         pool: Vec::new(),
@@ -322,8 +321,7 @@ pub extern "C" fn liero_game_new() -> *mut LieroGame {
 /// # Safety
 /// `g` comes from `liero_game_new` or `_clone`, or is null, and isn't used
 /// again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_free(g: *mut LieroGame) {
+pub unsafe fn liero_game_free(g: *mut LieroGame) {
     unsafe {
         if !g.is_null() {
             drop(Box::from_raw(g));
@@ -332,15 +330,13 @@ pub unsafe extern "C" fn liero_game_free(g: *mut LieroGame) {
 }
 
 /// A copy of the game, as a replay keeps to rewind to.
-#[no_mangle]
-pub extern "C" fn liero_game_clone(g: &LieroGame) -> *mut LieroGame {
+pub fn liero_game_clone(g: &LieroGame) -> *mut LieroGame {
     Box::into_raw(g.copy())
 }
 
 /// Makes `to` a copy of `from` (rewinding a replay). `to`'s old worms are
 /// kept, as ropes copied before may be anchored to them.
-#[no_mangle]
-pub extern "C" fn liero_game_assign(to: &mut LieroGame, from: &LieroGame) {
+pub fn liero_game_assign(to: &mut LieroGame, from: &LieroGame) {
     let c = from.copy();
     to.data.assign(&c.data);
     let LieroGame {
@@ -383,31 +379,13 @@ fn draw_settings(
     }
 }
 
-/// `Game::draw`; see `LieroGame::draw`.
-///
-/// # Safety
-/// See `LieroGame::draw`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_draw(
-    g: &mut LieroGame,
-    r: *mut LieroRenderer,
-    state: i32,
-    spectators: bool,
-    is_replay: bool,
-) {
-    unsafe {
-        g.draw(r, state, spectators, is_replay);
-    }
-}
-
 /// Sets what the game is played with: the settings, the TC (or null) and
 /// where its sounds go. The game and its copies keep references to the
 /// settings and the TC.
 ///
 /// # Safety
 /// `settings` and `tc` have references, or are null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_set_context(
+pub unsafe fn liero_game_set_context(
     g: &mut LieroGame,
     settings: *mut LieroSettingsBox,
     tc: *mut LieroTc,
@@ -428,26 +406,22 @@ pub unsafe extern "C" fn liero_game_set_context(
 }
 
 /// The game's level, at a fixed address.
-#[no_mangle]
-pub extern "C" fn liero_game_level(g: &mut LieroGame) -> *mut LieroLevelBox {
+pub fn liero_game_level(g: &mut LieroGame) -> *mut LieroLevelBox {
     &mut *g.level
 }
 
 /// The game's settings box.
-#[no_mangle]
-pub extern "C" fn liero_game_settings(g: &LieroGame) -> *mut LieroSettingsBox {
+pub fn liero_game_settings(g: &LieroGame) -> *mut LieroSettingsBox {
     g.settings.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr())
 }
 
 /// The game's state, at a fixed address.
-#[no_mangle]
-pub extern "C" fn liero_game_data(g: &mut LieroGame) -> *mut LieroGameData {
+pub fn liero_game_data(g: &mut LieroGame) -> *mut LieroGameData {
     &mut *g.data
 }
 
 /// The game's stats, at a fixed address.
-#[no_mangle]
-pub extern "C" fn liero_game_stats(g: &mut LieroGame) -> *mut LieroStats {
+pub fn liero_game_stats(g: &mut LieroGame) -> *mut LieroStats {
     &mut *g.stats
 }
 
@@ -456,8 +430,7 @@ pub extern "C" fn liero_game_stats(g: &mut LieroGame) -> *mut LieroStats {
 ///
 /// # Safety
 /// `settings` is a valid box, or null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_new_worm(g: &mut LieroGame, settings: *mut LieroWormSettingsBox) -> *mut LieroWorm {
+pub unsafe fn liero_game_new_worm(g: &mut LieroGame, settings: *mut LieroWormSettingsBox) -> *mut LieroWorm {
     let mut w = LieroWorm::new(settings);
     let p: *mut LieroWorm = &mut *w;
     g.pool.push(w);
@@ -466,60 +439,51 @@ pub unsafe extern "C" fn liero_game_new_worm(g: &mut LieroGame, settings: *mut L
 
 /// Adds `w`, one of the game's worms, or an empty place for null, to the
 /// end of the game's list (`Game::addWorm`).
-#[no_mangle]
-pub extern "C" fn liero_game_list_worm(g: &mut LieroGame, w: *mut LieroWorm) {
+pub fn liero_game_list_worm(g: &mut LieroGame, w: *mut LieroWorm) {
     assert!(w.is_null() || g.owns(w), "not the game's worm");
     g.list.push(w);
 }
 
-#[no_mangle]
-pub extern "C" fn liero_game_worm_count(g: &LieroGame) -> usize {
+pub fn liero_game_worm_count(g: &LieroGame) -> usize {
     g.list.len()
 }
 
 /// The game's worm `i`, or null for an empty place.
-#[no_mangle]
-pub extern "C" fn liero_game_worm(g: &LieroGame, i: usize) -> *mut LieroWorm {
+pub fn liero_game_worm(g: &LieroGame, i: usize) -> *mut LieroWorm {
     g.list[i]
 }
 
-#[no_mangle]
-pub extern "C" fn liero_worm_data(w: &mut LieroWorm) -> *mut LieroWormData {
+pub fn liero_worm_data(w: &mut LieroWorm) -> *mut LieroWormData {
     &mut w.data
 }
 
 /// The worm's settings box, or null.
-#[no_mangle]
-pub extern "C" fn liero_worm_settings(w: &LieroWorm) -> *mut LieroWormSettingsBox {
+pub fn liero_worm_settings(w: &LieroWorm) -> *mut LieroWormSettingsBox {
     w.settings.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr())
 }
 
 /// # Safety
 /// `s` is a valid box, or null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_set_settings(w: &mut LieroWorm, s: *mut LieroWormSettingsBox) {
+pub unsafe fn liero_worm_set_settings(w: &mut LieroWorm, s: *mut LieroWormSettingsBox) {
     w.set_settings(s);
 }
 
 /// Gives the worm the bot for `controller`, or none for a human (0). See
 /// `liero_worm_ai_new`.
-#[no_mangle]
-pub extern "C" fn liero_worm_set_ai(w: &mut LieroWorm, controller: u32, candidates: usize, testing: bool) {
+pub fn liero_worm_set_ai(w: &mut LieroWorm, controller: u32, candidates: usize, testing: bool) {
     let ai = crate::ai::liero_worm_ai_new(controller, candidates, testing);
     // SAFETY: a new bot, or null, which isn't read.
     w.ai = (!ai.is_null()).then(|| Rc::new(UnsafeCell::new(*unsafe { Box::from_raw(ai) })));
 }
 
 /// The worm's bot, or null.
-#[no_mangle]
-pub extern "C" fn liero_worm_ai(w: &LieroWorm) -> *mut LieroWormAi {
+pub fn liero_worm_ai(w: &LieroWorm) -> *mut LieroWormAi {
     w.ai.as_ref().map_or(std::ptr::null_mut(), |a| a.get())
 }
 
 /// Adds a viewport (`Game::addViewport`, or `addSpectatorViewport` with
 /// `spectator_list`), at a fixed address.
-#[no_mangle]
-pub extern "C" fn liero_game_add_viewport(
+pub fn liero_game_add_viewport(
     g: &mut LieroGame,
     rect: LieroRect,
     worm_idx: i32,
@@ -544,14 +508,12 @@ pub extern "C" fn liero_game_add_viewport(
 }
 
 /// `Game::clearViewports`.
-#[no_mangle]
-pub extern "C" fn liero_game_clear_viewports(g: &mut LieroGame) {
+pub fn liero_game_clear_viewports(g: &mut LieroGame) {
     g.viewports.clear();
     g.spectators.clear();
 }
 
-#[no_mangle]
-pub extern "C" fn liero_game_viewport_count(g: &LieroGame, spectator_list: bool) -> usize {
+pub fn liero_game_viewport_count(g: &LieroGame, spectator_list: bool) -> usize {
     if spectator_list {
         g.spectators.len()
     } else {
@@ -559,8 +521,7 @@ pub extern "C" fn liero_game_viewport_count(g: &LieroGame, spectator_list: bool)
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_game_viewport(g: &mut LieroGame, spectator_list: bool, i: usize) -> *mut LieroViewport {
+pub fn liero_game_viewport(g: &mut LieroGame, spectator_list: bool, i: usize) -> *mut LieroViewport {
     if spectator_list {
         g.spectators[i].get()
     } else {
@@ -574,8 +535,7 @@ pub extern "C" fn liero_game_viewport(g: &mut LieroGame, spectator_list: bool, i
 /// # Safety
 /// `origpal` and `level_pal` hold 256 entries, and the listed worms have
 /// settings.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_origpal(g: &LieroGame, origpal: *mut LieroColor, level_pal: *const LieroColor) {
+pub unsafe fn liero_game_origpal(g: &LieroGame, origpal: *mut LieroColor, level_pal: *const LieroColor) {
     unsafe {
         std::ptr::copy_nonoverlapping(level_pal, origpal, 256);
         for w in g.worms().flatten() {
@@ -600,8 +560,7 @@ pub struct LieroGameView {
 /// The game's fields and settings, valid while the game's worms, viewports
 /// and settings stay and the view isn't freed. The game has its settings
 /// and TC (`liero_game_set_context`).
-#[no_mangle]
-pub extern "C" fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
+pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
     // SAFETY: the game keeps its context alive.
     let (s, tc) = unsafe { (&*g.settings_box(), g.tc.as_ref()) };
     let settings = game_settings(&s.data, tc);
@@ -653,13 +612,11 @@ pub extern "C" fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
     }))
 }
 
-#[no_mangle]
-pub extern "C" fn liero_game_view_fields(v: &LieroGameView) -> *const LieroGameFields {
+pub fn liero_game_view_fields(v: &LieroGameView) -> *const LieroGameFields {
     &v.fields
 }
 
-#[no_mangle]
-pub extern "C" fn liero_game_view_settings(v: &LieroGameView) -> *const LieroGameSettings {
+pub fn liero_game_view_settings(v: &LieroGameView) -> *const LieroGameSettings {
     &v.settings
 }
 
@@ -697,8 +654,7 @@ pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&
 
 /// # Safety
 /// `v` comes from `liero_game_view_new`, or is null, and isn't used again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_view_free(v: *mut LieroGameView) {
+pub unsafe fn liero_game_view_free(v: *mut LieroGameView) {
     unsafe {
         if !v.is_null() {
             drop(Box::from_raw(v));

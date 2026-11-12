@@ -28,7 +28,6 @@ use crate::worm::{
 
 /// Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
 /// `gvl::rect`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroRect {
     pub x1: i32,
@@ -38,7 +37,6 @@ pub struct LieroRect {
 }
 
 /// Holdazone's zone, laid out like C++'s `Holdazone`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroHoldazone {
     pub rect: LieroRect,
@@ -53,7 +51,6 @@ pub struct LieroHoldazone {
 }
 
 /// A new bonus's fields, as `set_bonus` copies them into C++'s `Bonus`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroBonusState {
     pub x: i32,
@@ -65,7 +62,6 @@ pub struct LieroBonusState {
 }
 
 /// A worm, as the game rules see it.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroGameWorm {
     pub data: *mut LieroWormData,
@@ -90,7 +86,6 @@ impl LieroGameWorm {
 ///
 /// It is 74 KB, more than the web build's stack, so it is only made and
 /// copied on the heap: `new_boxed`, `clone_boxed` and `assign`.
-#[repr(C)]
 #[derive(Debug)]
 pub struct LieroGameData {
     pub cycles: i32,
@@ -167,15 +162,13 @@ impl LieroGameData {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_game_data_new() -> *mut LieroGameData {
+pub fn liero_game_data_new() -> *mut LieroGameData {
     Box::into_raw(LieroGameData::new_boxed())
 }
 
 /// # Safety
 /// `g` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_data_clone(g: &LieroGameData) -> *mut LieroGameData {
+pub unsafe fn liero_game_data_clone(g: &LieroGameData) -> *mut LieroGameData {
     Box::into_raw(g.clone_boxed())
 }
 
@@ -183,15 +176,13 @@ pub unsafe extern "C" fn liero_game_data_clone(g: &LieroGameData) -> *mut LieroG
 ///
 /// # Safety
 /// Both are valid, and nothing points into `to`'s blood particles after.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_data_assign(to: &mut LieroGameData, from: &LieroGameData) {
+pub unsafe fn liero_game_data_assign(to: &mut LieroGameData, from: &LieroGameData) {
     to.assign(from);
 }
 
 /// # Safety
 /// `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_data_free(g: *mut LieroGameData) {
+pub unsafe fn liero_game_data_free(g: *mut LieroGameData) {
     unsafe {
         if !g.is_null() {
             drop(Box::from_raw(g));
@@ -202,7 +193,6 @@ pub unsafe extern "C" fn liero_game_data_free(g: *mut LieroGameData) {
 /// The game state the rules read and change. `worms` has `worm_count`
 /// entries in the order of C++'s `Game::worms`; worm numbers (killers,
 /// holders, 'it') are positions in it.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroGameFields {
     pub worms: *const LieroGameWorm,
@@ -223,7 +213,6 @@ pub struct LieroGameFields {
 }
 
 /// Game settings, and TC constants and hacks, for the rules.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroGameSettings {
     /// `LIERO_GAME_*`.
@@ -262,11 +251,10 @@ pub struct LieroGameSettings {
 
 /// What the tick takes from C++: the clock, and whether to move the
 /// viewports. `ctx` is passed back to `hires_ticks`.
-#[repr(C)]
 pub struct LieroGameHooks {
     pub ctx: *mut c_void,
     /// The clock the stats time ticks with (`appHiresTicks`).
-    pub hires_ticks: unsafe extern "C" fn(ctx: *mut c_void) -> u64,
+    pub hires_ticks: unsafe fn(ctx: *mut c_void) -> u64,
     /// Whether the tick ends by processing the viewports, which the AI's
     /// copies of the game don't.
     pub process_viewports: bool,
@@ -311,8 +299,7 @@ pub(crate) unsafe fn stats_worms(f: &LieroGameFields) -> Vec<LieroStatsWorm> {
 ///
 /// # Safety
 /// `f`'s pointers must be valid; its stats may be null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_stats_finish(f: &LieroGameFields) {
+pub unsafe fn liero_game_stats_finish(f: &LieroGameFields) {
     unsafe {
         if let Some(s) = f.stats.as_mut() {
             let worms = stats_worms(f);
@@ -590,12 +577,7 @@ impl Game<'_> {
 ///
 /// # Safety
 /// See above.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_process_frame(
-    game: &LieroGameFields,
-    settings: &LieroGameSettings,
-    hooks: &LieroGameHooks,
-) {
+pub unsafe fn liero_game_process_frame(game: &LieroGameFields, settings: &LieroGameSettings, hooks: &LieroGameHooks) {
     World {
         g: Game { f: game, s: settings },
         h: hooks,
@@ -626,26 +608,12 @@ pub unsafe fn liero_game_heal(game: &LieroGameFields, settings: &LieroGameSettin
     Game { f: game, s: settings }.heal(target, amount);
 }
 
-/// Moves Holdazone's zone: `Game::spawnZone`.
-///
-/// # Safety
-/// See above.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_spawn_zone(game: &LieroGameFields, settings: &LieroGameSettings) {
-    Game { f: game, s: settings }.spawn_zone();
-}
-
 /// `Game::startGame`: the start sound, the blood list made
 /// `blood_particle_max` long, and in Holdazone the first zone.
 ///
 /// # Safety
 /// The pointers in `game` and `settings` are valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_start(
-    game: &LieroGameFields,
-    settings: &LieroGameSettings,
-    blood_particle_max: i32,
-) {
+pub unsafe fn liero_game_start(game: &LieroGameFields, settings: &LieroGameSettings, blood_particle_max: i32) {
     unsafe {
         game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
         (*game.game).bobjects.resize(blood_particle_max.max(0) as usize);
@@ -659,8 +627,7 @@ pub unsafe extern "C" fn liero_game_start(
 ///
 /// # Safety
 /// See above.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_is_over(game: &LieroGameFields, settings: &LieroGameSettings) -> bool {
+pub unsafe fn liero_game_is_over(game: &LieroGameFields, settings: &LieroGameSettings) -> bool {
     Game { f: game, s: settings }.is_over()
 }
 
@@ -748,7 +715,7 @@ mod tests {
     fn starting_plays_the_sound_and_sizes_the_blood() {
         use std::sync::atomic::{AtomicI32, Ordering};
         static PLAYED: AtomicI32 = AtomicI32::new(-1);
-        unsafe extern "C" fn report(sound: i32) {
+        unsafe fn report(sound: i32) {
             PLAYED.store(sound, Ordering::SeqCst);
         }
         let layout = std::alloc::Layout::new::<crate::tc::LieroTcData>();

@@ -45,7 +45,6 @@ const WORM_COLOUR_INDEXES: [i32; 2] = [0x58, 0x78];
 
 /// A viewport's state. Rust owns it, and the fields of C++'s `Viewport`
 /// refer to it (`liero_viewport_new`).
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewport {
     /// Top left of what is shown, in level coordinates.
@@ -72,7 +71,6 @@ pub struct LieroViewport {
 
 /// A C++ `SpriteSet`: `count` sprites of `width` x `height` pixels, one after
 /// the other.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroSpriteSet {
     pub data: *const u8,
@@ -82,7 +80,6 @@ pub struct LieroSpriteSet {
 }
 
 /// What viewports use of a weapon type.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewWeapon {
     pub name: LieroStr,
@@ -99,7 +96,6 @@ pub struct LieroViewWeapon {
 }
 
 /// One of a worm's weapon slots.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewWormWeapon {
     /// Index into `LieroScene::weapons`.
@@ -109,7 +105,6 @@ pub struct LieroViewWormWeapon {
 }
 
 /// What viewports use of a worm.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewWorm {
     pub pos: LieroIVec2,
@@ -150,7 +145,6 @@ pub struct LieroViewWorm {
     pub trace_count: usize,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewBonus {
     pub x: i32,
@@ -160,7 +154,6 @@ pub struct LieroViewBonus {
     pub weapon: i32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewSObject {
     pub x: i32,
@@ -170,7 +163,6 @@ pub struct LieroViewSObject {
     pub start_frame: i32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewWObject {
     pub pos: LieroIVec2,
@@ -181,7 +173,6 @@ pub struct LieroViewWObject {
     pub slot: i32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewNObject {
     pub pos: LieroIVec2,
@@ -190,7 +181,6 @@ pub struct LieroViewNObject {
     pub start_frame: i32,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewBObject {
     pub pos: LieroIVec2,
@@ -198,7 +188,6 @@ pub struct LieroViewBObject {
 }
 
 /// A split-screen viewport, for the kill messages that every viewport shows.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroViewportBanner {
     pub worm_idx: i32,
@@ -207,7 +196,6 @@ pub struct LieroViewportBanner {
 
 /// Everything a viewport draws. Lists are in C++'s order, which decides what
 /// is drawn on top.
-#[repr(C)]
 pub struct LieroScene {
     /// In the order of `Game::worms`; worm numbers are positions in it.
     pub worms: *const LieroViewWorm,
@@ -1029,27 +1017,19 @@ impl LieroViewport {
 }
 
 /// See `LieroViewport::new`.
-#[no_mangle]
-pub extern "C" fn liero_viewport_new(
-    rect: LieroRect,
-    worm_idx: i32,
-    level_width: i32,
-    level_height: i32,
-) -> *mut LieroViewport {
+pub fn liero_viewport_new(rect: LieroRect, worm_idx: i32, level_width: i32, level_height: i32) -> *mut LieroViewport {
     Box::into_raw(Box::new(LieroViewport::new(rect, worm_idx, level_width, level_height)))
 }
 
 /// # Safety
 /// `vp` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_viewport_clone(vp: &LieroViewport) -> *mut LieroViewport {
+pub unsafe fn liero_viewport_clone(vp: &LieroViewport) -> *mut LieroViewport {
     Box::into_raw(Box::new(*vp))
 }
 
 /// # Safety
 /// `vp` comes from `liero_viewport_new` or `_clone`, and isn't used after.
-#[no_mangle]
-pub unsafe extern "C" fn liero_viewport_free(vp: *mut LieroViewport) {
+pub unsafe fn liero_viewport_free(vp: *mut LieroViewport) {
     unsafe {
         if !vp.is_null() {
             drop(Box::from_raw(vp));
@@ -1063,13 +1043,7 @@ pub unsafe extern "C" fn liero_viewport_free(vp: *mut LieroViewport) {
 ///
 /// # Safety
 /// `worms` must hold `worm_count` worms.
-#[no_mangle]
-pub unsafe extern "C" fn liero_viewport_process(
-    vp: &mut LieroViewport,
-    kind: i32,
-    worms: *const LieroViewWorm,
-    worm_count: i32,
-) {
+pub unsafe fn liero_viewport_process(vp: &mut LieroViewport, kind: i32, worms: *const LieroViewWorm, worm_count: i32) {
     unsafe {
         let worms = slice(worms, worm_count);
         let worm = |i: i32| usize::try_from(i).ok().and_then(|i| worms.get(i));
@@ -1126,8 +1100,7 @@ unsafe fn draw_traces(scr: &LieroBitmap, traces: &[LieroAiTrace], offs: LieroIVe
 /// # Safety
 /// See `LieroBitmap` and `LieroScene`: every pointer must be valid for its
 /// count.
-#[no_mangle]
-pub unsafe extern "C" fn liero_viewport_draw(
+pub unsafe fn liero_viewport_draw(
     vp: &mut LieroViewport,
     kind: i32,
     self_index: i32,

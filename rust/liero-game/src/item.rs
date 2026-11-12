@@ -16,7 +16,6 @@ const SOUND_ENTER: i32 = 27;
 
 /// What an item edits.
 ///
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LieroItemKind {
     /// On or off: `flag`, shown with `names` (off, on).
@@ -28,14 +27,13 @@ pub enum LieroItemKind {
     Enum,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroItemBehavior {
     pub kind: LieroItemKind,
     /// The switch's setting.
     pub flag: *mut bool,
     /// Called with a switch's new value in place of writing `flag`.
-    pub set_flag: Option<unsafe extern "C" fn(bool)>,
+    pub set_flag: Option<unsafe fn(bool)>,
     /// The number's or enum's setting (enums are `uint32_t`, read as is).
     pub value: *mut i32,
     pub min: i32,
@@ -52,7 +50,6 @@ pub struct LieroItemBehavior {
 }
 
 /// What C++ does after a key on an item.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroItemAction {
     /// For left and right: whether the menu goes on to its own handling of
@@ -213,8 +210,7 @@ impl LieroItemBehavior {
 ///
 /// # Safety
 /// The item's setting pointer for its kind is valid, and its names too.
-#[no_mangle]
-pub unsafe extern "C" fn liero_item_left_right(b: &LieroItemBehavior, dir: i32, menu_cycles: u32) -> LieroItemAction {
+pub unsafe fn liero_item_left_right(b: &LieroItemBehavior, dir: i32, menu_cycles: u32) -> LieroItemAction {
     unsafe { b.left_right(dir, menu_cycles) }
 }
 
@@ -222,8 +218,7 @@ pub unsafe extern "C" fn liero_item_left_right(b: &LieroItemBehavior, dir: i32, 
 ///
 /// # Safety
 /// As for `liero_item_left_right`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_item_enter(b: &LieroItemBehavior) -> LieroItemAction {
+pub unsafe fn liero_item_enter(b: &LieroItemBehavior) -> LieroItemAction {
     unsafe { b.enter() }
 }
 
@@ -232,8 +227,7 @@ pub unsafe extern "C" fn liero_item_enter(b: &LieroItemBehavior) -> LieroItemAct
 ///
 /// # Safety
 /// As for `liero_item_left_right`, and `out` holds `cap` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_item_value_text(b: &LieroItemBehavior, out: *mut u8, cap: usize) -> usize {
+pub unsafe fn liero_item_value_text(b: &LieroItemBehavior, out: *mut u8, cap: usize) -> usize {
     unsafe {
         let text = b.value_text();
         let n = text.len().min(cap);
@@ -282,7 +276,7 @@ mod tests {
     }
 
     static SET: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
-    unsafe extern "C" fn set(v: bool) {
+    unsafe fn set(v: bool) {
         SET.store(v as i32, std::sync::atomic::Ordering::Relaxed);
     }
 

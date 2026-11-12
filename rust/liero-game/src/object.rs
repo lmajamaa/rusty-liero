@@ -53,7 +53,6 @@ pub(crate) fn inside(level: &LieroLevel, x: i32, y: i32) -> bool {
 }
 
 /// A blood particle, laid out like C++'s `BObject`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroBObject {
     pub pos: LieroIVec2,
@@ -120,7 +119,6 @@ pub unsafe fn liero_bobject_process(
 }
 
 /// Constants for bonuses, from the TC (`LC(Bonus...)` in C++).
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroBonusConstants {
     pub gravity: i32,
@@ -279,7 +277,6 @@ pub fn liero_explosion_push_object(
 }
 
 /// The parts of a `NObjectType` that its physics uses.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroNObjectType {
     pub gravity: i32,
@@ -302,7 +299,6 @@ pub struct LieroNObjectType {
 }
 
 /// Pointers to the fields of one C++ `NObject`.
-#[repr(C)]
 pub struct LieroNObjectFields {
     pub pos: *mut LieroIVec2,
     pub vel: *mut LieroIVec2,
@@ -311,28 +307,26 @@ pub struct LieroNObjectFields {
 }
 
 /// What C++ does for an `NObject`. `ctx` is passed back to each function.
-#[repr(C)]
 pub struct LieroNObjectHooks {
     pub ctx: *mut c_void,
     /// `Game::createBObject`.
-    pub create_bobject: unsafe extern "C" fn(ctx: *mut c_void, pos: LieroIVec2, vel: LieroIVec2),
+    pub create_bobject: unsafe fn(ctx: *mut c_void, pos: LieroIVec2, vel: LieroIVec2),
     /// `SObjectType::create` for sobject type `kind`, owned like the object.
-    pub create_sobject: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
+    pub create_sobject: unsafe fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
     /// `NObjectType::create2` for nobject type `kind`, owned like the object.
     pub create_nobject2:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+        unsafe fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
     /// Draws the object's current frame onto the level at (x, y), with the
     /// shadow corrected.
-    pub draw_on_map: unsafe extern "C" fn(ctx: *mut c_void, x: i32, y: i32),
+    pub draw_on_map: unsafe fn(ctx: *mut c_void, x: i32, y: i32),
     /// The worm loop in `NObject::process`: hurts the worms the object hits
     /// and may free it. Returns true when it should explode.
-    pub hit_worms: unsafe extern "C" fn(ctx: *mut c_void) -> bool,
+    pub hit_worms: unsafe fn(ctx: *mut c_void) -> bool,
     /// Frees the object if it is still in use.
-    pub free: unsafe extern "C" fn(ctx: *mut c_void),
+    pub free: unsafe fn(ctx: *mut c_void),
 }
 
 /// Everything else `NObject::process` reads from the game.
-#[repr(C)]
 pub struct LieroNObjectEnv {
     pub level: LieroLevel,
     pub common: LieroLevelCommon,
@@ -542,7 +536,6 @@ pub unsafe fn liero_nobject_process(
 }
 
 /// The ninja rope, laid out like C++'s `Ninjarope`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroNinjarope {
     pub out: bool,
@@ -556,14 +549,12 @@ pub struct LieroNinjarope {
 }
 
 /// Pointers to a worm's position and velocity.
-#[repr(C)]
 pub struct LieroWormMotion {
     pub pos: *mut LieroIVec2,
     pub vel: *mut LieroIVec2,
 }
 
 /// Constants for the ninja rope, from the TC (`LC(NR...)` in C++).
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroNinjaropeConstants {
     pub force_shl_x: i32,
@@ -576,16 +567,15 @@ pub struct LieroNinjaropeConstants {
 }
 
 /// What C++ does for the ninja rope. `ctx` is passed back to each function.
-#[repr(C)]
 pub struct LieroNinjaropeHooks {
     pub ctx: *mut c_void,
     /// The first worm other than the owner that (x, y) hits, or null.
-    pub find_anchor: unsafe extern "C" fn(ctx: *mut c_void, x: i32, y: i32) -> *mut c_void,
+    pub find_anchor: unsafe fn(ctx: *mut c_void, x: i32, y: i32) -> *mut c_void,
     /// Where worm `worm` keeps its position and velocity.
-    pub worm_motion: unsafe extern "C" fn(worm: *mut c_void) -> LieroWormMotion,
+    pub worm_motion: unsafe fn(worm: *mut c_void) -> LieroWormMotion,
     /// `NObjectType::create2` for nobject type `kind`, owned by the owner.
     pub create_nobject2:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+        unsafe fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
 }
 
 /// Moves a worm's ninja rope one tick: C++'s `Ninjarope::process`.

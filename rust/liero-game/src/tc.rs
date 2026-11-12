@@ -14,7 +14,6 @@ use crate::text::LieroStr;
 use liero_data::model::{self, Common};
 use liero_data::Error;
 
-#[repr(C)]
 pub struct LieroTcWeapon {
     /// Its index in the TC's weapons.
     pub id: i32,
@@ -71,7 +70,6 @@ pub struct LieroTcWeapon {
     pub chain_explosion: bool,
 }
 
-#[repr(C)]
 pub struct LieroTcNObject {
     pub id: i32,
     pub id_str: LieroStr,
@@ -105,7 +103,6 @@ pub struct LieroTcNObject {
     pub time_to_explo_v: i32,
 }
 
-#[repr(C)]
 pub struct LieroTcSObject {
     pub id: i32,
     pub id_str: LieroStr,
@@ -123,7 +120,6 @@ pub struct LieroTcSObject {
     pub dirt_effect: i32,
 }
 
-#[repr(C)]
 pub struct LieroTcSound {
     pub name: LieroStr,
     /// Signed 8-bit samples.
@@ -137,7 +133,6 @@ pub struct LieroTcSound {
     pub sample_count: usize,
 }
 
-#[repr(C)]
 pub struct LieroTcSprites {
     pub data: *const u8,
     pub width: i32,
@@ -145,6 +140,7 @@ pub struct LieroTcSprites {
     pub count: i32,
 }
 
+// `repr(C)`: the font is read as `LieroFontChar`s, with the same fields.
 #[repr(C)]
 pub struct LieroTcFontChar {
     /// 7x8 pixels, row-major: 8 where set.
@@ -156,7 +152,6 @@ pub struct LieroTcFontChar {
 pub const LIERO_TC_FONT_CHARS: usize = 250;
 
 /// Everything `Common` gets from a TC.
-#[repr(C)]
 pub struct LieroTcData {
     pub weapons: *const LieroTcWeapon,
     pub weapon_count: usize,
@@ -696,8 +691,7 @@ impl LieroTc {
 ///
 /// # Safety
 /// `tc` must come from `liero_tc_load`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_randomize(tc: &mut LieroTc, shuffle_seed: u32) {
+pub unsafe fn liero_tc_randomize(tc: &mut LieroTc, shuffle_seed: u32) {
     tc.randomize(shuffle_seed);
 }
 
@@ -719,8 +713,7 @@ fn load(node: &Node) -> LieroTc {
 
 /// Loads the TC in `node` (`Common::load`). Always returns a TC to free with
 /// `liero_tc_free`; `liero_tc_error` says whether loading failed.
-#[no_mangle]
-pub extern "C" fn liero_tc_load(node: &LieroFsNode) -> *mut LieroTc {
+pub fn liero_tc_load(node: &LieroFsNode) -> *mut LieroTc {
     crate::shared::new_shared(load(&node.0))
 }
 
@@ -728,8 +721,7 @@ pub extern "C" fn liero_tc_load(node: &LieroFsNode) -> *mut LieroTc {
 ///
 /// # Safety
 /// `tc` must come from `liero_tc_load`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_error(tc: &LieroTc) -> LieroStr {
+pub unsafe fn liero_tc_error(tc: &LieroTc) -> LieroStr {
     str(tc.error.as_bytes())
 }
 
@@ -737,8 +729,7 @@ pub unsafe extern "C" fn liero_tc_error(tc: &LieroTc) -> LieroStr {
 ///
 /// # Safety
 /// `tc` must come from `liero_tc_load`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
+pub unsafe fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
     match &tc.data {
         Some(d) => &**d,
         None => std::ptr::null(),
@@ -747,8 +738,7 @@ pub unsafe extern "C" fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
 
 /// # Safety
 /// `tc` must come from `liero_tc_load` and not be used afterwards.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_free(tc: *mut LieroTc) {
+pub unsafe fn liero_tc_free(tc: *mut LieroTc) {
     unsafe {
         if !tc.is_null() {
             crate::shared::release_shared(tc);
@@ -849,15 +839,6 @@ impl LieroTc {
         );
         m
     }
-}
-
-/// Another reference to `tc`, to give up with `liero_tc_free`.
-///
-/// # Safety
-/// `tc` must come from `liero_tc_load` and still have a reference.
-#[no_mangle]
-pub unsafe extern "C" fn liero_tc_retain(tc: *mut LieroTc) -> *mut LieroTc {
-    unsafe { crate::shared::retain_shared(tc) }
 }
 
 /// Loads the TC in `node` as `Common::load` did, or the message it threw:

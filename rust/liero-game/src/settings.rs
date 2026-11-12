@@ -20,7 +20,6 @@ pub const LIERO_MAX_CONTROL: usize = 7;
 /// The same and dig.
 pub const LIERO_MAX_CONTROL_EX: usize = 8;
 
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroWormSettings {
     pub health: i32,
@@ -34,7 +33,6 @@ pub struct LieroWormSettings {
     pub controls_ex: [u32; LIERO_MAX_CONTROL_EX],
 }
 
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroSettings {
     pub record_replays: bool,
@@ -74,7 +72,6 @@ pub struct LieroSettings {
 
 /// What a settings call did.
 ///
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LieroSettingsStatus {
     Ok,
@@ -93,10 +90,9 @@ pub enum LieroSettingsStatus {
 
 /// Bytes for the binary readers. `get` returns the next byte, or -1 when
 /// the C++ reader throws, which C++ keeps to rethrow.
-#[repr(C)]
 pub struct LieroByteSource {
     pub ctx: *mut c_void,
-    pub get: unsafe extern "C" fn(ctx: *mut c_void) -> i32,
+    pub get: unsafe fn(ctx: *mut c_void) -> i32,
 }
 
 pub(crate) struct Hooked<'a>(pub(crate) &'a LieroByteSource);
@@ -111,7 +107,6 @@ impl Source for Hooked<'_> {
 }
 
 /// A gash value (`gvl::gash::value_type`).
-#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct LieroHash {
     pub value: [u64; 4],
@@ -263,11 +258,6 @@ impl LieroSettingsResult {
         self
     }
 
-    fn worm(mut self, ws: WormSettings) -> Self {
-        self.worm = Some(ws);
-        self
-    }
-
     fn bytes(mut self, bytes: Vec<u8>) -> Self {
         self.bytes = bytes;
         self
@@ -308,18 +298,9 @@ unsafe fn slice<'a>(data: *const u8, len: usize) -> &'a [u8] {
 }
 
 /// The default settings, as `Settings::Settings` makes them.
-#[no_mangle]
-pub extern "C" fn liero_settings_default() -> *mut LieroSettingsResult {
+pub fn liero_settings_default() -> *mut LieroSettingsResult {
     LieroSettingsResult::new(LieroSettingsStatus::Ok)
         .settings(Settings::default())
-        .finish()
-}
-
-/// The default worm settings, as `WormSettings::WormSettings` makes them.
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_default() -> *mut LieroSettingsResult {
-    LieroSettingsResult::new(LieroSettingsStatus::Ok)
-        .worm(WormSettings::default())
         .finish()
 }
 
@@ -328,12 +309,7 @@ pub extern "C" fn liero_worm_settings_default() -> *mut LieroSettingsResult {
 ///
 /// # Safety
 /// `s`'s strings must be valid, and `data` valid for `len` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_read_text(
-    s: &LieroSettings,
-    data: *const u8,
-    len: usize,
-) -> *mut LieroSettingsResult {
+pub unsafe fn liero_settings_read_text(s: &LieroSettings, data: *const u8, len: usize) -> *mut LieroSettingsResult {
     unsafe {
         let mut settings = settings_from(s);
         let status = match data::read_text(&mut settings, slice(data, len)) {
@@ -349,63 +325,11 @@ pub unsafe extern "C" fn liero_settings_read_text(
 ///
 /// # Safety
 /// `s`'s strings must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_write_text(s: &LieroSettings) -> *mut LieroSettingsResult {
+pub unsafe fn liero_settings_write_text(s: &LieroSettings) -> *mut LieroSettingsResult {
     unsafe {
         let bytes = data::write_text(&settings_from(s));
         LieroSettingsResult::new(LieroSettingsStatus::Ok).bytes(bytes).finish()
     }
-}
-
-/// Reads LIERO.DAT over `s`: Ok, or Failed if it ends early.
-///
-/// # Safety
-/// `s`'s strings must be valid, and `data` valid for `len` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_read_legacy(
-    s: &LieroSettings,
-    data: *const u8,
-    len: usize,
-) -> *mut LieroSettingsResult {
-    unsafe {
-        let mut settings = settings_from(s);
-        let status = if data::read_legacy(&mut settings, slice(data, len)) {
-            LieroSettingsStatus::Ok
-        } else {
-            LieroSettingsStatus::Failed
-        };
-        LieroSettingsResult::new(status).settings(settings).finish()
-    }
-}
-
-/// Reads liero.cfg (or LIERO.DAT, if `legacy`) from `node` over `s`, as
-/// `liero_settings_read_text` or `liero_settings_read_legacy` would. Null if
-/// the file can't be read.
-///
-/// # Safety
-/// `s`'s strings must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_load(
-    s: &LieroSettings,
-    node: &LieroFsNode,
-    legacy: bool,
-) -> *mut LieroSettingsResult {
-    unsafe {
-        match node.0.read() {
-            Some(d) if legacy => liero_settings_read_legacy(s, d.as_ptr(), d.len()),
-            Some(d) => liero_settings_read_text(s, d.as_ptr(), d.len()),
-            None => std::ptr::null_mut(),
-        }
-    }
-}
-
-/// Writes `s` to `node` as liero.cfg. False if the file can't be written.
-///
-/// # Safety
-/// `s`'s strings must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_save(s: &LieroSettings, node: &LieroFsNode) -> bool {
-    unsafe { node.0.write(&data::write_text(&settings_from(s))) }
 }
 
 /// Loads a profile from `node` over the settings, keeping their colour,
@@ -413,8 +337,7 @@ pub unsafe extern "C" fn liero_settings_save(s: &LieroSettings, node: &LieroFsNo
 /// nothing changed, if the file can't be read. A profile that ends early
 /// or fails its checkpoint is loaded as far as it was read, with its
 /// colour: `status` says so, and C++ threw before putting the colour back.
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_box_load_profile(
+pub fn liero_worm_settings_box_load_profile(
     s: &mut LieroWormSettingsBox,
     node: Option<&LieroFsNode>,
     status: &mut LieroSettingsStatus,
@@ -440,11 +363,7 @@ pub extern "C" fn liero_worm_settings_box_load_profile(
 /// version's archive, and remembers the profile
 /// (`WormSettings::saveProfile`). False, with nothing changed, if the file
 /// can't be written.
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_box_save_profile(
-    s: &mut LieroWormSettingsBox,
-    node: Option<&LieroFsNode>,
-) -> bool {
+pub fn liero_worm_settings_box_save_profile(s: &mut LieroWormSettingsBox, node: Option<&LieroFsNode>) -> bool {
     let Some(node) = node else { return false };
     // Opened before the archive is made, as `toOctetWriter` was.
     if node.0.prepare_write().is_none() {
@@ -464,11 +383,7 @@ pub extern "C" fn liero_worm_settings_box_save_profile(
 ///
 /// # Safety
 /// `s`'s strings must be valid, and `source.get` callable with its `ctx`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_read_archive(
-    s: &LieroSettings,
-    source: &LieroByteSource,
-) -> *mut LieroSettingsResult {
+pub unsafe fn liero_settings_read_archive(s: &LieroSettings, source: &LieroByteSource) -> *mut LieroSettingsResult {
     unsafe {
         let mut settings = settings_from(s);
         let status = archive_status(data::read_archive(&mut settings, &mut Hooked(source)));
@@ -481,8 +396,7 @@ pub unsafe extern "C" fn liero_settings_read_archive(
 ///
 /// # Safety
 /// `s`'s strings must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_write_archive(s: &LieroSettings) -> *mut LieroSettingsResult {
+pub unsafe fn liero_settings_write_archive(s: &LieroSettings) -> *mut LieroSettingsResult {
     unsafe {
         let mut settings = settings_from(s);
         let bytes = data::write_archive(&mut settings);
@@ -497,8 +411,7 @@ pub unsafe extern "C" fn liero_settings_write_archive(s: &LieroSettings) -> *mut
 ///
 /// # Safety
 /// `s`'s strings must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_hash(s: &LieroSettings) -> *mut LieroSettingsResult {
+pub unsafe fn liero_settings_hash(s: &LieroSettings) -> *mut LieroSettingsResult {
     unsafe {
         let mut settings = settings_from(s);
         let hash = data::archive_hash(&mut settings);
@@ -509,63 +422,9 @@ pub unsafe extern "C" fn liero_settings_hash(s: &LieroSettings) -> *mut LieroSet
     }
 }
 
-/// Reads a worm's archive for `replay_version` over `ws`: Ok or ReadError.
-///
-/// # Safety
-/// `ws`'s name must be valid, and `source.get` callable with its `ctx`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_read_archive(
-    ws: &LieroWormSettings,
-    replay_version: i32,
-    source: &LieroByteSource,
-) -> *mut LieroSettingsResult {
-    unsafe {
-        let mut worm = worm_from(ws);
-        let status = archive_status(data::read_worm(&mut worm, replay_version, &mut Hooked(source)));
-        LieroSettingsResult::new(status).worm(worm).finish()
-    }
-}
-
-/// A worm's archive for `replay_version` in the result's bytes, and the
-/// worm settings after writing it.
-///
-/// # Safety
-/// `ws`'s name must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_write_archive(
-    ws: &LieroWormSettings,
-    replay_version: i32,
-) -> *mut LieroSettingsResult {
-    unsafe {
-        let mut worm = worm_from(ws);
-        let bytes = data::write_worm(&mut worm, replay_version);
-        LieroSettingsResult::new(LieroSettingsStatus::Ok)
-            .worm(worm)
-            .bytes(bytes)
-            .finish()
-    }
-}
-
-/// `WormSettings::updateHash`: the hash, and the worm settings after it.
-///
-/// # Safety
-/// `ws`'s name must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_hash(ws: &LieroWormSettings) -> *mut LieroSettingsResult {
-    unsafe {
-        let mut worm = worm_from(ws);
-        let hash = data::worm_hash(&mut worm);
-        LieroSettingsResult::new(LieroSettingsStatus::Ok)
-            .worm(worm)
-            .hash(hash)
-            .finish()
-    }
-}
-
 /// # Safety
 /// `r` must come from one of the functions above and not be freed.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_result_status(r: &LieroSettingsResult) -> LieroSettingsStatus {
+pub unsafe fn liero_settings_result_status(r: &LieroSettingsResult) -> LieroSettingsStatus {
     r.status
 }
 
@@ -574,42 +433,28 @@ pub unsafe extern "C" fn liero_settings_result_status(r: &LieroSettingsResult) -
 ///
 /// # Safety
 /// `r` must come from one of the functions above and not be freed.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_result_settings(r: &LieroSettingsResult) -> *const LieroSettings {
+pub unsafe fn liero_settings_result_settings(r: &LieroSettingsResult) -> *const LieroSettings {
     r.settings_view.as_ref().map_or(std::ptr::null(), |v| v)
-}
-
-/// The worm settings, or null if the call doesn't return any. Valid until
-/// `liero_settings_result_free`.
-///
-/// # Safety
-/// `r` must come from one of the functions above and not be freed.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_result_worm(r: &LieroSettingsResult) -> *const LieroWormSettings {
-    r.worm_view.as_ref().map_or(std::ptr::null(), |v| v)
 }
 
 /// The bytes written. Valid until `liero_settings_result_free`.
 ///
 /// # Safety
 /// `r` must come from one of the functions above and not be freed.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_result_bytes(r: &LieroSettingsResult) -> LieroStr {
+pub unsafe fn liero_settings_result_bytes(r: &LieroSettingsResult) -> LieroStr {
     str(&r.bytes)
 }
 
 /// # Safety
 /// `r` must come from one of the functions above and not be freed.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_result_hash(r: &LieroSettingsResult) -> LieroHash {
+pub unsafe fn liero_settings_result_hash(r: &LieroSettingsResult) -> LieroHash {
     r.hash
 }
 
 /// # Safety
 /// `r` must come from one of the functions above, or be null, and not be
 /// used afterwards.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_result_free(r: *mut LieroSettingsResult) {
+pub unsafe fn liero_settings_result_free(r: *mut LieroSettingsResult) {
     unsafe {
         if !r.is_null() {
             drop(Box::from_raw(r));
@@ -688,7 +533,7 @@ mod tests {
             bytes: Vec<u8>,
             pos: usize,
         }
-        unsafe extern "C" fn get(ctx: *mut c_void) -> i32 {
+        unsafe fn get(ctx: *mut c_void) -> i32 {
             unsafe {
                 let d = &mut *(ctx as *mut Data);
                 let b = d.bytes.get(d.pos).map_or(-1, |&b| b as i32);
@@ -744,7 +589,6 @@ mod tests {
 // text fields live beside the plain ones, behind functions.
 
 /// The plain fields of the game's settings.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroSettingsData {
     pub record_replays: bool,
@@ -779,7 +623,6 @@ pub struct LieroSettingsData {
 }
 
 /// The plain fields of a worm's settings.
-#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct LieroWormSettingsData {
     pub health: i32,
@@ -1116,8 +959,7 @@ fn set_bytes(dest: &mut Vec<u8>, text: LieroStr) {
 
 /// Settings with every field zero or empty, and the worms' too; C++ then
 /// sets the defaults.
-#[no_mangle]
-pub extern "C" fn liero_settings_box_new() -> *mut LieroSettingsBox {
+pub fn liero_settings_box_new() -> *mut LieroSettingsBox {
     crate::shared::new_shared(LieroSettingsBox {
         data: LieroSettingsData::default(),
         tc: Vec::new(),
@@ -1127,8 +969,7 @@ pub extern "C" fn liero_settings_box_new() -> *mut LieroSettingsBox {
 }
 
 /// Player `i`'s worm settings, which the box holds a reference to.
-#[no_mangle]
-pub extern "C" fn liero_settings_box_worm(s: &LieroSettingsBox, i: usize) -> *mut LieroWormSettingsBox {
+pub fn liero_settings_box_worm(s: &LieroSettingsBox, i: usize) -> *mut LieroWormSettingsBox {
     s.worms[i].as_ptr()
 }
 
@@ -1136,25 +977,13 @@ pub extern "C" fn liero_settings_box_worm(s: &LieroSettingsBox, i: usize) -> *mu
 ///
 /// # Safety
 /// `w` is a valid box.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: *mut LieroWormSettingsBox) {
+pub unsafe fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: *mut LieroWormSettingsBox) {
     unsafe {
         s.worms[i] = WormSettingsRef::retain(w);
     }
 }
 
-/// Another reference to `s`, to give up with `liero_settings_box_free`.
-///
-/// # Safety
-/// `s` comes from `liero_settings_box_new` or `_clone` and still has a
-/// reference.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_box_retain(s: *mut LieroSettingsBox) -> *mut LieroSettingsBox {
-    unsafe { crate::shared::retain_shared(s) }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSettingsBox {
+pub fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSettingsBox {
     crate::shared::new_shared(s.clone())
 }
 
@@ -1163,8 +992,7 @@ pub extern "C" fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSe
 ///
 /// # Safety
 /// `s` has a reference, or is null, and this reference isn't used again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_box_free(s: *mut LieroSettingsBox) {
+pub unsafe fn liero_settings_box_free(s: *mut LieroSettingsBox) {
     unsafe {
         if !s.is_null() {
             crate::shared::release_shared(s);
@@ -1173,45 +1001,27 @@ pub unsafe extern "C" fn liero_settings_box_free(s: *mut LieroSettingsBox) {
 }
 
 /// The plain fields, which stay where they are for the box's life.
-#[no_mangle]
-pub extern "C" fn liero_settings_box_data(s: &mut LieroSettingsBox) -> *mut LieroSettingsData {
+pub fn liero_settings_box_data(s: &mut LieroSettingsBox) -> *mut LieroSettingsData {
     &mut s.data
 }
 
 /// The TC's name, valid until it's set.
-#[no_mangle]
-pub extern "C" fn liero_settings_box_tc(s: &LieroSettingsBox) -> LieroStr {
+pub fn liero_settings_box_tc(s: &LieroSettingsBox) -> LieroStr {
     str(&s.tc)
 }
 
 /// # Safety
 /// `text` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_box_set_tc(s: &mut LieroSettingsBox, text: LieroStr) {
+pub unsafe fn liero_settings_box_set_tc(s: &mut LieroSettingsBox, text: LieroStr) {
     set_bytes(&mut s.tc, text);
 }
 
-/// The level file, valid until it's set.
-#[no_mangle]
-pub extern "C" fn liero_settings_box_level_file(s: &LieroSettingsBox) -> LieroStr {
-    str(&s.level_file)
-}
-
-/// # Safety
-/// `text` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_settings_box_set_level_file(s: &mut LieroSettingsBox, text: LieroStr) {
-    set_bytes(&mut s.level_file, text);
-}
-
 /// A worm's settings with every field zero or empty.
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_box_new() -> *mut LieroWormSettingsBox {
+pub fn liero_worm_settings_box_new() -> *mut LieroWormSettingsBox {
     Box::into_raw(Box::default())
 }
 
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_box_clone(s: &LieroWormSettingsBox) -> *mut LieroWormSettingsBox {
+pub fn liero_worm_settings_box_clone(s: &LieroWormSettingsBox) -> *mut LieroWormSettingsBox {
     Box::into_raw(Box::new(s.clone()))
 }
 
@@ -1220,8 +1030,7 @@ pub extern "C" fn liero_worm_settings_box_clone(s: &LieroWormSettingsBox) -> *mu
 /// # Safety
 /// `s` comes from `liero_worm_settings_box_new` or `_clone` and hasn't been
 /// freed.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_box_retain(s: *mut LieroWormSettingsBox) -> *mut LieroWormSettingsBox {
+pub unsafe fn liero_worm_settings_box_retain(s: *mut LieroWormSettingsBox) -> *mut LieroWormSettingsBox {
     unsafe {
         (*s).refs += 1;
         s
@@ -1233,8 +1042,7 @@ pub unsafe extern "C" fn liero_worm_settings_box_retain(s: *mut LieroWormSetting
 /// # Safety
 /// `s` comes from `liero_worm_settings_box_new`, `_clone` or `_retain`, or
 /// is null, and that reference isn't used again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_box_free(s: *mut LieroWormSettingsBox) {
+pub unsafe fn liero_worm_settings_box_free(s: *mut LieroWormSettingsBox) {
     unsafe {
         if !s.is_null() {
             (*s).refs -= 1;
@@ -1246,35 +1054,30 @@ pub unsafe extern "C" fn liero_worm_settings_box_free(s: *mut LieroWormSettingsB
 }
 
 /// A new node for the settings' profile, or null with none.
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_box_profile(s: &LieroWormSettingsBox) -> *mut LieroFsNode {
+pub fn liero_worm_settings_box_profile(s: &LieroWormSettingsBox) -> *mut LieroFsNode {
     match &s.profile {
         Some(n) => Box::into_raw(Box::new(LieroFsNode(n.clone()))),
         None => std::ptr::null_mut(),
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_box_set_profile(s: &mut LieroWormSettingsBox, node: Option<&LieroFsNode>) {
+pub fn liero_worm_settings_box_set_profile(s: &mut LieroWormSettingsBox, node: Option<&LieroFsNode>) {
     s.profile = node.map(|n| n.0.clone());
 }
 
 /// The plain fields, which stay where they are for the box's life.
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_box_data(s: &mut LieroWormSettingsBox) -> *mut LieroWormSettingsData {
+pub fn liero_worm_settings_box_data(s: &mut LieroWormSettingsBox) -> *mut LieroWormSettingsData {
     &mut s.data
 }
 
 /// The worm's name, valid until it's set.
-#[no_mangle]
-pub extern "C" fn liero_worm_settings_box_name(s: &LieroWormSettingsBox) -> LieroStr {
+pub fn liero_worm_settings_box_name(s: &LieroWormSettingsBox) -> LieroStr {
     str(&s.name)
 }
 
 /// # Safety
 /// `text` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_settings_box_set_name(s: &mut LieroWormSettingsBox, text: LieroStr) {
+pub unsafe fn liero_worm_settings_box_set_name(s: &mut LieroWormSettingsBox, text: LieroStr) {
     set_bytes(&mut s.name, text);
 }
 

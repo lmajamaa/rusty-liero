@@ -15,7 +15,6 @@ use crate::cpp_sort;
 use crate::disk;
 use crate::text::LieroStr;
 use std::collections::BTreeMap;
-use std::ffi::c_void;
 use std::rc::Rc;
 
 /// `joinPath`: `leaf` under `root`, with a `/` between unless `root` is
@@ -461,131 +460,17 @@ fn boxed(n: Node) -> *mut LieroFsNode {
 
 /// # Safety
 /// `path` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_new(path: LieroStr) -> *mut LieroFsNode {
+pub unsafe fn liero_fs_node_new(path: LieroStr) -> *mut LieroFsNode {
     unsafe { boxed(Node::new(path.bytes())) }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_fs_node_clone(n: &LieroFsNode) -> *mut LieroFsNode {
-    boxed(n.0.clone())
 }
 
 /// # Safety
 /// `n` must come from a `liero_fs_node_*` function, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_free(n: *mut LieroFsNode) {
+pub unsafe fn liero_fs_node_free(n: *mut LieroFsNode) {
     unsafe {
         if !n.is_null() {
             drop(Box::from_raw(n));
         }
-    }
-}
-
-/// `n / name`.
-///
-/// # Safety
-/// `name` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_go(n: &LieroFsNode, name: LieroStr) -> *mut LieroFsNode {
-    unsafe { boxed(n.0.go(name.bytes())) }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_fs_node_is_null(n: &LieroFsNode) -> bool {
-    n.0.is_null()
-}
-
-/// The node's path, valid while it lives.
-#[no_mangle]
-pub extern "C" fn liero_fs_node_full_path(n: &LieroFsNode) -> LieroStr {
-    let p = n.0.full_path();
-    LieroStr {
-        ptr: p.as_ptr(),
-        len: p.len(),
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_fs_node_exists(n: &LieroFsNode) -> bool {
-    n.0.exists()
-}
-
-/// Calls `add(ctx, name, is_dir)` for each entry, sorted.
-///
-/// # Safety
-/// `add` must take `ctx`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_list(
-    n: &LieroFsNode,
-    ctx: *mut c_void,
-    add: unsafe extern "C" fn(ctx: *mut c_void, name: LieroStr, is_dir: bool),
-) {
-    unsafe {
-        for e in n.0.list() {
-            add(
-                ctx,
-                LieroStr {
-                    ptr: e.name.as_ptr(),
-                    len: e.name.len(),
-                },
-                e.is_dir,
-            );
-        }
-    }
-}
-
-/// Reads the node: `got(ctx, bytes)` with its contents, which are valid
-/// during the call. False, without calling it, if it can't be read.
-///
-/// # Safety
-/// `got` must take `ctx`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_read(
-    n: &LieroFsNode,
-    ctx: *mut c_void,
-    got: unsafe extern "C" fn(ctx: *mut c_void, data: LieroStr),
-) -> bool {
-    unsafe {
-        match n.0.read() {
-            Some(d) => {
-                got(
-                    ctx,
-                    LieroStr {
-                        ptr: d.as_ptr(),
-                        len: d.len(),
-                    },
-                );
-                true
-            }
-            None => false,
-        }
-    }
-}
-
-/// Writes `data` as the whole file. False if it can't be.
-///
-/// # Safety
-/// `data` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_fs_node_write(n: &LieroFsNode, data: LieroStr) -> bool {
-    unsafe { n.0.write(data.bytes()) }
-}
-
-/// Makes the node writable, creating its folders if needed, and gives the
-/// path to write it at (valid while the node lives), or an empty one if it
-/// can't be.
-#[no_mangle]
-pub extern "C" fn liero_fs_node_prepare_write(n: &LieroFsNode) -> LieroStr {
-    match n.0.prepare_write() {
-        Some(p) => LieroStr {
-            ptr: p.as_ptr(),
-            len: p.len(),
-        },
-        None => LieroStr {
-            ptr: std::ptr::null(),
-            len: 0,
-        },
     }
 }
 

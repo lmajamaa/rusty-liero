@@ -14,7 +14,6 @@ pub const fn ftoi(v: Fixed) -> i32 {
 }
 
 /// Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroIVec2 {
     pub x: i32,
@@ -127,23 +126,6 @@ pub fn cos_sin_table() -> [LieroIVec2; LIERO_COS_SIN_ENTRIES] {
         table[(i + 32) & 0x7f].y = r;
     }
     table
-}
-
-#[no_mangle]
-pub extern "C" fn liero_vector_length(x: i32, y: i32) -> i32 {
-    vector_length(x, y)
-}
-
-/// Writes the cos/sin table into `out`, which must hold 128 entries.
-///
-/// # Safety
-/// `out` must point to 128 writable `LieroIVec2`s.
-#[no_mangle]
-pub unsafe extern "C" fn liero_cos_sin_table(out: *mut LieroIVec2) {
-    unsafe {
-        let out = std::slice::from_raw_parts_mut(out, LIERO_COS_SIN_ENTRIES);
-        out.copy_from_slice(&cos_sin_table());
-    }
 }
 
 #[cfg(test)]

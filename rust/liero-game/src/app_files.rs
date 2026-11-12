@@ -20,7 +20,6 @@ use crate::settings::{
 };
 use crate::shared::Shared;
 use crate::tc::{s as text, LieroTc};
-use crate::text::LieroStr;
 
 /// The app's folders and files.
 #[derive(Default)]
@@ -315,78 +314,6 @@ pub(crate) fn save_profile_as(player: i32, name: &[u8]) {
     if !liero_worm_settings_box_save_profile(ws, Some(&LieroFsNode(node.clone()))) {
         panic!("Could not write {}", path(&node));
     }
-}
-
-// What C++ calls: the folders, and the settings at the start and end.
-
-/// # Safety
-/// `text` is valid.
-unsafe fn node_of(text: LieroStr) -> Node {
-    unsafe { Node::new(text.bytes()) }
-}
-
-/// Sets the config folder (`Gfx::setConfigPath`).
-///
-/// # Safety
-/// `path` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_set_config_path(a: &mut LieroApp, path: LieroStr) {
-    unsafe {
-        a.files.config = node_of(path);
-    }
-}
-
-/// Sets the folder of TCs (`Gfx::setTcPath`).
-///
-/// # Safety
-/// `path` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_set_tc_path(a: &mut LieroApp, path: LieroStr) {
-    unsafe {
-        a.files.tc_root = node_of(path);
-    }
-}
-
-/// The TC folder `TC` in the config folder.
-#[no_mangle]
-pub extern "C" fn liero_app_set_tc_in_config(a: &mut LieroApp) {
-    a.files.tc_root = a.files.config.go(b"TC");
-}
-
-/// A new node for the config folder.
-#[no_mangle]
-pub extern "C" fn liero_app_config(a: &mut LieroApp) -> *mut LieroFsNode {
-    Box::into_raw(Box::new(LieroFsNode(a.files.config.clone())))
-}
-
-/// A new node for the folder of TCs.
-#[no_mangle]
-pub extern "C" fn liero_app_tc_root(a: &mut LieroApp) -> *mut LieroFsNode {
-    Box::into_raw(Box::new(LieroFsNode(a.files.tc_root.clone())))
-}
-
-/// Sets the settings file the menu shows, without reading it.
-#[no_mangle]
-pub extern "C" fn liero_app_set_settings_node(a: &mut LieroApp, node: Option<&LieroFsNode>) {
-    a.files.settings_node = node.map(|n| n.0.clone()).unwrap_or_default();
-}
-
-/// `LieroApp::load_settings`.
-#[no_mangle]
-pub extern "C" fn liero_app_load_settings(a: &mut LieroApp, node: Option<&LieroFsNode>, legacy: bool) -> bool {
-    a.load_settings(node.map(|n| &n.0), legacy)
-}
-
-/// `LieroApp::save_settings`.
-#[no_mangle]
-pub extern "C" fn liero_app_save_settings(a: &mut LieroApp, node: &LieroFsNode) -> bool {
-    a.save_settings(&node.0)
-}
-
-/// `LieroApp::mark_settings_saved`.
-#[no_mangle]
-pub extern "C" fn liero_app_mark_settings_saved(a: &mut LieroApp) {
-    a.mark_settings_saved();
 }
 
 #[cfg(test)]

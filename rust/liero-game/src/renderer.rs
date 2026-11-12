@@ -67,38 +67,15 @@ impl LieroBitmapBox {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_bitmap_box_new() -> *mut LieroBitmapBox {
-    Box::into_raw(LieroBitmapBox::new())
-}
-
-/// # Safety
-/// `b` comes from `liero_bitmap_box_new`, or is null, and isn't used again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_bitmap_box_free(b: *mut LieroBitmapBox) {
-    unsafe {
-        if !b.is_null() {
-            drop(Box::from_raw(b));
-        }
-    }
-}
-
 /// The bitmap's fields, at a fixed address. Its pixels move when it's
 /// reallocated.
-#[no_mangle]
-pub extern "C" fn liero_bitmap_box_view(b: &mut LieroBitmapBox) -> *mut LieroBitmap {
+pub fn liero_bitmap_box_view(b: &mut LieroBitmapBox) -> *mut LieroBitmap {
     &mut b.view
-}
-
-#[no_mangle]
-pub extern "C" fn liero_bitmap_box_alloc(b: &mut LieroBitmapBox, w: i32, h: i32, pitch: i32) {
-    b.alloc(w, h, pitch);
 }
 
 /// # Safety
 /// Both are valid; they may be the same.
-#[no_mangle]
-pub unsafe extern "C" fn liero_bitmap_box_copy(to: *mut LieroBitmapBox, from: *const LieroBitmapBox) {
+pub unsafe fn liero_bitmap_box_copy(to: *mut LieroBitmapBox, from: *const LieroBitmapBox) {
     unsafe {
         if !std::ptr::eq(to, from) {
             (*to).copy_from(&*from);
@@ -107,7 +84,6 @@ pub unsafe extern "C" fn liero_bitmap_box_copy(to: *mut LieroBitmapBox, from: *c
 }
 
 /// A renderer's palettes and size, which C++'s `Renderer` refers to.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroRendererData {
     /// The palette shown.
@@ -157,47 +133,6 @@ impl LieroRenderer {
         self.data.origpal = tc.palette_colors;
         self.data.pal = self.data.origpal;
     }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_renderer_new() -> *mut LieroRenderer {
-    Box::into_raw(LieroRenderer::new())
-}
-
-/// # Safety
-/// `r` comes from `liero_renderer_new`, or is null, and isn't used again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_renderer_free(r: *mut LieroRenderer) {
-    unsafe {
-        if !r.is_null() {
-            drop(Box::from_raw(r));
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_renderer_data(r: &mut LieroRenderer) -> *mut LieroRendererData {
-    &mut r.data
-}
-
-#[no_mangle]
-pub extern "C" fn liero_renderer_bitmap(r: &mut LieroRenderer) -> *mut LieroBitmapBox {
-    &mut *r.bmp
-}
-
-#[no_mangle]
-pub extern "C" fn liero_renderer_set_render_resolution(r: &mut LieroRenderer, x: i32, y: i32) {
-    r.set_render_resolution(x, y);
-}
-
-#[no_mangle]
-pub extern "C" fn liero_renderer_clear(r: &mut LieroRenderer) {
-    r.clear();
-}
-
-#[no_mangle]
-pub extern "C" fn liero_renderer_load_palette(r: &mut LieroRenderer, tc: &LieroTcData) {
-    r.load_palette(tc);
 }
 
 #[cfg(test)]

@@ -89,7 +89,7 @@ unsafe fn new_game(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> Box<Lie
     }
 }
 
-unsafe extern "C" fn host_hires_ticks(_: *mut c_void) -> u64 {
+unsafe fn host_hires_ticks(_: *mut c_void) -> u64 {
     current_host().hires_ticks()
 }
 
@@ -675,11 +675,7 @@ pub(crate) unsafe fn stats_scene(
 ///
 /// # Safety
 /// `settings` and `tc` have references.
-#[no_mangle]
-pub unsafe extern "C" fn liero_local_controller_new(
-    settings: *mut LieroSettingsBox,
-    tc: *mut LieroTc,
-) -> *mut LieroController {
+pub unsafe fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> *mut LieroController {
     unsafe {
         let mut game = new_game(settings, tc);
         let s = &*settings;
@@ -708,8 +704,7 @@ pub unsafe extern "C" fn liero_local_controller_new(
 ///
 /// # Safety
 /// `tc` has a reference, which the controller keeps while it lives.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_controller_new(node: &LieroFsNode, tc: *mut LieroTc) -> *mut LieroController {
+pub unsafe fn liero_replay_controller_new(node: &LieroFsNode, tc: *mut LieroTc) -> *mut LieroController {
     unsafe {
         let reader = liero_replay_reader_new(node);
         if reader.is_null() {
@@ -739,8 +734,7 @@ impl Drop for Replay {
 
 /// # Safety
 /// `c` comes from a `_new` here, or is null, and isn't used again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_controller_free(c: *mut LieroController) {
+pub unsafe fn liero_controller_free(c: *mut LieroController) {
     unsafe {
         if !c.is_null() {
             drop(Box::from_raw(c));
@@ -749,8 +743,7 @@ pub unsafe extern "C" fn liero_controller_free(c: *mut LieroController) {
 }
 
 /// What the controllers share, at a fixed address.
-#[no_mangle]
-pub extern "C" fn liero_controller_data(c: &mut LieroController) -> *mut LieroControllerData {
+pub fn liero_controller_data(c: &mut LieroController) -> *mut LieroControllerData {
     &mut c.data
 }
 
@@ -758,8 +751,7 @@ pub extern "C" fn liero_controller_data(c: &mut LieroController) -> *mut LieroCo
 ///
 /// # Safety
 /// `c` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_controller_on_key(c: &mut LieroController, key: i32, state: bool) {
+pub unsafe fn liero_controller_on_key(c: &mut LieroController, key: i32, state: bool) {
     unsafe {
         c.on_key(key, state);
     }
@@ -769,8 +761,7 @@ pub unsafe extern "C" fn liero_controller_on_key(c: &mut LieroController, key: i
 ///
 /// # Safety
 /// `c` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_controller_unfocus(c: &mut LieroController) {
+pub unsafe fn liero_controller_unfocus(c: &mut LieroController) {
     unsafe {
         c.unfocus();
     }
@@ -780,8 +771,7 @@ pub unsafe extern "C" fn liero_controller_unfocus(c: &mut LieroController) {
 ///
 /// # Safety
 /// `c` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_controller_focus(c: &mut LieroController) {
+pub unsafe fn liero_controller_focus(c: &mut LieroController) {
     unsafe {
         c.focus();
     }
@@ -791,8 +781,7 @@ pub unsafe extern "C" fn liero_controller_focus(c: &mut LieroController) {
 ///
 /// # Safety
 /// `c` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_controller_run(c: &mut LieroController) -> bool {
+pub unsafe fn liero_controller_run(c: &mut LieroController) -> bool {
     unsafe { c.process() }
 }
 
@@ -801,33 +790,28 @@ pub unsafe extern "C" fn liero_controller_run(c: &mut LieroController) -> bool {
 ///
 /// # Safety
 /// `c` and `r` are valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_controller_draw(c: &mut LieroController, r: *mut LieroRenderer, spectators: bool) {
+pub unsafe fn liero_controller_draw(c: &mut LieroController, r: *mut LieroRenderer, spectators: bool) {
     unsafe {
         c.draw(r, spectators);
     }
 }
 
 /// Whether a game is on, for the menu to offer to resume it.
-#[no_mangle]
-pub extern "C" fn liero_controller_running(c: &LieroController) -> bool {
+pub fn liero_controller_running(c: &LieroController) -> bool {
     c.running()
 }
 
-#[no_mangle]
-pub extern "C" fn liero_controller_is_replay(c: &LieroController) -> bool {
+pub fn liero_controller_is_replay(c: &LieroController) -> bool {
     matches!(c.kind, Kind::Replay(_))
 }
 
 /// The level behind the menu, or null.
-#[no_mangle]
-pub extern "C" fn liero_controller_level(c: &mut LieroController) -> *mut LieroLevelBox {
+pub fn liero_controller_level(c: &mut LieroController) -> *mut LieroLevelBox {
     c.level().map_or(std::ptr::null_mut(), |l| l as *mut LieroLevelBox)
 }
 
 /// The game, or null before a replay starts.
-#[no_mangle]
-pub extern "C" fn liero_controller_game(c: &mut LieroController) -> *mut LieroGame {
+pub fn liero_controller_game(c: &mut LieroController) -> *mut LieroGame {
     c.game().map_or(std::ptr::null_mut(), |g| g as *mut LieroGame)
 }
 
@@ -835,8 +819,7 @@ pub extern "C" fn liero_controller_game(c: &mut LieroController) -> *mut LieroGa
 ///
 /// # Safety
 /// `out` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_controller_take_opened(c: &mut LieroController, out: *mut LieroScreen) -> bool {
+pub unsafe fn liero_controller_take_opened(c: &mut LieroController, out: *mut LieroScreen) -> bool {
     unsafe {
         match c.opened.take() {
             Some(s) => {
@@ -853,8 +836,7 @@ pub unsafe extern "C" fn liero_controller_take_opened(c: &mut LieroController, o
 ///
 /// # Safety
 /// The game has its TC and its first two worms; `names` points to `count`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_stats_scene(
+pub unsafe fn liero_game_stats_scene(
     g: &mut LieroGame,
     r: &LieroRenderer,
     names: *const LieroStr,
@@ -874,8 +856,7 @@ pub unsafe extern "C" fn liero_game_stats_scene(
 ///
 /// # Safety
 /// `r` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_focus(g: &mut LieroGame, r: *mut LieroRenderer) {
+pub unsafe fn liero_game_focus(g: &mut LieroGame, r: *mut LieroRenderer) {
     unsafe {
         g.focus(r);
     }

@@ -1347,34 +1347,28 @@ unsafe fn ctx<'x, T>(ctx: *mut c_void) -> &'x T {
     unsafe { &*(ctx as *const T) }
 }
 
-unsafe extern "C" fn blow_up_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
+unsafe fn blow_up_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
     unsafe {
         let c: &BlowUpContext = ctx(ctx_);
         c.w.create_sobject(kind, x, y, c.cause_idx, (*c.obj).fired_by, c.obj);
     }
 }
 
-unsafe extern "C" fn blow_up_play_sound(ctx_: *mut c_void, sound: i32) {
+unsafe fn blow_up_play_sound(ctx_: *mut c_void, sound: i32) {
     unsafe {
         let c: &BlowUpContext = ctx(ctx_);
         c.w.play(sound, null_mut(), 0);
     }
 }
 
-unsafe extern "C" fn blow_up_create_nobject1(
-    ctx_: *mut c_void,
-    kind: i32,
-    vel: LieroIVec2,
-    pos: LieroIVec2,
-    color: i32,
-) {
+unsafe fn blow_up_create_nobject1(ctx_: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
     unsafe {
         let c: &BlowUpContext = ctx(ctx_);
         c.w.create_nobject1(kind, vel, pos, color, c.cause_idx, (*c.obj).fired_by);
     }
 }
 
-unsafe extern "C" fn blow_up_create_nobject2(
+unsafe fn blow_up_create_nobject2(
     ctx_: *mut c_void,
     kind: i32,
     angle: i32,
@@ -1394,7 +1388,7 @@ struct WObjectContext<'a> {
     owner: i32,
 }
 
-unsafe extern "C" fn w_owner_steers(ctx_: *mut c_void) -> bool {
+unsafe fn w_owner_steers(ctx_: *mut c_void) -> bool {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         let owner = c.w.worm(c.owner);
@@ -1402,28 +1396,21 @@ unsafe extern "C" fn w_owner_steers(ctx_: *mut c_void) -> bool {
     }
 }
 
-unsafe extern "C" fn w_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
+unsafe fn w_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         c.w.create_sobject(kind, x, y, (*c.obj).owner_idx, (*c.obj).fired_by, null_mut());
     }
 }
 
-unsafe extern "C" fn w_create_nobject1(ctx_: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
+unsafe fn w_create_nobject1(ctx_: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         c.w.create_nobject1(kind, vel, pos, color, (*c.obj).owner_idx, (*c.obj).fired_by);
     }
 }
 
-unsafe extern "C" fn w_create_nobject2(
-    ctx_: *mut c_void,
-    kind: i32,
-    angle: i32,
-    vel: LieroIVec2,
-    pos: LieroIVec2,
-    color: i32,
-) {
+unsafe fn w_create_nobject2(ctx_: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         c.w.create_nobject2(kind, angle, vel, pos, color, (*c.obj).owner_idx, (*c.obj).fired_by);
@@ -1436,7 +1423,7 @@ fn near(pos: LieroIVec2, q: LieroIVec2) -> bool {
     pos.x >= q.x - itof(2) && pos.x <= q.x + itof(2) && pos.y >= q.y - itof(2) && pos.y <= q.y + itof(2)
 }
 
-unsafe extern "C" fn w_push_objects(ctx_: *mut c_void, impulse: LieroIVec2) {
+unsafe fn w_push_objects(ctx_: *mut c_void, impulse: LieroIVec2) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         let o = c.obj;
@@ -1458,7 +1445,7 @@ unsafe extern "C" fn w_push_objects(ctx_: *mut c_void, impulse: LieroIVec2) {
     }
 }
 
-unsafe extern "C" fn w_hit_worms(ctx_: *mut c_void) -> u32 {
+unsafe fn w_hit_worms(ctx_: *mut c_void) -> u32 {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         let world = &c.w;
@@ -1505,21 +1492,21 @@ unsafe extern "C" fn w_hit_worms(ctx_: *mut c_void) -> u32 {
     }
 }
 
-unsafe extern "C" fn w_blow_up(ctx_: *mut c_void) {
+unsafe fn w_blow_up(ctx_: *mut c_void) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         c.w.blow_up_wobject(c.obj, (*c.obj).owner_idx);
     }
 }
 
-unsafe extern "C" fn w_free(ctx_: *mut c_void) {
+unsafe fn w_free(ctx_: *mut c_void) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         LieroWObjectList::free(c.w.wobjects(), c.obj);
     }
 }
 
-unsafe extern "C" fn w_used(ctx_: *mut c_void) -> bool {
+unsafe fn w_used(ctx_: *mut c_void) -> bool {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
         (*c.obj).used
@@ -1531,35 +1518,28 @@ struct NObjectContext<'a> {
     obj: *mut LieroNObject,
 }
 
-unsafe extern "C" fn n_create_bobject(ctx_: *mut c_void, pos: LieroIVec2, vel: LieroIVec2) {
+unsafe fn n_create_bobject(ctx_: *mut c_void, pos: LieroIVec2, vel: LieroIVec2) {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
         c.w.create_bobject(pos, vel);
     }
 }
 
-unsafe extern "C" fn n_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
+unsafe fn n_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
         c.w.create_sobject(kind, x, y, (*c.obj).owner_idx, (*c.obj).fired_by, null_mut());
     }
 }
 
-unsafe extern "C" fn n_create_nobject2(
-    ctx_: *mut c_void,
-    kind: i32,
-    angle: i32,
-    vel: LieroIVec2,
-    pos: LieroIVec2,
-    color: i32,
-) {
+unsafe fn n_create_nobject2(ctx_: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
         c.w.create_nobject2(kind, angle, vel, pos, color, (*c.obj).owner_idx, null_mut());
     }
 }
 
-unsafe extern "C" fn n_draw_on_map(ctx_: *mut c_void, x: i32, y: i32) {
+unsafe fn n_draw_on_map(ctx_: *mut c_void, x: i32, y: i32) {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
         let t = &*((*c.obj).kind as *const LieroTcNObject);
@@ -1579,7 +1559,7 @@ unsafe extern "C" fn n_draw_on_map(ctx_: *mut c_void, x: i32, y: i32) {
     }
 }
 
-unsafe extern "C" fn n_hit_worms(ctx_: *mut c_void) -> bool {
+unsafe fn n_hit_worms(ctx_: *mut c_void) -> bool {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
         let world = &c.w;
@@ -1621,7 +1601,7 @@ unsafe extern "C" fn n_hit_worms(ctx_: *mut c_void) -> bool {
     }
 }
 
-unsafe extern "C" fn n_free(ctx_: *mut c_void) {
+unsafe fn n_free(ctx_: *mut c_void) {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
         if (*c.obj).used {
@@ -1653,7 +1633,7 @@ impl WormContext<'_> {
     }
 }
 
-unsafe extern "C" fn worm_launch_sound(ctx_: *mut c_void) {
+unsafe fn worm_launch_sound(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
         let ww = c.current();
@@ -1671,7 +1651,7 @@ unsafe extern "C" fn worm_launch_sound(ctx_: *mut c_void) {
     }
 }
 
-unsafe extern "C" fn worm_fire_part(ctx_: *mut c_void, angle: i32, vel: LieroIVec2, speed: i32, pos: LieroIVec2) {
+unsafe fn worm_fire_part(ctx_: *mut c_void, angle: i32, vel: LieroIVec2, speed: i32, pos: LieroIVec2) {
     unsafe {
         let c = worm_ctx(ctx_);
         let ww = c.current();
@@ -1679,24 +1659,24 @@ unsafe extern "C" fn worm_fire_part(ctx_: *mut c_void, angle: i32, vel: LieroIVe
     }
 }
 
-unsafe extern "C" fn worm_play_sound(ctx_: *mut c_void, sound: i32) {
+unsafe fn worm_play_sound(ctx_: *mut c_void, sound: i32) {
     unsafe {
         worm_ctx(ctx_).w.play(sound, null_mut(), 0);
     }
 }
 
-unsafe extern "C" fn worm_create_nobject1(ctx_: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
+unsafe fn worm_create_nobject1(ctx_: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
     unsafe {
         let c = worm_ctx(ctx_);
         c.w.create_nobject1(kind, vel, pos, color, c.index(), null_mut());
     }
 }
 
-unsafe extern "C" fn worm_weapon(_: *mut c_void, kind: *const c_void) -> LieroWeapon {
+unsafe fn worm_weapon(_: *mut c_void, kind: *const c_void) -> LieroWeapon {
     unsafe { weapon_view(&*(kind as *const LieroTcWeapon)) }
 }
 
-unsafe extern "C" fn worm_give_weapon(ctx_: *mut c_void, slot: i32, weapon: i32) {
+unsafe fn worm_give_weapon(ctx_: *mut c_void, slot: i32, weapon: i32) {
     unsafe {
         let c = worm_ctx(ctx_);
         let ww = addr_of_mut!((*c.worm).weapons[slot as usize]);
@@ -1706,14 +1686,14 @@ unsafe extern "C" fn worm_give_weapon(ctx_: *mut c_void, slot: i32, weapon: i32)
     }
 }
 
-unsafe extern "C" fn worm_bonuses_begin(ctx_: *mut c_void) {
+unsafe fn worm_bonuses_begin(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
         c.bonuses = LieroBonusList::all(c.w.bonuses());
     }
 }
 
-unsafe extern "C" fn worm_bonus_next(ctx_: *mut c_void) -> LieroBonusRef {
+unsafe fn worm_bonus_next(ctx_: *mut c_void) -> LieroBonusRef {
     unsafe {
         let c = worm_ctx(ctx_);
         match c.bonuses.next() {
@@ -1729,77 +1709,70 @@ unsafe extern "C" fn worm_bonus_next(ctx_: *mut c_void) -> LieroBonusRef {
     }
 }
 
-unsafe extern "C" fn worm_bonus_free(ctx_: *mut c_void) {
+unsafe fn worm_bonus_free(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
         LieroBonusList::free(c.w.bonuses(), c.bonuses.last());
     }
 }
 
-unsafe extern "C" fn worm_heal(ctx_: *mut c_void, amount: i32) {
+unsafe fn worm_heal(ctx_: *mut c_void, amount: i32) {
     unsafe {
         let c = worm_ctx(ctx_);
         c.w.g.heal(c.i, amount);
     }
 }
 
-unsafe extern "C" fn worm_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
+unsafe fn worm_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
     unsafe {
         let c = worm_ctx(ctx_);
         c.w.create_sobject(kind, x, y, c.index(), null_mut(), null_mut());
     }
 }
 
-unsafe extern "C" fn worm_create_nobject2(
-    ctx_: *mut c_void,
-    kind: i32,
-    angle: i32,
-    vel: LieroIVec2,
-    pos: LieroIVec2,
-    color: i32,
-) {
+unsafe fn worm_create_nobject2(ctx_: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
     unsafe {
         let c = worm_ctx(ctx_);
         c.w.create_nobject2(kind, angle, vel, pos, color, c.index(), null_mut());
     }
 }
 
-unsafe extern "C" fn worm_play_worm_sound(ctx_: *mut c_void, sound: i32) {
+unsafe fn worm_play_worm_sound(ctx_: *mut c_void, sound: i32) {
     unsafe {
         let c = worm_ctx(ctx_);
         c.w.play(sound, c.worm.cast(), 0);
     }
 }
 
-unsafe extern "C" fn worm_sound_playing(ctx_: *mut c_void) -> bool {
+unsafe fn worm_sound_playing(ctx_: *mut c_void) -> bool {
     unsafe {
         let c = worm_ctx(ctx_);
         c.w.playing(c.worm.cast())
     }
 }
 
-unsafe extern "C" fn worm_stop_loop_sound(ctx_: *mut c_void) {
+unsafe fn worm_stop_loop_sound(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
         c.w.stop(c.current().cast());
     }
 }
 
-unsafe extern "C" fn worm_worm_hit(ctx_: *mut c_void, x: i32, y: i32) -> bool {
+unsafe fn worm_worm_hit(ctx_: *mut c_void, x: i32, y: i32) -> bool {
     unsafe {
         let c = worm_ctx(ctx_);
         c.w.worm_hit(x, y, 0, c.i)
     }
 }
 
-unsafe extern "C" fn worm_steerables_begin(ctx_: *mut c_void) {
+unsafe fn worm_steerables_begin(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
         c.wobjects = LieroWObjectList::all(c.w.wobjects());
     }
 }
 
-unsafe extern "C" fn worm_steerable_next(ctx_: *mut c_void) -> LieroSteerable {
+unsafe fn worm_steerable_next(ctx_: *mut c_void) -> LieroSteerable {
     unsafe {
         let c = worm_ctx(ctx_);
         let kind = (*c.current()).kind;
@@ -1819,7 +1792,7 @@ unsafe extern "C" fn worm_steerable_next(ctx_: *mut c_void) -> LieroSteerable {
     }
 }
 
-unsafe extern "C" fn worm_enemy_pos(ctx_: *mut c_void, pos: *mut LieroIVec2) -> bool {
+unsafe fn worm_enemy_pos(ctx_: *mut c_void, pos: *mut LieroIVec2) -> bool {
     unsafe {
         let c = worm_ctx(ctx_);
         if c.w.worm_count() != 2 {
@@ -1830,14 +1803,14 @@ unsafe extern "C" fn worm_enemy_pos(ctx_: *mut c_void, pos: *mut LieroIVec2) -> 
     }
 }
 
-unsafe extern "C" fn worm_add_kill(ctx_: *mut c_void, idx: i32) {
+unsafe fn worm_add_kill(ctx_: *mut c_void, idx: i32) {
     unsafe {
         let c = worm_ctx(ctx_);
         (*c.w.worm(idx)).kills += 1;
     }
 }
 
-unsafe extern "C" fn worm_after_death(ctx_: *mut c_void) {
+unsafe fn worm_after_death(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
         if let Some(s) = c.w.stats() {
@@ -1846,7 +1819,7 @@ unsafe extern "C" fn worm_after_death(ctx_: *mut c_void) {
     }
 }
 
-unsafe extern "C" fn worm_after_spawn(ctx_: *mut c_void) {
+unsafe fn worm_after_spawn(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
         if let Some(s) = c.w.stats() {
@@ -1861,7 +1834,7 @@ struct RopeContext<'a> {
     owner: i32,
 }
 
-unsafe extern "C" fn rope_find_anchor(ctx_: *mut c_void, x: i32, y: i32) -> *mut c_void {
+unsafe fn rope_find_anchor(ctx_: *mut c_void, x: i32, y: i32) -> *mut c_void {
     unsafe {
         let c: &RopeContext = ctx(ctx_);
         for i in 0..c.w.worm_count() {
@@ -1873,7 +1846,7 @@ unsafe extern "C" fn rope_find_anchor(ctx_: *mut c_void, x: i32, y: i32) -> *mut
     }
 }
 
-unsafe extern "C" fn rope_worm_motion(worm: *mut c_void) -> LieroWormMotion {
+unsafe fn rope_worm_motion(worm: *mut c_void) -> LieroWormMotion {
     unsafe {
         let w = worm as *mut LieroWormData;
         LieroWormMotion {
@@ -1883,14 +1856,7 @@ unsafe extern "C" fn rope_worm_motion(worm: *mut c_void) -> LieroWormMotion {
     }
 }
 
-unsafe extern "C" fn rope_create_nobject2(
-    ctx_: *mut c_void,
-    kind: i32,
-    angle: i32,
-    vel: LieroIVec2,
-    pos: LieroIVec2,
-    color: i32,
-) {
+unsafe fn rope_create_nobject2(ctx_: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
     unsafe {
         let c: &RopeContext = ctx(ctx_);
         let index = (*c.w.worm(c.owner)).index;

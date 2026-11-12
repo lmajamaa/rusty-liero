@@ -192,7 +192,7 @@ fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
     })
 }
 
-unsafe extern "C" fn no_ticks(_: *mut c_void) -> u64 {
+unsafe fn no_ticks(_: *mut c_void) -> u64 {
     0
 }
 

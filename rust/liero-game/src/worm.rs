@@ -46,7 +46,6 @@ pub const LIERO_GAME_SCALES_OF_JUSTICE: i32 = 3;
 
 /// A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
 /// it (`liero_worm_data_new`), except its settings and AI.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroWormData {
     pub pos: LieroIVec2,
@@ -161,22 +160,19 @@ impl Default for LieroWormData {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_worm_data_new() -> *mut LieroWormData {
+pub fn liero_worm_data_new() -> *mut LieroWormData {
     Box::into_raw(Box::default())
 }
 
 /// # Safety
 /// `w` is valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_data_clone(w: &LieroWormData) -> *mut LieroWormData {
+pub unsafe fn liero_worm_data_clone(w: &LieroWormData) -> *mut LieroWormData {
     Box::into_raw(Box::new(*w))
 }
 
 /// # Safety
 /// `w` comes from `liero_worm_data_new` or `_clone`, and isn't used after.
-#[no_mangle]
-pub unsafe extern "C" fn liero_worm_data_free(w: *mut LieroWormData) {
+pub unsafe fn liero_worm_data_free(w: *mut LieroWormData) {
     unsafe {
         if !w.is_null() {
             drop(Box::from_raw(w));
@@ -185,7 +181,6 @@ pub unsafe extern "C" fn liero_worm_data_free(w: *mut LieroWormData) {
 }
 
 /// Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroWormConstants {
     pub min_bounce_up: i32,
@@ -242,7 +237,6 @@ pub struct LieroWormConstants {
 }
 
 /// Everything else `Worm::process` reads from the game.
-#[repr(C)]
 pub struct LieroWormEnv {
     pub level: LieroLevel,
     pub common: LieroLevelCommon,
@@ -265,7 +259,6 @@ pub struct LieroWormEnv {
 }
 
 /// A bonus from `bonus_next`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroBonusRef {
     /// False when there are no more bonuses.
@@ -278,7 +271,6 @@ pub struct LieroBonusRef {
 }
 
 /// A steerable weapon object from `steerable_next`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroSteerable {
     /// The object's frame, which is its direction; null when there are no
@@ -288,56 +280,54 @@ pub struct LieroSteerable {
 }
 
 /// What C++ does for a worm. `ctx` is passed back to each function.
-#[repr(C)]
 pub struct LieroWormHooks {
     pub ctx: *mut c_void,
     /// The hooks for `liero_worm_fire` and `liero_worm_process_weapons`.
     /// Their `play_sound` and `create_nobject1` are used for the worm too.
     pub firing: *const LieroWormFiringHooks,
     /// The weapon a slot's `kind` points to.
-    pub weapon: unsafe extern "C" fn(ctx: *mut c_void, kind: *const c_void) -> LieroWeapon,
+    pub weapon: unsafe fn(ctx: *mut c_void, kind: *const c_void) -> LieroWeapon,
     /// Puts weapon `weapon` (an index into the TC's weapons) with full
     /// ammo in slot `slot`.
-    pub give_weapon: unsafe extern "C" fn(ctx: *mut c_void, slot: i32, weapon: i32),
+    pub give_weapon: unsafe fn(ctx: *mut c_void, slot: i32, weapon: i32),
     /// Starts going through the bonuses.
-    pub bonuses_begin: unsafe extern "C" fn(ctx: *mut c_void),
+    pub bonuses_begin: unsafe fn(ctx: *mut c_void),
     /// The next bonus.
-    pub bonus_next: unsafe extern "C" fn(ctx: *mut c_void) -> LieroBonusRef,
+    pub bonus_next: unsafe fn(ctx: *mut c_void) -> LieroBonusRef,
     /// Frees the bonus `bonus_next` returned last.
-    pub bonus_free: unsafe extern "C" fn(ctx: *mut c_void),
+    pub bonus_free: unsafe fn(ctx: *mut c_void),
     /// `Game::doHealing` for the worm.
-    pub heal: unsafe extern "C" fn(ctx: *mut c_void, amount: i32),
+    pub heal: unsafe fn(ctx: *mut c_void, amount: i32),
     /// `SObjectType::create` for sobject type `kind`, owned by the worm.
-    pub create_sobject: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
+    pub create_sobject: unsafe fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
     /// `NObjectType::create2` for nobject type `kind`, owned by the worm.
     pub create_nobject2:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+        unsafe fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
     /// Plays sound `sound` as the worm's own sound.
-    pub play_worm_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32),
+    pub play_worm_sound: unsafe fn(ctx: *mut c_void, sound: i32),
     /// Whether the worm's own sound is playing.
-    pub worm_sound_playing: unsafe extern "C" fn(ctx: *mut c_void) -> bool,
+    pub worm_sound_playing: unsafe fn(ctx: *mut c_void) -> bool,
     /// Stops the current weapon's looping sound.
-    pub stop_loop_sound: unsafe extern "C" fn(ctx: *mut c_void),
+    pub stop_loop_sound: unsafe fn(ctx: *mut c_void),
     /// Whether (x, y) hits the other worm (`checkForWormHit`).
-    pub worm_hit: unsafe extern "C" fn(ctx: *mut c_void, x: i32, y: i32) -> bool,
+    pub worm_hit: unsafe fn(ctx: *mut c_void, x: i32, y: i32) -> bool,
     /// Starts going through the worm's objects of its current weapon.
-    pub steerables_begin: unsafe extern "C" fn(ctx: *mut c_void),
+    pub steerables_begin: unsafe fn(ctx: *mut c_void),
     /// The next of them.
-    pub steerable_next: unsafe extern "C" fn(ctx: *mut c_void) -> LieroSteerable,
+    pub steerable_next: unsafe fn(ctx: *mut c_void) -> LieroSteerable,
     /// Sets `pos` to the other worm's position, in pixels, and returns
     /// true, when there are exactly two worms.
-    pub enemy_pos: unsafe extern "C" fn(ctx: *mut c_void, pos: *mut LieroIVec2) -> bool,
+    pub enemy_pos: unsafe fn(ctx: *mut c_void, pos: *mut LieroIVec2) -> bool,
     /// Gives worm `idx` a kill.
-    pub add_kill: unsafe extern "C" fn(ctx: *mut c_void, idx: i32),
+    pub add_kill: unsafe fn(ctx: *mut c_void, idx: i32),
     /// Stats after the worm died and after it respawned.
-    pub after_death: unsafe extern "C" fn(ctx: *mut c_void),
-    pub after_spawn: unsafe extern "C" fn(ctx: *mut c_void),
+    pub after_death: unsafe fn(ctx: *mut c_void),
+    pub after_spawn: unsafe fn(ctx: *mut c_void),
 }
 
 /// The sprite frame for a worm aiming at `aiming_angle` (fixed-point) in
 /// `direction`, without the walking animation: `Worm::angleFrame`.
-#[no_mangle]
-pub extern "C" fn liero_worm_angle_frame(aiming_angle: i32, direction: i32) -> i32 {
+pub fn liero_worm_angle_frame(aiming_angle: i32, direction: i32) -> i32 {
     let mut x = ftoi(aiming_angle) - 12;
 
     if direction != 0 {

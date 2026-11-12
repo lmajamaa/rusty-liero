@@ -24,7 +24,6 @@ const SOUND_DOWN: i32 = 25;
 const WEAPON_COUNT: usize = 40;
 
 /// What the weapon options screen shows and edits.
-#[repr(C)]
 pub struct LieroWeaponOptionsSpec {
     /// The weapons' names in menu order, and each one's index in
     /// `weap_table`.
@@ -179,8 +178,7 @@ impl Screen for WeaponOptions {
 /// # Safety
 /// `spec`'s pointers are valid for their counts, and `order`'s entries are
 /// below 40.
-#[no_mangle]
-pub unsafe extern "C" fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> LieroScreen {
+pub unsafe fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> LieroScreen {
     unsafe { into_ffi(Box::new(WeaponOptions::new(spec))) }
 }
 
@@ -233,7 +231,7 @@ mod tests {
         static KEYS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     }
 
-    unsafe extern "C" fn key_once(sc: u32) -> bool {
+    unsafe fn key_once(sc: u32) -> bool {
         KEYS.with(|k| {
             let mut k = k.borrow_mut();
             let found = k.iter().position(|&x| x == sc);

@@ -41,7 +41,6 @@ fn pressed(cs: u32, control: u32) -> bool {
 const PI: f64 = std::f64::consts::PI;
 
 /// A worm weapon, as the AI reads it.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroAiWeapon {
     pub ammo: i32,
@@ -53,7 +52,6 @@ pub struct LieroAiWeapon {
 }
 
 /// What the AI reads of a worm.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroAiWorm {
     pub index: i32,
@@ -75,7 +73,6 @@ pub struct LieroAiWorm {
 }
 
 /// What the AI reads of a game.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroAiGame {
     pub game_mode: u32,
@@ -631,7 +628,6 @@ enum Mutation {
 }
 
 /// A traced position, the copy's worm in fixed point, and its colour.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroAiTrace {
     pub x: i32,

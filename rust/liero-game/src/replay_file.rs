@@ -37,7 +37,6 @@ use crate::text::LieroStr;
 use crate::viewport::LIERO_VIEWPORT_WORM;
 
 /// How a replay call ended, for C++ to throw as its replay code did.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroReplayOutcome {
     pub status: LieroReplayStatus,
@@ -205,8 +204,7 @@ impl Drop for LieroReplayWriter {
 }
 
 /// Starts writing a replay at `node`, or null if it can't be created.
-#[no_mangle]
-pub extern "C" fn liero_replay_writer_new(node: &LieroFsNode) -> *mut LieroReplayWriter {
+pub fn liero_replay_writer_new(node: &LieroFsNode) -> *mut LieroReplayWriter {
     match Deflater::new(&node.0) {
         Some(out) => Box::into_raw(Box::new(LieroReplayWriter {
             out,
@@ -226,8 +224,7 @@ pub extern "C" fn liero_replay_writer_new(node: &LieroFsNode) -> *mut LieroRepla
 /// # Safety
 /// `w` comes from `liero_replay_writer_new`, or is null, and isn't used
 /// again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_free(w: *mut LieroReplayWriter) {
+pub unsafe fn liero_replay_writer_free(w: *mut LieroReplayWriter) {
     unsafe {
         if !w.is_null() {
             drop(Box::from_raw(w));
@@ -237,8 +234,7 @@ pub unsafe extern "C" fn liero_replay_writer_free(w: *mut LieroReplayWriter) {
 
 /// The version to write, before `liero_replay_writer_begin`; the hash run
 /// writes old ones.
-#[no_mangle]
-pub extern "C" fn liero_replay_writer_set_version(w: &mut LieroReplayWriter, version: i32) {
+pub fn liero_replay_writer_set_version(w: &mut LieroReplayWriter, version: i32) {
     w.version = version;
 }
 
@@ -249,11 +245,7 @@ pub extern "C" fn liero_replay_writer_set_version(w: &mut LieroReplayWriter, ver
 ///
 /// # Safety
 /// The game has its settings and TC (`liero_game_set_context`).
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_begin(
-    w: &mut LieroReplayWriter,
-    game: &mut LieroGame,
-) -> LieroReplayOutcome {
+pub unsafe fn liero_replay_writer_begin(w: &mut LieroReplayWriter, game: &mut LieroGame) -> LieroReplayOutcome {
     unsafe {
         let settings = &mut *liero_game_settings(game);
         let level = &*liero_game_level(game);
@@ -325,8 +317,7 @@ pub unsafe extern "C" fn liero_replay_writer_begin(
 ///
 /// # Safety
 /// The game and settings `liero_replay_writer_begin` had are still valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_frame(w: &mut LieroReplayWriter) {
+pub unsafe fn liero_replay_writer_frame(w: &mut LieroReplayWriter) {
     unsafe {
         let game = &mut *w.game;
         let settings = &mut *w.settings;
@@ -374,8 +365,7 @@ pub unsafe extern "C" fn liero_replay_writer_frame(w: &mut LieroReplayWriter) {
 ///
 /// # Safety
 /// As for `liero_replay_writer_frame`, once recording has begun.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) {
+pub unsafe fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) {
     unsafe {
         for (p, d) in w.worms.iter_mut() {
             d.last_hash = worm_hash(worm_settings(*p));
@@ -389,8 +379,7 @@ pub unsafe extern "C" fn liero_replay_writer_unfocus(w: &mut LieroReplayWriter) 
 ///
 /// # Safety
 /// As for `liero_replay_writer_unfocus`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_writer_focus(w: &mut LieroReplayWriter) {
+pub unsafe fn liero_replay_writer_focus(w: &mut LieroReplayWriter) {
     unsafe {
         for (p, d) in w.worms.iter_mut() {
             if d.last_hash != worm_hash(worm_settings(*p)) {
@@ -444,8 +433,7 @@ impl LieroReplayReader {
 }
 
 /// Reads and inflates the replay at `node`, or null if it can't be read.
-#[no_mangle]
-pub extern "C" fn liero_replay_reader_new(node: &LieroFsNode) -> *mut LieroReplayReader {
+pub fn liero_replay_reader_new(node: &LieroFsNode) -> *mut LieroReplayReader {
     let Some(file) = node.0.read() else { return null_mut() };
     let r = inflate(&file);
     Box::into_raw(Box::new(LieroReplayReader {
@@ -465,8 +453,7 @@ pub extern "C" fn liero_replay_reader_new(node: &LieroFsNode) -> *mut LieroRepla
 /// # Safety
 /// `r` comes from `liero_replay_reader_new`, or is null, and isn't used
 /// again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_free(r: *mut LieroReplayReader) {
+pub unsafe fn liero_replay_reader_free(r: *mut LieroReplayReader) {
     unsafe {
         if !r.is_null() {
             drop(Box::from_raw(r));
@@ -475,13 +462,11 @@ pub unsafe extern "C" fn liero_replay_reader_free(r: *mut LieroReplayReader) {
 }
 
 /// How far playback has read, to go back to with `_set_pos`.
-#[no_mangle]
-pub extern "C" fn liero_replay_reader_pos(r: &LieroReplayReader) -> usize {
+pub fn liero_replay_reader_pos(r: &LieroReplayReader) -> usize {
     r.pos
 }
 
-#[no_mangle]
-pub extern "C" fn liero_replay_reader_set_pos(r: &mut LieroReplayReader, pos: usize) {
+pub fn liero_replay_reader_set_pos(r: &mut LieroReplayReader, pos: usize) {
     r.pos = pos;
 }
 
@@ -492,11 +477,7 @@ pub extern "C" fn liero_replay_reader_set_pos(r: &mut LieroReplayReader, pos: us
 ///
 /// # Safety
 /// The game has its settings and TC (`liero_game_set_context`).
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_begin(
-    r: &mut LieroReplayReader,
-    game: &mut LieroGame,
-) -> LieroReplayOutcome {
+pub unsafe fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut LieroGame) -> LieroReplayOutcome {
     unsafe {
         let settings = &mut *liero_game_settings(game);
         let level = &mut *liero_game_level(game);
@@ -563,8 +544,7 @@ pub unsafe extern "C" fn liero_replay_reader_begin(
 ///
 /// # Safety
 /// The game and settings `liero_replay_reader_begin` had are still valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_replay_reader_frame(r: &mut LieroReplayReader) -> LieroReplayOutcome {
+pub unsafe fn liero_replay_reader_frame(r: &mut LieroReplayReader) -> LieroReplayOutcome {
     unsafe {
         let game = &mut *r.game;
         let settings = &mut *r.settings;

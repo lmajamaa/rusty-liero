@@ -87,7 +87,7 @@ impl Screen for KeyChoice {
 }
 
 /// Called with the text when Enter closes a text box.
-pub type LieroInputDone = unsafe extern "C" fn(ctx: *mut c_void, text: LieroStr);
+pub type LieroInputDone = unsafe fn(ctx: *mut c_void, text: LieroStr);
 
 /// Typing a line into a box over the frozen screen. It shows a frame for
 /// each event. Enter hands the text to `done` and closes with 1, Escape
@@ -162,8 +162,7 @@ impl Screen for InputBox {
 ///
 /// # Safety
 /// `text` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_info_box_screen(text: LieroStr, x: i32, y: i32, clear_screen: bool) -> LieroScreen {
+pub unsafe fn liero_info_box_screen(text: LieroStr, x: i32, y: i32, clear_screen: bool) -> LieroScreen {
     unsafe {
         into_ffi(Box::new(InfoBox {
             text: text.bytes().to_vec(),
@@ -179,8 +178,7 @@ pub unsafe extern "C" fn liero_info_box_screen(text: LieroStr, x: i32, y: i32, c
 /// Waits for a key, joystick button or stick move and closes with its DOS
 /// key. Unless `extended`, keys only the extended controls have are passed
 /// over.
-#[no_mangle]
-pub extern "C" fn liero_key_choice_screen(extended: bool) -> LieroScreen {
+pub fn liero_key_choice_screen(extended: bool) -> LieroScreen {
     into_ffi(Box::new(KeyChoice { extended }))
 }
 
@@ -190,14 +188,13 @@ pub extern "C" fn liero_key_choice_screen(extended: bool) -> LieroScreen {
 ///
 /// # Safety
 /// `text` must be valid; `done` is called with `ctx`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_input_box_screen(
+pub unsafe fn liero_input_box_screen(
     text: LieroStr,
     max_len: usize,
     x: i32,
     y: i32,
     digits_only: bool,
-    done: Option<unsafe extern "C" fn(ctx: *mut c_void, text: LieroStr)>,
+    done: Option<unsafe fn(ctx: *mut c_void, text: LieroStr)>,
     ctx: *mut c_void,
 ) -> LieroScreen {
     unsafe {
@@ -226,7 +223,7 @@ mod tests {
         static LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
 
-    unsafe extern "C" fn poll(out: *mut LieroEvent) -> bool {
+    unsafe fn poll(out: *mut LieroEvent) -> bool {
         unsafe {
             EVENTS
                 .with(|e| e.borrow_mut().pop_front())
@@ -234,16 +231,16 @@ mod tests {
                 .is_some()
         }
     }
-    unsafe extern "C" fn sound(id: i32) {
+    unsafe fn sound(id: i32) {
         LOG.with(|l| l.borrow_mut().push(format!("sound {id}")));
     }
-    unsafe extern "C" fn process() {
+    unsafe fn process() {
         LOG.with(|l| l.borrow_mut().push("process".into()));
     }
-    unsafe extern "C" fn clear() {
+    unsafe fn clear() {
         LOG.with(|l| l.borrow_mut().push("clear".into()));
     }
-    unsafe extern "C" fn text_input(on: bool) {
+    unsafe fn text_input(on: bool) {
         LOG.with(|l| l.borrow_mut().push(format!("text {on}")));
     }
 
@@ -280,7 +277,7 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn keep(ctx: *mut c_void, text: LieroStr) {
+    unsafe fn keep(ctx: *mut c_void, text: LieroStr) {
         unsafe {
             *(ctx as *mut Vec<u8>) = text.bytes().to_vec();
         }

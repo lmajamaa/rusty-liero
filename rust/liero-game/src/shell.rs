@@ -21,8 +21,7 @@ fn fail(message: String) -> bool {
 
 /// Why the last call that returned false failed, valid until the next
 /// call.
-#[no_mangle]
-pub extern "C" fn liero_shell_error() -> LieroStr {
+pub fn liero_shell_error() -> LieroStr {
     ERROR.with(|e| LieroStr::of(&e.borrow()))
 }
 
@@ -84,13 +83,7 @@ impl LieroApp {
 ///
 /// # Safety
 /// The paths are valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_shell_start(
-    a: &mut LieroApp,
-    config: LieroStr,
-    tc_root: LieroStr,
-    tc: LieroStr,
-) -> bool {
+pub unsafe fn liero_shell_start(a: &mut LieroApp, config: LieroStr, tc_root: LieroStr, tc: LieroStr) -> bool {
     unsafe {
         a.start(config.bytes(), tc_root.bytes(), tc.bytes())
             .map_or_else(fail, |()| true)
@@ -99,34 +92,28 @@ pub unsafe extern "C" fn liero_shell_start(
 
 /// `LieroApp::save_settings_at_end`. False if it failed, with the message in
 /// `liero_shell_error`.
-#[no_mangle]
-pub extern "C" fn liero_shell_save_settings(a: &mut LieroApp) -> bool {
+pub fn liero_shell_save_settings(a: &mut LieroApp) -> bool {
     a.save_settings_at_end().map_or_else(fail, |()| true)
 }
 
 /// The config folder's path, for the window's icon.
-#[no_mangle]
-pub extern "C" fn liero_shell_config_path(a: &LieroApp) -> LieroStr {
+pub fn liero_shell_config_path(a: &LieroApp) -> LieroStr {
     LieroStr::of(a.files.config.full_path())
 }
 
-#[no_mangle]
-pub extern "C" fn liero_shell_fullscreen(a: &LieroApp) -> bool {
+pub fn liero_shell_fullscreen(a: &LieroApp) -> bool {
     a.menu_settings().data.fullscreen
 }
 
-#[no_mangle]
-pub extern "C" fn liero_shell_set_fullscreen(a: &mut LieroApp, on: bool) {
+pub fn liero_shell_set_fullscreen(a: &mut LieroApp, on: bool) {
     a.menu_settings().data.fullscreen = on;
 }
 
-#[no_mangle]
-pub extern "C" fn liero_shell_spectator_window(a: &LieroApp) -> bool {
+pub fn liero_shell_spectator_window(a: &LieroApp) -> bool {
     a.menu_settings().data.spectator_window
 }
 
-#[no_mangle]
-pub extern "C" fn liero_shell_set_spectator_window(a: &mut LieroApp, on: bool) {
+pub fn liero_shell_set_spectator_window(a: &mut LieroApp, on: bool) {
     a.menu_settings().data.spectator_window = on;
 }
 
@@ -134,8 +121,7 @@ pub extern "C" fn liero_shell_set_spectator_window(a: &mut LieroApp, on: bool) {
 ///
 /// # Safety
 /// `mixer` is valid or null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_shell_play_sound(a: &LieroApp, mixer: *mut LieroMixer, sound: i32) {
+pub unsafe fn liero_shell_play_sound(a: &LieroApp, mixer: *mut LieroMixer, sound: i32) {
     unsafe {
         if mixer.is_null() {
             return;

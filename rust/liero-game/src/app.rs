@@ -108,19 +108,12 @@ pub fn app() -> &'static mut LieroApp {
 }
 
 /// The app, at a fixed address.
-#[no_mangle]
-pub extern "C" fn liero_app() -> *mut LieroApp {
+pub fn liero_app() -> *mut LieroApp {
     app()
 }
 
-#[no_mangle]
-pub extern "C" fn liero_app_rand(a: &mut LieroApp) -> *mut LieroRand {
-    &mut a.rand
-}
-
 /// The play renderer, or with `single`, the single screen one.
-#[no_mangle]
-pub extern "C" fn liero_app_renderer(a: &mut LieroApp, single: bool) -> *mut LieroRenderer {
+pub fn liero_app_renderer(a: &mut LieroApp, single: bool) -> *mut LieroRenderer {
     if single {
         &mut *a.single
     } else {
@@ -129,8 +122,7 @@ pub extern "C" fn liero_app_renderer(a: &mut LieroApp, single: bool) -> *mut Lie
 }
 
 /// The frozen play screen, or with `spectator`, the spectator one.
-#[no_mangle]
-pub extern "C" fn liero_app_frozen(a: &mut LieroApp, spectator: bool) -> *mut LieroBitmapBox {
+pub fn liero_app_frozen(a: &mut LieroApp, spectator: bool) -> *mut LieroBitmapBox {
     if spectator {
         &mut *a.frozen_spectator
     } else {
@@ -138,88 +130,35 @@ pub extern "C" fn liero_app_frozen(a: &mut LieroApp, spectator: bool) -> *mut Li
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_app_keys(a: &mut LieroApp) -> *mut LieroKeys {
-    &mut a.keys
-}
-
-/// The menus' settings, or null.
-#[no_mangle]
-pub extern "C" fn liero_app_settings(a: &mut LieroApp) -> *mut LieroSettingsBox {
-    a.settings.as_ref().map_or(std::ptr::null_mut(), Shared::as_ptr)
-}
-
 /// Makes `s` (or none, if null) the menus' settings, taking a reference to
 /// it.
 ///
 /// # Safety
 /// `s` is a valid box, or null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_set_settings(a: &mut LieroApp, s: *mut LieroSettingsBox) {
+pub unsafe fn liero_app_set_settings(a: &mut LieroApp, s: *mut LieroSettingsBox) {
     unsafe {
         a.settings = (!s.is_null()).then(|| Shared::retain(s));
     }
 }
 
-/// Shows the single screen renderer, or the play one.
-#[no_mangle]
-pub extern "C" fn liero_app_set_primary_single(a: &mut LieroApp, single: bool) {
-    a.primary_single = single;
-}
-
 /// The renderer the screen shows.
-#[no_mangle]
-pub extern "C" fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
+pub fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
     liero_app_renderer(a, a.primary_single)
-}
-
-/// The menus' TC, or null.
-#[no_mangle]
-pub extern "C" fn liero_app_tc(a: &mut LieroApp) -> *mut LieroTc {
-    a.tc.as_ref().map_or(std::ptr::null_mut(), Shared::as_ptr)
 }
 
 /// Makes `tc` (or none, if null) the menus' TC, taking a reference to it.
 ///
 /// # Safety
 /// `tc` comes from `liero_tc_load` and has a reference, or is null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_set_tc(a: &mut LieroApp, tc: *mut LieroTc) {
+pub unsafe fn liero_app_set_tc(a: &mut LieroApp, tc: *mut LieroTc) {
     unsafe {
         a.tc = (!tc.is_null()).then(|| Shared::retain(tc));
     }
 }
 
 /// The menus the app draws.
-#[no_mangle]
-pub extern "C" fn liero_app_set_menus(a: &mut LieroApp, menus: *mut crate::menus::LieroMenus) {
+pub fn liero_app_set_menus(a: &mut LieroApp, menus: *mut crate::menus::LieroMenus) {
     a.menus = menus;
-}
-
-/// The controller, or null.
-#[no_mangle]
-pub extern "C" fn liero_app_controller(a: &mut LieroApp) -> *mut LieroController {
-    a.controller
-        .as_deref_mut()
-        .map_or(std::ptr::null_mut(), |c| c as *mut LieroController)
-}
-
-/// Replaces the controller with `c` (from a `_new`, or null), dropping the
-/// old one first.
-///
-/// # Safety
-/// `c` isn't used by C++ after.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_set_controller(a: &mut LieroApp, c: *mut LieroController) {
-    unsafe {
-        a.controller = None;
-        a.controller = (!c.is_null()).then(|| Box::from_raw(c));
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn liero_app_menu_cycles(a: &mut LieroApp) -> *mut u32 {
-    &mut a.menu_cycles
 }
 
 #[cfg(test)]

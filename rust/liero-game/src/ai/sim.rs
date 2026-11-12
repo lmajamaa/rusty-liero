@@ -21,7 +21,6 @@ use crate::world::World;
 use crate::worm::LieroWormData;
 
 /// The AI's settings (`Settings::aiFrames`, `aiMutations`, `aiTraces`).
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroAiSettings {
     pub frames: i32,
@@ -45,7 +44,7 @@ pub struct SimGame {
     _worm_data: Vec<Box<LieroWormData>>,
 }
 
-unsafe extern "C" fn no_ticks(_: *mut c_void) -> u64 {
+unsafe fn no_ticks(_: *mut c_void) -> u64 {
     0
 }
 

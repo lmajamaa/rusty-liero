@@ -36,7 +36,6 @@ pub const LIERO_SHOT_LASER: i32 = 4;
 const ENDLESS_LASER_ID: i32 = 28;
 
 /// The parts of a C++ `Weapon` that Rust uses.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroWeapon {
     pub id: i32,
@@ -85,7 +84,6 @@ pub struct LieroWeapon {
 }
 
 /// A worm's weapon slot, laid out like C++'s `WormWeapon`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroWormWeapon {
     /// The C++ `Weapon`.
@@ -99,7 +97,6 @@ pub struct LieroWormWeapon {
 pub const LIERO_SELECTABLE_WEAPONS: usize = 5;
 
 /// How a new weapon object starts, from `Weapon::fire`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroLaunch {
     pub vel: LieroIVec2,
@@ -163,20 +160,7 @@ impl LieroWeapon {
     }
 }
 
-/// The start of a shot: C++'s `Weapon::fire` without the object list and
-/// stats.
-pub fn liero_weapon_launch(
-    w: &LieroWeapon,
-    rand: &mut LieroRand,
-    angle: i32,
-    vel: LieroIVec2,
-    speed: i32,
-) -> LieroLaunch {
-    w.launch(rand, angle, vel, speed)
-}
-
 /// Pointers to the fields of a C++ `Worm` that firing and reloading use.
-#[repr(C)]
 pub struct LieroWormFiring {
     pub pos: *mut LieroIVec2,
     pub vel: *mut LieroIVec2,
@@ -190,18 +174,16 @@ pub struct LieroWormFiring {
 }
 
 /// What C++ does when a worm fires or reloads.
-#[repr(C)]
 pub struct LieroWormFiringHooks {
     pub ctx: *mut c_void,
     /// The weapon's launch sound, looping or not.
-    pub launch_sound: unsafe extern "C" fn(ctx: *mut c_void),
+    pub launch_sound: unsafe fn(ctx: *mut c_void),
     /// `Weapon::fire` for the current weapon: one part of a shot.
-    pub fire_part: unsafe extern "C" fn(ctx: *mut c_void, angle: i32, vel: LieroIVec2, speed: i32, pos: LieroIVec2),
+    pub fire_part: unsafe fn(ctx: *mut c_void, angle: i32, vel: LieroIVec2, speed: i32, pos: LieroIVec2),
     /// Plays sound `sound`.
-    pub play_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32),
+    pub play_sound: unsafe fn(ctx: *mut c_void, sound: i32),
     /// `NObjectType::create1` for nobject type `kind`, owned by the worm.
-    pub create_nobject1:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+    pub create_nobject1: unsafe fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
 }
 
 /// Fires the worm's current weapon `w`: C++'s `Worm::fire`.
@@ -316,7 +298,6 @@ pub unsafe fn liero_worm_process_weapons(
 }
 
 /// Pointers to the fields of one C++ `WObject`.
-#[repr(C)]
 pub struct LieroWObjectFields {
     pub pos: *mut LieroIVec2,
     pub vel: *mut LieroIVec2,
@@ -325,30 +306,28 @@ pub struct LieroWObjectFields {
 }
 
 /// What C++ does for a `WObject`. `ctx` is passed back to each function.
-#[repr(C)]
 pub struct LieroWObjectHooks {
     pub ctx: *mut c_void,
     /// Whether the owner is steering the object: visible and holding up.
-    pub owner_steers: unsafe extern "C" fn(ctx: *mut c_void) -> bool,
+    pub owner_steers: unsafe fn(ctx: *mut c_void) -> bool,
     /// `SObjectType::create` for sobject type `kind`, owned like the object.
-    pub create_sobject: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
+    pub create_sobject: unsafe fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
     /// `NObjectType::create1` for nobject type `kind`, owned like the object.
-    pub create_nobject1:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+    pub create_nobject1: unsafe fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
     /// `NObjectType::create2` for nobject type `kind`, owned like the object.
     pub create_nobject2:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+        unsafe fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
     /// Adds `impulse` to the other objects within 2 pixels.
-    pub push_objects: unsafe extern "C" fn(ctx: *mut c_void, impulse: LieroIVec2),
+    pub push_objects: unsafe fn(ctx: *mut c_void, impulse: LieroIVec2),
     /// The worm loop in `WObject::process`: hurts the worms the object hits.
     /// Returns `LIERO_HIT_*` flags.
-    pub hit_worms: unsafe extern "C" fn(ctx: *mut c_void) -> u32,
+    pub hit_worms: unsafe fn(ctx: *mut c_void) -> u32,
     /// `WObject::blowUpObject` with the owner as the cause.
-    pub blow_up: unsafe extern "C" fn(ctx: *mut c_void),
+    pub blow_up: unsafe fn(ctx: *mut c_void),
     /// Frees the object.
-    pub free: unsafe extern "C" fn(ctx: *mut c_void),
+    pub free: unsafe fn(ctx: *mut c_void),
     /// Whether the object is still in use.
-    pub used: unsafe extern "C" fn(ctx: *mut c_void) -> bool,
+    pub used: unsafe fn(ctx: *mut c_void) -> bool,
 }
 
 /// `hit_worms` result: the object should explode.
@@ -357,7 +336,6 @@ pub const LIERO_HIT_EXPLODE: u32 = 1;
 pub const LIERO_HIT_REMOVE: u32 = 2;
 
 /// Everything else weapon objects read from the game.
-#[repr(C)]
 pub struct LieroWObjectEnv {
     pub level: LieroLevel,
     pub common: LieroLevelCommon,
@@ -557,20 +535,18 @@ pub unsafe fn liero_wobject_process(
 }
 
 /// What C++ does when a weapon object blows up.
-#[repr(C)]
 pub struct LieroBlowUpHooks {
     pub ctx: *mut c_void,
     /// `SObjectType::create` for sobject type `kind` at (x, y), caused by
     /// the exploding object.
-    pub create_sobject: unsafe extern "C" fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
+    pub create_sobject: unsafe fn(ctx: *mut c_void, kind: i32, x: i32, y: i32),
     /// Plays sound `sound`.
-    pub play_sound: unsafe extern "C" fn(ctx: *mut c_void, sound: i32),
+    pub play_sound: unsafe fn(ctx: *mut c_void, sound: i32),
     /// `NObjectType::create1` for nobject type `kind`.
-    pub create_nobject1:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+    pub create_nobject1: unsafe fn(ctx: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
     /// `NObjectType::create2` for nobject type `kind`.
     pub create_nobject2:
-        unsafe extern "C" fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
+        unsafe fn(ctx: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32),
 }
 
 /// The effects of a weapon object blowing up at `pos` with `vel`: C++'s

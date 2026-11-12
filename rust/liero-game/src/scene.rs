@@ -17,7 +17,6 @@ use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE};
 
 /// What a draw needs besides the game: the settings the tick doesn't use,
 /// and the screen.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroDrawSettings {
     pub names_on_bonuses: bool,
@@ -153,8 +152,7 @@ pub(crate) unsafe fn process_viewports(f: &LieroGameFields) {
 /// # Safety
 /// The pointers in `game` and `settings` are valid, and `vp` is one of the
 /// game's viewports.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_draw_viewport(
+pub unsafe fn liero_game_draw_viewport(
     game: &LieroGameFields,
     settings: &LieroGameSettings,
     draw: &LieroDrawSettings,

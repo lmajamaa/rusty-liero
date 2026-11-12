@@ -12,7 +12,6 @@ use miniz_oxide::deflate::core::{
     compress, create_comp_flags_from_zip_params, CompressorOxide, TDEFLFlush, TDEFLStatus,
 };
 use miniz_oxide::inflate::decompress_to_vec_zlib;
-use std::ffi::c_void;
 
 /// gvl's output pieces.
 const PIECE: usize = 65536;
@@ -116,8 +115,7 @@ pub fn inflate(input: &[u8]) -> Inflated {
 pub struct LieroDeflateOut(Deflater);
 
 /// Starts writing a compressed file at `node`. Null if it can't be created.
-#[no_mangle]
-pub extern "C" fn liero_deflate_out_new(node: &LieroFsNode) -> *mut LieroDeflateOut {
+pub fn liero_deflate_out_new(node: &LieroFsNode) -> *mut LieroDeflateOut {
     match Deflater::new(&node.0) {
         Some(d) => Box::into_raw(Box::new(LieroDeflateOut(d))),
         None => std::ptr::null_mut(),
@@ -126,8 +124,7 @@ pub extern "C" fn liero_deflate_out_new(node: &LieroFsNode) -> *mut LieroDeflate
 
 /// # Safety
 /// `data` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_deflate_out_write(out: &mut LieroDeflateOut, data: LieroStr) {
+pub unsafe fn liero_deflate_out_write(out: &mut LieroDeflateOut, data: LieroStr) {
     unsafe {
         out.0.write(data.bytes());
     }
@@ -137,42 +134,10 @@ pub unsafe extern "C" fn liero_deflate_out_write(out: &mut LieroDeflateOut, data
 ///
 /// # Safety
 /// `out` must come from `liero_deflate_out_new`, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_deflate_out_free(out: *mut LieroDeflateOut) {
+pub unsafe fn liero_deflate_out_free(out: *mut LieroDeflateOut) {
     unsafe {
         if !out.is_null() {
             drop(Box::from_raw(out));
-        }
-    }
-}
-
-/// Inflates the file at `node`: `got(ctx, data, error)` with what a reader
-/// gets of it, and whether reading on fails. False, without calling it, if
-/// the file can't be read.
-///
-/// # Safety
-/// `got` must take `ctx`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_inflate_node(
-    node: &LieroFsNode,
-    ctx: *mut c_void,
-    got: unsafe extern "C" fn(ctx: *mut c_void, data: LieroStr, error: bool),
-) -> bool {
-    unsafe {
-        match node.0.read() {
-            Some(file) => {
-                let r = inflate(&file);
-                got(
-                    ctx,
-                    LieroStr {
-                        ptr: r.data.as_ptr(),
-                        len: r.data.len(),
-                    },
-                    r.error,
-                );
-                true
-            }
-            None => false,
         }
     }
 }

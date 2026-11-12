@@ -25,14 +25,13 @@ const MAIN_REPLAY: i32 = 8;
 const MAIN_TC: i32 = 9;
 
 /// What the app's screens call in C++.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroAppHooks {
     /// Reads the frame's events, passing keys to the controller
     /// (`Gfx::process(controller)`).
-    pub process: unsafe extern "C" fn(),
+    pub process: unsafe fn(),
     /// The main menu screen.
-    pub menu_screen: unsafe extern "C" fn() -> LieroScreen,
+    pub menu_screen: unsafe fn() -> LieroScreen,
 }
 
 fn controller(a: &mut LieroApp) -> &mut crate::controllers::LieroController {
@@ -271,8 +270,7 @@ impl Screen for MainScreen {
 }
 
 /// The app's first screen.
-#[no_mangle]
-pub extern "C" fn liero_main_screen(hooks: LieroAppHooks) -> LieroScreen {
+pub fn liero_main_screen(hooks: LieroAppHooks) -> LieroScreen {
     into_ffi(Box::new(MainScreen {
         h: hooks,
         open: Open::Nothing,

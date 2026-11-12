@@ -13,7 +13,6 @@ const RF_LEFT: usize = 1;
 const RF_RIGHT: usize = 3;
 
 /// What the bot reads of its worm.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroDumbAiWorm {
     pub pos: [i32; 2],

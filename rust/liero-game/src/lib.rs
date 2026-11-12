@@ -63,8 +63,7 @@ use std::ffi::c_char;
 
 /// Name and version of this library as a NUL-terminated string, e.g.
 /// "liero-game 0.1.0". The web shell prints it at startup.
-#[no_mangle]
-pub extern "C" fn liero_game_version() -> *const c_char {
+pub fn liero_game_version() -> *const c_char {
     concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
 }
 

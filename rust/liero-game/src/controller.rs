@@ -16,7 +16,6 @@ pub const LIERO_STATE_GAME_ENDED: i32 = 3;
 pub const LIERO_FADE_SHOWN: i32 = 33;
 
 /// A controller's state.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LieroControllerData {
     /// `LIERO_STATE_*`.
@@ -63,15 +62,13 @@ impl LieroControllerData {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_controller_data_new() -> *mut LieroControllerData {
+pub fn liero_controller_data_new() -> *mut LieroControllerData {
     Box::into_raw(Box::default())
 }
 
 /// # Safety
 /// `c` comes from `liero_controller_data_new`, and isn't used after.
-#[no_mangle]
-pub unsafe extern "C" fn liero_controller_data_free(c: *mut LieroControllerData) {
+pub unsafe fn liero_controller_data_free(c: *mut LieroControllerData) {
     unsafe {
         if !c.is_null() {
             drop(Box::from_raw(c));
@@ -79,22 +76,9 @@ pub unsafe extern "C" fn liero_controller_data_free(c: *mut LieroControllerData)
     }
 }
 
-/// See `LieroControllerData::ticks`.
-#[no_mangle]
-pub extern "C" fn liero_controller_ticks(c: &LieroControllerData) -> i32 {
-    c.ticks()
-}
-
-/// See `LieroControllerData::in_game`.
-#[no_mangle]
-pub extern "C" fn liero_controller_in_game(c: &LieroControllerData) -> bool {
-    c.in_game()
-}
-
 /// `CommonController::process`: 1 to 0 choose the frame skip, with ctrl
 /// inverted, and the frame is counted.
-#[no_mangle]
-pub extern "C" fn liero_controller_process(c: &mut LieroControllerData, keys: &mut LieroKeys) {
+pub fn liero_controller_process(c: &mut LieroControllerData, keys: &mut LieroKeys) {
     keys.frame_skip(&mut c.frame_skip, &mut c.inverse_frame_skip);
     c.cycles += 1;
 }

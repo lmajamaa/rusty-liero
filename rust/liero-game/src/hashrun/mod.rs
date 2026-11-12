@@ -106,20 +106,20 @@ pub(crate) fn on_disk(path: &str) -> String {
     format!(".{path}")
 }
 
-unsafe extern "C" fn menu_cycles() -> u32 {
+unsafe fn menu_cycles() -> u32 {
     app().menu_cycles
 }
 
-unsafe extern "C" fn double_res() -> *mut bool {
+unsafe fn double_res() -> *mut bool {
     DOUBLE_RES.with(Cell::as_ptr)
 }
 
-unsafe extern "C" fn set_double_res(on: bool) {
+unsafe fn set_double_res(on: bool) {
     DOUBLE_RES.set(on);
 }
 
 /// The menu has set the setting; there's no window to change.
-unsafe extern "C" fn set_fullscreen(_: bool) {}
+unsafe fn set_fullscreen(_: bool) {}
 
 /// Runs the sections in `only`, or all of them, in their order, each after
 /// a line "hash-section name". It runs in a folder of its own, as `/` is in

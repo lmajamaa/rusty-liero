@@ -93,7 +93,6 @@ impl Heatmap {
 }
 
 /// One worm's results with one weapon.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroWeaponStats {
     /// Damage the weapon's shots could have done.
@@ -120,7 +119,6 @@ impl LieroWeaponStats {
 
 /// A worm's damage taken during a frame, and its health then, counting the
 /// lives left.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LieroWormFrameStats {
     pub damage: i32,
@@ -210,7 +208,6 @@ impl Default for LieroStats {
 }
 
 /// What the recorder reads from a worm, copied from C++'s `Worm`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LieroStatsWorm {
     pub index: i32,
@@ -514,7 +511,6 @@ impl LieroStatsScreen {
 }
 
 /// A sprite in the TC, `Sprite` in C++.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroSprite {
     pub mem: *const u8,
@@ -524,7 +520,6 @@ pub struct LieroSprite {
 }
 
 /// What the stats screen draws with, besides the stats.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroStatsScene {
     pub font: LieroFont,
@@ -846,7 +841,6 @@ impl LieroStatsScreen {
 // ---- C interface ----
 
 /// A heatmap's size and counts, for C++ to read.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroHeatmapView {
     pub width: i32,
@@ -859,7 +853,6 @@ pub struct LieroHeatmapView {
 
 /// A worm's stats, for C++ to read. The pointers are valid until the stats
 /// next change.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroWormStatsView {
     /// Pairs of spawn and death frames.
@@ -885,7 +878,6 @@ pub struct LieroWormStatsView {
 }
 
 /// All the stats, for C++ to read.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroStatsView {
     pub frame: i32,
@@ -939,19 +931,12 @@ unsafe fn worms<'a>(worms: *const LieroStatsWorm, count: usize) -> &'a [LieroSta
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_stats_view(s: &LieroStats) -> LieroStatsView {
-    s.view()
-}
-
-#[no_mangle]
-pub extern "C" fn liero_stats_damage_potential(s: &mut LieroStats, by: i32, weapon: i32, hp: i32) {
+pub fn liero_stats_damage_potential(s: &mut LieroStats, by: i32, weapon: i32, hp: i32) {
     s.damage_potential(by, weapon, hp);
 }
 
-#[no_mangle]
 #[allow(clippy::too_many_arguments)]
-pub extern "C" fn liero_stats_damage_dealt(
+pub fn liero_stats_damage_dealt(
     s: &mut LieroStats,
     by: i32,
     weapon: i32,
@@ -964,30 +949,25 @@ pub extern "C" fn liero_stats_damage_dealt(
     s.damage_dealt(by, weapon, to, x, y, hp, has_hit);
 }
 
-#[no_mangle]
-pub extern "C" fn liero_stats_shot(s: &mut LieroStats, by: i32, weapon: i32) {
+pub fn liero_stats_shot(s: &mut LieroStats, by: i32, weapon: i32) {
     s.shot(by, weapon);
 }
 
-#[no_mangle]
-pub extern "C" fn liero_stats_hit(s: &mut LieroStats, by: i32, weapon: i32, to: i32) {
+pub fn liero_stats_hit(s: &mut LieroStats, by: i32, weapon: i32, to: i32) {
     s.hit(by, weapon, to);
 }
 
-#[no_mangle]
-pub extern "C" fn liero_stats_after_spawn(s: &mut LieroStats, worm: i32) {
+pub fn liero_stats_after_spawn(s: &mut LieroStats, worm: i32) {
     s.after_spawn(worm);
 }
 
-#[no_mangle]
-pub extern "C" fn liero_stats_after_death(s: &mut LieroStats, worm: i32) {
+pub fn liero_stats_after_death(s: &mut LieroStats, worm: i32) {
     s.after_death(worm);
 }
 
 /// # Safety
 /// `worms` must point to `count` worms.
-#[no_mangle]
-pub unsafe extern "C" fn liero_stats_pre_tick(s: &mut LieroStats, ticks: u64, w: *const LieroStatsWorm, count: usize) {
+pub unsafe fn liero_stats_pre_tick(s: &mut LieroStats, ticks: u64, w: *const LieroStatsWorm, count: usize) {
     unsafe {
         s.pre_tick(ticks, worms(w, count));
     }
@@ -995,8 +975,7 @@ pub unsafe extern "C" fn liero_stats_pre_tick(s: &mut LieroStats, ticks: u64, w:
 
 /// # Safety
 /// `worms` must point to `count` worms.
-#[no_mangle]
-pub unsafe extern "C" fn liero_stats_tick(s: &mut LieroStats, ticks: u64, w: *const LieroStatsWorm, count: usize) {
+pub unsafe fn liero_stats_tick(s: &mut LieroStats, ticks: u64, w: *const LieroStatsWorm, count: usize) {
     unsafe {
         s.tick(ticks, worms(w, count));
     }
@@ -1004,29 +983,21 @@ pub unsafe extern "C" fn liero_stats_tick(s: &mut LieroStats, ticks: u64, w: *co
 
 /// # Safety
 /// `worms` must point to `count` worms.
-#[no_mangle]
-pub unsafe extern "C" fn liero_stats_finish(s: &mut LieroStats, w: *const LieroStatsWorm, count: usize) {
+pub unsafe fn liero_stats_finish(s: &mut LieroStats, w: *const LieroStatsWorm, count: usize) {
     unsafe {
         s.finish(worms(w, count));
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_stats_ai_process_time(s: &mut LieroStats, worm: i32, time: u64) {
-    s.ai_process_time(worm, time);
-}
-
 /// The stats screen for `s`, laid out for a screen `render_res_x` wide. Free
 /// it with `liero_stats_screen_free`.
-#[no_mangle]
-pub extern "C" fn liero_stats_screen_new(s: &LieroStats, render_res_x: i32) -> *mut LieroStatsScreen {
+pub fn liero_stats_screen_new(s: &LieroStats, render_res_x: i32) -> *mut LieroStatsScreen {
     Box::into_raw(Box::new(LieroStatsScreen::new(s, render_res_x)))
 }
 
 /// # Safety
 /// `screen` must come from `liero_stats_screen_new`, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_stats_screen_free(screen: *mut LieroStatsScreen) {
+pub unsafe fn liero_stats_screen_free(screen: *mut LieroStatsScreen) {
     unsafe {
         if !screen.is_null() {
             drop(Box::from_raw(screen));
@@ -1036,8 +1007,7 @@ pub unsafe extern "C" fn liero_stats_screen_free(screen: *mut LieroStatsScreen) 
 
 /// # Safety
 /// See `LieroBitmap` and `LieroStatsScene`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_stats_screen_draw(
+pub unsafe fn liero_stats_screen_draw(
     screen: &LieroStatsScreen,
     s: &LieroStats,
     scene: &LieroStatsScene,
@@ -1155,8 +1125,7 @@ impl Screen for StatsPresenter {
 ///
 /// # Safety
 /// `stats` and `scene` are valid, as in `liero_stats_screen_draw`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_stats_presenter_screen(stats: &LieroStats, scene: &LieroStatsScene) -> LieroScreen {
+pub unsafe fn liero_stats_presenter_screen(stats: &LieroStats, scene: &LieroStatsScene) -> LieroScreen {
     unsafe {
         let host = crate::screen::current_host();
         host.clear_keys();

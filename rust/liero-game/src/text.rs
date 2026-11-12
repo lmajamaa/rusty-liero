@@ -4,7 +4,6 @@
 use crate::gfx::{liero_font_draw_char, liero_font_draw_text, liero_font_get_dims, LieroBitmap, LieroFontChar};
 
 /// Text from C++: `len` bytes from `ptr`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroStr {
     pub ptr: *const u8,
@@ -85,30 +84,17 @@ unsafe fn write_c(text: &[u8], out: *mut u8, cap: usize) {
     }
 }
 
-/// `timeToString`: writes "MM:SS" and a NUL to `out` (6 bytes).
-///
-/// # Safety
-/// `out` must hold 6 bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_time_to_string(sec: i32, out: *mut u8) {
-    unsafe {
-        write_c(&time_to_string(sec), out, 6);
-    }
-}
-
 /// `timeToStringEx`: writes the time and a NUL to `out` (10 bytes).
 ///
 /// # Safety
 /// `out` must hold 10 bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_time_to_string_ex(ms: i32, force_hours: bool, force_minutes: bool, out: *mut u8) {
+pub unsafe fn liero_time_to_string_ex(ms: i32, force_hours: bool, force_minutes: bool, out: *mut u8) {
     unsafe {
         write_c(&time_to_string_ex(ms, force_hours, force_minutes), out, 10);
     }
 }
 
 /// The game font, `Font` in C++.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroFont {
     pub chars: *const LieroFontChar,

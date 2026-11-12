@@ -24,7 +24,6 @@ pub const LIERO_MAX_SOBJECTS: usize = 700;
 pub const LIERO_MAX_NOBJECTS: usize = 600;
 
 /// A bonus, laid out like C++'s `Bonus`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroBonus {
     pub used: bool,
@@ -38,7 +37,6 @@ pub struct LieroBonus {
 }
 
 /// A special object, laid out like C++'s `SObject`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroSObject {
     pub used: bool,
@@ -51,7 +49,6 @@ pub struct LieroSObject {
 }
 
 /// A weapon object, laid out like C++'s `WObject`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroWObject {
     pub used: bool,
@@ -68,7 +65,6 @@ pub struct LieroWObject {
 }
 
 /// A non-weapon object, laid out like C++'s `NObject`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroNObject {
     pub used: bool,
@@ -85,6 +81,8 @@ pub struct LieroNObject {
 }
 
 /// `ExactObjectList<Bonus, 99>`.
+// `repr(C)`: `exact_list!` finds the slots at the list's address and
+// the sentinel right after them.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroBonusList {
@@ -96,6 +94,8 @@ pub struct LieroBonusList {
 }
 
 /// `ExactObjectList<WObject, 600>`.
+// `repr(C)`: `exact_list!` finds the slots at the list's address and
+// the sentinel right after them.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroWObjectList {
@@ -106,6 +106,8 @@ pub struct LieroWObjectList {
 }
 
 /// `ExactObjectList<SObject, 700>`.
+// `repr(C)`: `exact_list!` finds the slots at the list's address and
+// the sentinel right after them.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroSObjectList {
@@ -116,6 +118,8 @@ pub struct LieroSObjectList {
 }
 
 /// `ExactObjectList<NObject, 600>`.
+// `repr(C)`: `exact_list!` finds the slots at the list's address and
+// the sentinel right after them.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroNObjectList {
@@ -183,7 +187,6 @@ impl LieroBonusList {
 
 /// The blood particles, C++'s `BObjectList`: `arr` holds `limit`
 /// particles, and the first `count` are in use.
-#[repr(C)]
 pub struct LieroBObjectList {
     pub arr: *mut LieroBObject,
     pub limit: usize,
@@ -247,8 +250,7 @@ impl std::fmt::Debug for LieroBObjectList {
 ///
 /// # Safety
 /// `list` is valid, and no pointer into it is used after.
-#[no_mangle]
-pub unsafe extern "C" fn liero_bobject_list_resize(list: &mut LieroBObjectList, limit: usize) {
+pub unsafe fn liero_bobject_list_resize(list: &mut LieroBObjectList, limit: usize) {
     list.resize(limit);
 }
 

@@ -200,8 +200,7 @@ impl LieroMixer {
 /// # Safety
 /// `data` must point to `len` bytes and `out` to `2 * len` samples, or both
 /// be anything with `len` 0.
-#[no_mangle]
-pub unsafe extern "C" fn liero_sound_from_tc(data: *const u8, len: usize, out: *mut i16) {
+pub unsafe fn liero_sound_from_tc(data: *const u8, len: usize, out: *mut i16) {
     unsafe {
         if len == 0 {
             return;
@@ -216,11 +215,10 @@ pub unsafe extern "C" fn liero_sound_from_tc(data: *const u8, len: usize, out: *
 /// A mixer with every channel free. Free it with `liero_mixer_free`.
 /// Where a game's sounds go: a mixer, or none (`SoundPlayer`), and a
 /// function told of each sound started (the hash run's app driver).
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroSoundOut {
     pub mixer: *mut LieroMixer,
-    pub report: Option<unsafe extern "C" fn(sound: i32)>,
+    pub report: Option<unsafe fn(sound: i32)>,
 }
 
 impl LieroSoundOut {
@@ -276,15 +274,13 @@ impl LieroSoundOut {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_mixer_new() -> *mut LieroMixer {
+pub fn liero_mixer_new() -> *mut LieroMixer {
     Box::into_raw(Box::default())
 }
 
 /// # Safety
 /// `m` must come from `liero_mixer_new`, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn liero_mixer_free(m: *mut LieroMixer) {
+pub unsafe fn liero_mixer_free(m: *mut LieroMixer) {
     unsafe {
         if !m.is_null() {
             drop(Box::from_raw(m));
@@ -293,8 +289,7 @@ pub unsafe extern "C" fn liero_mixer_free(m: *mut LieroMixer) {
 }
 
 /// The frame time the next mix starts at.
-#[no_mangle]
-pub extern "C" fn liero_mixer_now(m: &LieroMixer) -> i32 {
+pub fn liero_mixer_now(m: &LieroMixer) -> i32 {
     m.now()
 }
 
@@ -305,8 +300,7 @@ pub extern "C" fn liero_mixer_now(m: &LieroMixer) -> i32 {
 /// # Safety
 /// `samples` must point to `len` samples (or be anything with `len` 0)
 /// that stay alive while the mixer plays them.
-#[no_mangle]
-pub unsafe extern "C" fn liero_mixer_add(
+pub unsafe fn liero_mixer_add(
     m: &mut LieroMixer,
     samples: *const i16,
     len: usize,
@@ -323,18 +317,15 @@ pub unsafe extern "C" fn liero_mixer_add(
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_mixer_stop(m: &mut LieroMixer, id: *mut c_void) {
+pub fn liero_mixer_stop(m: &mut LieroMixer, id: *mut c_void) {
     m.stop(id as usize);
 }
 
-#[no_mangle]
-pub extern "C" fn liero_mixer_is_playing(m: &LieroMixer, id: *mut c_void) -> bool {
+pub fn liero_mixer_is_playing(m: &LieroMixer, id: *mut c_void) -> bool {
     m.is_playing(id as usize)
 }
 
-#[no_mangle]
-pub extern "C" fn liero_mixer_set_volume(m: &mut LieroMixer, id: *mut c_void, volume: f64) {
+pub fn liero_mixer_set_volume(m: &mut LieroMixer, id: *mut c_void, volume: f64) {
     m.set_volume(id as usize, volume);
 }
 
@@ -342,8 +333,7 @@ pub extern "C" fn liero_mixer_set_volume(m: &mut LieroMixer, id: *mut c_void, vo
 ///
 /// # Safety
 /// `out` must point to `frames` samples.
-#[no_mangle]
-pub unsafe extern "C" fn liero_mixer_mix(m: &mut LieroMixer, out: *mut i16, frames: usize) {
+pub unsafe fn liero_mixer_mix(m: &mut LieroMixer, out: *mut i16, frames: usize) {
     unsafe {
         if frames == 0 {
             return;

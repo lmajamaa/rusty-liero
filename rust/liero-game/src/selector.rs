@@ -616,7 +616,7 @@ mod tests {
         static PREVIEWS: RefCell<u32> = const { RefCell::new(0) };
     }
 
-    unsafe extern "C" fn key_once(sc: u32) -> bool {
+    unsafe fn key_once(sc: u32) -> bool {
         KEYS.with(|k| {
             let mut k = k.borrow_mut();
             let found = k.iter().position(|&x| x == sc);
@@ -624,7 +624,7 @@ mod tests {
         })
     }
 
-    unsafe extern "C" fn typed(out: *mut crate::screen::LieroTypedKey, cap: usize) -> usize {
+    unsafe fn typed(out: *mut crate::screen::LieroTypedKey, cap: usize) -> usize {
         unsafe {
             TYPED.with(|t| {
                 let t = std::mem::take(&mut *t.borrow_mut());

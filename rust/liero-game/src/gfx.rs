@@ -17,7 +17,6 @@ use crate::rand::LieroRand;
 /// View of a C++ `Bitmap`: `h` rows of `pitch` bytes, of which the first
 /// `w` are the image. Drawing stays inside `clip` (x2 and y2 excluded),
 /// except where the C++ didn't clip either.
-#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroBitmap {
     pub pixels: *mut u8,
@@ -29,7 +28,6 @@ pub struct LieroBitmap {
 
 /// A palette entry, laid out like C++'s `Color`. Components are 0 to 63 in
 /// `Palette`, 0 to 255 once activated.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroColor {
     pub r: u8,
@@ -40,6 +38,7 @@ pub struct LieroColor {
 
 /// One character of the bitmap font, laid out like `Font::Char`: 7 x 8
 /// pixels, non-zero where the character is, and how far to move after it.
+// `repr(C)`: read from the TC's `LieroTcFontChar`s, with the same fields.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LieroFontChar {
@@ -233,8 +232,7 @@ fn line(from_x: i32, from_y: i32, to_x: i32, to_y: i32, mut f: impl FnMut(i32, i
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_fill_rect(scr: &LieroBitmap, x: i32, y: i32, w: i32, h: i32, color: u8) {
+pub unsafe fn liero_gfx_fill_rect(scr: &LieroBitmap, x: i32, y: i32, w: i32, h: i32, color: u8) {
     unsafe {
         let mut s = scr.get();
         let x2 = (x + w).min(s.clip.x2);
@@ -254,8 +252,7 @@ pub unsafe extern "C" fn liero_gfx_fill_rect(scr: &LieroBitmap, x: i32, y: i32, 
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_fill(scr: &LieroBitmap, color: u8) {
+pub unsafe fn liero_gfx_fill(scr: &LieroBitmap, color: u8) {
     unsafe {
         scr.get().px.fill(color);
     }
@@ -265,8 +262,7 @@ pub unsafe extern "C" fn liero_gfx_fill(scr: &LieroBitmap, color: u8) {
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_bar(scr: &LieroBitmap, x: i32, y: i32, width: i32, height: i32, color: u8) {
+pub unsafe fn liero_gfx_draw_bar(scr: &LieroBitmap, x: i32, y: i32, width: i32, height: i32, color: u8) {
     unsafe {
         let mut s = scr.get();
         for h in 0..height {
@@ -281,8 +277,7 @@ pub unsafe extern "C" fn liero_gfx_draw_bar(scr: &LieroBitmap, x: i32, y: i32, w
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_vline(scr: &LieroBitmap, x: i32, y1: i32, y2: i32, color: u8) {
+pub unsafe fn liero_gfx_vline(scr: &LieroBitmap, x: i32, y1: i32, y2: i32, color: u8) {
     unsafe {
         let mut s = scr.get();
         if x < s.clip.x1 || x >= s.clip.x2 {
@@ -298,15 +293,7 @@ pub unsafe extern "C" fn liero_gfx_vline(scr: &LieroBitmap, x: i32, y1: i32, y2:
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_rounded_box(
-    scr: &LieroBitmap,
-    x: i32,
-    y: i32,
-    color: u8,
-    height: i32,
-    width: i32,
-) {
+pub unsafe fn liero_gfx_draw_rounded_box(scr: &LieroBitmap, x: i32, y: i32, color: u8, height: i32, width: i32) {
     unsafe {
         liero_gfx_fill_rect(scr, x, y + 1, width + 3, height - 2, color);
         liero_gfx_fill_rect(scr, x + 1, y, width + 1, 1, color);
@@ -318,15 +305,7 @@ pub unsafe extern "C" fn liero_gfx_draw_rounded_box(
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_rounded_line_box(
-    scr: &LieroBitmap,
-    x: i32,
-    y: i32,
-    color: u8,
-    width: i32,
-    height: i32,
-) {
+pub unsafe fn liero_gfx_draw_rounded_line_box(scr: &LieroBitmap, x: i32, y: i32, color: u8, width: i32, height: i32) {
     unsafe {
         liero_gfx_fill_rect(scr, x + 1, y, width - 2, 1, color);
         liero_gfx_fill_rect(scr, x + 1, y + height - 1, width - 2, 1, color);
@@ -342,8 +321,8 @@ pub unsafe extern "C" fn liero_gfx_draw_rounded_line_box(
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_dashed_line_box(
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn liero_gfx_draw_dashed_line_box(
     scr: &LieroBitmap,
     x: i32,
     y: i32,
@@ -387,8 +366,7 @@ pub unsafe extern "C" fn liero_gfx_draw_dashed_line_box(
 ///
 /// # Safety
 /// See `LieroBitmap`; `mem` holds `height` rows `pitch` apart.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_blit_image_no_key_colour(
+pub unsafe fn liero_gfx_blit_image_no_key_colour(
     scr: &LieroBitmap,
     mem: *const u8,
     x: i32,
@@ -406,8 +384,7 @@ pub unsafe extern "C" fn liero_gfx_blit_image_no_key_colour(
 ///
 /// # Safety
 /// See `LieroBitmap`; `mem` holds `height` rows `pitch` apart.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_blit_image(
+pub unsafe fn liero_gfx_blit_image(
     scr: &LieroBitmap,
     mem: *const u8,
     x: i32,
@@ -429,8 +406,8 @@ pub unsafe extern "C" fn liero_gfx_blit_image(
 ///
 /// # Safety
 /// See `LieroBitmap`; `mem` holds `height` rows `pitch` apart.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_blit_image_trans(
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn liero_gfx_blit_image_trans(
     scr: &LieroBitmap,
     mem: *const u8,
     x: i32,
@@ -452,15 +429,7 @@ pub unsafe extern "C" fn liero_gfx_blit_image_trans(
 ///
 /// # Safety
 /// See `LieroBitmap`; `mem` holds `height` rows `width` apart.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_blit_image_r(
-    scr: &LieroBitmap,
-    mem: *const u8,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-) {
+pub unsafe fn liero_gfx_blit_image_r(scr: &LieroBitmap, mem: *const u8, x: i32, y: i32, width: i32, height: i32) {
     unsafe {
         blit(&mut scr.get(), mem, x, y, width, height, width, |c, d, _, _| {
             (c != 0 && d.wrapping_sub(160) < 8).then_some(c)
@@ -473,8 +442,7 @@ pub unsafe extern "C" fn liero_gfx_blit_image_r(
 ///
 /// # Safety
 /// See `LieroBitmap`; `mem` holds 16 x 16 pixels.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_blit_fire_cone(scr: &LieroBitmap, fc: i32, mem: *const u8, x: i32, y: i32) {
+pub unsafe fn liero_gfx_blit_fire_cone(scr: &LieroBitmap, fc: i32, mem: *const u8, x: i32, y: i32) {
     unsafe {
         blit(&mut scr.get(), mem, x, y, 16, 16, 16, |c, _, _, _| match fc {
             0 => (c > 116).then(|| c - 5),
@@ -491,8 +459,7 @@ pub unsafe extern "C" fn liero_gfx_blit_fire_cone(scr: &LieroBitmap, fc: i32, me
 /// # Safety
 /// See `LieroBitmap`; `mem` holds `height` rows `width` apart, and
 /// `materials` has 256 entries.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_blit_shadow_image(
+pub unsafe fn liero_gfx_blit_shadow_image(
     scr: &LieroBitmap,
     materials: *const LieroMaterial,
     mem: *const u8,
@@ -514,8 +481,7 @@ pub unsafe extern "C" fn liero_gfx_blit_shadow_image(
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_ninjarope(
+pub unsafe fn liero_gfx_draw_ninjarope(
     scr: &LieroBitmap,
     begin: i32,
     end: i32,
@@ -545,8 +511,7 @@ pub unsafe extern "C" fn liero_gfx_draw_ninjarope(
 ///
 /// # Safety
 /// See `LieroBitmap`; `rand` must be valid for the call.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_laser_sight(
+pub unsafe fn liero_gfx_draw_laser_sight(
     scr: &LieroBitmap,
     rand: &mut LieroRand,
     from_x: i32,
@@ -569,8 +534,7 @@ pub unsafe extern "C" fn liero_gfx_draw_laser_sight(
 ///
 /// # Safety
 /// See `LieroBitmap`; `materials` has 256 entries.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_shadow_line(
+pub unsafe fn liero_gfx_draw_shadow_line(
     scr: &LieroBitmap,
     materials: *const LieroMaterial,
     from_x: i32,
@@ -597,15 +561,7 @@ pub unsafe extern "C" fn liero_gfx_draw_shadow_line(
 ///
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_line(
-    scr: &LieroBitmap,
-    from_x: i32,
-    from_y: i32,
-    to_x: i32,
-    to_y: i32,
-    color: u8,
-) {
+pub unsafe fn liero_gfx_draw_line(scr: &LieroBitmap, from_x: i32, from_y: i32, to_x: i32, to_y: i32, color: u8) {
     unsafe {
         let mut s = scr.get();
         line(from_x, from_y, to_x, to_y, |cx, cy| {
@@ -621,8 +577,8 @@ pub unsafe extern "C" fn liero_gfx_draw_line(
 ///
 /// # Safety
 /// See `LieroBitmap`; `data` holds `len` values.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_graph(
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn liero_gfx_draw_graph(
     scr: &LieroBitmap,
     data: *const f64,
     len: usize,
@@ -659,15 +615,7 @@ pub unsafe extern "C" fn liero_gfx_draw_graph(
 ///
 /// # Safety
 /// See `LieroBitmap`; `map` holds `width * height` counts.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_draw_heatmap(
-    scr: &LieroBitmap,
-    x: i32,
-    y: i32,
-    map: *const i32,
-    width: i32,
-    height: i32,
-) {
+pub unsafe fn liero_gfx_draw_heatmap(scr: &LieroBitmap, x: i32, y: i32, map: *const i32, width: i32, height: i32) {
     unsafe {
         let n = width.max(0) as usize * height.max(0) as usize;
         let cells = if n == 0 {
@@ -710,8 +658,8 @@ pub unsafe extern "C" fn liero_gfx_draw_heatmap(
 /// # Safety
 /// `src` holds the image, `dest` `h * mag` rows `dest_pitch` bytes apart
 /// with room for `w * mag` pixels, and `pal32` 256 entries.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_scale_draw(
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn liero_gfx_scale_draw(
     src: *const u8,
     w: i32,
     h: i32,
@@ -757,8 +705,7 @@ pub unsafe extern "C" fn liero_gfx_scale_draw(
 ///
 /// # Safety
 /// Both hold 256 entries.
-#[no_mangle]
-pub unsafe extern "C" fn liero_gfx_prepare_palette_bgra(pal: *const LieroColor, pal32: *mut u32) {
+pub unsafe fn liero_gfx_prepare_palette_bgra(pal: *const LieroColor, pal32: *mut u32) {
     unsafe {
         for i in 0..256 {
             let c = *pal.add(i);
@@ -769,8 +716,7 @@ pub unsafe extern "C" fn liero_gfx_prepare_palette_bgra(pal: *const LieroColor, 
 
 /// The largest whole magnification that fits a `scr_w` x `scr_h` screen in
 /// `back_w` x `back_h`, and where to put it to centre it: `fitScreen`.
-#[no_mangle]
-pub extern "C" fn liero_gfx_fit_screen(
+pub fn liero_gfx_fit_screen(
     back_w: i32,
     back_h: i32,
     scr_w: i32,
@@ -795,8 +741,7 @@ pub extern "C" fn liero_gfx_fit_screen(
 ///
 /// # Safety
 /// Both hold 256 entries.
-#[no_mangle]
-pub unsafe extern "C" fn liero_palette_activate(pal: *const LieroColor, real: *mut LieroColor) {
+pub unsafe fn liero_palette_activate(pal: *const LieroColor, real: *mut LieroColor) {
     unsafe {
         for i in 0..256 {
             let c = *pal.add(i);
@@ -825,8 +770,7 @@ unsafe fn map_components(pal: *mut LieroColor, f: impl Fn(i32) -> i32) {
 ///
 /// # Safety
 /// `pal` holds 256 entries.
-#[no_mangle]
-pub unsafe extern "C" fn liero_palette_fade(pal: *mut LieroColor, amount: i32) {
+pub unsafe fn liero_palette_fade(pal: *mut LieroColor, amount: i32) {
     unsafe {
         if amount >= 32 {
             return;
@@ -840,8 +784,7 @@ pub unsafe extern "C" fn liero_palette_fade(pal: *mut LieroColor, amount: i32) {
 ///
 /// # Safety
 /// `pal` holds 256 entries.
-#[no_mangle]
-pub unsafe extern "C" fn liero_palette_light_up(pal: *mut LieroColor, amount: i32) {
+pub unsafe fn liero_palette_light_up(pal: *mut LieroColor, amount: i32) {
     unsafe {
         map_components(pal, |v| ((v * (32 - amount) + amount * 63) >> 5).min(63));
     }
@@ -852,8 +795,7 @@ pub unsafe extern "C" fn liero_palette_light_up(pal: *mut LieroColor, amount: i3
 ///
 /// # Safety
 /// Both hold 256 entries, and 0 <= from <= to < 256.
-#[no_mangle]
-pub unsafe extern "C" fn liero_palette_rotate_from(
+pub unsafe fn liero_palette_rotate_from(
     pal: *mut LieroColor,
     source: *const LieroColor,
     from: i32,
@@ -878,8 +820,7 @@ pub unsafe extern "C" fn liero_palette_rotate_from(
 /// # Safety
 /// `pal` and `origpal` hold 256 entries, and the animations' ranges are in
 /// them.
-#[no_mangle]
-pub unsafe extern "C" fn liero_game_palette(
+pub unsafe fn liero_game_palette(
     pal: *mut LieroColor,
     origpal: *const LieroColor,
     color_anim: &[i32; 8],
@@ -904,8 +845,7 @@ pub unsafe extern "C" fn liero_game_palette(
 ///
 /// # Safety
 /// `pal` holds 256 entries, and `color` is at least 2 and at most 253.
-#[no_mangle]
-pub unsafe extern "C" fn liero_palette_set_worm_colour(pal: *mut LieroColor, i: i32, color: i32, rgb: &[i32; 3]) {
+pub unsafe fn liero_palette_set_worm_colour(pal: *mut LieroColor, i: i32, color: i32, rgb: &[i32; 3]) {
     unsafe {
         const WORM_COLOUR_INDEXES: [i32; 2] = [0x58, 0x78];
 
@@ -941,8 +881,8 @@ pub unsafe extern "C" fn liero_palette_set_worm_colour(pal: *mut LieroColor, i: 
 ///
 /// # Safety
 /// See `LieroBitmap`; `chars` holds `count` characters.
-#[no_mangle]
-pub unsafe extern "C" fn liero_font_draw_char(
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn liero_font_draw_char(
     scr: &LieroBitmap,
     chars: *const LieroFontChar,
     count: usize,
@@ -987,8 +927,8 @@ pub unsafe extern "C" fn liero_font_draw_char(
 ///
 /// # Safety
 /// See `liero_font_draw_char`; `text` holds `len` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_font_draw_text(
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn liero_font_draw_text(
     scr: &LieroBitmap,
     chars: *const LieroFontChar,
     count: usize,
@@ -1025,8 +965,7 @@ pub unsafe extern "C" fn liero_font_draw_text(
 ///
 /// # Safety
 /// `chars` holds `count` characters and `text` `len` bytes.
-#[no_mangle]
-pub unsafe extern "C" fn liero_font_get_dims(
+pub unsafe fn liero_font_get_dims(
     chars: *const LieroFontChar,
     count: usize,
     text: *const u8,

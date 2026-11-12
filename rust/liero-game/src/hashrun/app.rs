@@ -159,7 +159,7 @@ fn process(to_controller: bool) {
     }
 }
 
-unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool {
+unsafe fn host_poll_event(out: *mut LieroEvent) -> bool {
     unsafe {
         let Some(ev) = next_event() else { return false };
         process_event(ev, false);
@@ -181,30 +181,30 @@ unsafe extern "C" fn host_poll_event(out: *mut LieroEvent) -> bool {
     }
 }
 
-unsafe extern "C" fn host_process() {
+unsafe fn host_process() {
     process(false);
 }
 
-unsafe extern "C" fn host_clear_keys() {
+unsafe fn host_clear_keys() {
     liero_keys_clear(&mut app().keys);
 }
 
-unsafe extern "C" fn report_sound(id: i32) {
+unsafe fn report_sound(id: i32) {
     driver(|d| {
         let line = format!("app-sound {} {:016x}", d.shown, id as u32);
         d.lines.push(line);
     });
 }
 
-unsafe extern "C" fn host_test_key_once(scancode: u32) -> bool {
+unsafe fn host_test_key_once(scancode: u32) -> bool {
     liero_keys_test_sdl_once(&mut app().keys, scancode as i32)
 }
 
-unsafe extern "C" fn host_test_key(scancode: u32) -> bool {
+unsafe fn host_test_key(scancode: u32) -> bool {
     liero_keys_test_sdl(&app().keys, scancode as i32)
 }
 
-unsafe extern "C" fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
+unsafe fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
     unsafe {
         driver(|d| {
             let n = d.key_buf.len().min(cap);
@@ -214,15 +214,15 @@ unsafe extern "C" fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usi
     }
 }
 
-unsafe extern "C" fn host_ticks() -> u32 {
+unsafe fn host_ticks() -> u32 {
     driver(|d| (d.now as u32).wrapping_mul(14))
 }
 
-unsafe extern "C" fn host_hires_ticks() -> u64 {
+unsafe fn host_hires_ticks() -> u64 {
     unsafe { u64::from(host_ticks()) * 1_000_000 }
 }
 
-unsafe extern "C" fn host_time() -> i64 {
+unsafe fn host_time() -> i64 {
     // 2001-09-09, then 70 frames a second.
     driver(|d| 1_000_000_000 + i64::from(d.now / 70))
 }
@@ -248,7 +248,7 @@ fn utc_text(t: i64) -> String {
     )
 }
 
-unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
+unsafe fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
     unsafe {
         let s = utc_text(t);
         // strftime writes nothing if the text and its 0 don't fit.
@@ -261,7 +261,7 @@ unsafe extern "C" fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize
     }
 }
 
-unsafe extern "C" fn host_sound() -> LieroSoundOut {
+unsafe fn host_sound() -> LieroSoundOut {
     // No mixer: the hash run has no sound.
     LieroSoundOut {
         mixer: std::ptr::null_mut(),
@@ -270,7 +270,7 @@ unsafe extern "C" fn host_sound() -> LieroSoundOut {
 }
 
 /// A frame shown: the screen's pixels and palette.
-unsafe extern "C" fn host_show(_: *mut c_void) {
+unsafe fn host_show(_: *mut c_void) {
     let a = app();
     let r = if a.primary_single { &*a.single } else { &*a.play };
     let mut f = Fnv::default();
@@ -288,7 +288,7 @@ unsafe extern "C" fn host_show(_: *mut c_void) {
 }
 
 /// The top screen waits for an event: skip to the next one.
-unsafe extern "C" fn host_idle(_: *mut c_void) {
+unsafe fn host_idle(_: *mut c_void) {
     driver(|d| match d.steps.front() {
         Some(s) => {
             d.now = d.now.max(s.at);
@@ -305,18 +305,18 @@ unsafe extern "C" fn host_idle(_: *mut c_void) {
 }
 
 /// The frame's events, with their keys for the controller.
-unsafe extern "C" fn app_process() {
+unsafe fn app_process() {
     process(true);
 }
 
-unsafe extern "C" fn randomize_tc() {
+unsafe fn randomize_tc() {
     unsafe {
         // F8 isn't in the script; the game seeds it from the system.
         liero_tc_randomize(&mut *app().menu_tc(), 0);
     }
 }
 
-unsafe extern "C" fn menu_screen() -> LieroScreen {
+unsafe fn menu_screen() -> LieroScreen {
     liero_menu_screen(LieroMenuScreenHooks {
         menus: app().menus,
         randomize_tc,

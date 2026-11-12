@@ -105,16 +105,15 @@ const WEAPON_STATES: [&[u8]; 3] = [b"Menu", b"Bonus", b"Banned"];
 const BOT_WEAPONS: [&[u8]; 3] = [b"RANDOM", b"PICK", b"KEEP"];
 
 /// What the menus call in C++. The settings, TC and files are the app's.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LieroMenusHooks {
     /// Frames the menu has shown, for how fast held keys step a number.
-    pub menu_cycles: unsafe extern "C" fn() -> u32,
+    pub menu_cycles: unsafe fn() -> u32,
     /// The window's double size, and setting it or full screen. These don't
     /// update the options menu, which does it itself.
-    pub double_res: unsafe extern "C" fn() -> *mut bool,
-    pub set_double_res: unsafe extern "C" fn(on: bool),
-    pub set_fullscreen: unsafe extern "C" fn(on: bool),
+    pub double_res: unsafe fn() -> *mut bool,
+    pub set_double_res: unsafe fn(on: bool),
+    pub set_fullscreen: unsafe fn(on: bool),
 }
 
 /// What an item does (`ItemBehavior` and its kinds).
@@ -235,7 +234,7 @@ fn enumeration(value: *mut u32, min: u32, max: u32) -> LieroItemBehavior {
     b
 }
 
-fn switch(flag: *mut bool, set_flag: Option<unsafe extern "C" fn(bool)>) -> Behavior {
+fn switch(flag: *mut bool, set_flag: Option<unsafe fn(bool)>) -> Behavior {
     let mut b = LieroItemBehavior::integer(std::ptr::null_mut(), 0, 0);
     b.kind = LieroItemKind::Switch;
     b.flag = flag;
@@ -677,7 +676,7 @@ impl LieroMenus {
         y: i32,
         digits: bool,
     ) -> LieroScreen {
-        unsafe extern "C" fn keep(ctx: *mut c_void, text: LieroStr) {
+        unsafe fn keep(ctx: *mut c_void, text: LieroStr) {
             unsafe {
                 *(ctx as *mut Vec<u8>) = text.bytes().to_vec();
             }
@@ -956,7 +955,7 @@ impl LieroMenus {
             player: i32,
             palette_color: i32,
         }
-        unsafe extern "C" fn overlay(ctx: *mut c_void, item: i32, x: i32, y: i32, selected: bool, _disabled: bool) {
+        unsafe fn overlay(ctx: *mut c_void, item: i32, x: i32, y: i32, selected: bool, _disabled: bool) {
             unsafe {
                 let c = &*(ctx as *const Ctx);
                 let id = c.ids[item as usize];
@@ -999,25 +998,12 @@ fn atoi(s: &[u8]) -> i32 {
 }
 
 /// The menus, empty (`Menu(x, y)` for each).
-#[no_mangle]
-pub extern "C" fn liero_menus_new(hooks: LieroMenusHooks) -> *mut LieroMenus {
+pub fn liero_menus_new(hooks: LieroMenusHooks) -> *mut LieroMenus {
     Box::into_raw(Box::new(LieroMenus::new(hooks)))
 }
 
-/// # Safety
-/// `m` came from `liero_menus_new` and isn't used after.
-#[no_mangle]
-pub unsafe extern "C" fn liero_menus_free(m: *mut LieroMenus) {
-    unsafe {
-        if !m.is_null() {
-            drop(Box::from_raw(m));
-        }
-    }
-}
-
 /// Empties the menus, as they were made, keeping their addresses.
-#[no_mangle]
-pub extern "C" fn liero_menus_reset(m: &mut LieroMenus) {
+pub fn liero_menus_reset(m: &mut LieroMenus) {
     let fresh = LieroMenus::new(m.h);
     for (dst, src) in m.menus.iter_mut().zip(fresh.menus) {
         dst.0 = src.0.clone();
@@ -1029,43 +1015,31 @@ pub extern "C" fn liero_menus_reset(m: &mut LieroMenus) {
 }
 
 /// Adds the menus' items (`Gfx::loadMenus`).
-#[no_mangle]
-pub extern "C" fn liero_menus_load(m: &mut LieroMenus) {
+pub fn liero_menus_load(m: &mut LieroMenus) {
     m.load();
 }
 
-#[no_mangle]
-pub extern "C" fn liero_menus_box(m: &mut LieroMenus, kind: i32) -> *mut LieroMenuBox {
+pub fn liero_menus_box(m: &mut LieroMenus, kind: i32) -> *mut LieroMenuBox {
     m.box_of(kind)
 }
 
-#[no_mangle]
-pub extern "C" fn liero_menus_cur(m: &LieroMenus) -> i32 {
+pub fn liero_menus_cur(m: &LieroMenus) -> i32 {
     m.cur
 }
 
-#[no_mangle]
-pub extern "C" fn liero_menus_set_cur(m: &mut LieroMenus, kind: i32) {
+pub fn liero_menus_set_cur(m: &mut LieroMenus, kind: i32) {
     m.cur = kind;
 }
 
-#[no_mangle]
-pub extern "C" fn liero_menus_player_settings(m: &mut LieroMenus, player: i32) {
+pub fn liero_menus_player_settings(m: &mut LieroMenus, player: i32) {
     m.player_settings(player);
 }
 
-#[no_mangle]
-pub extern "C" fn liero_menus_open_hidden(m: &mut LieroMenus) {
-    m.open_hidden();
-}
-
-#[no_mangle]
-pub extern "C" fn liero_menus_update_items(m: &mut LieroMenus, kind: i32) {
+pub fn liero_menus_update_items(m: &mut LieroMenus, kind: i32) {
     m.update_items(kind);
 }
 
-#[no_mangle]
-pub extern "C" fn liero_menus_left_right(m: &mut LieroMenus, kind: i32, dir: i32) -> bool {
+pub fn liero_menus_left_right(m: &mut LieroMenus, kind: i32, dir: i32) -> bool {
     m.left_right(kind, dir)
 }
 
@@ -1074,8 +1048,7 @@ pub extern "C" fn liero_menus_left_right(m: &mut LieroMenus, kind: i32, dir: i32
 ///
 /// # Safety
 /// The menus' hooks, which the item may call, are valid.
-#[no_mangle]
-pub unsafe extern "C" fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 {
+pub unsafe fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 {
     unsafe {
         let (r, opened) = m.enter(kind);
         if let Some(s) = opened {
@@ -1088,8 +1061,7 @@ pub unsafe extern "C" fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32
 
 /// # Safety
 /// See `LieroBitmap`.
-#[no_mangle]
-pub unsafe extern "C" fn liero_menus_draw(
+pub unsafe fn liero_menus_draw(
     m: &mut LieroMenus,
     kind: i32,
     scr: &LieroBitmap,
@@ -1127,18 +1099,18 @@ mod tests {
         static DOUBLE_RES: Cell<*mut bool> = const { Cell::new(std::ptr::null_mut()) };
     }
 
-    unsafe extern "C" fn menu_cycles() -> u32 {
+    unsafe fn menu_cycles() -> u32 {
         CYCLES.get()
     }
-    unsafe extern "C" fn double_res() -> *mut bool {
+    unsafe fn double_res() -> *mut bool {
         DOUBLE_RES.get()
     }
-    unsafe extern "C" fn set_double_res(on: bool) {
+    unsafe fn set_double_res(on: bool) {
         unsafe {
             *DOUBLE_RES.get() = on;
         }
     }
-    unsafe extern "C" fn set_fullscreen(_: bool) {}
+    unsafe fn set_fullscreen(_: bool) {}
 
     /// The menus with their items, on the app's new settings.
     fn menus() -> LieroMenus {

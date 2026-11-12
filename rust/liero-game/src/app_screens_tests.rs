@@ -9,11 +9,11 @@ thread_local! {
     static TC: *mut LieroTc = crate::tc::liero_tc_load(&LieroFsNode(Node::new(b"../../TC/openliero")));
 }
 
-unsafe extern "C" fn settings() -> *mut LieroSettingsBox {
+unsafe fn settings() -> *mut LieroSettingsBox {
     SETTINGS.with(|s| *s)
 }
 
-unsafe extern "C" fn tc() -> *mut LieroTc {
+unsafe fn tc() -> *mut LieroTc {
     TC.with(|t| *t)
 }
 
@@ -84,9 +84,9 @@ fn a_finished_game_goes_back_to_the_play_screen() {
     a.controller = None;
 }
 
-unsafe extern "C" fn no_process() {}
+unsafe fn no_process() {}
 
-unsafe extern "C" fn no_menu() -> LieroScreen {
+unsafe fn no_menu() -> LieroScreen {
     LieroScreen::empty()
 }
 

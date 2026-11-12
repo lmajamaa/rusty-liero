@@ -33,20 +33,18 @@ pub const STEP_MS: u32 = 14;
 pub const MAX_STEPS_PER_FRAME: u32 = 4;
 
 /// A screen, owned by the stack once pushed.
-#[repr(C)]
 pub struct LieroScreen {
     pub data: *mut c_void,
     /// Runs one step and fills in what happens next, and `next` for
     /// `TickPush` and `TickReplace`.
-    pub tick: Option<unsafe extern "C" fn(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen)>,
+    pub tick: Option<unsafe fn(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen)>,
     /// The screen opened on top of this one closed with `result`.
-    pub resume: Option<unsafe extern "C" fn(data: *mut c_void, result: i32)>,
+    pub resume: Option<unsafe fn(data: *mut c_void, result: i32)>,
     /// Frees the screen, when it closes or the stack is cleared.
-    pub free: Option<unsafe extern "C" fn(data: *mut c_void)>,
+    pub free: Option<unsafe fn(data: *mut c_void)>,
 }
 
 /// What a screen does after its tick.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // Prefixed, since C puts the names in the global scope.
 #[allow(clippy::enum_variant_names)]
@@ -64,7 +62,6 @@ pub enum LieroTickKind {
 }
 
 /// A tick's outcome.
-#[repr(C)]
 pub struct LieroTick {
     pub kind: LieroTickKind,
     /// The tick drew a frame for the host to show.
@@ -74,18 +71,16 @@ pub struct LieroTick {
 }
 
 /// What the stack calls back into.
-#[repr(C)]
 pub struct LieroAppHost {
     pub data: *mut c_void,
     /// Shows the frame a tick drew.
-    pub show: Option<unsafe extern "C" fn(data: *mut c_void)>,
+    pub show: Option<unsafe fn(data: *mut c_void)>,
     /// The top screen is waiting for an event and showed nothing.
-    pub idle: Option<unsafe extern "C" fn(data: *mut c_void)>,
+    pub idle: Option<unsafe fn(data: *mut c_void)>,
 }
 
 /// An event as a Rust screen sees it. C++ has already passed it to
 /// `Gfx::processEvent`, so the key states are up to date.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroEvent {
     /// A key went down; `scancode` is SDL's.
@@ -100,7 +95,6 @@ pub struct LieroEvent {
 }
 
 /// A key typed this frame, for a menu's search: SDL's key code and scancode.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LieroTypedKey {
     pub sym: i32,
@@ -108,62 +102,60 @@ pub struct LieroTypedKey {
 }
 
 /// What a Rust screen calls in C++.
-#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct LieroScreenHost {
     /// The next event, if one is due (`Gfx::pollEvent`, then `processEvent`).
-    pub poll_event: Option<unsafe extern "C" fn(out: *mut LieroEvent) -> bool>,
+    pub poll_event: Option<unsafe fn(out: *mut LieroEvent) -> bool>,
     /// Reads every event due into the key states (`Gfx::process`).
-    pub process: Option<unsafe extern "C" fn()>,
-    pub clear_keys: Option<unsafe extern "C" fn()>,
-    pub play_sound: Option<unsafe extern "C" fn(id: i32)>,
+    pub process: Option<unsafe fn()>,
+    pub clear_keys: Option<unsafe fn()>,
+    pub play_sound: Option<unsafe fn(id: i32)>,
     /// The screen shown, the copy of it the menus draw over, and the font.
-    pub screen: Option<unsafe extern "C" fn(out: *mut LieroBitmap)>,
-    pub frozen: Option<unsafe extern "C" fn(out: *mut LieroBitmap)>,
-    pub font: Option<unsafe extern "C" fn(out: *mut LieroFont)>,
+    pub screen: Option<unsafe fn(out: *mut LieroBitmap)>,
+    pub frozen: Option<unsafe fn(out: *mut LieroBitmap)>,
+    pub font: Option<unsafe fn(out: *mut LieroFont)>,
     /// Fills the screen with one colour.
-    pub fill_screen: Option<unsafe extern "C" fn(color: u8)>,
+    pub fill_screen: Option<unsafe fn(color: u8)>,
     /// Shows the screen with the TC's own palette.
-    pub menu_palette: Option<unsafe extern "C" fn()>,
+    pub menu_palette: Option<unsafe fn()>,
     /// Turns the browser's text input on or off.
-    pub text_input: Option<unsafe extern "C" fn(on: bool)>,
+    pub text_input: Option<unsafe fn(on: bool)>,
     /// Whether an SDL key was pressed since it was last asked about, which
     /// it then forgets (`Gfx::testSDLKeyOnce`).
-    pub test_key_once: Option<unsafe extern "C" fn(scancode: u32) -> bool>,
+    pub test_key_once: Option<unsafe fn(scancode: u32) -> bool>,
     /// The keys typed this frame, at most `cap`; returns how many.
-    pub typed_keys: Option<unsafe extern "C" fn(out: *mut LieroTypedKey, cap: usize) -> usize>,
+    pub typed_keys: Option<unsafe fn(out: *mut LieroTypedKey, cap: usize) -> usize>,
     /// The menus' clock, in milliseconds (`appTicks`).
-    pub ticks: Option<unsafe extern "C" fn() -> u32>,
+    pub ticks: Option<unsafe fn() -> u32>,
     /// Fades the menus in and cycles their colours, once a frame
     /// (`Gfx::menuFade`).
-    pub menu_fade: Option<unsafe extern "C" fn()>,
+    pub menu_fade: Option<unsafe fn()>,
     /// Whether an SDL key is held (`Gfx::testSDLKey`).
-    pub test_key: Option<unsafe extern "C" fn(scancode: u32) -> bool>,
+    pub test_key: Option<unsafe fn(scancode: u32) -> bool>,
     /// The frozen screen with the main menu over it, greyed out while
     /// another menu is up (`Gfx::drawBasicMenu`).
-    pub draw_basic_menu: Option<unsafe extern "C" fn()>,
+    pub draw_basic_menu: Option<unsafe fn()>,
     /// The app draws: the screen, the frozen screen, the font, filling the
     /// screen, the menu palette, the menu fade and the basic menu come from
     /// the Rust app (`app_menus.rs`) instead of the functions above. Tests
     /// leave it off.
     pub app_drawing: bool,
     /// The time, in seconds since 1970 (`appTime`).
-    pub time: Option<unsafe extern "C" fn() -> i64>,
+    pub time: Option<unsafe fn() -> i64>,
     /// The stats' clock, in nanoseconds (`appHiresTicks`).
-    pub hires_ticks: Option<unsafe extern "C" fn() -> u64>,
+    pub hires_ticks: Option<unsafe fn() -> u64>,
     /// `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in local time,
     /// or UTC in the hash run. Writes at most `cap` bytes
     /// and returns how many.
-    pub replay_time: Option<unsafe extern "C" fn(t: i64, out: *mut u8, cap: usize) -> usize>,
+    pub replay_time: Option<unsafe fn(t: i64, out: *mut u8, cap: usize) -> usize>,
     /// Where the games' sounds go (`DefaultSoundPlayer::out`).
-    pub sound: Option<unsafe extern "C" fn() -> crate::sfx::LieroSoundOut>,
+    pub sound: Option<unsafe fn() -> crate::sfx::LieroSoundOut>,
 }
 
 static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
 
 /// Sets the functions Rust screens call. Only the first call counts.
-#[no_mangle]
-pub extern "C" fn liero_screen_set_host(host: &LieroScreenHost) {
+pub fn liero_screen_set_host(host: &LieroScreenHost) {
     let _ = HOST.set(*host);
 }
 
@@ -192,7 +184,7 @@ impl Host {
             unsafe { f(id) }
         }
     }
-    fn bitmap(f: Option<unsafe extern "C" fn(*mut LieroBitmap)>) -> Option<LieroBitmap> {
+    fn bitmap(f: Option<unsafe fn(*mut LieroBitmap)>) -> Option<LieroBitmap> {
         let f = f?;
         let mut b = LieroBitmap {
             pixels: std::ptr::null_mut(),
@@ -364,7 +356,7 @@ pub(crate) fn current_host() -> Host {
 
 type BoxedScreen = Box<dyn Screen>;
 
-unsafe extern "C" fn rust_tick(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen) {
+unsafe fn rust_tick(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen) {
     unsafe {
         let s = &mut *(data as *mut BoxedScreen);
         let t = s.tick(&host());
@@ -379,14 +371,14 @@ unsafe extern "C" fn rust_tick(data: *mut c_void, out: *mut LieroTick, next: *mu
     }
 }
 
-unsafe extern "C" fn rust_resume(data: *mut c_void, result: i32) {
+unsafe fn rust_resume(data: *mut c_void, result: i32) {
     unsafe {
         let s = &mut *(data as *mut BoxedScreen);
         s.resume(&host(), result);
     }
 }
 
-unsafe extern "C" fn rust_free(data: *mut c_void) {
+unsafe fn rust_free(data: *mut c_void) {
     unsafe {
         let mut s = Box::from_raw(data as *mut BoxedScreen);
         s.close(&host());
@@ -513,8 +505,7 @@ impl LieroApp {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn liero_app_new() -> *mut LieroApp {
+pub fn liero_app_new() -> *mut LieroApp {
     Box::into_raw(Box::new(LieroApp::new()))
 }
 
@@ -522,8 +513,7 @@ pub extern "C" fn liero_app_new() -> *mut LieroApp {
 ///
 /// # Safety
 /// `app` comes from `liero_app_new` and isn't used again.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_free(app: *mut LieroApp) {
+pub unsafe fn liero_app_free(app: *mut LieroApp) {
     unsafe {
         if !app.is_null() {
             let mut app = Box::from_raw(app);
@@ -533,34 +523,20 @@ pub unsafe extern "C" fn liero_app_free(app: *mut LieroApp) {
 }
 
 /// Puts `screen` on top; the stack owns it from now on.
-#[no_mangle]
-pub extern "C" fn liero_app_push(app: &mut LieroApp, screen: LieroScreen) {
+pub fn liero_app_push(app: &mut LieroApp, screen: LieroScreen) {
     app.screens.push(screen);
 }
 
 /// How many screens are open.
-#[no_mangle]
-pub extern "C" fn liero_app_depth(app: &LieroApp) -> usize {
+pub fn liero_app_depth(app: &LieroApp) -> usize {
     app.screens.len()
-}
-
-/// Closes every screen.
-///
-/// # Safety
-/// The screens' functions are safe to call.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_clear(app: &mut LieroApp) {
-    unsafe {
-        app.clear();
-    }
 }
 
 /// Runs one step of the top screen. Returns false once no screen is left.
 ///
 /// # Safety
 /// The screens' and host's functions are safe to call with their data.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost) -> bool {
+pub unsafe fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost) -> bool {
     unsafe { app.step(host) }
 }
 
@@ -570,8 +546,7 @@ pub unsafe extern "C" fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost)
 ///
 /// # Safety
 /// The screens' and host's functions are safe to call with their data.
-#[no_mangle]
-pub unsafe extern "C" fn liero_app_frame(app: &mut LieroApp, now_ms: u32, host: &LieroAppHost) -> bool {
+pub unsafe fn liero_app_frame(app: &mut LieroApp, now_ms: u32, host: &LieroAppHost) -> bool {
     unsafe {
         for _ in 0..app.due(now_ms) {
             if !app.step(host) {
@@ -600,7 +575,7 @@ mod tests {
         unsafe { (*f.log).borrow_mut().push(s) };
     }
 
-    unsafe extern "C" fn tick(data: *mut c_void, out: *mut LieroTick, next_out: *mut LieroScreen) {
+    unsafe fn tick(data: *mut c_void, out: *mut LieroTick, next_out: *mut LieroScreen) {
         unsafe {
             let f = &mut *(data as *mut Fake);
             log(f, format!("tick {}", f.name));
@@ -623,14 +598,14 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn resume(data: *mut c_void, result: i32) {
+    unsafe fn resume(data: *mut c_void, result: i32) {
         unsafe {
             let f = &*(data as *mut Fake);
             log(f, format!("resume {} {}", f.name, result));
         }
     }
 
-    unsafe extern "C" fn free(data: *mut c_void) {
+    unsafe fn free(data: *mut c_void) {
         unsafe {
             let f = Box::from_raw(data as *mut Fake);
             log(&f, format!("free {}", f.name));
@@ -646,7 +621,7 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn show(data: *mut c_void) {
+    unsafe fn show(data: *mut c_void) {
         unsafe {
             (*(data as *const RefCell<Vec<String>>))
                 .borrow_mut()
@@ -654,7 +629,7 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn idle(data: *mut c_void) {
+    unsafe fn idle(data: *mut c_void) {
         unsafe {
             (*(data as *const RefCell<Vec<String>>))
                 .borrow_mut()

@@ -6,16 +6,16 @@ use crate::menus::{liero_menus_new, LieroMenusHooks};
 use crate::settings::liero_settings_box_new;
 use crate::shared::Shared;
 
-unsafe extern "C" fn zero() -> u32 {
+unsafe fn zero() -> u32 {
     0
 }
-unsafe extern "C" fn double_res() -> *mut bool {
+unsafe fn double_res() -> *mut bool {
     thread_local! {
         static ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     ON.with(|b| b.as_ptr())
 }
-unsafe extern "C" fn set(_: bool) {}
+unsafe fn set(_: bool) {}
 
 /// This thread's app with menus, the bundled TC, its screens sized, and a
 /// match that hasn't started, on a level of colour 7.
