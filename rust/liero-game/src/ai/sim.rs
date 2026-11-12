@@ -42,6 +42,8 @@ pub struct SimGame {
     // Boxed so the raw pointers to them stay valid as the list grows.
     #[allow(clippy::vec_box)]
     _worm_data: Vec<Box<LieroWormData>>,
+    /// The game's worms by id, with the listed ones the copy's.
+    _pool: Vec<*mut LieroWormData>,
 }
 
 unsafe fn no_ticks(_: *mut c_void) -> u64 {
@@ -74,6 +76,7 @@ impl SimGame {
                 _pixels: Vec::new(),
                 _materials: Vec::new(),
                 _worm_data: Vec::new(),
+                _pool: Vec::new(),
             });
             g.fields.worms = g.worms.as_ptr();
             g
@@ -100,6 +103,7 @@ impl SimGame {
                 .zip(&self.worms)
                 .map(|(d, w)| LieroGameWorm {
                     data: &mut **d,
+                    id: w.id,
                     max_health: w.max_health,
                     ai: std::ptr::null_mut(),
                     name: w.name,
@@ -107,8 +111,15 @@ impl SimGame {
                 })
                 .collect();
 
+            // The copy's ropes are anchored to its own worms.
+            let mut pool = std::slice::from_raw_parts(self.fields.pool, self.fields.pool_count).to_vec();
+            for w in &worms {
+                pool[w.id.0 as usize] = w.data;
+            }
+
             let mut fields = self.fields;
             fields.game = &mut *data;
+            fields.pool = pool.as_ptr();
             fields.level = LieroLevel {
                 data: pixels.as_mut_ptr(),
                 materials: materials.as_mut_ptr(),
@@ -129,6 +140,7 @@ impl SimGame {
                 _pixels: pixels,
                 _materials: materials,
                 _worm_data: worm_data,
+                _pool: pool,
             });
             g.fields.worms = g.worms.as_ptr();
             g

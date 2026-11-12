@@ -8,7 +8,6 @@ use crate::math::LieroIVec2;
 use crate::renderer::LieroRenderer;
 use crate::stats::{Heatmap, LieroStats};
 use crate::tc::{LieroTcNObject, LieroTcWeapon};
-use crate::worm::LieroWormData;
 
 impl Fnv {
     fn vec(&mut self, v: LieroIVec2) {
@@ -22,7 +21,8 @@ fn used<T>(arr: &[T], is_used: impl Fn(&T) -> bool) -> impl Iterator<Item = &T> 
     arr.iter().filter(move |o| is_used(o))
 }
 
-fn hash_worm(f: &mut Fnv, w: &LieroWorm) {
+/// `anchor_index` is the `index` of the worm its rope is anchored to, or -1.
+fn hash_worm(f: &mut Fnv, w: &LieroWorm, anchor_index: i32) {
     let w = &w.data;
     f.vec(w.pos);
     f.vec(w.vel);
@@ -59,8 +59,7 @@ fn hash_worm(f: &mut Fnv, w: &LieroWorm) {
     let r = &w.ninjarope;
     f.bool(r.out);
     f.bool(r.attached);
-    // SAFETY: an anchor is one of the game's worms.
-    f.i32(unsafe { r.anchor.cast::<LieroWormData>().as_ref() }.map_or(-1, |a| a.index));
+    f.i32(anchor_index);
     f.vec(r.pos);
     f.vec(r.vel);
     f.i32(r.length);
@@ -111,8 +110,11 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
         f.i32(v);
     }
 
-    for w in game.listed_worms() {
-        hash_worm(&mut f, w.expect("an empty place among the game's worms"));
+    for i in 0..crate::game_box::liero_game_worm_count(game) {
+        let w = game.worm_at(i).expect("an empty place among the game's worms");
+        let anchor = w.data.ninjarope.anchor;
+        let anchor_index = anchor.map_or(-1, |a| game.worm_mut(a).data.index);
+        hash_worm(&mut f, game.worm_at(i).unwrap(), anchor_index);
     }
 
     // Each list in processing order, since the order changes the outcome.
@@ -155,9 +157,7 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
 
     let b = &g.bobjects;
     f.u32(b.count as u32);
-    // SAFETY: the list holds `limit` particles, and the first `count` are
-    // in use.
-    for p in unsafe { std::slice::from_raw_parts(b.arr, b.count) } {
+    for p in b.used() {
         f.vec(p.pos);
         f.vec(p.vel);
         f.i32(p.color);

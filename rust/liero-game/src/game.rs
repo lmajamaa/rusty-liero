@@ -65,6 +65,8 @@ pub struct LieroBonusState {
 #[derive(Clone, Copy, Debug)]
 pub struct LieroGameWorm {
     pub data: *mut LieroWormData,
+    /// Its place in the game's pool, which ropes are anchored by.
+    pub id: crate::worm::WormId,
     /// The worm's full health (`settings->health`).
     pub max_health: i32,
     /// The worm's bot, if any (null for a human).
@@ -197,6 +199,9 @@ pub unsafe fn liero_game_data_free(g: *mut LieroGameData) {
 pub struct LieroGameFields {
     pub worms: *const LieroGameWorm,
     pub worm_count: i32,
+    /// Every worm the game has, by `WormId`, listed or not.
+    pub pool: *const *mut LieroWormData,
+    pub pool_count: usize,
     pub game: *mut LieroGameData,
     pub level: LieroLevel,
     /// The TC. Only the tick reads it, so the rules may leave it null.
@@ -678,6 +683,7 @@ mod tests {
             .map(|(i, w)| {
                 w.index = i as i32;
                 LieroGameWorm {
+                    id: crate::worm::WormId(i as u32),
                     data: w,
                     max_health: 100,
                     ai: std::ptr::null_mut(),
@@ -689,10 +695,13 @@ mod tests {
                 }
             })
             .collect();
+        let pool: Vec<*mut LieroWormData> = views.iter().map(|w| w.data).collect();
         let mut game = LieroGameData::new_boxed();
         let fields = LieroGameFields {
             worms: views.as_ptr(),
             worm_count: views.len() as i32,
+            pool: pool.as_ptr(),
+            pool_count: pool.len(),
             game: &mut *game,
             level: LieroLevel {
                 data: std::ptr::null_mut(),
@@ -730,7 +739,7 @@ mod tests {
             };
             unsafe {
                 liero_game_start(&f, &settings(LIERO_GAME_KILL_EM_ALL), 300);
-                assert_eq!(((*f.game).bobjects.limit, (*f.game).bobjects.count), (300, 0));
+                assert_eq!(((*f.game).bobjects.limit(), (*f.game).bobjects.count), (300, 0));
                 // No zone outside Holdazone.
                 assert_eq!((*f.game).holdazone.rect.x2, 0);
             }
@@ -751,7 +760,7 @@ mod tests {
                 (-1, -1, 50, 34)
             );
             assert_eq!(
-                ((*g).wobjects.count, (*g).bobjects.limit, (*g).bobjects.count),
+                ((*g).wobjects.count, (*g).bobjects.limit(), (*g).bobjects.count),
                 (0, 1, 0)
             );
             assert!((*g).nobjects.sentinel.used && (*g).bonuses.arr[5].frame == -1);
@@ -762,15 +771,15 @@ mod tests {
             (*g).rand.next_u32();
             (*g).sobjects.arr[3].used = true;
             (*g).wobjects.count = 2;
-            crate::objects::liero_bobject_list_resize(&mut (*g).bobjects, 3);
+            (*g).bobjects.resize(3);
             (*g).bobjects.count = 2;
-            (*(*g).bobjects.arr.add(1)).color = 9;
+            (*g).bobjects.arr[1].color = 9;
             let c = liero_game_data_clone(&*g);
             // Every field is copied, and the blood is separate.
             assert_eq!(format!("{:?}", *c), format!("{:?}", *g));
             (*c).cycles = 1;
-            (*(*c).bobjects.arr.add(1)).color = 1;
-            assert_eq!(((*g).cycles, (*(*g).bobjects.arr.add(1)).color), (7, 9));
+            (*c).bobjects.arr[1].color = 1;
+            assert_eq!(((*g).cycles, (*g).bobjects.arr[1].color), (7, 9));
 
             // Assigning copies everything back.
             liero_game_data_assign(&mut *c, &*g);

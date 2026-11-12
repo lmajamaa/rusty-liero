@@ -1,3 +1,19 @@
+Rusty Liero
+===========
+
+Liero is a two-player action game from 1998, made for DOS by Joosa
+Riekkinen. Two worms fight on a level of dirt and rock that they dig through
+and blow apart, with 40 weapons, a ninja rope to swing around on, and bonus
+boxes of health and weapons. Two players share one keyboard (or use
+joysticks) on a split screen, or play against bots. The game modes are
+Kill'em All, Game of Tag, Holdazone and Scales of Justice.
+
+This is a Rust port of OpenLiero, the open-source remake of Liero 1.33 by
+Erik Lindroos (gliptic) and others, made so that it runs in the browser. The port keeps the game exactly as it was: the same seed gives the
+same game, frame for frame, and replays recorded by OpenLiero play back the
+same. `tools/hashrun` checks that against hashes from the original C++, and
+[PLAN.md](PLAN.md) describes how the port was done.
+
 The game is only built for the web, with Docker (see below), from Rust. tctool, written
 in Rust, is a native command-line tool.
 
@@ -156,8 +172,8 @@ License
 
 The code is licensed under the BSD 2-Clause License, see [LICENSE](LICENSE).
 It uses the same license and copyright holders as
-[openliero/openliero](https://github.com/openliero/openliero), the continuation
-of this project.
+[openliero/openliero](https://github.com/openliero/openliero), the C++
+OpenLiero this is ported from.
 
 Some bundled parts keep their own licenses:
 * `TC/openliero/sounds`: WTFPL, see `TC/openliero/sounds/sounds.txt`

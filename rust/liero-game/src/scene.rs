@@ -318,7 +318,9 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
                 start_frame: (*(o.kind as *const LieroTcNObject)).start_frame,
             })
             .collect();
-        let bobjects: Vec<LieroViewBObject> = slice(d.bobjects.arr, d.bobjects.count as i32)
+        let bobjects: Vec<LieroViewBObject> = d
+            .bobjects
+            .used()
             .iter()
             .map(|b| LieroViewBObject {
                 pos: b.pos,
@@ -394,6 +396,7 @@ mod tests {
             .zip(names)
             .enumerate()
             .map(|(i, (d, n))| LieroGameWorm {
+                id: crate::worm::WormId(i as u32),
                 data: d,
                 max_health: 100,
                 ai: std::ptr::null_mut(),
@@ -416,10 +419,13 @@ mod tests {
         ];
         let spectators = [liero_viewport_new(rect, 0, 504, 350)];
         unsafe { (*spectators[0]).kind = LIERO_VIEWPORT_SPECTATOR };
+        let pool: Vec<*mut LieroWormData> = worms.iter().map(|w| w.data).collect();
         let mut game = LieroGameData::new_boxed();
         let mut fields = LieroGameFields {
             worms: worms.as_ptr(),
             worm_count: 2,
+            pool: pool.as_ptr(),
+            pool_count: pool.len(),
             game: &mut *game,
             level: LieroLevel {
                 data: std::ptr::null_mut(),
@@ -460,7 +466,7 @@ mod tests {
             d.sobjects.arr[7].id = 1;
             d.nobjects.arr[0].used = true;
             d.nobjects.arr[0].kind = (&*(*f.tc).nobjects as *const LieroTcNObject).cast();
-            crate::objects::liero_bobject_list_resize(&mut d.bobjects, 4);
+            d.bobjects.resize(4);
             d.bobjects.count = 3;
             (**f.viewports.add(1)).banner_y = 5;
 

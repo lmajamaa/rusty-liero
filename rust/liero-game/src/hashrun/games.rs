@@ -241,8 +241,9 @@ pub(super) fn set_up_game(
         game.data_mut().rand.seed(seed.wrapping_mul(7919));
 
         for (i, ws) in s.worms.iter().enumerate() {
-            let w = &mut *liero_game_new_worm(&mut game, ws.as_ptr());
-            liero_game_list_worm(&mut game, w);
+            let id = liero_game_new_worm(&mut game, ws.as_ptr());
+            liero_game_list_worm(&mut game, Some(id));
+            let w = game.worm_mut(id);
             w.data.health = ws.data.health;
             w.data.index = i as i32;
             w.data.stats_x = if i == 0 { 0 } else { 218 };

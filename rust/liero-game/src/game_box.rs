@@ -25,7 +25,7 @@ use crate::stats::LieroStats;
 use crate::tc::{LieroTc, LieroTcData};
 use crate::text::LieroStr;
 use crate::viewport::LieroViewport;
-use crate::worm::LieroWormData;
+use crate::worm::{LieroWormData, WormId};
 
 /// A worm: its state, its settings and its bot, if any.
 pub struct LieroWorm {
@@ -74,15 +74,15 @@ impl LieroWorm {
 /// The game.
 pub struct LieroGame {
     data: Box<LieroGameData>,
-    /// Every worm made for the game, at a fixed address. A replay's worms
-    /// that the game doesn't list stay here, as ropes can be anchored to
-    /// them.
-    // Boxed so the raw pointers to them stay valid as the list grows.
+    /// Every worm made for the game, at a fixed address, by `WormId`. A
+    /// replay's worms that the game doesn't list stay here, as ropes can be
+    /// anchored to them.
+    // Boxed so the views of them stay valid as the pool grows.
     #[allow(clippy::vec_box)]
     pool: Vec<Box<LieroWorm>>,
     /// The game's worms (`Game::worms`), in order. A replay's list can have
     /// empty places.
-    list: Vec<*mut LieroWorm>,
+    list: Vec<Option<WormId>>,
     // Boxed so the raw pointers to them stay valid as the list grows.
     #[allow(clippy::vec_box)]
     viewports: Vec<Box<LieroViewport>>,
@@ -137,13 +137,25 @@ impl LieroGame {
     /// The listed worm at `i` (`Game::wormByIdx`), or None for an empty
     /// place.
     pub(crate) fn worm_at(&mut self, i: usize) -> Option<&mut LieroWorm> {
-        // SAFETY: listed worms are in the pool.
-        unsafe { self.list[i].as_mut() }
+        let id = self.list[i]?;
+        Some(self.worm_mut(id))
     }
 
     pub(crate) fn listed_worms(&mut self) -> impl Iterator<Item = Option<&mut LieroWorm>> {
-        // SAFETY: listed worms are in the pool, each listed once.
-        self.list.iter().map(|&w| unsafe { w.as_mut() })
+        let mut by_id: Vec<Option<&mut LieroWorm>> = self.pool.iter_mut().map(|w| Some(&mut **w)).collect();
+        self.list
+            .iter()
+            .map(move |id| id.map(|id| by_id[id.0 as usize].take().expect("a worm listed twice")))
+    }
+
+    /// The ids of the listed worms, None for an empty place.
+    pub(crate) fn listed_ids(&self) -> &[Option<WormId>] {
+        &self.list
+    }
+
+    /// The game's worm `id`.
+    pub(crate) fn worm_mut(&mut self, id: WormId) -> &mut LieroWorm {
+        &mut self.pool[id.0 as usize]
     }
 
     /// The split-screen viewports.
@@ -256,35 +268,20 @@ impl LieroGame {
         }
     }
 
-    fn owns(&self, w: *const LieroWorm) -> bool {
-        self.pool.iter().any(|p| std::ptr::eq(&**p, w))
-    }
-
     fn worms(&self) -> impl Iterator<Item = Option<&LieroWorm>> {
-        // SAFETY: listed worms are in the pool.
-        self.list.iter().map(|&w| unsafe { w.as_ref() })
+        self.list.iter().map(|id| id.map(|id| &*self.pool[id.0 as usize]))
     }
 
     /// `Game(Game const&)` and `postClone(original, true)`: the state and
-    /// split-screen viewports copied, and each listed worm. The copies share
-    /// the spectator viewports, and their worms the settings and bots.
+    /// split-screen viewports copied, and every worm, at the same ids. The
+    /// copies share the spectator viewports, and their worms the settings
+    /// and bots. A copy's ropes are anchored to its own worms; C++'s stayed
+    /// on the original's.
     fn copy(&self) -> Box<Self> {
-        let mut pool = Vec::new();
-        let mut list = Vec::new();
-        for w in self.worms() {
-            match w {
-                Some(w) => {
-                    let mut c = w.copy();
-                    list.push(&mut *c as *mut LieroWorm);
-                    pool.push(c);
-                }
-                None => list.push(std::ptr::null_mut()),
-            }
-        }
         Box::new(LieroGame {
             data: self.data.clone_boxed(),
-            pool,
-            list,
+            pool: self.pool.iter().map(|w| w.copy()).collect(),
+            list: self.list.clone(),
             viewports: self.viewports.clone(),
             spectators: self.spectators.clone(),
             stats: self.stats.clone(),
@@ -334,8 +331,7 @@ pub fn liero_game_clone(g: &LieroGame) -> *mut LieroGame {
     Box::into_raw(g.copy())
 }
 
-/// Makes `to` a copy of `from` (rewinding a replay). `to`'s old worms are
-/// kept, as ropes copied before may be anchored to them.
+/// Makes `to` a copy of `from` (rewinding a replay).
 pub fn liero_game_assign(to: &mut LieroGame, from: &LieroGame) {
     let c = from.copy();
     to.data.assign(&c.data);
@@ -352,7 +348,7 @@ pub fn liero_game_assign(to: &mut LieroGame, from: &LieroGame) {
         sound,
         ..
     } = *c;
-    to.pool.extend(pool);
+    to.pool = pool;
     to.list = list;
     to.viewports = viewports;
     to.spectators = spectators;
@@ -430,17 +426,15 @@ pub fn liero_game_stats(g: &mut LieroGame) -> *mut LieroStats {
 ///
 /// # Safety
 /// `settings` is a valid box, or null.
-pub unsafe fn liero_game_new_worm(g: &mut LieroGame, settings: *mut LieroWormSettingsBox) -> *mut LieroWorm {
-    let mut w = LieroWorm::new(settings);
-    let p: *mut LieroWorm = &mut *w;
-    g.pool.push(w);
-    p
+pub unsafe fn liero_game_new_worm(g: &mut LieroGame, settings: *mut LieroWormSettingsBox) -> WormId {
+    g.pool.push(LieroWorm::new(settings));
+    WormId(g.pool.len() as u32 - 1)
 }
 
-/// Adds `w`, one of the game's worms, or an empty place for null, to the
-/// end of the game's list (`Game::addWorm`).
-pub fn liero_game_list_worm(g: &mut LieroGame, w: *mut LieroWorm) {
-    assert!(w.is_null() || g.owns(w), "not the game's worm");
+/// Adds worm `w`, or an empty place for None, to the end of the game's
+/// list (`Game::addWorm`).
+pub fn liero_game_list_worm(g: &mut LieroGame, w: Option<WormId>) {
+    assert!(w.is_none_or(|w| (w.0 as usize) < g.pool.len()), "not the game's worm");
     g.list.push(w);
 }
 
@@ -449,8 +443,8 @@ pub fn liero_game_worm_count(g: &LieroGame) -> usize {
 }
 
 /// The game's worm `i`, or null for an empty place.
-pub fn liero_game_worm(g: &LieroGame, i: usize) -> *mut LieroWorm {
-    g.list[i]
+pub fn liero_game_worm(g: &mut LieroGame, i: usize) -> *mut LieroWorm {
+    g.worm_at(i).map_or(std::ptr::null_mut(), |w| w)
 }
 
 pub fn liero_worm_data(w: &mut LieroWorm) -> *mut LieroWormData {
@@ -547,6 +541,7 @@ pub struct LieroGameView {
     fields: LieroGameFields,
     settings: LieroGameSettings,
     _worms: Vec<LieroGameWorm>,
+    _pool: Vec<*mut LieroWormData>,
     _viewports: Vec<*mut LieroViewport>,
     _spectators: Vec<*mut LieroViewport>,
 }
@@ -558,12 +553,13 @@ pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
     // SAFETY: the game keeps its context alive.
     let (s, tc) = unsafe { (&*g.settings_box(), g.tc.as_ref()) };
     let settings = game_settings(&s.data, tc);
+    let pool: Vec<*mut LieroWormData> = g.pool.iter_mut().map(|w| &mut w.data as *mut LieroWormData).collect();
     let worms: Vec<LieroGameWorm> = g
         .list
         .iter()
-        .map(|&w| {
-            // SAFETY: listed worms are in the pool.
-            let w = unsafe { w.as_mut() }.expect("an empty place among the game's worms");
+        .map(|&id| {
+            let id = id.expect("an empty place among the game's worms");
+            let w = &mut g.pool[id.0 as usize];
             let s = w.settings();
             let (max_health, name, color) = (
                 s.data.health,
@@ -575,6 +571,7 @@ pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
             );
             LieroGameWorm {
                 data: &mut w.data,
+                id,
                 max_health,
                 ai: liero_worm_ai(w),
                 name,
@@ -587,6 +584,8 @@ pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
     let fields = LieroGameFields {
         worms: worms.as_ptr(),
         worm_count: worms.len() as i32,
+        pool: pool.as_ptr(),
+        pool_count: pool.len(),
         game: &mut *g.data,
         level: g.level.data().level,
         tc: g.tc,
@@ -601,6 +600,7 @@ pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
         fields,
         settings,
         _worms: worms,
+        _pool: pool,
         _viewports: viewports,
         _spectators: spectators,
     }))
@@ -682,15 +682,15 @@ mod tests {
             let g = &mut *liero_game_new();
             let a = liero_game_new_worm(g, s[0]);
             let b = liero_game_new_worm(g, std::ptr::null_mut());
-            liero_worm_set_settings(&mut *b, s[1]);
+            liero_worm_set_settings(g.worm_mut(b), s[1]);
             let c = liero_game_new_worm(g, s[2]);
-            (*a).data.health = 11;
-            (*b).data.health = 22;
-            (*c).data.health = 33;
-            liero_worm_set_ai(&mut *a, 1, 0, false);
-            liero_game_list_worm(g, a);
-            liero_game_list_worm(g, std::ptr::null_mut());
-            liero_game_list_worm(g, b);
+            g.worm_mut(a).data.health = 11;
+            g.worm_mut(b).data.health = 22;
+            g.worm_mut(c).data.health = 33;
+            liero_worm_set_ai(g.worm_mut(a), 1, 0, false);
+            liero_game_list_worm(g, Some(a));
+            liero_game_list_worm(g, None);
+            liero_game_list_worm(g, Some(b));
             liero_game_add_viewport(g, rect(0, 0, 158, 158), 0, 504, 350, 0, false);
             liero_game_add_viewport(g, rect(160, 0, 318, 158), 1, 504, 350, 0, false);
             liero_game_add_viewport(g, rect(0, 0, 572, 350), 0, 504, 350, 1, true);
@@ -710,18 +710,18 @@ mod tests {
             assert_eq!(liero_game_worm_count(c), 3);
             assert!(liero_game_worm(c, 1).is_null());
             let (a, b) = (liero_game_worm(c, 0), liero_game_worm(c, 2));
-            assert_ne!(a, liero_game_worm(&*g, 0));
+            assert_ne!(a, liero_game_worm(&mut *g, 0));
             assert_eq!(((*a).data.health, (*b).data.health), (11, 22));
-            // Only the listed worms are copied.
-            assert_eq!(c.pool.len(), 2);
-            assert_eq!(((*s[0]).refs(), (*s[1]).refs(), (*s[2]).refs()), (3, 3, 2));
-            assert_eq!(liero_worm_ai(&*a), liero_worm_ai(&*liero_game_worm(&*g, 0)));
+            // The unlisted worms are copied too, at the same ids.
+            assert_eq!(c.pool.len(), 3);
+            assert_eq!(((*s[0]).refs(), (*s[1]).refs(), (*s[2]).refs()), (3, 3, 3));
+            assert_eq!(liero_worm_ai(&*a), liero_worm_ai(&*liero_game_worm(&mut *g, 0)));
             assert!(!liero_worm_ai(&*a).is_null());
             assert!(liero_worm_ai(&*b).is_null());
 
             // The state is the copy's own; the spectator viewport isn't.
             (*a).data.health = 1;
-            assert_eq!((*liero_game_worm(&*g, 0)).data.health, 11);
+            assert_eq!((*liero_game_worm(&mut *g, 0)).data.health, 11);
             assert_eq!(liero_game_viewport_count(c, false), 2);
             assert_ne!(liero_game_viewport(c, false, 1), liero_game_viewport(&mut *g, false, 1));
             assert_eq!((*liero_game_viewport(c, false, 1)).worm_idx, 1);
@@ -751,7 +751,7 @@ mod tests {
             crate::settings::liero_settings_box_free(set);
 
             liero_game_free(c);
-            assert_eq!(((*s[0]).refs(), (*s[1]).refs()), (2, 2));
+            assert_eq!(((*s[0]).refs(), (*s[1]).refs(), (*s[2]).refs()), (2, 2, 2));
             liero_game_free(g);
             for b in s {
                 assert_eq!((*b).refs(), 1);
@@ -761,15 +761,14 @@ mod tests {
     }
 
     #[test]
-    fn assigning_keeps_the_old_worms() {
+    fn assigning_replaces_the_worms() {
         unsafe {
             let s = [settings(100, "a"), settings(50, "b"), settings(10, "c")];
             let from = game(s);
             let to = &mut *liero_game_new();
             let old = liero_game_new_worm(to, s[0]);
-            liero_game_list_worm(to, old);
+            liero_game_list_worm(to, Some(old));
             liero_game_add_viewport(to, rect(0, 0, 1, 1), 0, 1, 1, 0, false);
-            (*old).data.health = 99;
 
             let stats = liero_game_stats(to);
             (*liero_game_stats(&mut *from)).ai_process_time(1, 7);
@@ -784,9 +783,9 @@ mod tests {
             assert!(liero_game_worm(to, 1).is_null());
             assert_eq!(liero_game_viewport_count(to, false), 2);
             assert_eq!(liero_game_viewport_count(to, true), 1);
-            // A rope copied before may still point at it.
-            assert_eq!((*old).data.health, 99);
+            // The old worm is gone: the ids are `from`'s.
             assert_eq!(to.pool.len(), 3);
+            assert_eq!(to.worm_mut(WormId(2)).data.health, 33);
 
             liero_game_clear_viewports(to);
             assert_eq!(
@@ -802,18 +801,6 @@ mod tests {
                 assert_eq!((*b).refs(), 1);
                 liero_worm_settings_box_free(b);
             }
-        }
-    }
-
-    #[test]
-    fn lists_only_its_own_worms() {
-        unsafe {
-            let a = &mut *liero_game_new();
-            let b = &mut *liero_game_new();
-            let w = liero_game_new_worm(b, std::ptr::null_mut());
-            assert!(!a.owns(w) && b.owns(w));
-            liero_game_free(a);
-            liero_game_free(b);
         }
     }
 

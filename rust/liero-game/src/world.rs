@@ -23,14 +23,13 @@ use crate::level::LieroLevelCommon;
 use crate::math::{cos_sin, ftoi, itof, LieroIVec2};
 use crate::object::LieroBObject;
 use crate::object::{
-    add, div, ftoi_vec, liero_bobject_process, liero_bonus_process, liero_explosion_damage,
-    liero_explosion_push_object, liero_explosion_push_worm, liero_ninjarope_process, liero_nobject_process,
-    liero_sobject_animate, LieroBonusConstants, LieroNObjectEnv, LieroNObjectFields, LieroNObjectHooks,
-    LieroNObjectType, LieroNinjaropeConstants, LieroNinjaropeHooks, LieroWormMotion,
+    add, div, ftoi_vec, liero_explosion_damage, liero_explosion_push_object, liero_explosion_push_worm,
+    liero_ninjarope_process, liero_nobject_process, LieroBonusConstants, LieroNObjectEnv, LieroNObjectFields,
+    LieroNObjectHooks, LieroNObjectType, LieroNinjaropeConstants, LieroNinjaropeHooks, LieroWormMotion,
 };
 use crate::objects::{
-    LieroBObjectList, LieroBonus, LieroBonusList, LieroNObject, LieroNObjectList, LieroSObject, LieroSObjectList,
-    LieroWObject, LieroWObjectList, LIERO_MAX_BONUSES, LIERO_MAX_NOBJECTS, LIERO_MAX_SOBJECTS, LIERO_MAX_WOBJECTS,
+    Cursor, LieroBObjectList, LieroBonusList, LieroNObject, LieroNObjectList, LieroSObjectList, LieroWObject,
+    LieroWObjectList,
 };
 use crate::rand::LieroRand;
 use crate::stats::{
@@ -44,161 +43,11 @@ use crate::weapon::{
 };
 use crate::worm::{
     liero_worm_process, LieroBonusRef, LieroSteerable, LieroWormConstants, LieroWormData, LieroWormEnv, LieroWormHooks,
-    LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
+    WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
 };
 
 /// `Settings::wormAnimTab`.
 const WORM_ANIM_TAB: [i32; 4] = [0, 7, 0, 14];
-
-// ---------------------------------------------------------------------------
-// The object lists, as C++'s ExactObjectList and BloodList work on them.
-
-/// An object with a `used` flag.
-pub(crate) trait Slot {
-    /// # Safety
-    /// `p` is valid.
-    unsafe fn used(p: *const Self) -> bool;
-}
-
-macro_rules! slot {
-    ($($t:ty),*) => {
-        $(
-            impl Slot for $t {
-                unsafe fn used(p: *const Self) -> bool { unsafe {
-                    (*p).used
-                }}
-            }
-        )*
-    };
-}
-
-slot!(LieroBonus, LieroWObject, LieroSObject, LieroNObject);
-
-/// `ExactObjectList::range`: the objects in use, from first to last. It
-/// stops at the sentinel slot, which is always used.
-pub(crate) struct Range<T> {
-    cur: *mut T,
-    end: *mut T,
-}
-
-impl<T: Slot> Range<T> {
-    /// # Safety
-    /// The list is valid, and its sentinel is used.
-    pub(crate) unsafe fn next(&mut self) -> Option<*mut T> {
-        unsafe {
-            while !T::used(self.cur) {
-                self.cur = self.cur.add(1);
-            }
-            let ret = self.cur;
-            self.cur = self.cur.add(1);
-            (ret != self.end).then_some(ret)
-        }
-    }
-
-    /// The object `next` returned last.
-    fn last(&self) -> *mut T {
-        self.cur.wrapping_sub(1)
-    }
-}
-
-macro_rules! exact_list {
-    ($list:ty, $t:ty, $limit:expr) => {
-        // Not every list uses every function.
-        #[allow(dead_code)]
-        impl $list {
-            /// The slots, then the sentinel, from the list's own pointer.
-            fn slots(l: *mut Self) -> *mut $t {
-                l.cast::<$t>()
-            }
-
-            unsafe fn get_free_object(l: *mut Self) -> *mut $t {
-                unsafe {
-                    assert!((*l).count < $limit);
-                    (*l).count += 1;
-
-                    let mut ptr: *mut $t = null_mut();
-                    for i in 0..(*l).free_list.len() {
-                        let f = (*l).free_list[i];
-                        if f != 0 {
-                            let bit = f.trailing_zeros();
-                            ptr = Self::slots(l).add((i << 5) + bit as usize);
-                            (*l).free_list[i] &= !(1u32 << bit);
-                            break;
-                        }
-                    }
-
-                    assert!(!ptr.is_null() && !(*ptr).used);
-                    (*ptr).used = true;
-                    ptr
-                }
-            }
-
-            /// A free slot, or the last slot when there is none.
-            pub(crate) unsafe fn new_object_reuse(l: *mut Self) -> *mut $t {
-                unsafe {
-                    if (*l).count >= $limit {
-                        Self::slots(l).add($limit - 1)
-                    } else {
-                        Self::get_free_object(l)
-                    }
-                }
-            }
-
-            /// A free slot, or null.
-            pub(crate) unsafe fn new_object(l: *mut Self) -> *mut $t {
-                unsafe {
-                    if (*l).count >= $limit {
-                        null_mut()
-                    } else {
-                        Self::get_free_object(l)
-                    }
-                }
-            }
-
-            pub(crate) unsafe fn free(l: *mut Self, ptr: *mut $t) {
-                unsafe {
-                    assert!((*ptr).used);
-                    let index = ptr.offset_from(Self::slots(l)) as usize;
-                    (*l).free_list[index >> 5] |= 1u32 << (index & 31);
-                    (*ptr).used = false;
-                    assert!((*l).count > 0);
-                    (*l).count -= 1;
-                }
-            }
-
-            pub(crate) unsafe fn all(l: *mut Self) -> Range<$t> {
-                unsafe {
-                    Range {
-                        cur: Self::slots(l),
-                        end: Self::slots(l).add($limit),
-                    }
-                }
-            }
-        }
-    };
-}
-
-exact_list!(LieroBonusList, LieroBonus, LIERO_MAX_BONUSES);
-exact_list!(LieroWObjectList, LieroWObject, LIERO_MAX_WOBJECTS);
-exact_list!(LieroSObjectList, LieroSObject, LIERO_MAX_SOBJECTS);
-exact_list!(LieroNObjectList, LieroNObject, LIERO_MAX_NOBJECTS);
-
-impl LieroBObjectList {
-    /// `BloodList::newObjectReuse`.
-    unsafe fn new_object_reuse(l: *mut Self) -> *mut LieroBObject {
-        unsafe {
-            if (*l).count == (*l).limit {
-                return (*l).arr.add((*l).limit - 1);
-            }
-            assert!((*l).count < (*l).limit);
-            let p = (*l).arr.add((*l).count);
-            (*l).count += 1;
-            p
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 
 /// The parts of a TC weapon that `weapon.rs` uses (C++'s `toRust`).
 pub(crate) fn weapon_view(w: &LieroTcWeapon) -> LieroWeapon {
@@ -349,6 +198,14 @@ impl<'a> World<'a> {
         self.g.f.worm_count
     }
 
+    /// The game's worm `id`, listed or not.
+    fn pool_worm(&self, id: WormId) -> *mut LieroWormData {
+        let f = &self.g.f;
+        assert!((id.0 as usize) < f.pool_count, "no worm {id:?}");
+        // SAFETY: the pool holds `pool_count` worms.
+        unsafe { *f.pool.add(id.0 as usize) }
+    }
+
     /// Worm `i`, a position in the game's worms.
     fn worm(&self, i: i32) -> *mut LieroWormData {
         self.g.worm(i).data
@@ -456,13 +313,10 @@ impl<'a> World<'a> {
 
     /// `Game::createBObject`.
     fn create_bobject(&self, pos: LieroIVec2, vel: LieroIVec2) {
-        unsafe {
-            let obj = LieroBObjectList::new_object_reuse(self.bobjects());
-            (*obj).color =
-                self.rand(self.constant(c("NumBloodColours")) as u32) as i32 + self.constant(c("FirstBloodColour"));
-            (*obj).pos = pos;
-            (*obj).vel = vel;
-        }
+        // Taking the slot uses no random numbers, so the colour can come first.
+        let color = self.rand(self.constant(c("NumBloodColours")) as u32) as i32 + self.constant(c("FirstBloodColour"));
+        // SAFETY: nothing else has the list during the call.
+        *unsafe { &mut *self.bobjects() }.new_object_reuse() = LieroBObject { pos, vel, color };
     }
 
     /// `createNObject`.
@@ -477,7 +331,7 @@ impl<'a> World<'a> {
     ) -> *mut LieroNObject {
         let t = self.nobject_type(kind);
         unsafe {
-            let obj = LieroNObjectList::new_object_reuse(self.nobjects());
+            let obj = addr_of_mut!((*self.nobjects()).arr[(*self.nobjects()).new_object_reuse()]);
 
             (*obj).kind = (t as *const LieroTcNObject).cast();
             (*obj).owner_idx = owner_idx;
@@ -572,11 +426,11 @@ impl<'a> World<'a> {
         y: i32,
         owner_idx: i32,
         fired_by: *mut LieroWormWeapon,
-        from: *mut LieroWObject,
+        from: Option<usize>,
     ) {
         let t = self.sobject_type(kind);
         unsafe {
-            let obj = LieroSObjectList::new_object_reuse(self.sobjects());
+            let obj = addr_of_mut!((*self.sobjects()).arr[(*self.sobjects()).new_object_reuse()]);
 
             assert!(t.num_sounds < 10);
 
@@ -625,9 +479,12 @@ impl<'a> World<'a> {
                     ) {
                         let z = liero_explosion_damage(t.damage, power_sum, t.detect_range);
 
-                        if !from.is_null() && !(*from).has_hit {
-                            self.hit(owner_idx, fired_by, i);
-                            (*from).has_hit = true;
+                        if let Some(from) = from {
+                            let from = addr_of_mut!((*self.wobjects()).arr[from]);
+                            if !(*from).has_hit {
+                                self.hit(owner_idx, fired_by, i);
+                                (*from).has_hit = true;
+                            }
                         }
 
                         if (*w).health > 0 {
@@ -650,23 +507,25 @@ impl<'a> World<'a> {
 
                 let obj_blow_away = t.blow_away / 3; // TODO in C++: Read from EXE
 
-                let mut wr = LieroWObjectList::all(self.wobjects());
-                while let Some(i) = wr.next() {
-                    let weapon = &*((*i).kind as *const LieroTcWeapon);
+                let mut wr = Cursor::default();
+                while let Some(n) = wr.next(&*self.wobjects()) {
+                    let i = &mut (*self.wobjects()).arr[n];
+                    let weapon = &*(i.kind as *const LieroTcWeapon);
 
                     if weapon.affect_by_explosions
-                        && liero_explosion_push_object((*i).pos, &mut (*i).vel, x, y, t.detect_range, obj_blow_away)
+                        && liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away)
                         && weapon.chain_explosion
                     {
-                        self.blow_up_wobject(i, owner_idx);
+                        self.blow_up_wobject(n, owner_idx);
                     }
                 }
 
-                let mut nr = LieroNObjectList::all(self.nobjects());
-                while let Some(i) = nr.next() {
-                    let nt = &*((*i).kind as *const LieroTcNObject);
+                let mut nr = Cursor::default();
+                while let Some(n) = nr.next(&*self.nobjects()) {
+                    let i = &mut (*self.nobjects()).arr[n];
+                    let nt = &*(i.kind as *const LieroTcNObject);
                     if nt.affect_by_explosions {
-                        liero_explosion_push_object((*i).pos, &mut (*i).vel, x, y, t.detect_range, obj_blow_away);
+                        liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away);
                     }
                 }
 
@@ -714,17 +573,18 @@ impl<'a> World<'a> {
                 }
             }
 
-            let mut br = LieroBonusList::all(self.bonuses());
-            while let Some(i) = br.next() {
-                let (ix, iy) = (ftoi((*i).x), ftoi((*i).y));
+            let mut br = Cursor::default();
+            while let Some(i) = br.next(&*self.bonuses()) {
+                let b = &(*self.bonuses()).arr[i];
+                let (ix, iy) = (ftoi(b.x), ftoi(b.y));
 
                 if ix > x - t.detect_range
                     && ix < x + t.detect_range
                     && iy > y - t.detect_range
                     && iy < y + t.detect_range
                 {
-                    LieroBonusList::free(self.bonuses(), br.last());
-                    self.create_sobject(0, ix, iy, owner_idx, fired_by, null_mut());
+                    (*self.bonuses()).free(br.last());
+                    self.create_sobject(0, ix, iy, owner_idx, fired_by, None);
                 }
             }
         }
@@ -743,7 +603,7 @@ impl<'a> World<'a> {
         ww: *mut LieroWormWeapon,
     ) {
         unsafe {
-            let obj = LieroWObjectList::new_object_reuse(self.wobjects());
+            let obj = addr_of_mut!((*self.wobjects()).arr[(*self.wobjects()).new_object_reuse()]);
 
             (*obj).kind = kind.cast();
             (*obj).pos = pos;
@@ -776,17 +636,19 @@ impl<'a> World<'a> {
     }
 
     /// `WObject::blowUpObject`.
-    fn blow_up_wobject(&self, obj: *mut LieroWObject, cause_idx: i32) {
+    fn blow_up_wobject(&self, slot: usize, cause_idx: i32) {
         unsafe {
+            let obj = addr_of_mut!((*self.wobjects()).arr[slot]);
             let (p, v) = ((*obj).pos, (*obj).vel);
 
-            LieroWObjectList::free(self.wobjects(), obj);
+            (*self.wobjects()).free(slot);
 
             let w = weapon_view(&*((*obj).kind as *const LieroTcWeapon));
             let env = self.wobject_env();
             let mut context = BlowUpContext {
                 w: *self,
                 obj,
+                slot,
                 cause_idx,
             };
             let hooks = LieroBlowUpHooks {
@@ -848,8 +710,9 @@ impl<'a> World<'a> {
     }
 
     /// `WObject::process`.
-    fn process_wobject(&self, obj: *mut LieroWObject) {
+    fn process_wobject(&self, slot: usize) {
         unsafe {
+            let obj = addr_of_mut!((*self.wobjects()).arr[slot]);
             let owner_idx = (*obj).owner_idx;
             let owner = self.worm(owner_idx);
             let kind = (*obj).kind as *const LieroTcWeapon;
@@ -866,6 +729,7 @@ impl<'a> World<'a> {
             let mut context = WObjectContext {
                 w: *self,
                 obj,
+                slot,
                 owner: owner_idx,
             };
             let fields = LieroWObjectFields {
@@ -894,9 +758,10 @@ impl<'a> World<'a> {
     }
 
     /// `NObject::process`.
-    fn process_nobject(&self, obj: *mut LieroNObject) {
+    fn process_nobject(&self, slot: usize) {
         unsafe {
-            let mut context = NObjectContext { w: *self, obj };
+            let obj = addr_of_mut!((*self.nobjects()).arr[slot]);
+            let mut context = NObjectContext { w: *self, obj, slot };
             let fields = LieroNObjectFields {
                 pos: addr_of_mut!((*obj).pos),
                 vel: addr_of_mut!((*obj).vel),
@@ -926,24 +791,20 @@ impl<'a> World<'a> {
     }
 
     /// `SObject::process`.
-    fn process_sobject(&self, obj: *mut LieroSObject) {
-        unsafe {
-            let t = self.sobject_type((*obj).id);
-            if liero_sobject_animate(
-                &mut (*obj).cur_frame,
-                &mut (*obj).anim_delay,
-                t.anim_delay,
-                t.num_frames,
-            ) {
-                LieroSObjectList::free(self.sobjects(), obj);
-            }
+    fn process_sobject(&self, slot: usize) {
+        // SAFETY: nothing else has the list during the call.
+        let l = unsafe { &mut *self.sobjects() };
+        let t = self.sobject_type(l.arr[slot].id);
+        if l.arr[slot].animate(t.anim_delay, t.num_frames) {
+            l.free(slot);
         }
     }
 
     /// `Bonus::process`.
-    fn process_bonus(&self, b: *mut LieroBonus) {
+    fn process_bonus(&self, slot: usize) {
         unsafe {
             let level = self.g.f.level;
+            let b = addr_of_mut!((*self.bonuses()).arr[slot]);
             let ix = ftoi((*b).x);
             assert!(ix >= 0 && ix < level.width);
 
@@ -953,12 +814,13 @@ impl<'a> World<'a> {
                 bounce_div: self.constant(c("BonusBounceDiv")),
             };
 
-            if liero_bonus_process((*b).x, &mut (*b).y, &mut (*b).vel_y, &mut (*b).timer, &level, &k) {
+            if (*b).process(&level, &k) {
                 let iy = ftoi((*b).y);
                 let kind = self.tc().bonus_sobjects[(*b).frame as usize];
-                self.create_sobject(kind, ix, iy, 0, null_mut(), null_mut());
+                self.create_sobject(kind, ix, iy, 0, null_mut(), None);
+                // The explosion may have freed it.
                 if (*b).used {
-                    LieroBonusList::free(self.bonuses(), b);
+                    (*self.bonuses()).free(slot);
                 }
             }
         }
@@ -967,19 +829,17 @@ impl<'a> World<'a> {
     /// The blood particles' loop in `Game::processFrame`.
     fn process_bobjects(&self) {
         unsafe {
-            let l = self.bobjects();
+            let l = &mut *self.bobjects();
+            let rand = &mut *self.rand_ptr();
             let level = self.g.f.level;
             let common = self.common();
             let gravity = self.constant(c("BObjGravity"));
             let mut i = 0;
-            while i < (*l).count {
-                let p = (*l).arr.add(i);
-                if liero_bobject_process(&mut *p, &level, &common, &mut *self.rand_ptr(), gravity) {
+            while i < l.count {
+                if l.arr[i].process(&level, &common, rand, gravity) {
                     i += 1;
                 } else {
-                    // BloodList::free: the last particle takes its place.
-                    (*l).count -= 1;
-                    *p = *(*l).arr.add((*l).count);
+                    l.free(i);
                 }
             }
         }
@@ -1049,8 +909,8 @@ impl<'a> World<'a> {
                 w: *self,
                 i,
                 worm,
-                bonuses: LieroBonusList::all(self.bonuses()),
-                wobjects: LieroWObjectList::all(self.wobjects()),
+                bonuses: Cursor::default(),
+                wobjects: Cursor::default(),
             };
             let ctx: *mut c_void = (&mut context as *mut WormContext).cast();
 
@@ -1128,7 +988,7 @@ impl<'a> World<'a> {
 
             liero_ninjarope_process(
                 addr_of_mut!((*owner).ninjarope),
-                rope_worm_motion(owner.cast()),
+                worm_motion(owner),
                 &level,
                 self.rand_ptr(),
                 &k,
@@ -1166,10 +1026,11 @@ impl<'a> World<'a> {
                 self.rand(2) as i32
             };
 
-            let bonus = unsafe { LieroBonusList::new_object(self.bonuses()) };
-            if bonus.is_null() {
+            // SAFETY: nothing else has the list during the call.
+            let slot = unsafe { (*self.bonuses()).new_object() };
+            let Some(slot) = slot else {
                 return;
-            }
+            };
 
             let [min_time, rand_time] = s.bonus_rand_timer[frame as usize];
             let mut b = LieroBonusState {
@@ -1191,19 +1052,19 @@ impl<'a> World<'a> {
                 }
             }
 
-            unsafe {
-                (*bonus).x = b.x;
-                (*bonus).y = b.y;
-                (*bonus).vel_y = b.vel_y;
-                (*bonus).frame = b.frame;
-                (*bonus).timer = b.timer;
-                // Health bonuses keep the weapon of the bonus that used the slot before.
-                if b.frame == 0 {
-                    (*bonus).weapon = b.weapon;
-                }
+            // SAFETY: as above.
+            let bonus = unsafe { &mut (*self.bonuses()).arr[slot] };
+            bonus.x = b.x;
+            bonus.y = b.y;
+            bonus.vel_y = b.vel_y;
+            bonus.frame = b.frame;
+            bonus.timer = b.timer;
+            // Health bonuses keep the weapon of the bonus that used the slot before.
+            if b.frame == 0 {
+                bonus.weapon = b.weapon;
             }
 
-            self.create_sobject(7, ix, iy, 0, null_mut(), null_mut());
+            self.create_sobject(7, ix, iy, 0, null_mut(), None);
             return;
         } // 234F
     }
@@ -1265,8 +1126,8 @@ impl<'a> World<'a> {
         unsafe {
             self.begin_tick();
 
-            let mut br = LieroBonusList::all(self.bonuses());
-            while let Some(i) = br.next() {
+            let mut br = Cursor::default();
+            while let Some(i) = br.next(&*self.bonuses()) {
                 self.process_bonus(i);
             }
 
@@ -1274,18 +1135,18 @@ impl<'a> World<'a> {
                 self.update_banners();
             }
 
-            let mut sr = LieroSObjectList::all(self.sobjects());
-            while let Some(i) = sr.next() {
+            let mut sr = Cursor::default();
+            while let Some(i) = sr.next(&*self.sobjects()) {
                 self.process_sobject(i);
             }
 
-            let mut wr = LieroWObjectList::all(self.wobjects());
-            while let Some(i) = wr.next() {
+            let mut wr = Cursor::default();
+            while let Some(i) = wr.next(&*self.wobjects()) {
                 self.process_wobject(i);
             }
 
-            let mut nr = LieroNObjectList::all(self.nobjects());
-            while let Some(i) = nr.next() {
+            let mut nr = Cursor::default();
+            while let Some(i) = nr.next(&*self.nobjects()) {
                 self.process_nobject(i);
             }
 
@@ -1337,6 +1198,7 @@ unsafe fn pressed(w: *const LieroWormData, c: u32) -> bool {
 struct BlowUpContext<'a> {
     w: World<'a>,
     obj: *mut LieroWObject,
+    slot: usize,
     cause_idx: i32,
 }
 
@@ -1347,7 +1209,7 @@ unsafe fn ctx<'x, T>(ctx: *mut c_void) -> &'x T {
 unsafe fn blow_up_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
     unsafe {
         let c: &BlowUpContext = ctx(ctx_);
-        c.w.create_sobject(kind, x, y, c.cause_idx, (*c.obj).fired_by, c.obj);
+        c.w.create_sobject(kind, x, y, c.cause_idx, (*c.obj).fired_by, Some(c.slot));
     }
 }
 
@@ -1382,6 +1244,7 @@ unsafe fn blow_up_create_nobject2(
 struct WObjectContext<'a> {
     w: World<'a>,
     obj: *mut LieroWObject,
+    slot: usize,
     owner: i32,
 }
 
@@ -1396,7 +1259,7 @@ unsafe fn w_owner_steers(ctx_: *mut c_void) -> bool {
 unsafe fn w_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
-        c.w.create_sobject(kind, x, y, (*c.obj).owner_idx, (*c.obj).fired_by, null_mut());
+        c.w.create_sobject(kind, x, y, (*c.obj).owner_idx, (*c.obj).fired_by, None);
     }
 }
 
@@ -1426,17 +1289,22 @@ unsafe fn w_push_objects(ctx_: *mut c_void, impulse: LieroIVec2) {
         let o = c.obj;
         let pos = (*o).pos;
 
-        let mut wr = LieroWObjectList::all(c.w.wobjects());
-        while let Some(i) = wr.next() {
-            if ((*i).kind != (*o).kind || (*i).owner_idx != (*o).owner_idx) && near(pos, (*i).pos) {
-                (*i).vel = add((*i).vel, impulse);
+        let (kind, owner) = ((*o).kind, (*o).owner_idx);
+        let l = &mut *c.w.wobjects();
+        let mut wr = Cursor::default();
+        while let Some(n) = wr.next(l) {
+            let i = &mut l.arr[n];
+            if (i.kind != kind || i.owner_idx != owner) && near(pos, i.pos) {
+                i.vel = add(i.vel, impulse);
             }
         }
 
-        let mut nr = LieroNObjectList::all(c.w.nobjects());
-        while let Some(i) = nr.next() {
-            if near(pos, (*i).pos) {
-                (*i).vel = add((*i).vel, impulse);
+        let l = &mut *c.w.nobjects();
+        let mut nr = Cursor::default();
+        while let Some(n) = nr.next(l) {
+            let i = &mut l.arr[n];
+            if near(pos, i.pos) {
+                i.vel = add(i.vel, impulse);
             }
         }
     }
@@ -1492,14 +1360,14 @@ unsafe fn w_hit_worms(ctx_: *mut c_void) -> u32 {
 unsafe fn w_blow_up(ctx_: *mut c_void) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
-        c.w.blow_up_wobject(c.obj, (*c.obj).owner_idx);
+        c.w.blow_up_wobject(c.slot, (*c.obj).owner_idx);
     }
 }
 
 unsafe fn w_free(ctx_: *mut c_void) {
     unsafe {
         let c: &WObjectContext = ctx(ctx_);
-        LieroWObjectList::free(c.w.wobjects(), c.obj);
+        (*c.w.wobjects()).free(c.slot);
     }
 }
 
@@ -1513,6 +1381,7 @@ unsafe fn w_used(ctx_: *mut c_void) -> bool {
 struct NObjectContext<'a> {
     w: World<'a>,
     obj: *mut LieroNObject,
+    slot: usize,
 }
 
 unsafe fn n_create_bobject(ctx_: *mut c_void, pos: LieroIVec2, vel: LieroIVec2) {
@@ -1525,7 +1394,7 @@ unsafe fn n_create_bobject(ctx_: *mut c_void, pos: LieroIVec2, vel: LieroIVec2) 
 unsafe fn n_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
-        c.w.create_sobject(kind, x, y, (*c.obj).owner_idx, (*c.obj).fired_by, null_mut());
+        c.w.create_sobject(kind, x, y, (*c.obj).owner_idx, (*c.obj).fired_by, None);
     }
 }
 
@@ -1585,7 +1454,7 @@ unsafe fn n_hit_worms(ctx_: *mut c_void) -> bool {
                 if t.worm_explode {
                     do_explode = true;
                 } else if t.worm_destroy && (*o).used {
-                    LieroNObjectList::free(world.nobjects(), o);
+                    (*world.nobjects()).free(c.slot);
                 }
             }
         }
@@ -1598,7 +1467,7 @@ unsafe fn n_free(ctx_: *mut c_void) {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
         if (*c.obj).used {
-            LieroNObjectList::free(c.w.nobjects(), c.obj);
+            (*c.w.nobjects()).free(c.slot);
         }
     }
 }
@@ -1608,8 +1477,8 @@ struct WormContext<'a> {
     /// The worm's position in the game's worms.
     i: i32,
     worm: *mut LieroWormData,
-    bonuses: Range<LieroBonus>,
-    wobjects: Range<LieroWObject>,
+    bonuses: Cursor,
+    wobjects: Cursor,
 }
 
 unsafe fn worm_ctx<'x>(ctx_: *mut c_void) -> &'x mut WormContext<'x> {
@@ -1682,20 +1551,21 @@ unsafe fn worm_give_weapon(ctx_: *mut c_void, slot: i32, weapon: i32) {
 unsafe fn worm_bonuses_begin(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
-        c.bonuses = LieroBonusList::all(c.w.bonuses());
+        c.bonuses = Cursor::default();
     }
 }
 
 unsafe fn worm_bonus_next(ctx_: *mut c_void) -> LieroBonusRef {
     unsafe {
         let c = worm_ctx(ctx_);
-        match c.bonuses.next() {
-            Some(b) => LieroBonusRef {
+        let l = &*c.w.bonuses();
+        match c.bonuses.next(l) {
+            Some(i) => LieroBonusRef {
                 found: true,
-                x: (*b).x,
-                y: (*b).y,
-                frame: (*b).frame,
-                weapon: (*b).weapon,
+                x: l.arr[i].x,
+                y: l.arr[i].y,
+                frame: l.arr[i].frame,
+                weapon: l.arr[i].weapon,
             },
             None => LieroBonusRef::default(),
         }
@@ -1705,7 +1575,7 @@ unsafe fn worm_bonus_next(ctx_: *mut c_void) -> LieroBonusRef {
 unsafe fn worm_bonus_free(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
-        LieroBonusList::free(c.w.bonuses(), c.bonuses.last());
+        (*c.w.bonuses()).free(c.bonuses.last());
     }
 }
 
@@ -1719,7 +1589,7 @@ unsafe fn worm_heal(ctx_: *mut c_void, amount: i32) {
 unsafe fn worm_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
     unsafe {
         let c = worm_ctx(ctx_);
-        c.w.create_sobject(kind, x, y, c.index(), null_mut(), null_mut());
+        c.w.create_sobject(kind, x, y, c.index(), null_mut(), None);
     }
 }
 
@@ -1761,7 +1631,7 @@ unsafe fn worm_worm_hit(ctx_: *mut c_void, x: i32, y: i32) -> bool {
 unsafe fn worm_steerables_begin(ctx_: *mut c_void) {
     unsafe {
         let c = worm_ctx(ctx_);
-        c.wobjects = LieroWObjectList::all(c.w.wobjects());
+        c.wobjects = Cursor::default();
     }
 }
 
@@ -1770,7 +1640,8 @@ unsafe fn worm_steerable_next(ctx_: *mut c_void) -> LieroSteerable {
         let c = worm_ctx(ctx_);
         let kind = (*c.current()).kind;
         let index = c.index();
-        while let Some(i) = c.wobjects.next() {
+        while let Some(n) = c.wobjects.next(&*c.w.wobjects()) {
+            let i = addr_of_mut!((*c.w.wobjects()).arr[n]);
             if (*i).kind == kind && (*i).owner_idx == index {
                 return LieroSteerable {
                     cur_frame: addr_of_mut!((*i).cur_frame),
@@ -1827,25 +1698,27 @@ struct RopeContext<'a> {
     owner: i32,
 }
 
-unsafe fn rope_find_anchor(ctx_: *mut c_void, x: i32, y: i32) -> *mut c_void {
+unsafe fn rope_find_anchor(ctx_: *mut c_void, x: i32, y: i32) -> Option<WormId> {
     unsafe {
         let c: &RopeContext = ctx(ctx_);
-        for i in 0..c.w.worm_count() {
-            if i != c.owner && c.w.spec_worm_hit(x, y, 1, i) {
-                return c.w.worm(i).cast();
-            }
-        }
-        null_mut()
+        (0..c.w.worm_count())
+            .find(|&i| i != c.owner && c.w.spec_worm_hit(x, y, 1, i))
+            .map(|i| c.w.g.worm(i).id)
     }
 }
 
-unsafe fn rope_worm_motion(worm: *mut c_void) -> LieroWormMotion {
+unsafe fn rope_worm_motion(ctx_: *mut c_void, worm: WormId) -> LieroWormMotion {
     unsafe {
-        let w = worm as *mut LieroWormData;
-        LieroWormMotion {
-            pos: addr_of_mut!((*w).pos),
-            vel: addr_of_mut!((*w).vel),
-        }
+        let c: &RopeContext = ctx(ctx_);
+        worm_motion(c.w.pool_worm(worm))
+    }
+}
+
+/// Where `w` keeps its position and velocity.
+fn worm_motion(w: *mut LieroWormData) -> LieroWormMotion {
+    LieroWormMotion {
+        pos: unsafe { addr_of_mut!((*w).pos) },
+        vel: unsafe { addr_of_mut!((*w).vel) },
     }
 }
 
@@ -1862,7 +1735,6 @@ use crate::weapon::LieroWObjectHooks;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::LieroGameData;
 
     #[test]
     fn constant_and_hack_indexes_follow_the_cpp_enums() {
@@ -1870,64 +1742,5 @@ mod tests {
         assert_eq!(c("RemExpObject"), liero_data::exe::CONSTANT_ORDER.len() - 1);
         assert_eq!(h("FallDamage"), 0);
         assert_eq!(h("MultiJump"), 10);
-    }
-
-    #[test]
-    fn lists_hand_out_the_lowest_free_slot_and_reuse_the_last_when_full() {
-        let mut g = LieroGameData::new_boxed();
-        let l: *mut LieroSObjectList = &mut g.sobjects;
-        unsafe {
-            let base = LieroSObjectList::slots(l);
-            let a = LieroSObjectList::new_object(l);
-            let b = LieroSObjectList::new_object(l);
-            let c = LieroSObjectList::new_object(l);
-            assert_eq!((a, b, c), (base, base.add(1), base.add(2)));
-
-            LieroSObjectList::free(l, b);
-            assert_eq!((*l).count, 2);
-            assert_eq!(LieroSObjectList::new_object(l), b);
-
-            for _ in 3..LIERO_MAX_SOBJECTS {
-                assert!(!LieroSObjectList::new_object(l).is_null());
-            }
-            assert!(LieroSObjectList::new_object(l).is_null());
-            assert_eq!(LieroSObjectList::new_object_reuse(l), base.add(LIERO_MAX_SOBJECTS - 1));
-            assert_eq!((*l).count, LIERO_MAX_SOBJECTS);
-        }
-    }
-
-    #[test]
-    fn ranges_skip_free_slots_and_survive_freeing_the_current_one() {
-        let mut g = LieroGameData::new_boxed();
-        let l: *mut LieroBonusList = &mut g.bonuses;
-        unsafe {
-            let objs: Vec<_> = (0..5).map(|_| LieroBonusList::new_object(l)).collect();
-            LieroBonusList::free(l, objs[1]);
-
-            let mut seen = Vec::new();
-            let mut r = LieroBonusList::all(l);
-            while let Some(b) = r.next() {
-                seen.push(b);
-                if b == objs[2] {
-                    LieroBonusList::free(l, r.last());
-                }
-            }
-            assert_eq!(seen, vec![objs[0], objs[2], objs[3], objs[4]]);
-            assert_eq!((*l).count, 3);
-        }
-    }
-
-    #[test]
-    fn blood_reuses_the_last_particle_when_full() {
-        let mut g = LieroGameData::new_boxed();
-        g.bobjects.resize(2);
-        let l: *mut LieroBObjectList = &mut g.bobjects;
-        unsafe {
-            let a = LieroBObjectList::new_object_reuse(l);
-            let b = LieroBObjectList::new_object_reuse(l);
-            assert_eq!(b, a.add(1));
-            assert_eq!(LieroBObjectList::new_object_reuse(l), b);
-            assert_eq!((*l).count, 2);
-        }
     }
 }

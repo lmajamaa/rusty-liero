@@ -1,0 +1,6 @@
+# Commits that only reformat or mechanically rewrite code, for `git blame`:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub's blame view reads this file by itself.
+
+# Phase 4, steps 1–4 (#51): rustfmt at 120 columns, explicit unsafe blocks.
+23f723f625e5adf361f08e8a3f606902bccd3f5b
