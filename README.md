@@ -172,8 +172,8 @@ License
 
 The code is licensed under the BSD 2-Clause License, see [LICENSE](LICENSE).
 It uses the same license and copyright holders as
-[openliero/openliero](https://github.com/openliero/openliero), the continuation
-of this project.
+[openliero/openliero](https://github.com/openliero/openliero), the C++
+OpenLiero this is ported from.
 
 Some bundled parts keep their own licenses:
 * `TC/openliero/sounds`: WTFPL, see `TC/openliero/sounds/sounds.txt`
