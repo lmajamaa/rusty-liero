@@ -42,7 +42,7 @@ impl World<'_> {
         self.tc().materials[pix as usize].dirt_rock()
     }
 
-    fn blocked(&self, x: i32, y: i32) -> bool {
+    pub(super) fn blocked(&self, x: i32, y: i32) -> bool {
         !inside(&self.g.f.level, x, y) || self.pixel_dirt_rock(x, y)
     }
 

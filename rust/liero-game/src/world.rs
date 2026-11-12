@@ -36,10 +36,7 @@ use crate::stats::{
     liero_stats_hit, liero_stats_pre_tick, liero_stats_shot, liero_stats_tick, LieroStats,
 };
 use crate::tc::{c, h, LieroTcData, LieroTcNObject, LieroTcSObject, LieroTcWeapon};
-use crate::weapon::{
-    liero_wobject_blow_up, liero_wobject_process, LieroBlowUpHooks, LieroWObjectEnv, LieroWObjectFields, LieroWeapon,
-    LieroWormFiringHooks, LieroWormWeapon, LIERO_HIT_EXPLODE, LIERO_HIT_REMOVE,
-};
+use crate::weapon::{LieroWeapon, LieroWormFiringHooks, LieroWormWeapon};
 use crate::worm::{
     liero_worm_process, LieroBonusRef, LieroSteerable, LieroWormConstants, LieroWormData, LieroWormEnv, LieroWormHooks,
     WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
@@ -47,6 +44,7 @@ use crate::worm::{
 
 mod nobject;
 mod rope;
+mod wobject;
 
 /// `Settings::wormAnimTab`.
 const WORM_ANIM_TAB: [i32; 4] = [0, 7, 0, 14];
@@ -473,79 +471,6 @@ impl<'a> World<'a> {
         }
     }
 
-    /// `fireWeapon`: one part of a shot of `kind`.
-    #[allow(clippy::too_many_arguments)]
-    fn fire_weapon(
-        &self,
-        kind: *const LieroTcWeapon,
-        angle: i32,
-        vel: LieroIVec2,
-        speed: i32,
-        pos: LieroIVec2,
-        owner_idx: i32,
-        ww: *mut LieroWormWeapon,
-    ) {
-        unsafe {
-            let obj = addr_of_mut!((*self.wobjects()).arr[(*self.wobjects()).new_object_reuse()]);
-
-            (*obj).kind = kind.cast();
-            (*obj).pos = pos;
-            (*obj).owner_idx = owner_idx;
-
-            // STATS
-            (*obj).fired_by = ww;
-            (*obj).has_hit = false;
-
-            self.damage_potential(owner_idx, ww, (*kind).hit_damage);
-            self.shot(owner_idx, ww);
-
-            let launch = weapon_view(&*kind).launch(&mut *self.rand_ptr(), angle, vel, speed);
-            (*obj).vel = launch.vel;
-            (*obj).cur_frame = launch.cur_frame;
-            (*obj).time_left = launch.time_left;
-        }
-    }
-
-    fn wobject_env(&self) -> LieroWObjectEnv {
-        LieroWObjectEnv {
-            level: self.g.f.level,
-            common: self.common(),
-            rand: self.rand_ptr(),
-            cycles: self.cycles(),
-            shadow: self.g.s.shadow,
-            larpa_vel_div: self.constant(c("SplinterLarpaVelDiv")),
-            crackler_vel_div: self.constant(c("SplinterCracklerVelDiv")),
-        }
-    }
-
-    /// `WObject::blowUpObject`.
-    fn blow_up_wobject(&self, slot: usize, cause_idx: i32) {
-        unsafe {
-            let obj = addr_of_mut!((*self.wobjects()).arr[slot]);
-            let (p, v) = ((*obj).pos, (*obj).vel);
-
-            (*self.wobjects()).free(slot);
-
-            let w = weapon_view(&*((*obj).kind as *const LieroTcWeapon));
-            let env = self.wobject_env();
-            let mut context = BlowUpContext {
-                w: *self,
-                obj,
-                slot,
-                cause_idx,
-            };
-            let hooks = LieroBlowUpHooks {
-                ctx: (&mut context as *mut BlowUpContext).cast(),
-                create_sobject: blow_up_create_sobject,
-                play_sound: blow_up_play_sound,
-                create_nobject1: blow_up_create_nobject1,
-                create_nobject2: blow_up_create_nobject2,
-            };
-
-            liero_wobject_blow_up(&w, p, v, &env, &hooks);
-        }
-    }
-
     /// `checkForSpecWormHit`: whether (x, y) is within `dist` of a worm
     /// pixel of worm `i`.
     fn spec_worm_hit(&self, x: i32, y: i32, dist: i32, i: i32) -> bool {
@@ -590,54 +515,6 @@ impl<'a> World<'a> {
             }
         }
         false
-    }
-
-    /// `WObject::process`.
-    fn process_wobject(&self, slot: usize) {
-        unsafe {
-            let obj = addr_of_mut!((*self.wobjects()).arr[slot]);
-            let owner_idx = (*obj).owner_idx;
-            let owner = self.worm(owner_idx);
-            let kind = (*obj).kind as *const LieroTcWeapon;
-
-            // As liero would do this while rendering, we try to do it as early as possible
-            if self.hack(h("RemExp"))
-                && kind.offset_from(self.tc().weapons) as i32 == self.constant(c("RemExpObject")) - 1
-                && pressed(owner, LIERO_CONTROL_CHANGE)
-                && pressed(owner, LIERO_CONTROL_FIRE)
-            {
-                (*obj).time_left = 0;
-            }
-
-            let mut context = WObjectContext {
-                w: *self,
-                obj,
-                slot,
-                owner: owner_idx,
-            };
-            let fields = LieroWObjectFields {
-                pos: addr_of_mut!((*obj).pos),
-                vel: addr_of_mut!((*obj).vel),
-                cur_frame: addr_of_mut!((*obj).cur_frame),
-                time_left: addr_of_mut!((*obj).time_left),
-            };
-            let w = weapon_view(&*kind);
-            let env = self.wobject_env();
-            let hooks = LieroWObjectHooks {
-                ctx: (&mut context as *mut WObjectContext).cast(),
-                owner_steers: w_owner_steers,
-                create_sobject: w_create_sobject,
-                create_nobject1: w_create_nobject1,
-                create_nobject2: w_create_nobject2,
-                push_objects: w_push_objects,
-                hit_worms: w_hit_worms,
-                blow_up: w_blow_up,
-                free: w_free,
-                used: w_used,
-            };
-
-            liero_wobject_process(&fields, &w, &env, &hooks);
-        }
     }
 
     /// `SObject::process`.
@@ -1012,189 +889,6 @@ unsafe fn pressed(w: *const LieroWormData, c: u32) -> bool {
 // ---------------------------------------------------------------------------
 // The hooks. Each `ctx` is the context its caller above made.
 
-struct BlowUpContext<'a> {
-    w: World<'a>,
-    obj: *mut LieroWObject,
-    slot: usize,
-    cause_idx: i32,
-}
-
-unsafe fn ctx<'x, T>(ctx: *mut c_void) -> &'x T {
-    unsafe { &*(ctx as *const T) }
-}
-
-unsafe fn blow_up_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
-    unsafe {
-        let c: &BlowUpContext = ctx(ctx_);
-        c.w.create_sobject(kind, x, y, c.cause_idx, (*c.obj).fired_by, Some(c.slot));
-    }
-}
-
-unsafe fn blow_up_play_sound(ctx_: *mut c_void, sound: i32) {
-    unsafe {
-        let c: &BlowUpContext = ctx(ctx_);
-        c.w.play(sound, null_mut(), 0);
-    }
-}
-
-unsafe fn blow_up_create_nobject1(ctx_: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
-    unsafe {
-        let c: &BlowUpContext = ctx(ctx_);
-        c.w.create_nobject1(kind, vel, pos, color, c.cause_idx, (*c.obj).fired_by);
-    }
-}
-
-unsafe fn blow_up_create_nobject2(
-    ctx_: *mut c_void,
-    kind: i32,
-    angle: i32,
-    vel: LieroIVec2,
-    pos: LieroIVec2,
-    color: i32,
-) {
-    unsafe {
-        let c: &BlowUpContext = ctx(ctx_);
-        c.w.create_nobject2(kind, angle, vel, pos, color, c.cause_idx, (*c.obj).fired_by);
-    }
-}
-
-struct WObjectContext<'a> {
-    w: World<'a>,
-    obj: *mut LieroWObject,
-    slot: usize,
-    owner: i32,
-}
-
-unsafe fn w_owner_steers(ctx_: *mut c_void) -> bool {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        let owner = c.w.worm(c.owner);
-        (*owner).visible && pressed(owner, LIERO_CONTROL_UP)
-    }
-}
-
-unsafe fn w_create_sobject(ctx_: *mut c_void, kind: i32, x: i32, y: i32) {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        c.w.create_sobject(kind, x, y, (*c.obj).owner_idx, (*c.obj).fired_by, None);
-    }
-}
-
-unsafe fn w_create_nobject1(ctx_: *mut c_void, kind: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        c.w.create_nobject1(kind, vel, pos, color, (*c.obj).owner_idx, (*c.obj).fired_by);
-    }
-}
-
-unsafe fn w_create_nobject2(ctx_: *mut c_void, kind: i32, angle: i32, vel: LieroIVec2, pos: LieroIVec2, color: i32) {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        c.w.create_nobject2(kind, angle, vel, pos, color, (*c.obj).owner_idx, (*c.obj).fired_by);
-    }
-}
-
-/// Whether integer `p` is within 2 pixels of fixed-point `q` on both axes,
-/// as C++ compared them.
-fn near(pos: LieroIVec2, q: LieroIVec2) -> bool {
-    pos.x >= q.x - itof(2) && pos.x <= q.x + itof(2) && pos.y >= q.y - itof(2) && pos.y <= q.y + itof(2)
-}
-
-unsafe fn w_push_objects(ctx_: *mut c_void, impulse: LieroIVec2) {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        let o = c.obj;
-        let pos = (*o).pos;
-
-        let (kind, owner) = ((*o).kind, (*o).owner_idx);
-        let l = &mut *c.w.wobjects();
-        let mut wr = Cursor::default();
-        while let Some(n) = wr.next(l) {
-            let i = &mut l.arr[n];
-            if (i.kind != kind || i.owner_idx != owner) && near(pos, i.pos) {
-                i.vel = add(i.vel, impulse);
-            }
-        }
-
-        let l = &mut *c.w.nobjects();
-        let mut nr = Cursor::default();
-        while let Some(n) = nr.next(l) {
-            let i = &mut l.arr[n];
-            if near(pos, i.pos) {
-                i.vel = add(i.vel, impulse);
-            }
-        }
-    }
-}
-
-unsafe fn w_hit_worms(ctx_: *mut c_void) -> u32 {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        let world = &c.w;
-        let o = c.obj;
-        let w = &*((*o).kind as *const LieroTcWeapon);
-        let mut result = 0;
-
-        for i in 0..world.worm_count() {
-            let worm = world.worm(i);
-
-            if (w.hit_damage != 0 || w.blow_away != 0 || w.blood_on_hit != 0 || w.worm_collide)
-                && world.spec_worm_hit(ftoi((*o).pos.x), ftoi((*o).pos.y), w.detect_distance, i)
-            {
-                (*worm).vel = add((*worm).vel, mul_div((*o).vel, w.blow_away, 100));
-
-                world.g.damage(i, w.hit_damage, (*o).owner_idx);
-                world.damage_dealt(c.owner, (*o).fired_by, i, w.hit_damage, (*o).has_hit);
-                if !(*o).has_hit {
-                    world.hit(c.owner, (*o).fired_by, i);
-                }
-                (*o).has_hit = true;
-
-                let blood_amount = w.blood_on_hit.wrapping_mul(world.g.s.blood) / 100;
-
-                for _ in 0..blood_amount.max(0) {
-                    let angle = world.rand(128) as i32;
-                    world.create_nobject2(6, angle, div((*o).vel, 3), (*o).pos, 0, (*worm).index, (*o).fired_by);
-                }
-
-                if w.hit_damage > 0 && (*worm).health > 0 && world.rand(3) == 0 {
-                    world.hurt_sound(i);
-                }
-
-                if w.worm_collide && world.rand(w.worm_collide as u32) == 0 {
-                    if w.worm_explode {
-                        result |= LIERO_HIT_EXPLODE;
-                    }
-                    result |= LIERO_HIT_REMOVE;
-                }
-            }
-        }
-
-        result
-    }
-}
-
-unsafe fn w_blow_up(ctx_: *mut c_void) {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        c.w.blow_up_wobject(c.slot, (*c.obj).owner_idx);
-    }
-}
-
-unsafe fn w_free(ctx_: *mut c_void) {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        (*c.w.wobjects()).free(c.slot);
-    }
-}
-
-unsafe fn w_used(ctx_: *mut c_void) -> bool {
-    unsafe {
-        let c: &WObjectContext = ctx(ctx_);
-        (*c.obj).used
-    }
-}
-
 struct WormContext<'a> {
     w: World<'a>,
     /// The worm's position in the game's worms.
@@ -1240,7 +934,15 @@ unsafe fn worm_fire_part(ctx_: *mut c_void, angle: i32, vel: LieroIVec2, speed: 
     unsafe {
         let c = worm_ctx(ctx_);
         let ww = c.current();
-        c.w.fire_weapon((*ww).kind.cast(), angle, vel, speed, pos, c.index(), ww);
+        c.w.fire_weapon(
+            &*(*ww).kind.cast::<LieroTcWeapon>(),
+            angle,
+            vel,
+            speed,
+            pos,
+            c.index(),
+            ww,
+        );
     }
 }
 
@@ -1414,8 +1116,6 @@ unsafe fn worm_after_spawn(ctx_: *mut c_void) {
         }
     }
 }
-
-use crate::weapon::LieroWObjectHooks;
 
 #[cfg(test)]
 mod tests {
