@@ -18,7 +18,7 @@ use crate::gfx::{
     liero_gfx_draw_dashed_line_box, liero_gfx_draw_laser_sight, liero_gfx_draw_line, liero_gfx_draw_ninjarope,
     liero_gfx_draw_shadow_line, liero_gfx_fill_rect, LieroBitmap, LieroFontChar,
 };
-use crate::level::{liero_level_draw_miniature, LieroLevel};
+use crate::level::LieroLevel;
 use crate::material::LieroMaterial;
 use crate::math::{cos_sin, ftoi, LieroIVec2};
 use crate::rand::LieroRand;
@@ -69,11 +69,11 @@ pub struct LieroViewport {
     pub kind: i32,
 }
 
-/// A C++ `SpriteSet`: `count` sprites of `width` x `height` pixels, one after
-/// the other.
+/// A set of sprites: `count` sprites of `width` x `height` pixels, one
+/// after the other.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroSpriteSet {
-    pub data: *const u8,
+pub struct LieroSpriteSet<'a> {
+    pub data: &'a [u8],
     pub width: i32,
     pub height: i32,
     pub count: i32,
@@ -196,7 +196,7 @@ pub struct LieroViewportBanner {
 
 /// Everything a viewport draws. Lists are in C++'s order, which decides what
 /// is drawn on top.
-pub struct LieroScene {
+pub struct LieroScene<'a> {
     /// In the order of `Game::worms`; worm numbers are positions in it.
     pub worms: *const LieroViewWorm,
     pub worm_count: i32,
@@ -217,15 +217,13 @@ pub struct LieroScene {
     pub viewports: *const LieroViewportBanner,
     pub viewport_count: i32,
 
-    pub small_sprites: LieroSpriteSet,
-    pub large_sprites: LieroSpriteSet,
-    pub worm_sprites: LieroSpriteSet,
-    pub fire_cone_sprites: LieroSpriteSet,
-    pub text_sprites: LieroSpriteSet,
-    pub font: *const LieroFontChar,
-    pub font_count: usize,
-    /// 256 entries.
-    pub materials: *const LieroMaterial,
+    pub small_sprites: LieroSpriteSet<'a>,
+    pub large_sprites: LieroSpriteSet<'a>,
+    pub worm_sprites: LieroSpriteSet<'a>,
+    pub fire_cone_sprites: LieroSpriteSet<'a>,
+    pub text_sprites: LieroSpriteSet<'a>,
+    pub font: &'a [LieroFontChar],
+    pub materials: &'a [LieroMaterial; 256],
     pub level: LieroLevel,
     pub bonus_frames: [i32; 2],
 
@@ -278,14 +276,12 @@ fn minimap_color(index: i32) -> i32 {
     129 + index * 4
 }
 
-impl LieroSpriteSet {
+impl<'a> LieroSpriteSet<'a> {
     /// Sprite `frame`, or None where C++ would have read outside the set.
-    unsafe fn sprite(&self, frame: i32) -> Option<*const u8> {
-        unsafe {
-            (0..self.count)
-                .contains(&frame)
-                .then(|| self.data.add(frame as usize * (self.width * self.height) as usize))
-        }
+    fn sprite(&self, frame: i32) -> Option<&'a [u8]> {
+        (0..self.count)
+            .contains(&frame)
+            .then(|| &self.data[frame as usize * (self.width * self.height) as usize..])
     }
 }
 
@@ -301,13 +297,13 @@ unsafe fn slice<'a, T>(ptr: *const T, len: i32) -> &'a [T] {
 
 /// The scene as Rust reads it.
 struct Scene<'a> {
-    s: &'a LieroScene,
+    s: &'a LieroScene<'a>,
     worms: &'a [LieroViewWorm],
     weapons: &'a [LieroViewWeapon],
 }
 
 impl<'a> Scene<'a> {
-    unsafe fn new(s: &'a LieroScene) -> Self {
+    unsafe fn new(s: &'a LieroScene<'a>) -> Self {
         unsafe {
             Scene {
                 s,
@@ -326,43 +322,27 @@ impl<'a> Scene<'a> {
         usize::try_from(idx).ok().and_then(|i| self.weapons.get(i))
     }
 
-    unsafe fn text(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32) {
-        unsafe {
-            liero_font_draw_text(
-                scr,
-                self.s.font,
-                self.s.font_count,
-                text.as_ptr(),
-                text.len(),
-                x,
-                y,
-                color as u8,
-                1,
-            );
-        }
+    fn text(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32) {
+        liero_font_draw_text(scr, self.s.font, text, x, y, color as u8, 1);
     }
 
     /// The text with a black shadow, as banners are drawn.
     unsafe fn banner(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32) {
-        unsafe {
-            self.text(scr, text, x + 1, y + 1, 0);
-            self.text(scr, text, x, y, 50);
-        }
+        self.text(scr, text, x + 1, y + 1, 0);
+        self.text(scr, text, x, y, 50);
     }
 
     /// Capital letters from the small font, 4 pixels apart: `drawTextSmall`.
-    unsafe fn text_small(&self, scr: &LieroBitmap, text: &[u8], mut x: i32, y: i32) {
-        unsafe {
-            let set = &self.s.text_sprites;
-            for &ch in text {
-                let c = ch.wrapping_sub(b'A');
-                if c < 26 {
-                    if let Some(mem) = set.sprite(c as i32) {
-                        liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
-                    }
+    fn text_small(&self, scr: &LieroBitmap, text: &[u8], mut x: i32, y: i32) {
+        let set = &self.s.text_sprites;
+        for &ch in text {
+            let c = ch.wrapping_sub(b'A');
+            if c < 26 {
+                if let Some(mem) = set.sprite(c as i32) {
+                    liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
                 }
-                x += 4;
             }
+            x += 4;
         }
     }
 
@@ -377,53 +357,40 @@ impl<'a> Scene<'a> {
         }
     }
 
-    unsafe fn blit(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32) {
-        unsafe {
-            if let Some(mem) = set.sprite(frame) {
-                liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
-            }
+    fn blit(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32) {
+        if let Some(mem) = set.sprite(frame) {
+            liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
         }
     }
 
     // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
     #[allow(clippy::too_many_arguments)]
-    unsafe fn shadow(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32, w: i32, h: i32) {
-        unsafe {
-            if let Some(mem) = set.sprite(frame) {
-                liero_gfx_blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);
-            }
+    fn shadow(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32, w: i32, h: i32) {
+        if let Some(mem) = set.sprite(frame) {
+            liero_gfx_blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);
         }
     }
 
     /// Darkens the pixel at (x, y) if inside the clip rectangle and its
     /// material shows shadows.
-    unsafe fn shadow_pixel(&self, scr: &LieroBitmap, x: i32, y: i32) {
-        unsafe {
-            if scr.clip.contains(x, y) {
-                let p = scr.pixels.offset(y as isize * scr.pitch as isize + x as isize);
-                if (*self.s.materials.add(*p as usize)).see_shadow() {
-                    *p = (*p).wrapping_add(4);
-                }
+    fn shadow_pixel(&self, scr: &LieroBitmap, x: i32, y: i32) {
+        if scr.clip.contains(x, y) {
+            let p = scr.get(x, y);
+            if self.s.materials[p as usize].see_shadow() {
+                scr.set(x, y, p.wrapping_add(4));
             }
         }
     }
 
-    unsafe fn pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) {
-        unsafe {
-            if scr.clip.contains(x, y) {
-                *scr.pixels.offset(y as isize * scr.pitch as isize + x as isize) = color as u8;
-            }
+    fn pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) {
+        if scr.clip.contains(x, y) {
+            scr.set(x, y, color as u8);
         }
     }
 
     /// `getPixel(x, y) = color` without clipping, kept inside the buffer.
-    unsafe fn raw_pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) {
-        unsafe {
-            let i = y as i64 * scr.pitch as i64 + x as i64;
-            if 0 <= i && i < scr.pitch as i64 * scr.h as i64 {
-                *scr.pixels.offset(i as isize) = color as u8;
-            }
-        }
+    fn raw_pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) {
+        scr.set(x, y, color as u8);
     }
 
     /// The life bar, ammo or loading bar and the kills, as both kinds of
@@ -538,43 +505,39 @@ impl<'a> Scene<'a> {
     }
 
     /// The Holdazone zone's dashed outline.
-    unsafe fn draw_zone(&self, scr: &LieroBitmap, offs: LieroIVec2) {
-        unsafe {
-            let z = &self.s.holdazone;
-            let timing_out = z.timeout_left < 70 * 4;
-            let color = if timing_out { 168 } else { 50 };
-            let contender_color = match self.worm(z.contender_idx) {
-                Some(c) if timing_out => minimap_color(c.index),
-                Some(c) => WORM_COLOUR_INDEXES[c.index as usize & 1] + 5,
-                None => color,
-            };
-            liero_gfx_draw_dashed_line_box(
-                scr,
-                z.rect.x1 + offs.x,
-                z.rect.y1 + offs.y,
-                color as u8,
-                contender_color as u8,
-                z.contender_frames,
-                self.s.zone_capture_time,
-                z.rect.x2 - z.rect.x1,
-                z.rect.y2 - z.rect.y1,
-                self.s.cycles / 10,
-            );
-        }
+    fn draw_zone(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+        let z = &self.s.holdazone;
+        let timing_out = z.timeout_left < 70 * 4;
+        let color = if timing_out { 168 } else { 50 };
+        let contender_color = match self.worm(z.contender_idx) {
+            Some(c) if timing_out => minimap_color(c.index),
+            Some(c) => WORM_COLOUR_INDEXES[c.index as usize & 1] + 5,
+            None => color,
+        };
+        liero_gfx_draw_dashed_line_box(
+            scr,
+            z.rect.x1 + offs.x,
+            z.rect.y1 + offs.y,
+            color as u8,
+            contender_color as u8,
+            z.contender_frames,
+            self.s.zone_capture_time,
+            z.rect.x2 - z.rect.x1,
+            z.rect.y2 - z.rect.y1,
+            self.s.cycles / 10,
+        );
     }
 
     /// The worm's flickering outline where it will spawn, while Change is held
     /// before it has spawned.
-    unsafe fn draw_spawn_point(&self, scr: &LieroBitmap, worm: &LieroViewWorm, offs: LieroIVec2) {
-        unsafe {
-            if self.s.allow_viewing_spawn_point && worm.pressed_change {
-                let set = &self.s.worm_sprites;
-                let frame = worm.current_frame + worm.direction * 7 * 3 + worm.index * 2 * 7 * 3;
-                if let Some(mem) = set.sprite(frame) {
-                    let x = ftoi(worm.pos.x) - 7 + offs.x;
-                    let y = ftoi(worm.pos.y) - 5 + offs.y;
-                    liero_gfx_blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
-                }
+    fn draw_spawn_point(&self, scr: &LieroBitmap, worm: &LieroViewWorm, offs: LieroIVec2) {
+        if self.s.allow_viewing_spawn_point && worm.pressed_change {
+            let set = &self.s.worm_sprites;
+            let frame = worm.current_frame + worm.direction * 7 * 3 + worm.index * 2 * 7 * 3;
+            if let Some(mem) = set.sprite(frame) {
+                let x = ftoi(worm.pos.x) - 7 + offs.x;
+                let y = ftoi(worm.pos.y) - 5 + offs.y;
+                liero_gfx_blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
             }
         }
     }
@@ -774,7 +737,7 @@ impl<'a> Scene<'a> {
 
     unsafe fn draw_level(&self, scr: &LieroBitmap, offs: LieroIVec2) {
         unsafe {
-            let l = &self.s.level;
+            let l = self.s.level.get();
             liero_gfx_blit_image_no_key_colour(scr, l.data, offs.x, offs.y, l.width, l.height, l.width);
         }
     }
@@ -858,7 +821,7 @@ impl<'a> Scene<'a> {
             let s = self.s;
             let map_x = center_x - 26;
             let map_y = s.render_res_y - 38;
-            liero_level_draw_miniature(&s.level, scr.pixels, scr.pitch, map_x, map_y, 10);
+            s.level.get().draw_miniature(scr, map_x, map_y, 10);
 
             for w in self.worms {
                 if w.visible {
@@ -1080,15 +1043,13 @@ pub unsafe fn liero_viewport_process(vp: &mut LieroViewport, kind: i32, worms: *
 
 /// The positions a predictive bot's plans went through
 /// (`FollowAI::drawDebug`), with `Bitmap::setPixel`'s clipping.
-unsafe fn draw_traces(scr: &LieroBitmap, traces: &[LieroAiTrace], offs: LieroIVec2) {
-    unsafe {
-        let clip = scr.clip;
-        for t in traces {
-            let (x, y) = (ftoi(t.x).wrapping_add(offs.x), ftoi(t.y).wrapping_add(offs.y));
-            let (dx, dy) = (x.wrapping_sub(clip.x1), y.wrapping_sub(clip.y1));
-            if dx >= 0 && dx < clip.x2.wrapping_sub(clip.x1) && dy >= 0 && dy < clip.y2.wrapping_sub(clip.y1) {
-                *scr.pixels.offset(y as isize * scr.pitch as isize + x as isize) = t.color;
-            }
+fn draw_traces(scr: &LieroBitmap, traces: &[LieroAiTrace], offs: LieroIVec2) {
+    let clip = scr.clip;
+    for t in traces {
+        let (x, y) = (ftoi(t.x).wrapping_add(offs.x), ftoi(t.y).wrapping_add(offs.y));
+        let (dx, dy) = (x.wrapping_sub(clip.x1), y.wrapping_sub(clip.y1));
+        if dx >= 0 && dx < clip.x2.wrapping_sub(clip.x1) && dy >= 0 && dy < clip.y2.wrapping_sub(clip.y1) {
+            scr.set(x, y, t.color);
         }
     }
 }
@@ -1266,9 +1227,9 @@ mod tests {
 
     #[test]
     fn traces_are_clipped() {
-        let mut screen = vec![0u8; 10 * 10];
+        let mut screen = [0u8; 10 * 10];
         let scr = LieroBitmap {
-            pixels: screen.as_mut_ptr(),
+            pixels: std::cell::Cell::from_mut(&mut screen[..]).as_slice_of_cells(),
             w: 10,
             h: 10,
             pitch: 10,
@@ -1285,7 +1246,7 @@ mod tests {
             color: 9,
         };
         let traces = [t(0, 4), t(1, 3), t(2, 3), t(5, 6), t(6, 6), t(5, 7), t(4, 2)];
-        unsafe { draw_traces(&scr, &traces, LieroIVec2 { x: 1, y: 0 }) };
+        draw_traces(&scr, &traces, LieroIVec2 { x: 1, y: 0 });
         let set: Vec<(usize, usize)> = (0..100).filter(|&i| screen[i] == 9).map(|i| (i % 10, i / 10)).collect();
         assert_eq!(set, vec![(2, 3), (3, 3)]);
     }
@@ -1318,7 +1279,8 @@ mod tests {
     /// 200 + letter, worm sprites of colour 50 and an empty font.
     struct TestScene {
         level: Vec<u8>,
-        materials: Vec<LieroMaterial>,
+        level_materials: Vec<LieroMaterial>,
+        materials: [LieroMaterial; 256],
         small: Vec<u8>,
         text: Vec<u8>,
         worm_sprites: Vec<u8>,
@@ -1347,7 +1309,8 @@ mod tests {
             };
             TestScene {
                 level: vec![1; 504 * 350],
-                materials: vec![LieroMaterial::default(); 256],
+                level_materials: vec![LieroMaterial::default(); 504 * 350],
+                materials: [LieroMaterial::default(); 256],
                 small: sprites(7, 50, 100),
                 text: sprites(4, 26, 200),
                 worm_sprites: vec![50; 16 * 16 * 84],
@@ -1367,12 +1330,14 @@ mod tests {
         }
 
         fn draw(&mut self, kind: i32, f: impl FnOnce(&mut LieroScene)) {
-            let set = |data: &Vec<u8>, w: i32| LieroSpriteSet {
-                data: data.as_ptr(),
-                width: w,
-                height: w,
-                count: (data.len() / (w * w) as usize) as i32,
-            };
+            fn set(data: &[u8], w: i32) -> LieroSpriteSet<'_> {
+                LieroSpriteSet {
+                    data,
+                    width: w,
+                    height: w,
+                    count: (data.len() / (w * w) as usize) as i32,
+                }
+            }
             use std::ptr::null;
             let mut scene = LieroScene {
                 worms: self.worms.as_ptr(),
@@ -1396,12 +1361,11 @@ mod tests {
                 worm_sprites: set(&self.worm_sprites, 16),
                 fire_cone_sprites: set(&self.worm_sprites, 16),
                 text_sprites: set(&self.text, 4),
-                font: self.font.as_ptr(),
-                font_count: self.font.len(),
-                materials: self.materials.as_ptr(),
+                font: &self.font,
+                materials: &self.materials,
                 level: LieroLevel {
                     data: self.level.as_mut_ptr(),
-                    materials: std::ptr::null_mut(),
+                    materials: self.level_materials.as_mut_ptr(),
                     width: 504,
                     height: 350,
                 },
@@ -1437,7 +1401,7 @@ mod tests {
 
             let mut vp = viewport();
             let scr = LieroBitmap {
-                pixels: self.screen.as_mut_ptr(),
+                pixels: std::cell::Cell::from_mut(&mut self.screen[..]).as_slice_of_cells(),
                 w: 320,
                 h: 200,
                 pitch: 320,

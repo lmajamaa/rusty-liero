@@ -512,8 +512,8 @@ impl LieroStatsScreen {
 
 /// A sprite in the TC, `Sprite` in C++.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroSprite {
-    pub mem: *const u8,
+pub struct LieroSprite<'a> {
+    pub mem: &'a [u8],
     pub width: i32,
     pub height: i32,
     pub pitch: i32,
@@ -521,10 +521,10 @@ pub struct LieroSprite {
 
 /// What the stats screen draws with, besides the stats.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroStatsScene {
-    pub font: LieroFont,
+pub struct LieroStatsScene<'a> {
+    pub font: LieroFont<'a>,
     /// Each worm facing the middle: `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
-    pub worm_sprites: [LieroSprite; 2],
+    pub worm_sprites: [LieroSprite<'a>; 2],
     pub names: [LieroStr; 2],
     pub game_mode: i32,
     pub game_mode_name: LieroStr,
@@ -550,8 +550,8 @@ const PANE_X: i32 = 10;
 /// `StatsRenderer`: lays the screen out from the top down, skipping what is
 /// outside the screen.
 struct Layout<'a> {
-    scr: &'a LieroBitmap,
-    scene: &'a LieroStatsScene,
+    scr: &'a LieroBitmap<'a>,
+    scene: &'a LieroStatsScene<'a>,
     stats: &'a LieroStats,
     pane_width: i32,
     offs_x: i32,
@@ -561,41 +561,35 @@ struct Layout<'a> {
 impl Layout<'_> {
     /// `Font::drawText` for a `gvl::cell`: nothing for an empty text, and
     /// centred or right-aligned on x.
-    unsafe fn text(&self, s: &[u8], place: Place, x: i32, y: i32, color: i32) {
-        unsafe {
-            if s.is_empty() {
-                return;
-            }
-            let x = match place {
-                Place::Left => x,
-                Place::Center => x - self.scene.font.dims(s).0 / 2,
-                Place::Right => x - self.scene.font.dims(s).0,
-            };
-            self.scene.font.text(self.scr, s, x, y, color, 1);
+    fn text(&self, s: &[u8], place: Place, x: i32, y: i32, color: i32) {
+        if s.is_empty() {
+            return;
         }
+        let x = match place {
+            Place::Left => x,
+            Place::Center => x - self.scene.font.dims(s).0 / 2,
+            Place::Right => x - self.scene.font.dims(s).0,
+        };
+        self.scene.font.text(self.scr, s, x, y, color, 1);
     }
 
-    unsafe fn worm_sprite(&self, i: usize, x: i32, y: i32) {
-        unsafe {
-            let s = self.scene.worm_sprites[i];
-            liero_gfx_blit_image(self.scr, s.mem, x, y, s.width, s.height, s.pitch);
-        }
+    fn worm_sprite(&self, i: usize, x: i32, y: i32) {
+        let s = self.scene.worm_sprites[i];
+        liero_gfx_blit_image(self.scr, s.mem, x, y, s.width, s.height, s.pitch);
     }
 
     unsafe fn name(&self, i: usize) -> &[u8] {
         unsafe { self.scene.names[i].bytes() }
     }
 
-    unsafe fn pane(&mut self, n: i32, left_x: i32, top_y: i32, p: impl FnOnce(&mut Self)) {
-        unsafe {
-            let res_x = self.scene.render_res_x;
-            self.offs_x = n.wrapping_mul(res_x).wrapping_add(left_x);
-            if self.offs_x >= -res_x && self.offs_x < res_x {
-                self.y = top_y.wrapping_add(10);
-                liero_gfx_draw_rounded_box(self.scr, self.offs_x + PANE_X, self.y, 0, 2000, self.pane_width);
-                self.y += 10;
-                p(self);
-            }
+    fn pane(&mut self, n: i32, left_x: i32, top_y: i32, p: impl FnOnce(&mut Self)) {
+        let res_x = self.scene.render_res_x;
+        self.offs_x = n.wrapping_mul(res_x).wrapping_add(left_x);
+        if self.offs_x >= -res_x && self.offs_x < res_x {
+            self.y = top_y.wrapping_add(10);
+            liero_gfx_draw_rounded_box(self.scr, self.offs_x + PANE_X, self.y, 0, 2000, self.pane_width);
+            self.y += 10;
+            p(self);
         }
     }
 
@@ -640,16 +634,14 @@ impl Layout<'_> {
 
     /// A row with `name` in the middle and each worm's value beside it.
     unsafe fn draw_worm_stat(&mut self, name: &[u8], stat: impl Fn(&WormStats) -> Vec<u8>) {
-        unsafe {
-            self.hblock(11, |r| {
-                let mid = r.scene.render_res_x / 2 + r.offs_x;
-                r.text(name, Place::Center, mid, r.y, TEXT_COLOR);
-                for i in 0..2 {
-                    let (place, dx) = if i == 0 { (Place::Right, -40) } else { (Place::Left, 40) };
-                    r.text(&stat(&r.stats.worms[i]), place, mid + dx, r.y, TEXT_COLOR);
-                }
-            });
-        }
+        self.hblock(11, |r| {
+            let mid = r.scene.render_res_x / 2 + r.offs_x;
+            r.text(name, Place::Center, mid, r.y, TEXT_COLOR);
+            for i in 0..2 {
+                let (place, dx) = if i == 0 { (Place::Right, -40) } else { (Place::Left, 40) };
+                r.text(&stat(&r.stats.worms[i]), place, mid + dx, r.y, TEXT_COLOR);
+            }
+        });
     }
 
     unsafe fn draw_worm_int(&mut self, name: &[u8], field: impl Fn(&WormStats) -> i32) {
@@ -660,27 +652,23 @@ impl Layout<'_> {
 
     /// A row with `name` left of the middle and `value` right of it.
     unsafe fn draw_stat(&mut self, name: &[u8], value: &[u8]) {
-        unsafe {
-            self.hblock(11, |r| {
-                let mid = r.scene.render_res_x / 2 + r.offs_x;
-                r.text(name, Place::Right, mid, r.y, TEXT_COLOR);
-                r.text(value, Place::Left, mid + 10, r.y, TEXT_COLOR);
-            });
-        }
+        self.hblock(11, |r| {
+            let mid = r.scene.render_res_x / 2 + r.offs_x;
+            r.text(name, Place::Right, mid, r.y, TEXT_COLOR);
+            r.text(value, Place::Left, mid + 10, r.y, TEXT_COLOR);
+        });
     }
 
     /// A heading: level 0 is a section of its own, level 1 a weapon's name.
     unsafe fn section(&mut self, s: &[u8], level: i32) {
-        unsafe {
-            let (x, color) = if level > 0 {
-                (self.offs_x + 40, 3)
-            } else {
-                (self.offs_x + 20, TEXT_COLOR)
-            };
-            self.text(s, Place::Left, x, self.y, color);
-            if level == 0 {
-                self.y += 11;
-            }
+        let (x, color) = if level > 0 {
+            (self.offs_x + 40, 3)
+        } else {
+            (self.offs_x + 20, TEXT_COLOR)
+        };
+        self.text(s, Place::Left, x, self.y, color);
+        if level == 0 {
+            self.y += 11;
         }
     }
 
@@ -720,35 +708,21 @@ impl Layout<'_> {
         }
     }
 
-    unsafe fn graph(&mut self, data: &[f64], height: i32, color: u8, neg_color: u8, balanced: bool) {
-        unsafe {
-            self.y += 2;
-            self.hblock(height, |r| {
-                liero_gfx_draw_graph(
-                    r.scr,
-                    data.as_ptr(),
-                    data.len(),
-                    height,
-                    20 + r.offs_x,
-                    r.y,
-                    color,
-                    neg_color,
-                    balanced,
-                );
-            });
-            self.y += 7;
-        }
+    fn graph(&mut self, data: &[f64], height: i32, color: u8, neg_color: u8, balanced: bool) {
+        self.y += 2;
+        self.hblock(height, |r| {
+            liero_gfx_draw_graph(r.scr, data, height, 20 + r.offs_x, r.y, color, neg_color, balanced);
+        });
+        self.y += 7;
     }
 
-    unsafe fn heatmap(&mut self, hm: &Heatmap) {
-        unsafe {
-            self.y += 2;
-            self.hblock(hm.height, |r| {
-                let x = PANE_X + r.pane_width / 2 - hm.width / 2 + r.offs_x;
-                liero_gfx_draw_heatmap(r.scr, x, r.y, hm.map.as_ptr(), hm.width, hm.height);
-            });
-            self.y += 7;
-        }
+    fn heatmap(&mut self, hm: &Heatmap) {
+        self.y += 2;
+        self.hblock(hm.height, |r| {
+            let x = PANE_X + r.pane_width / 2 - hm.width / 2 + r.offs_x;
+            liero_gfx_draw_heatmap(r.scr, x, r.y, &hm.map, hm.width, hm.height);
+        });
+        self.y += 7;
     }
 }
 
@@ -1036,7 +1010,7 @@ struct StatsPresenter {
     names: [Vec<u8>; 2],
     game_mode_name: Vec<u8>,
     weapon_names: Vec<Vec<u8>>,
-    scene: LieroStatsScene,
+    scene: LieroStatsScene<'static>,
     /// The last frame of the game, row by row.
     bg: Vec<u8>,
     offset: f64,
@@ -1074,12 +1048,13 @@ fn copy_rows(scr: &LieroBitmap, buf: &mut Vec<u8>, save: bool) {
     let (w, h) = (scr.w.max(0) as usize, scr.h.max(0) as usize);
     buf.resize(w * h, 0);
     for y in 0..h {
-        // SAFETY: the bitmap holds h rows of pitch bytes, w of them pixels.
-        let row = unsafe { std::slice::from_raw_parts_mut(scr.pixels.add(y * scr.pitch as usize), w) };
-        if save {
-            buf[y * w..(y + 1) * w].copy_from_slice(row);
-        } else {
-            row.copy_from_slice(&buf[y * w..(y + 1) * w]);
+        let row = &scr.pixels[y * scr.pitch as usize..][..w];
+        for (p, b) in row.iter().zip(&mut buf[y * w..(y + 1) * w]) {
+            if save {
+                *b = p.get();
+            } else {
+                p.set(*b);
+            }
         }
     }
 }
@@ -1125,7 +1100,7 @@ impl Screen for StatsPresenter {
 ///
 /// # Safety
 /// `stats` and `scene` are valid, as in `liero_stats_screen_draw`.
-pub unsafe fn liero_stats_presenter_screen(stats: &LieroStats, scene: &LieroStatsScene) -> LieroScreen {
+pub unsafe fn liero_stats_presenter_screen(stats: &LieroStats, scene: &LieroStatsScene<'static>) -> LieroScreen {
     unsafe {
         let host = crate::screen::current_host();
         host.clear_keys();

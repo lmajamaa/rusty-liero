@@ -171,8 +171,9 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
 pub(super) fn add_screen(f: &mut Fnv, r: &LieroRenderer) {
     let v = r.bmp.view();
     let (w, pitch) = (v.w as usize, v.pitch as usize);
+    let pixels = r.bmp.pixels();
     for y in 0..v.h as usize {
-        f.bytes(&r.bmp.pixels()[y * pitch..y * pitch + w]);
+        f.bytes(&pixels[y * pitch..y * pitch + w]);
     }
     for c in &r.data.pal {
         for x in [c.r, c.g, c.b] {

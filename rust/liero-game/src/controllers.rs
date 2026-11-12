@@ -626,22 +626,21 @@ unsafe fn start_recording(l: &mut Local) -> Result<(), String> {
 /// What the stats screen draws with (`statsScene`).
 ///
 /// # Safety
-/// The game has its TC; `names` are the TC's weapons' names.
+/// The game has its TC, which it keeps while the scene is used; `names`
+/// are the TC's weapons' names.
 pub(crate) unsafe fn stats_scene(
     game: &mut LieroGame,
     r: &crate::renderer::LieroRendererData,
     names: &[LieroStr],
-) -> LieroStatsScene {
+) -> LieroStatsScene<'static> {
     unsafe {
-        let tc = &*game.tc_data();
+        let tc: &'static crate::tc::LieroTcData = &*game.tc_data();
         let sprites = &tc.worm_sprites;
-        let size = sprites.width * sprites.height;
         // `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
         let sprite = |i: i32| {
             let frame = 2 + (if i == 0 { 1 } else { 0 }) * 7 * 3 + i * 2 * 7 * 3;
-            assert!(frame < sprites.count);
             LieroSprite {
-                mem: sprites.data.add((frame * size) as usize),
+                mem: sprites.frame(frame),
                 width: sprites.width,
                 height: sprites.height,
                 pitch: sprites.width,
@@ -841,7 +840,7 @@ pub unsafe fn liero_game_stats_scene(
     r: &LieroRenderer,
     names: *const LieroStr,
     count: usize,
-) -> LieroStatsScene {
+) -> LieroStatsScene<'static> {
     unsafe {
         let names = if count == 0 {
             &[][..]

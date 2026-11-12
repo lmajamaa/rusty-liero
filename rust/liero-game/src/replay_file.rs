@@ -24,7 +24,6 @@ use crate::game_box::{
     liero_game_settings, liero_game_viewport, liero_game_viewport_count, liero_game_worm, liero_game_worm_count,
     liero_worm_data, liero_worm_set_settings, liero_worm_settings, LieroGame, LieroWorm,
 };
-use crate::material::LieroMaterial;
 use crate::replay::{
     checksum, liero_replay_viewport_of, liero_replay_viewport_set, liero_replay_worm_of, liero_replay_worm_set,
     read_checksum, read_frame, read_start, write_end, write_frame, write_start, Game, Level, LieroReplayFrameWorm,
@@ -526,9 +525,7 @@ pub unsafe fn liero_replay_reader_begin(r: &mut LieroReplayReader, game: &mut Li
         }
 
         level.resize(g.level.width as i32, g.level.height as i32);
-        level.set_pixels(&g.level.pixels, |p| LieroMaterial {
-            flags: tc.materials[p as usize],
-        });
+        level.set_pixels(&g.level.pixels, |p| tc.materials[p as usize]);
         for (i, c) in level.data_mut().origpal.iter_mut().enumerate() {
             c.r = g.level.palette[i * 3];
             c.g = g.level.palette[i * 3 + 1];

@@ -8,7 +8,7 @@
 
 use crate::app::{app, LieroApp};
 use crate::fs::{join_path, Node};
-use crate::level::{liero_level_draw_miniature, LieroLevelBox};
+use crate::level::LieroLevelBox;
 use crate::menus::{
     LIERO_MAIN_REPLAY, LIERO_SELECTOR_LEVEL, LIERO_SELECTOR_OPTIONS, LIERO_SELECTOR_PROFILE, LIERO_SELECTOR_REPLAY,
 };
@@ -126,25 +126,13 @@ fn preview_level(node: &Node) {
     let tc = a.tc_data();
     let mut level = LieroLevelBox::new();
     let powerlevel = a.menu_settings().data.load_powerlevel_palette;
-    // SAFETY: the TC's data lives as long as it does.
-    if !unsafe { level.load(&tc.level_common(), &tc.palette_colors, powerlevel, &bytes) } {
+    if !level.load(&tc.level_common(), &tc.palette_colors, powerlevel, &bytes) {
         return;
     }
-    let l = level.data().level;
     let center_x = a.single.data.render_res_x / 2;
     let (play, spectator) = (a.frozen.view(), a.frozen_spectator.view());
-    // SAFETY: the miniatures fit the frozen screens.
-    unsafe {
-        liero_level_draw_miniature(&l, play.pixels, play.pitch, 134, 162, 10);
-        liero_level_draw_miniature(
-            &l,
-            spectator.pixels,
-            spectator.pitch,
-            center_x - 126,
-            a.single.data.render_res_y - 208,
-            2,
-        );
-    }
+    level.draw_miniature(&play, 134, 162, 10);
+    level.draw_miniature(&spectator, center_x - 126, a.single.data.render_res_y - 208, 2);
 }
 
 impl FileSource for AppFiles {

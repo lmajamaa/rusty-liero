@@ -19,9 +19,7 @@ use std::ffi::c_void;
 use std::ptr::{addr_of_mut, null_mut};
 
 use crate::game::{stats_worms, Game, LieroBonusState, LieroGameHooks, LieroRect};
-use crate::level::{
-    liero_level_blit_image, liero_level_correct_shadow, liero_level_draw_dirt_effect, LieroLevelCommon,
-};
+use crate::level::LieroLevelCommon;
 use crate::math::{cos_sin, ftoi, itof, LieroIVec2};
 use crate::object::LieroBObject;
 use crate::object::{
@@ -328,9 +326,9 @@ impl<'a> World<'a> {
     fn common(&self) -> LieroLevelCommon {
         let tc = self.tc();
         LieroLevelCommon {
-            materials: tc.materials.as_ptr().cast(),
+            materials: tc.materials.as_ptr(),
             textures: tc.textures.as_ptr(),
-            large_sprites: tc.large_sprites.data,
+            large_sprites: tc.large_sprites.pixels().as_ptr(),
             large_sprite_count: tc.large_sprites.count,
         }
     }
@@ -707,12 +705,12 @@ impl<'a> World<'a> {
             }
 
             if t.dirt_effect >= 0 {
-                let level = self.g.f.level;
-                let common = self.common();
-                liero_level_draw_dirt_effect(&level, &common, &mut *self.rand_ptr(), t.dirt_effect, x - 7, y - 7);
+                let mut level = self.g.f.level.get();
+                let common = self.tc().level_common();
+                level.draw_dirt_effect(&common, &mut *self.rand_ptr(), t.dirt_effect, x - 7, y - 7);
 
                 if self.g.s.shadow {
-                    liero_level_correct_shadow(&level, &common, x - 10, y - 10, x + 11, y + 11);
+                    level.correct_shadow(&common, x - 10, y - 10, x + 11, y + 11);
                 }
             }
 
@@ -812,11 +810,10 @@ impl<'a> World<'a> {
                 return false;
             }
 
-            let sprites = &self.tc().worm_sprites;
-            let frame = (*w).current_frame + (*w).direction * 7 * 3;
-            assert!(frame >= 0 && frame < sprites.count);
-            let size = (sprites.width * sprites.height) as usize;
-            let sprite = sprites.data.add(frame as usize * size);
+            let sprite = self
+                .tc()
+                .worm_sprites
+                .frame((*w).current_frame + (*w).direction * 7 * 3);
 
             let delta_x = x - ftoi((*w).pos.x) + 7;
             let delta_y = y - ftoi((*w).pos.y) + 5;
@@ -830,8 +827,8 @@ impl<'a> World<'a> {
             for cy in y1..y2 {
                 for cx in x1..x2 {
                     assert!(cy * 16 + cx < 16 * 16);
-                    let pix = *sprite.add((cy * 16 + cx) as usize);
-                    if materials[pix as usize] & crate::material::LIERO_MATERIAL_WORM != 0 {
+                    let pix = sprite[(cy * 16 + cx) as usize];
+                    if materials[pix as usize].flags & crate::material::LIERO_MATERIAL_WORM != 0 {
                         return true;
                     }
                 }
@@ -1543,18 +1540,14 @@ unsafe fn n_draw_on_map(ctx_: *mut c_void, x: i32, y: i32) {
     unsafe {
         let c: &NObjectContext = ctx(ctx_);
         let t = &*((*c.obj).kind as *const LieroTcNObject);
-        let sprites = &c.w.tc().small_sprites;
-        let frame = t.start_frame + (*c.obj).cur_frame;
-        assert!(frame >= 0 && frame < sprites.count);
-        let sprite = sprites.data.add((frame * sprites.width * sprites.height) as usize);
-
-        let level = c.w.g.f.level;
-        let common = c.w.common();
-        liero_level_blit_image(&level, &common, sprite, x, y, 7, 7);
+        let sprite = c.w.tc().small_sprites.frame(t.start_frame + (*c.obj).cur_frame);
+        let mut level = c.w.g.f.level.get();
+        let common = c.w.tc().level_common();
+        level.blit_image(&common, sprite, x, y, 7, 7);
         // x and y are 3 left of and above the object. This seems like an overly
         // large rectangle.
         if c.w.g.s.shadow {
-            liero_level_correct_shadow(&level, &common, x - 5, y - 5, x + 12, y + 12);
+            level.correct_shadow(&common, x - 5, y - 5, x + 12, y + 12);
         }
     }
 }

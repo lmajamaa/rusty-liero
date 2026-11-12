@@ -616,27 +616,17 @@ pub unsafe fn liero_menu_closest_name(names: *const LieroStr, count: i32, search
 }
 
 /// A colour component's bar in the player menu: `PlayerMenu::drawItemOverlay`.
-///
-/// # Safety
-/// See `LieroBitmap`.
-pub unsafe fn liero_menu_draw_rgb_overlay(scr: &LieroBitmap, x: i32, y: i32, selected: bool, value: i32, color: i32) {
-    unsafe {
-        liero_gfx_draw_rounded_box(scr, x + 24, y, if selected { 168 } else { 0 }, 7, value - 1);
-        liero_gfx_fill_rect(scr, x + 25, y + 1, value, 5, color as u8);
-    }
+pub fn liero_menu_draw_rgb_overlay(scr: &LieroBitmap, x: i32, y: i32, selected: bool, value: i32, color: i32) {
+    liero_gfx_draw_rounded_box(scr, x + 24, y, if selected { 168 } else { 0 }, 7, value - 1);
+    liero_gfx_fill_rect(scr, x + 25, y + 1, value, 5, color as u8);
 }
 
 /// The palette entry shown in the options menu: `HiddenMenu::drawItemOverlay`.
-///
-/// # Safety
-/// See `LieroBitmap`.
-pub unsafe fn liero_menu_draw_palette_overlay(scr: &LieroBitmap, x: i32, y: i32, selected: bool, color: i32) {
-    unsafe {
-        let w = 30;
-        let offs_x = 44;
-        liero_gfx_draw_rounded_box(scr, x + offs_x, y, if selected { 168 } else { 0 }, 7, w);
-        liero_gfx_fill_rect(scr, x + offs_x + 1, y + 1, w + 1, 5, color as u8);
-    }
+pub fn liero_menu_draw_palette_overlay(scr: &LieroBitmap, x: i32, y: i32, selected: bool, color: i32) {
+    let w = 30;
+    let offs_x = 44;
+    liero_gfx_draw_rounded_box(scr, x + offs_x, y, if selected { 168 } else { 0 }, 7, w);
+    liero_gfx_fill_rect(scr, x + offs_x + 1, y + 1, w + 1, 5, color as u8);
 }
 
 /// The level, "A vs B" and the worms' colours, twice as big, as the spectator
@@ -673,25 +663,17 @@ pub unsafe fn liero_menu_draw_versus(
 }
 
 /// A message in a box centred on (x, y): `drawInfoBox`.
-///
-/// # Safety
-/// See `LieroBitmap`; `text` must be valid.
-pub unsafe fn liero_menu_draw_info_box(scr: &LieroBitmap, font: &LieroFont, text: &[u8], x: i32, y: i32) {
-    unsafe {
-        let (width, height) = font.dims(text);
-        let cx = x - width / 2 - 2;
-        let cy = y - height / 2 - 2;
-        liero_gfx_draw_rounded_box(scr, cx, cy, 0, height + 1, width + 1);
-        font.text(scr, text, cx + 2, cy + 2, 6, 1);
-    }
+pub fn liero_menu_draw_info_box(scr: &LieroBitmap, font: &LieroFont, text: &[u8], x: i32, y: i32) {
+    let (width, height) = font.dims(text);
+    let cx = x - width / 2 - 2;
+    let cy = y - height / 2 - 2;
+    liero_gfx_draw_rounded_box(scr, cx, cy, 0, height + 1, width + 1);
+    font.text(scr, text, cx + 2, cy + 2, 6, 1);
 }
 
 /// Text being typed in a box at (x, y), over a strip of `frozen`, the screen
 /// before the box: `drawInputBox`.
-///
-/// # Safety
-/// See `LieroBitmap`; `text` must be valid.
-pub unsafe fn liero_menu_draw_input_box(
+pub fn liero_menu_draw_input_box(
     scr: &LieroBitmap,
     frozen: &LieroBitmap,
     font: &LieroFont,
@@ -700,25 +682,26 @@ pub unsafe fn liero_menu_draw_input_box(
     y: i32,
     centered: bool,
 ) {
-    unsafe {
-        let width = font.dims(text).0;
-        let adjust = if centered { width / 2 } else { 0 };
-        let clr_x = x - 10 - adjust;
+    let width = font.dims(text).0;
+    let adjust = if centered { width / 2 } else { 0 };
+    let clr_x = x - 10 - adjust;
 
-        // C++ copies clr_x + 10 + width pixels a row, 8 rows, from (clr_x, y) of
-        // `frozen`, so this is a width, not an x. Skip it where it would read
-        // outside `frozen`.
-        let copy_w = clr_x + 10 + width;
-        let start = y as i64 * frozen.pitch as i64 + clr_x as i64;
-        let end = start + 7 * frozen.pitch as i64 + copy_w as i64;
-        if start >= 0 && end <= frozen.pitch as i64 * frozen.h as i64 {
-            let mem = frozen.pixels.offset(start as isize);
-            liero_gfx_blit_image_no_key_colour(scr, mem, clr_x, y, copy_w, 8, frozen.pitch);
-        }
-
-        liero_gfx_draw_rounded_box(scr, x - 2 - adjust, y, 0, 7, width);
-        font.text(scr, text, x - adjust, y + 1, 50, 1);
+    // C++ copies clr_x + 10 + width pixels a row, 8 rows, from (clr_x, y) of
+    // `frozen`, so this is a width, not an x. Skip it where it would read
+    // outside `frozen`.
+    let copy_w = clr_x + 10 + width;
+    let start = y as i64 * frozen.pitch as i64 + clr_x as i64;
+    let end = start + 7 * frozen.pitch as i64 + copy_w as i64;
+    if start >= 0 && end <= frozen.pitch as i64 * frozen.h as i64 {
+        let mem: Vec<u8> = frozen.pixels[start as usize..end as usize]
+            .iter()
+            .map(|p| p.get())
+            .collect();
+        liero_gfx_blit_image_no_key_colour(scr, &mem, clr_x, y, copy_w, 8, frozen.pitch);
     }
+
+    liero_gfx_draw_rounded_box(scr, x - 2 - adjust, y, 0, 7, width);
+    font.text(scr, text, x - adjust, y + 1, 50, 1);
 }
 
 const SCANCODE_TAB: u32 = 43;
@@ -1049,9 +1032,7 @@ pub fn liero_menu_box_set_visibility(b: &mut LieroMenuBox, item: i32, state: boo
     b.0.with(|m, items, n| unsafe { liero_menu_set_visibility(m, items, n, item, state) });
 }
 
-/// # Safety
-/// As for `liero_menu_draw`.
-pub unsafe fn liero_menu_box_draw(
+pub fn liero_menu_box_draw(
     b: &mut LieroMenuBox,
     scr: &LieroBitmap,
     font: &LieroFont,
@@ -1236,10 +1217,7 @@ mod tests {
             };
             250
         ];
-        let font = LieroFont {
-            chars: chars.as_ptr(),
-            count: chars.len(),
-        };
+        let font = LieroFont { chars: &chars };
         let hooks = LieroMenuHooks {
             ctx: std::ptr::null_mut(),
             draw_overlay: no_overlay,
@@ -1254,7 +1232,7 @@ mod tests {
             m.centered = centered;
             let mut px = vec![255u8; 200 * 50];
             let scr = LieroBitmap {
-                pixels: px.as_mut_ptr(),
+                pixels: std::cell::Cell::from_mut(&mut px[..]).as_slice_of_cells(),
                 w: 200,
                 h: 50,
                 pitch: 200,

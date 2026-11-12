@@ -37,7 +37,7 @@ impl Screen for InfoBox {
                 host.fill_screen(BG_COLOR);
             }
             if let (Some(scr), Some(font)) = (host.screen(), host.font()) {
-                unsafe { liero_menu_draw_info_box(&scr, &font, &self.text, self.x, self.y) };
+                liero_menu_draw_info_box(&scr, &font, &self.text, self.x, self.y);
             }
             self.shown = true;
             return Tick::stay(true);
@@ -135,7 +135,7 @@ impl Screen for InputBox {
         let mut shown = self.buffer.clone();
         shown.push(b'_');
         if let (Some(scr), Some(frozen), Some(font)) = (host.screen(), host.frozen(), host.font()) {
-            unsafe { liero_menu_draw_input_box(&scr, &frozen, &font, &shown, self.x, self.y, true) };
+            liero_menu_draw_input_box(&scr, &frozen, &font, &shown, self.x, self.y, true);
         }
         host.text_input(true);
         self.shown = true;
@@ -237,9 +237,6 @@ mod tests {
             process: Some(process),
             clear_keys: Some(clear),
             play_sound: Some(sound),
-            screen: None,
-            frozen: None,
-            font: None,
             fill_screen: None,
             menu_palette: None,
             text_input: Some(text_input),

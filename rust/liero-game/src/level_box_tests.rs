@@ -27,12 +27,11 @@ impl Tables {
         }
     }
 
-    fn common(&self) -> LieroLevelCommon {
-        LieroLevelCommon {
-            materials: self.materials.as_ptr(),
-            textures: self.textures.as_ptr(),
-            large_sprites: self.sprites.as_ptr(),
-            large_sprite_count: 110,
+    fn common(&self) -> Common<'_> {
+        Common {
+            materials: &self.materials,
+            textures: &self.textures,
+            large_sprites: &self.sprites,
         }
     }
 }
@@ -66,7 +65,7 @@ fn a_level_file_has_its_pixels_and_materials() {
     let t = Tables::new();
     let mut l = LieroLevelBox::new();
     l.data_mut().origpal[3].r = 9;
-    assert!(unsafe { l.load(&t.common(), &exepal(), true, &lev(&[])) });
+    assert!(l.load(&t.common(), &exepal(), true, &lev(&[])));
     assert_eq!(
         (l.data().level.width, l.data().level.height),
         (LIERO_LEVEL_WIDTH, LIERO_LEVEL_HEIGHT)
@@ -79,7 +78,7 @@ fn a_level_file_has_its_pixels_and_materials() {
     let mut l = LieroLevelBox::new();
     let mut short = lev(&[]);
     short.truncate(PIXELS - 1);
-    assert!(!unsafe { l.load(&t.common(), &exepal(), true, &short) });
+    assert!(!l.load(&t.common(), &exepal(), true, &short));
     assert_eq!((l.pixels()[0], l.pixels()[PIXELS - 1]), (5, 0));
 }
 
@@ -88,7 +87,7 @@ fn a_powerlevel_palette_is_read_when_asked_for() {
     let t = Tables::new();
     let pal = exepal();
     let mut l = LieroLevelBox::new();
-    assert!(unsafe { l.load(&t.common(), &pal, true, &powerlevel(768)) });
+    assert!(l.load(&t.common(), &pal, true, &powerlevel(768)));
     let o = l.data().origpal;
     // The top two bits of each component are dropped.
     assert_eq!((o[0].r, o[0].g, o[0].b), (0, 1, 2));
@@ -98,12 +97,12 @@ fn a_powerlevel_palette_is_read_when_asked_for() {
     );
 
     // Not asked for, or another mark: the TC's.
-    assert!(unsafe { l.load(&t.common(), &pal, false, &powerlevel(768)) });
+    assert!(l.load(&t.common(), &pal, false, &powerlevel(768)));
     assert_eq!(l.data().origpal, pal);
-    assert!(unsafe { l.load(&t.common(), &pal, true, &lev(b"POWER")) });
+    assert!(l.load(&t.common(), &pal, true, &lev(b"POWER")));
     assert_eq!(l.data().origpal, pal);
     // The mark with a palette cut short fails.
-    assert!(!unsafe { l.load(&t.common(), &pal, true, &powerlevel(767)) });
+    assert!(!l.load(&t.common(), &pal, true, &powerlevel(767)));
 }
 
 #[test]

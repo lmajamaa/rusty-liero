@@ -13,7 +13,7 @@ use crate::game_box::{
     liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_worm_ai,
     liero_worm_set_ai, LieroGame,
 };
-use crate::level::{liero_level_box_swap, LieroLevelBox};
+use crate::level::LieroLevelBox;
 use crate::renderer::LieroRenderer;
 use crate::replay_file::{
     liero_replay_writer_begin, liero_replay_writer_frame, liero_replay_writer_free, liero_replay_writer_new,
@@ -274,7 +274,7 @@ pub(super) fn set_up_game(
 
         let mut level = LieroLevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, s, &mut a.rand);
-        liero_level_box_swap(game.level_box_mut(), &mut level);
+        std::mem::swap(game.level_box_mut(), &mut level);
 
         let ws = liero_weapsel_start(&mut game);
         liero_weapsel_finish(&mut *ws);

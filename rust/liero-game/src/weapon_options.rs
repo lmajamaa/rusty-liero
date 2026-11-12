@@ -107,11 +107,9 @@ impl WeaponOptions {
         let (Some(scr), Some(font)) = (host.screen(), host.font()) else {
             return;
         };
-        unsafe {
-            for (x, title) in [(179, &self.weapon_title), (249, &self.availability_title)] {
-                liero_gfx_draw_rounded_box(&scr, x, 20, 0, 7, font.dims(title).0);
-                font.text(&scr, title, x + 2, 21, 50, 1);
-            }
+        for (x, title) in [(179, &self.weapon_title), (249, &self.availability_title)] {
+            liero_gfx_draw_rounded_box(&scr, x, 20, 0, 7, font.dims(title).0);
+            font.text(&scr, title, x + 2, 21, 50, 1);
         }
         self.menu.draw(&scr, &font, false, -1, false);
     }

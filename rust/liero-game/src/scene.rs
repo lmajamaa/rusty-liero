@@ -4,8 +4,7 @@
 
 use crate::ai::{liero_worm_ai_traces, LieroWormAi};
 use crate::game::{LieroGameFields, LieroGameSettings};
-use crate::gfx::{LieroBitmap, LieroFontChar};
-use crate::material::LieroMaterial;
+use crate::gfx::LieroBitmap;
 use crate::tc::{c, h, s, LieroTcData, LieroTcNObject, LieroTcSprites, LieroTcWeapon};
 use crate::text::LieroStr;
 use crate::viewport::{
@@ -39,9 +38,9 @@ unsafe fn slice<'a, T>(p: *const T, n: i32) -> &'a [T] {
     }
 }
 
-fn sprites(s: &LieroTcSprites) -> LieroSpriteSet {
+fn sprites(s: &LieroTcSprites) -> LieroSpriteSet<'_> {
     LieroSpriteSet {
-        data: s.data,
+        data: s.pixels(),
         width: s.width,
         height: s.height,
         count: s.count,
@@ -188,9 +187,8 @@ pub unsafe fn liero_game_draw_viewport(
             worm_sprites: sprites(&tc.worm_sprites),
             fire_cone_sprites: sprites(&tc.fire_cone_sprites),
             text_sprites: sprites(&tc.text_sprites),
-            font: tc.font.as_ptr() as *const LieroFontChar,
-            font_count: tc.font.len(),
-            materials: tc.materials.as_ptr() as *const LieroMaterial,
+            font: &tc.font,
+            materials: &tc.materials,
             level: game.level,
             bonus_frames: tc.bonus_frames,
 

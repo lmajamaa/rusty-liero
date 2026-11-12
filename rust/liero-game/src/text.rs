@@ -74,51 +74,30 @@ pub fn time_to_string_ex(mut ms: i32, force_hours: bool, force_minutes: bool) ->
 
 /// The game font, `Font` in C++.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroFont {
-    pub chars: *const LieroFontChar,
-    pub count: usize,
+pub struct LieroFont<'a> {
+    pub chars: &'a [LieroFontChar],
 }
 
-impl LieroFont {
+impl LieroFont<'_> {
     /// `Font::drawText`.
-    pub(crate) unsafe fn text(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
-        unsafe {
-            liero_font_draw_text(
-                scr,
-                self.chars,
-                self.count,
-                text.as_ptr(),
-                text.len(),
-                x,
-                y,
-                color as u8,
-                size,
-            );
-        }
+    pub(crate) fn text(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
+        liero_font_draw_text(scr, self.chars, text, x, y, color as u8, size);
     }
 
     /// `Font::drawChar`.
-    pub(crate) unsafe fn char(&self, scr: &LieroBitmap, c: u8, x: i32, y: i32, color: i32) {
-        unsafe {
-            liero_font_draw_char(scr, self.chars, self.count, c, x, y, color as u8, 1);
-        }
+    pub(crate) fn char(&self, scr: &LieroBitmap, c: u8, x: i32, y: i32, color: i32) {
+        liero_font_draw_char(scr, self.chars, c, x, y, color as u8, 1);
     }
 
     /// `Font::getDims`: the width, and the height.
-    pub(crate) unsafe fn dims(&self, text: &[u8]) -> (i32, i32) {
-        unsafe {
-            let mut height = 0;
-            let width = liero_font_get_dims(self.chars, self.count, text.as_ptr(), text.len(), &mut height);
-            (width, height)
-        }
+    pub(crate) fn dims(&self, text: &[u8]) -> (i32, i32) {
+        liero_font_get_dims(self.chars, text)
     }
 
     /// `Font::drawCenteredText`.
-    pub(crate) unsafe fn centered(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
-        unsafe {
-            let len = self.dims(text).0 * size;
-            self.text(scr, text, x - len / 2, y, color, size);
-        }
+    pub(crate) fn centered(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
+        let len = self.dims(text).0 * size;
+        self.text(scr, text, x - len / 2, y, color, size);
     }
 }
 

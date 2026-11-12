@@ -95,9 +95,8 @@ fn the_stats_screen_shows_each_worm_facing_the_middle() {
     unsafe {
         let s = stats_scene(game, &app().play.data, &[]);
         let sprites = &(*game.tc_data()).worm_sprites;
-        let size = (sprites.width * sprites.height) as usize;
-        assert_eq!(s.worm_sprites[0].mem, sprites.data.add(23 * size));
-        assert_eq!(s.worm_sprites[1].mem, sprites.data.add(44 * size));
+        assert_eq!(s.worm_sprites[0].mem, sprites.frame(23));
+        assert_eq!(s.worm_sprites[1].mem, sprites.frame(44));
         assert_eq!((s.names[0].bytes(), s.names[1].bytes()), (&b"left"[..], &b"right"[..]));
         assert_eq!((s.game_mode, s.game_mode_name.bytes()), (2, &b"Holdazone"[..]));
     }

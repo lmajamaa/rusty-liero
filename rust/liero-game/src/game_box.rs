@@ -14,7 +14,7 @@ use crate::ai::LieroWormAi;
 use crate::controller::LIERO_STATE_GAME;
 use crate::game::LieroGameSettings;
 use crate::game::{LieroGameData, LieroGameFields, LieroGameWorm, LieroRect};
-use crate::gfx::LieroColor;
+use crate::gfx::LieroPalette;
 use crate::level::LieroLevelBox;
 use crate::renderer::{LieroRenderer, LieroRendererData};
 use crate::scene::{liero_game_draw_viewport, LieroDrawSettings};
@@ -218,7 +218,7 @@ impl LieroGame {
     pub(crate) unsafe fn focus(&mut self, r: *mut LieroRenderer) {
         unsafe {
             let level_pal = self.level.data().origpal;
-            liero_game_origpal(self, (*r).data.origpal.as_mut_ptr(), level_pal.as_ptr());
+            liero_game_origpal(self, &mut (*r).data.origpal, &level_pal);
         }
     }
 
@@ -246,8 +246,8 @@ impl LieroGame {
             liero_game_view_free(v);
             let data = &mut (*r).data;
             crate::gfx::liero_game_palette(
-                data.pal.as_mut_ptr(),
-                data.origpal.as_ptr(),
+                &mut data.pal,
+                &data.origpal,
                 &(*self.tc).color_anim,
                 self.data.cycles,
                 data.fade_value,
@@ -531,18 +531,12 @@ pub fn liero_game_viewport(g: &mut LieroGame, spectator_list: bool, i: usize) ->
 
 /// The palette the game starts from (`Game::updateSettings`): the level's,
 /// with the first two worms' colours from their settings.
-///
-/// # Safety
-/// `origpal` and `level_pal` hold 256 entries, and the listed worms have
-/// settings.
-pub unsafe fn liero_game_origpal(g: &LieroGame, origpal: *mut LieroColor, level_pal: *const LieroColor) {
-    unsafe {
-        std::ptr::copy_nonoverlapping(level_pal, origpal, 256);
-        for w in g.worms().flatten() {
-            if (0..2).contains(&w.data.index) {
-                let s = w.settings();
-                crate::gfx::liero_palette_set_worm_colour(origpal, w.data.index, s.data.color, &s.data.rgb);
-            }
+pub fn liero_game_origpal(g: &LieroGame, origpal: &mut LieroPalette, level_pal: &LieroPalette) {
+    *origpal = *level_pal;
+    for w in g.worms().flatten() {
+        if (0..2).contains(&w.data.index) {
+            let s = w.settings();
+            crate::gfx::liero_palette_set_worm_colour(origpal, w.data.index, s.data.color, &s.data.rgb);
         }
     }
 }
@@ -665,7 +659,6 @@ pub unsafe fn liero_game_view_free(v: *mut LieroGameView) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::level::liero_level_box_resize;
     use crate::settings::{liero_worm_settings_box_free, liero_worm_settings_box_new};
     use crate::worm::LIERO_GAME_HOLDAZONE;
 
@@ -742,12 +735,12 @@ mod tests {
             // So is the level, but not the settings.
             let set = crate::settings::liero_settings_box_new();
             liero_game_set_context(&mut *g, set, std::ptr::null_mut(), LieroSoundOut::NONE);
-            liero_level_box_resize(&mut *liero_game_level(&mut *g), 3, 2);
+            (*liero_game_level(&mut *g)).resize(3, 2);
             let d = &mut *liero_game_clone(&*g);
             assert_eq!(liero_game_settings(d), set);
             assert_ne!(liero_game_level(d), liero_game_level(&mut *g));
             assert_eq!((*liero_game_level(d)).data().level.width, 3);
-            liero_level_box_resize(&mut *liero_game_level(&mut *g), 1, 1);
+            (*liero_game_level(&mut *g)).resize(1, 1);
             assert_eq!((*liero_game_level(d)).data().level.width, 3);
             // Assigning copies them too, keeping the level's address.
             let l = liero_game_level(c);
@@ -833,15 +826,15 @@ mod tests {
                 (*b).data.rgb = [63, 0, 0];
             }
             let g = &mut *game(s);
-            let level = [LieroColor {
+            let level = [crate::gfx::LieroColor {
                 r: 1,
                 g: 2,
                 b: 3,
                 unused: 0,
             }; 256];
-            let mut pal = [LieroColor::default(); 256];
+            let mut pal = [crate::gfx::LieroColor::default(); 256];
             (*liero_game_worm(g, 2)).data.index = 1;
-            liero_game_origpal(g, pal.as_mut_ptr(), level.as_ptr());
+            liero_game_origpal(g, &mut pal, &level);
             // The first worm's colour, and the second's from the worm at
             // index 1, not the empty place.
             assert_eq!((pal[0x50].r, pal[0x59].r), (63, 63));
@@ -850,7 +843,7 @@ mod tests {
             assert_eq!((pal[0].r, pal[255].b), (1, 3));
             // Only the first two indexes have colours.
             (*liero_game_worm(g, 0)).data.index = 2;
-            liero_game_origpal(g, pal.as_mut_ptr(), level.as_ptr());
+            liero_game_origpal(g, &mut pal, &level);
             assert_eq!(pal[0x50].r, 1);
             liero_game_free(g);
             for b in s {
@@ -954,7 +947,7 @@ mod tests {
             (*set).data.game_mode = LIERO_GAME_HOLDAZONE as u32;
             (*set).data.blood = 37;
             liero_game_set_context(g, set, std::ptr::null_mut(), LieroSoundOut::NONE);
-            liero_level_box_resize(&mut *liero_game_level(g), 5, 4);
+            (*liero_game_level(g)).resize(5, 4);
             let v = liero_game_view_new(g);
             let f = &*liero_game_view_fields(&*v);
             assert_eq!((f.level.width, f.level.height), (5, 4));

@@ -133,19 +133,15 @@ pub struct LieroTcSound {
     pub sample_count: usize,
 }
 
+/// A TC's sprites: `count` of `width` x `height` pixels, one after the
+/// other. Only this module makes them, pointing into storage the TC owns,
+/// and they live in the TC's `LieroTcData`, so a borrow of one is a borrow
+/// of the TC.
 pub struct LieroTcSprites {
-    pub data: *const u8,
+    data: *const u8,
     pub width: i32,
     pub height: i32,
     pub count: i32,
-}
-
-// `repr(C)`: the font is read as `LieroFontChar`s, with the same fields.
-#[repr(C)]
-pub struct LieroTcFontChar {
-    /// 7x8 pixels, row-major: 8 where set.
-    pub data: [u8; 56],
-    pub width: i32,
 }
 
 /// Characters in the font (`Font::chars`).
@@ -174,7 +170,7 @@ pub struct LieroTcData {
     pub palette_colors: [LieroColor; 256],
     /// (from, to) for each of 4 colour animations.
     pub color_anim: [i32; 8],
-    pub materials: [u8; 256],
+    pub materials: [crate::material::LieroMaterial; 256],
     pub textures: [LieroTexture; LIERO_TEXTURE_COUNT],
     /// [bonus * 2 + (0 = timer, 1 = timerV)].
     pub bonus_rand_timer: [i32; 4],
@@ -185,7 +181,7 @@ pub struct LieroTcData {
     pub small_sprites: LieroTcSprites,
     pub large_sprites: LieroTcSprites,
     pub text_sprites: LieroTcSprites,
-    pub font: [LieroTcFontChar; LIERO_TC_FONT_CHARS],
+    pub font: [crate::gfx::LieroFontChar; LIERO_TC_FONT_CHARS],
     /// Precomputed: weapon indexes sorted by name, and the worm and fire cone
     /// sprites facing both ways (`Common::precompute`).
     pub weap_order: *const i32,
@@ -215,6 +211,26 @@ fn str(s: &[u8]) -> LieroStr {
     LieroStr {
         ptr: s.as_ptr(),
         len: s.len(),
+    }
+}
+
+impl LieroTcSprites {
+    /// Every sprite's pixels.
+    pub fn pixels(&self) -> &[u8] {
+        let len = (self.width.max(0) * self.height.max(0) * self.count.max(0)) as usize;
+        if len == 0 {
+            return &[];
+        }
+        // SAFETY: `data` points to the sprites, which the TC owns and keeps
+        // for as long as its data, which `self` is borrowed from.
+        unsafe { std::slice::from_raw_parts(self.data, len) }
+    }
+
+    /// Sprite `frame`'s pixels. Panics on a frame there isn't.
+    pub fn frame(&self, frame: i32) -> &[u8] {
+        assert!(0 <= frame && frame < self.count, "no sprite {frame}");
+        let size = (self.width * self.height) as usize;
+        &self.pixels()[frame as usize * size..][..size]
     }
 }
 
@@ -480,11 +496,11 @@ impl LieroTc {
             r_frame: t.r_frame,
         });
         let font = std::array::from_fn(|i| match c.font.get(i) {
-            Some(ch) => LieroTcFontChar {
+            Some(ch) => crate::gfx::LieroFontChar {
                 data: ch.data,
                 width: ch.width as i32,
             },
-            None => LieroTcFontChar {
+            None => crate::gfx::LieroFontChar {
                 data: [0; 56],
                 width: 0,
             },
@@ -513,7 +529,7 @@ impl LieroTc {
                 unused: 0,
             }),
             color_anim,
-            materials: c.materials,
+            materials: c.materials.map(|flags| crate::material::LieroMaterial { flags }),
             textures,
             bonus_rand_timer: [
                 c.bonus_rand_timer[0][0],
@@ -551,12 +567,11 @@ impl LieroTc {
 
 impl LieroTcData {
     /// What levels are made with (`Common::levelCommon`).
-    pub(crate) fn level_common(&self) -> crate::level::LieroLevelCommon {
-        crate::level::LieroLevelCommon {
-            materials: self.materials.as_ptr().cast(),
-            textures: self.textures.as_ptr(),
-            large_sprites: self.large_sprites.data,
-            large_sprite_count: self.large_sprites.count,
+    pub(crate) fn level_common(&self) -> crate::level::Common<'_> {
+        crate::level::Common {
+            materials: &self.materials,
+            textures: &self.textures,
+            large_sprites: self.large_sprites.pixels(),
         }
     }
 }

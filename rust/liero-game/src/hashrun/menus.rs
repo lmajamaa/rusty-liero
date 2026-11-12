@@ -20,7 +20,7 @@ use crate::game_box::{
 use crate::item::{
     liero_item_enter, liero_item_left_right, liero_item_value_text, LieroItemAction, LieroItemBehavior, LieroItemKind,
 };
-use crate::level::{liero_level_box_swap, LieroLevelBox};
+use crate::level::LieroLevelBox;
 use crate::menu::{
     liero_menu_box_add, liero_menu_box_count, liero_menu_box_draw, liero_menu_box_free, liero_menu_box_id,
     liero_menu_box_item, liero_menu_box_move_to, liero_menu_box_movement, liero_menu_box_movement_page,
@@ -236,16 +236,14 @@ impl Ops {
         let font = a.font();
         let scr = r.bmp.view();
         match self {
-            // SAFETY: the bitmap is the renderer's.
-            Ops::Menus(kind) => unsafe { liero_menus_draw(menus(a), *kind, &scr, &font, disabled, x, show) },
+            Ops::Menus(kind) => liero_menus_draw(menus(a), *kind, &scr, &font, disabled, x, show),
             Ops::Availability(_) => {
                 unsafe fn no_overlay(_: *mut std::ffi::c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
                 let hooks = LieroMenuHooks {
                     ctx: std::ptr::null_mut(),
                     draw_overlay: no_overlay,
                 };
-                // SAFETY: as above.
-                unsafe { liero_menu_box_draw(b, &scr, &font, &hooks, disabled, x, show) };
+                liero_menu_box_draw(b, &scr, &font, &hooks, disabled, x, show);
             }
         }
     }
@@ -514,8 +512,7 @@ fn run_boxes(out: &mut Out) {
     let fv = frozen.view();
     for y in 0..200 {
         for x in 0..320 {
-            // SAFETY: the bitmap is 320 x 200 with rows 320 apart.
-            unsafe { *fv.pixels.add((y * 320 + x) as usize) = (x ^ y) as u8 };
+            fv.pixels[(y * 320 + x) as usize].set((x ^ y) as u8);
         }
     }
 
@@ -547,14 +544,12 @@ fn run_boxes(out: &mut Out) {
         let text = texts[r.below(6) as usize];
         let x = 20 + r.below(280) as i32;
         let y = 10 + r.below(180) as i32;
-        // SAFETY: the bitmaps and font are live.
-        unsafe { liero_menu_draw_info_box(&scr, &font, text, x, y) };
+        liero_menu_draw_info_box(&scr, &font, text, x, y);
         let text = [texts[r.below(6) as usize], b"_"].concat();
         let x = 20 + r.below(200) as i32;
         let y = 10 + r.below(180) as i32;
         let centered = r.below(2) == 1;
-        // SAFETY: as above.
-        unsafe { liero_menu_draw_input_box(&scr, &frozen.view(), &font, &text, x, y, centered) };
+        liero_menu_draw_input_box(&scr, &frozen.view(), &font, &text, x, y, centered);
         add_screen(&mut f, &a.play);
         print(out, "menu-boxes", step, f);
     }
@@ -632,7 +627,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
         );
         let mut level = LieroLevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, s, &mut a.rand);
-        liero_level_box_swap(game.level_box_mut(), &mut level);
+        std::mem::swap(game.level_box_mut(), &mut level);
         liero_game_focus(&mut game, &mut *a.play);
         liero_game_focus(&mut game, &mut *a.single);
     }

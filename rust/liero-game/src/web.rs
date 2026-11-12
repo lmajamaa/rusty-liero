@@ -481,12 +481,10 @@ fn set_double_res(on: bool, update_menu: bool) {
 fn show_frame() {
     let a = app();
     let r = if a.primary_single { &mut *a.single } else { &mut *a.play };
-    // SAFETY: the renderer's bitmap, which outlives the frame.
-    let bmp = unsafe { &*crate::renderer::liero_bitmap_box_view(&mut r.bmp) };
+    let bmp = r.bmp.view();
     let d = &r.data;
     let mut real = [LieroColor::default(); 256];
-    // SAFETY: both have 256 colours.
-    unsafe { liero_palette_activate(d.pal.as_ptr(), real.as_mut_ptr()) };
+    liero_palette_activate(&d.pal, &mut real);
     // RGBA in memory, as ImageData has it.
     let pal32: [u32; 256] = std::array::from_fn(|i| u32::from_le_bytes([real[i].r, real[i].g, real[i].b, 255]));
     let (res_x, res_y) = (d.render_res_x, d.render_res_y);
@@ -504,21 +502,10 @@ fn show_frame() {
         s.prev_mag = mag;
         let pitch = w as usize * 4;
         if mag > 0 {
-            // SAFETY: the frame is `res_x` x `res_y` of the bitmap, which fits
-            // the canvas `mag` times from the offset (`liero_gfx_fit_screen`).
-            unsafe {
-                let dest = s.rgba.as_mut_ptr().add(oy as usize * pitch + ox as usize * 4);
-                liero_gfx_scale_draw(
-                    bmp.pixels,
-                    res_x,
-                    res_y,
-                    bmp.pitch as usize,
-                    dest,
-                    pitch,
-                    mag,
-                    pal32.as_ptr(),
-                );
-            }
+            // The frame is `res_x` x `res_y` of the bitmap, which fits the
+            // canvas `mag` times from the offset (`liero_gfx_fit_screen`).
+            let dest = &mut s.rgba[oy as usize * pitch + ox as usize * 4..];
+            liero_gfx_scale_draw(bmp.pixels, res_x, res_y, bmp.pitch as usize, dest, pitch, mag, &pal32);
         }
         if let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&s.rgba), w as u32, h as u32) {
             let _ = ctx.put_image_data(&img, 0.0, 0.0);

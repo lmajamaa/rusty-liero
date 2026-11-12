@@ -33,8 +33,7 @@ fn add_sprites(h: &mut Fnv, s: &LieroTcSprites) {
     h.i32(s.count);
     let bytes = size as usize * s.count as usize;
     h.u32(bytes as u32);
-    // SAFETY: the TC's sprites are `bytes` long.
-    h.bytes(unsafe { items(s.data, bytes) });
+    h.bytes(s.pixels());
 }
 
 pub fn hash_tc(out: &mut Out) {

@@ -59,7 +59,7 @@ fn new_level(a: &mut LieroApp) -> Box<LieroLevelBox> {
 fn swap_level(c: &mut crate::controllers::LieroController, level: &mut LieroLevelBox) {
     let current = liero_controller_level(c);
     // SAFETY: the controller's level is valid while it is.
-    unsafe { crate::level::liero_level_box_swap(current.as_mut().expect("no level"), level) };
+    std::mem::swap(unsafe { current.as_mut() }.expect("no level"), level);
 }
 
 /// A new controller with a new level behind the menu (`restartApp`).

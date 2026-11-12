@@ -20,7 +20,7 @@ impl Setup {
         let layout = std::alloc::Layout::new::<LieroTcData>();
         // SAFETY: all zeroes is a valid TC: null pointers and zero counts.
         let mut tc: Box<LieroTcData> = unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout).cast()) };
-        tc.materials[5] = 7;
+        tc.materials[5].flags = 7;
         let s = Setup {
             game: liero_game_new(),
             settings: liero_settings_box_new(),
@@ -80,7 +80,8 @@ impl Setup {
             (*s.settings).data.lives = 9;
         }
         s.level().resize(3, 2);
-        s.level().set_pixels(&[1, 5, 2, 5, 3, 4], |_| LieroMaterial::default());
+        s.level()
+            .set_pixels(&[1, 5, 2, 5, 3, 4], |_| crate::material::LieroMaterial::default());
         s.level().data_mut().origpal[5].g = 42;
         s
     }

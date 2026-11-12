@@ -21,7 +21,6 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use crate::game::LieroRect;
 use crate::gfx::LieroBitmap;
 use crate::text::LieroFont;
 
@@ -110,10 +109,6 @@ pub struct LieroScreenHost {
     pub process: Option<unsafe fn()>,
     pub clear_keys: Option<unsafe fn()>,
     pub play_sound: Option<unsafe fn(id: i32)>,
-    /// The screen shown, the copy of it the menus draw over, and the font.
-    pub screen: Option<unsafe fn(out: *mut LieroBitmap)>,
-    pub frozen: Option<unsafe fn(out: *mut LieroBitmap)>,
-    pub font: Option<unsafe fn(out: *mut LieroFont)>,
     /// Fills the screen with one colour.
     pub fill_screen: Option<unsafe fn(color: u8)>,
     /// Shows the screen with the TC's own palette.
@@ -184,46 +179,20 @@ impl Host {
             unsafe { f(id) }
         }
     }
-    fn bitmap(f: Option<unsafe fn(*mut LieroBitmap)>) -> Option<LieroBitmap> {
-        let f = f?;
-        let mut b = LieroBitmap {
-            pixels: std::ptr::null_mut(),
-            w: 0,
-            h: 0,
-            pitch: 0,
-            clip: LieroRect::default(),
-        };
-        unsafe { f(&mut b) };
-        Some(b)
+    /// The screen shown, when the app draws.
+    pub fn screen(&self) -> Option<LieroBitmap<'static>> {
+        self.0.app_drawing.then(|| crate::app::app().play.bmp.view())
     }
-    pub fn screen(&self) -> Option<LieroBitmap> {
-        if self.0.app_drawing {
-            return Some(crate::app::app().play.bmp.view());
-        }
-        Self::bitmap(self.0.screen)
+    /// The copy of the screen the menus draw over.
+    pub fn frozen(&self) -> Option<LieroBitmap<'static>> {
+        self.0.app_drawing.then(|| crate::app::app().frozen.view())
     }
-    pub fn frozen(&self) -> Option<LieroBitmap> {
-        if self.0.app_drawing {
-            return Some(crate::app::app().frozen.view());
-        }
-        Self::bitmap(self.0.frozen)
-    }
-    pub fn font(&self) -> Option<LieroFont> {
-        if self.0.app_drawing {
-            return Some(crate::app::app().font());
-        }
-        let f = self.0.font?;
-        let mut font = LieroFont {
-            chars: std::ptr::null(),
-            count: 0,
-        };
-        unsafe { f(&mut font) };
-        Some(font)
+    pub fn font(&self) -> Option<LieroFont<'static>> {
+        self.0.app_drawing.then(|| crate::app::app().font())
     }
     pub fn fill_screen(&self, color: u8) {
         if self.0.app_drawing {
-            // SAFETY: the bitmap is the app's.
-            unsafe { crate::gfx::liero_gfx_fill(&crate::app::app().play.bmp.view(), color) };
+            crate::gfx::liero_gfx_fill(&crate::app::app().play.bmp.view(), color);
             return;
         }
         if let Some(f) = self.0.fill_screen {

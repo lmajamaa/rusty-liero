@@ -948,10 +948,10 @@ impl LieroMenus {
     /// Draws `kind`, with the player menu's colour bars and the options
     /// menu's palette entry.
     fn draw(&mut self, kind: i32, scr: &LieroBitmap, font: &LieroFont, disabled: bool, x: i32, show: bool) {
-        struct Ctx {
+        struct Ctx<'a> {
             ids: Vec<i32>,
             kind: i32,
-            scr: LieroBitmap,
+            scr: LieroBitmap<'a>,
             player: i32,
             palette_color: i32,
         }
@@ -1059,9 +1059,7 @@ pub unsafe fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 {
     }
 }
 
-/// # Safety
-/// See `LieroBitmap`.
-pub unsafe fn liero_menus_draw(
+pub fn liero_menus_draw(
     m: &mut LieroMenus,
     kind: i32,
     scr: &LieroBitmap,

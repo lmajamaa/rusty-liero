@@ -83,7 +83,7 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
     // Drawing the same words again changes nothing; other words do.
     let shows = |a: &mut LieroApp, words: &[u8]| {
         let before = a.single.bmp.pixels().to_vec();
-        unsafe { font.centered(&a.single.bmp.view(), words, cx, cy + 48, 7, 2) };
+        font.centered(&a.single.bmp.view(), words, cx, cy + 48, 7, 2);
         a.single.bmp.pixels() == before
     };
 

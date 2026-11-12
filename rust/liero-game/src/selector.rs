@@ -319,11 +319,9 @@ impl Selector {
     }
 
     fn framed_text(scr: &LieroBitmap, font: &LieroFont, text: &[u8], x: i32, y: i32) {
-        unsafe {
-            let width = font.dims(text).0;
-            liero_gfx_draw_rounded_box(scr, x, y, 0, 7, width);
-            font.text(scr, text, x + 2, y + 1, TITLE_COLOR, 1);
-        }
+        let width = font.dims(text).0;
+        liero_gfx_draw_rounded_box(scr, x, y, 0, 7, width);
+        font.text(scr, text, x + 2, y + 1, TITLE_COLOR, 1);
     }
 
     /// Previews the file under the cursor if it's new there.
@@ -380,8 +378,8 @@ fn restore_frozen(host: &Host) {
     };
     let len = |b: &LieroBitmap| b.pitch.max(0) as usize * b.h.max(0) as usize;
     let n = len(&scr).min(len(&frozen));
-    if n > 0 && !scr.pixels.is_null() && !frozen.pixels.is_null() {
-        unsafe { std::ptr::copy_nonoverlapping(frozen.pixels, scr.pixels, n) };
+    for (to, from) in scr.pixels[..n].iter().zip(&frozen.pixels[..n]) {
+        to.set(from.get());
     }
 }
 

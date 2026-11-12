@@ -3,51 +3,52 @@
 //! and the C++ types are views of them.
 
 use crate::game::LieroRect;
+use std::cell::Cell;
+
 use crate::gfx::{liero_gfx_fill, LieroBitmap, LieroColor};
 use crate::tc::LieroTcData;
 
-/// A bitmap that owns its pixels, which `view` points to.
+/// A bitmap that owns its pixels. They are cells, so that views of it can
+/// be drawn on while others are held.
 pub struct LieroBitmapBox {
-    pixels: Vec<u8>,
-    view: LieroBitmap,
+    pixels: Vec<Cell<u8>>,
+    w: i32,
+    h: i32,
+    pitch: i32,
+    clip: LieroRect,
 }
 
 impl LieroBitmapBox {
     /// No pixels, as C++'s `Bitmap()` left it.
     pub fn new() -> Box<Self> {
-        let rect = LieroRect {
-            x1: 0,
-            y1: 0,
-            x2: 0,
-            y2: 0,
-        };
         Box::new(LieroBitmapBox {
             pixels: Vec::new(),
-            view: LieroBitmap {
-                pixels: std::ptr::null_mut(),
-                w: 0,
-                h: 0,
-                pitch: 0,
-                clip: rect,
-            },
+            w: 0,
+            h: 0,
+            pitch: 0,
+            clip: LieroRect::default(),
         })
     }
 
-    pub fn view(&self) -> LieroBitmap {
-        self.view
+    pub fn view(&self) -> LieroBitmap<'_> {
+        LieroBitmap {
+            pixels: &self.pixels,
+            w: self.w,
+            h: self.h,
+            pitch: self.pitch,
+            clip: self.clip,
+        }
     }
 
     /// `Bitmap::alloc`: pixels for `w` x `h` with rows `pitch` apart, kept
     /// if the size is the same, and the clip rectangle reset to the whole.
     /// New pixels are zero, where C++ left them uninitialized.
     pub fn alloc(&mut self, w: i32, h: i32, pitch: i32) {
-        let v = &mut self.view;
-        if v.pixels.is_null() || v.w != w || v.h != h || v.pitch != pitch {
-            self.pixels = vec![0; pitch.max(0) as usize * h.max(0) as usize];
-            v.pixels = self.pixels.as_mut_ptr();
-            (v.w, v.h, v.pitch) = (w, h, pitch);
+        if self.pixels.is_empty() || self.w != w || self.h != h || self.pitch != pitch {
+            self.pixels = vec![Cell::new(0); pitch.max(0) as usize * h.max(0) as usize];
+            (self.w, self.h, self.pitch) = (w, h, pitch);
         }
-        v.clip = LieroRect {
+        self.clip = LieroRect {
             x1: 0,
             y1: 0,
             x2: w,
@@ -57,29 +58,13 @@ impl LieroBitmapBox {
 
     /// `Bitmap::copy`: the same size and pixels as `other`.
     pub fn copy_from(&mut self, other: &LieroBitmapBox) {
-        let o = other.view;
-        self.alloc(o.w, o.h, o.pitch);
-        self.pixels.copy_from_slice(&other.pixels);
+        self.alloc(other.w, other.h, other.pitch);
+        self.pixels.clone_from(&other.pixels);
     }
 
-    pub fn pixels(&self) -> &[u8] {
-        &self.pixels
-    }
-}
-
-/// The bitmap's fields, at a fixed address. Its pixels move when it's
-/// reallocated.
-pub fn liero_bitmap_box_view(b: &mut LieroBitmapBox) -> *mut LieroBitmap {
-    &mut b.view
-}
-
-/// # Safety
-/// Both are valid; they may be the same.
-pub unsafe fn liero_bitmap_box_copy(to: *mut LieroBitmapBox, from: *const LieroBitmapBox) {
-    unsafe {
-        if !std::ptr::eq(to, from) {
-            (*to).copy_from(&*from);
-        }
+    /// A copy of the pixels.
+    pub fn pixels(&self) -> Vec<u8> {
+        self.pixels.iter().map(Cell::get).collect()
     }
 }
 
@@ -124,8 +109,7 @@ impl LieroRenderer {
 
     /// `clear`: the bitmap filled with colour 0.
     pub fn clear(&mut self) {
-        // SAFETY: the view is the box's own.
-        unsafe { liero_gfx_fill(&self.bmp.view(), 0) };
+        liero_gfx_fill(&self.bmp.view(), 0);
     }
 
     /// `loadPalette`: both palettes from the TC's.
@@ -142,15 +126,16 @@ mod tests {
     #[test]
     fn a_bitmap_keeps_its_pixels_at_the_same_size() {
         let mut b = LieroBitmapBox::new();
-        assert!(b.view().pixels.is_null());
+        assert!(b.view().pixels.is_empty());
         b.alloc(3, 2, 4);
         let v = b.view();
-        assert_eq!((v.w, v.h, v.pitch, b.pixels().len()), (3, 2, 4, 8));
+        assert_eq!((v.w, v.h, v.pitch, v.pixels.len()), (3, 2, 4, 8));
         assert_eq!((v.clip.x2, v.clip.y2), (3, 2));
-        unsafe { *v.pixels.add(5) = 9 };
-        b.view.clip.x2 = 1;
+        v.pixels[5].set(9);
+        b.clip.x2 = 1;
+        let before = b.pixels.as_ptr();
         b.alloc(3, 2, 4);
-        assert_eq!((b.view().pixels, b.pixels()[5], b.view().clip.x2), (v.pixels, 9, 3));
+        assert_eq!((b.pixels.as_ptr(), b.pixels()[5], b.view().clip.x2), (before, 9, 3));
         b.alloc(3, 2, 3);
         assert_eq!((b.view().pitch, b.pixels().len(), b.pixels()[5]), (3, 6, 0));
     }
@@ -159,18 +144,11 @@ mod tests {
     fn a_copy_has_the_same_size_and_pixels() {
         let mut a = LieroBitmapBox::new();
         a.alloc(2, 2, 3);
-        unsafe { *a.view().pixels.add(4) = 7 };
+        a.view().pixels[4].set(7);
         let mut b = LieroBitmapBox::new();
         b.alloc(5, 5, 5);
-        unsafe { liero_bitmap_box_copy(&mut *b, &*a) };
-        assert_eq!(
-            (b.view().w, b.view().pitch, b.pixels()),
-            (2, 3, &[0, 0, 0, 0, 7, 0][..])
-        );
-        // Copying a bitmap to itself changes nothing.
-        let p: *mut LieroBitmapBox = &mut *b;
-        unsafe { liero_bitmap_box_copy(p, p) };
-        assert_eq!(b.pixels()[4], 7);
+        b.copy_from(&a);
+        assert_eq!((b.view().w, b.view().pitch, b.pixels()), (2, 3, vec![0, 0, 0, 0, 7, 0]));
     }
 
     #[test]
@@ -182,8 +160,8 @@ mod tests {
             (r.data.render_res_x, r.data.render_res_y, v.w, v.h, v.pitch),
             (4, 3, 4, 3, 4)
         );
-        unsafe { *v.pixels.add(11) = 5 };
+        v.pixels[11].set(5);
         r.clear();
-        assert_eq!(r.bmp.pixels(), &[0; 12]);
+        assert_eq!(r.bmp.pixels(), [0; 12]);
     }
 }

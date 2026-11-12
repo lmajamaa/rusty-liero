@@ -12,16 +12,13 @@ use std::ffi::c_void;
 
 use crate::app::app;
 use crate::game_box::LieroGame;
-use crate::gfx::{
-    liero_gfx_draw_rounded_box, liero_palette_fade, liero_palette_rotate_from, LieroBitmap, LieroFontChar,
-};
-use crate::level::liero_level_draw_miniature;
+use crate::gfx::{liero_gfx_draw_rounded_box, liero_palette_fade, liero_palette_rotate_from, LieroBitmap};
 use crate::menu::liero_menu_draw_versus;
 use crate::menu::{LieroMenuBox, LieroMenuHooks, LieroMenuItemSpec, Menu, OwnedMenu};
 use crate::rand::LieroRand;
 use crate::renderer::LieroRenderer;
 use crate::sfx::LieroSoundOut;
-use crate::tc::{s as text, LIERO_TC_FONT_CHARS};
+use crate::tc::s as text;
 use crate::tc::{LieroTcData, LieroTcWeapon};
 use crate::text::{LieroFont, LieroStr};
 use crate::weapon::LIERO_SELECTABLE_WEAPONS;
@@ -519,10 +516,7 @@ pub unsafe fn liero_weapsel_draw(
 
 /// The spectator window's weapon selection: the first two worms' menus, at
 /// the sides, while not ready.
-///
-/// # Safety
-/// See `LieroBitmap`.
-pub unsafe fn liero_weapsel_draw_spectator(ws: &mut LieroWeapsel, scr: &LieroBitmap, font: &LieroFont) {
+pub fn liero_weapsel_draw_spectator(ws: &mut LieroWeapsel, scr: &LieroBitmap, font: &LieroFont) {
     for (wm, x) in ws.menus.iter_mut().zip([10, 560]) {
         if !wm.ready {
             draw_menu(wm, scr, font, x);
@@ -546,11 +540,8 @@ unsafe fn game_env(game: &LieroGame) -> LieroWeapselEnv {
 }
 
 /// The TC's font.
-pub(crate) fn tc_font(tc: &LieroTcData) -> LieroFont {
-    LieroFont {
-        chars: tc.font.as_ptr().cast::<LieroFontChar>(),
-        count: LIERO_TC_FONT_CHARS,
-    }
+pub(crate) fn tc_font(tc: &LieroTcData) -> LieroFont<'_> {
+    LieroFont { chars: &tc.font }
 }
 
 /// The part of a path after the last slash (`getLeaf`).
@@ -680,8 +671,8 @@ unsafe fn menu_palette(r: *mut LieroRenderer) {
     unsafe {
         let d = &mut (*r).data;
         d.pal = d.origpal;
-        liero_palette_rotate_from(d.pal.as_mut_ptr(), d.origpal.as_ptr(), 168, 174, app().menu_cycles);
-        liero_palette_fade(d.pal.as_mut_ptr(), d.fade_value);
+        liero_palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, app().menu_cycles);
+        liero_palette_fade(&mut d.pal, d.fade_value);
     }
 }
 
@@ -717,8 +708,8 @@ pub unsafe fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRender
                     cy,
                 );
                 font.centered(&scr, b"WEAPON SELECTION", cx, cy + 48, 7, 2);
-                let level = game.level_box().data().level;
-                liero_level_draw_miniature(&level, scr.pixels, scr.pitch, cx - 126, (*r).data.render_res_y - 208, 2);
+                game.level_box()
+                    .draw_miniature(&scr, cx - 126, (*r).data.render_res_y - 208, 2);
                 a.frozen_spectator.copy_from(&(*r).bmp);
                 ws.cached_spectator = true;
             }
