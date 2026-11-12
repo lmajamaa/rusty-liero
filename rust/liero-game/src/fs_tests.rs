@@ -1,4 +1,5 @@
 use super::*;
+use std::fs;
 
 /// A folder of its own under the crate's `target`, relative as the game's
 /// paths are (an absolute path would start at ".").

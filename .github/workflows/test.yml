@@ -114,3 +114,7 @@ jobs:
 
       - name: Check game-state hashes against the original C++ (native)
         run: bun tools/hashrun/run.ts
+
+      # With the game's files in memory, as the web build will keep them.
+      - name: Check game-state hashes with the files in memory
+        run: bun tools/hashrun/run.ts --tree

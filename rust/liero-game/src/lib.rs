@@ -15,6 +15,7 @@ pub mod controller;
 pub mod controllers;
 pub mod cpp_sort;
 pub mod deflate;
+pub mod disk;
 pub mod fs;
 pub mod game;
 pub mod game_box;

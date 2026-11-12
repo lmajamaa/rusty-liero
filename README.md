@@ -123,7 +123,8 @@ frames, and `tools/hashrun/run.ts` builds it, runs it and compares them with
 docker compose run --rm web bun tools/hashrun/run.ts
 ```
 `--wasm` runs it as wasm with Bun instead, with the web build's stack and a
-check for overflowing it. For a quick check of one part, such as a planted
+check for overflowing it. `--tree` keeps the game's files in memory instead
+of a folder on disk, as the web build will (`rust/liero-game/src/disk.rs`). For a quick check of one part, such as a planted
 bug, `--only=` runs just those sections (`tc`, `games`, `menus`, `settings`,
 `replays`, `ai`, `input`, `app`, `levels`, `randomtc`); a full run is still the
 check for a commit.

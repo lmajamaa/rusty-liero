@@ -487,9 +487,9 @@ pub fn hash_app(out: &mut Out) {
     // reads "/hashapp" as "./hashapp" (`super::on_disk`).
     let root = "/hashapp";
     for dir in ["", "/Profiles", "/Replays"] {
-        let _ = std::fs::create_dir(super::on_disk(&format!("{root}{dir}")));
+        crate::disk::create_dir(super::on_disk(&format!("{root}{dir}")).as_bytes());
     }
-    std::fs::write(super::on_disk(&format!("{root}/Replays/BROKEN.lrp")), "This is not a replay.").expect("can't write the broken replay");
+    assert!(crate::disk::write(super::on_disk(&format!("{root}/Replays/BROKEN.lrp")).as_bytes(), b"This is not a replay."), "can't write the broken replay");
 
     // Fresh menus, as the game starts with: the menu checks before this one
     // leave items hidden and selected.
