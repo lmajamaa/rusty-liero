@@ -37,11 +37,10 @@ impl Setup {
             let g = &mut *s.game;
             let mut worms = Vec::new();
             for i in 0..2 {
-                let ws = liero_worm_settings_box_new();
-                (*ws).name = format!("worm {i}").into_bytes();
-                (*ws).data.health = 100 + i;
-                let w = liero_game_new_worm(g, ws);
-                liero_worm_settings_box_free(ws);
+                let ws = crate::settings::new_worm_settings();
+                ws.borrow_mut().name = format!("worm {i}").into_bytes();
+                ws.borrow_mut().data.health = 100 + i;
+                let w = liero_game_new_worm(g, Some(ws));
                 let d = &mut g.worm_mut(w).data;
                 d.index = i;
                 d.pos.x = 10 * (i + 1);
@@ -178,7 +177,8 @@ fn plays_back_the_game_it_recorded() {
                 ((*w).data.index, (*w).data.pos.x, (*w).data.vel.y),
                 (i as i32, 10 * (i as i32 + 1), -3)
             );
-            let ws = &*liero_worm_settings(&*w);
+            let ws = liero_worm_settings(&*w).unwrap();
+            let ws = ws.borrow();
             assert_eq!(
                 (ws.name.clone(), ws.data.health),
                 (format!("worm {i}").into_bytes(), 100 + i as i32)
@@ -322,10 +322,9 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
     unsafe {
         let g = &mut *s.game;
         for i in 2..4 {
-            let ws = liero_worm_settings_box_new();
-            (*ws).name = format!("worm {i}").into_bytes();
-            let w = liero_game_new_worm(g, ws);
-            liero_worm_settings_box_free(ws);
+            let ws = crate::settings::new_worm_settings();
+            ws.borrow_mut().name = format!("worm {i}").into_bytes();
+            let w = liero_game_new_worm(g, Some(ws));
             g.worm_mut(w).data.index = i;
             liero_game_list_worm(g, Some(w));
         }
@@ -333,7 +332,7 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
         ok(liero_replay_writer_begin(&mut *w, g));
         liero_replay_writer_frame(&mut *w);
         liero_replay_writer_unfocus(&mut *w);
-        (*liero_worm_settings(&*liero_game_worm(g, 2))).name = b"renamed".to_vec();
+        liero_worm_settings(&*liero_game_worm(g, 2)).unwrap().borrow_mut().name = b"renamed".to_vec();
         liero_replay_writer_focus(&mut *w);
         liero_replay_writer_frame(&mut *w);
         // Written once.
@@ -345,7 +344,13 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
     let r = play(&p, &mut t);
     unsafe {
         let game = t.game;
-        let name = |i| (*liero_worm_settings(&*liero_game_worm(&mut *game, i))).name.clone();
+        let name = |i| {
+            liero_worm_settings(&*liero_game_worm(&mut *game, i))
+                .unwrap()
+                .borrow()
+                .name
+                .clone()
+        };
         assert!(!frame(r, &mut t).settings_changed);
         assert_eq!(name(2), b"worm 2");
         let o = frame(r, &mut t);

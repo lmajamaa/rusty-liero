@@ -334,8 +334,7 @@ fn run_menus(out: &mut Out) {
     // The menus show the name of the loaded setup.
     a.files.settings_node = Node::new(b"config/LIERO.CFG");
     for (i, ws) in a.menu_settings().worms.iter().enumerate() {
-        // SAFETY: the menus' settings' worms are the app's.
-        let ws = unsafe { &mut *ws.as_ptr() };
+        let mut ws = ws.borrow_mut();
         ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
         for j in 0..7 {
@@ -523,7 +522,10 @@ fn run_boxes(out: &mut Out) {
         b"1234567890",
     ];
     let defaults = LieroSettingsBox::defaults();
-    let default_colors = [defaults.worms[0].data.color, defaults.worms[1].data.color];
+    let default_colors = [
+        defaults.worms[0].borrow().data.color,
+        defaults.worms[1].borrow().data.color,
+    ];
 
     for step in 0..24 {
         let mut f = Fnv::default();
@@ -555,7 +557,11 @@ fn run_boxes(out: &mut Out) {
     // A one-character level file still names the level.
     let mut f = Fnv::default();
     a.single.clear();
-    let names: [&[u8]; 2] = [&defaults.worms[0].name, &defaults.worms[1].name];
+    let names = [
+        defaults.worms[0].borrow().name.clone(),
+        defaults.worms[1].borrow().name.clone(),
+    ];
+    let names: [&[u8]; 2] = [&names[0], &names[1]];
     draw_versus_info(&a.single.bmp, b"A", b"x/A.lev", names, default_colors, 320, 100);
     add_screen(&mut f, &a.single);
     print(out, "menu-boxes-short", 0, f);
@@ -574,8 +580,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
         *w = if r.below(6) == 0 { 1 + r.below(2) } else { 0 };
     }
     for (i, ws) in s.worms.iter().enumerate() {
-        // SAFETY: the settings' worms are theirs.
-        let ws = unsafe { &mut *ws.as_ptr() };
+        let mut ws = ws.borrow_mut();
         ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
         ws.data.controller = if i == 1 { controller1 } else { 0 };
@@ -597,7 +602,8 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
     unsafe {
         liero_game_set_context(&mut game, settings.as_ptr(), Some(tc.clone()), LieroSoundOut::NONE);
         for (i, ws) in s.worms.iter().enumerate() {
-            let id = liero_game_new_worm(&mut game, ws.as_ptr());
+            let id = liero_game_new_worm(&mut game, Some(ws.clone()));
+            let ws = ws.borrow();
             liero_game_list_worm(&mut game, Some(id));
             let w = game.worm_mut(id);
             w.data.health = ws.data.health;

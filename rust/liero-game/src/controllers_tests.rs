@@ -23,7 +23,7 @@ fn local(tc: SharedTc, names: [&str; 2]) -> Box<LieroController> {
     unsafe {
         let settings = liero_settings_box_new();
         for (w, name) in (*settings).worms.iter_mut().zip(names) {
-            w.name = name.as_bytes().to_vec();
+            w.borrow_mut().name = name.as_bytes().to_vec();
         }
         let mut c = Box::from_raw(liero_local_controller_new(settings, tc));
         liero_settings_box_free(settings);

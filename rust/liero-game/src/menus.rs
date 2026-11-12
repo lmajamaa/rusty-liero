@@ -984,7 +984,10 @@ impl LieroMenus {
 
 /// `player`'s settings in the app's.
 fn worm_settings<'a>(player: i32) -> &'a mut LieroWormSettingsBox {
-    // SAFETY: the app's settings hold a reference to them.
+    // SAFETY: the app's settings hold them. The menus keep references into
+    // them between calls (`Behavior::Weapon`), which a `RefMut` can't, so
+    // they go around the `RefCell`; nothing else borrows them while the
+    // menus run, as the game behind the menu doesn't tick.
     unsafe { &mut *crate::app::app().menu_settings().worms[player as usize].as_ptr() }
 }
 

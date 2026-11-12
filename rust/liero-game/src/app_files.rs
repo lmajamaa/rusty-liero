@@ -16,7 +16,7 @@ use crate::screen::LieroScreen;
 use crate::selector::{selector_screen, FileSource, Spec};
 use crate::settings::{
     liero_worm_settings_box_load_profile, liero_worm_settings_box_save_profile, LieroSettingsBox, LieroSettingsStatus,
-    WormSettingsRef,
+    SharedWormSettings,
 };
 use crate::tc::s as text;
 
@@ -94,7 +94,7 @@ impl LieroApp {
 enum Choice {
     Level,
     /// Loads a player's profile.
-    Profile(WormSettingsRef),
+    Profile(SharedWormSettings),
     Replay,
     Options,
     Tc,
@@ -160,7 +160,7 @@ impl FileSource for AppFiles {
             }
             Choice::Profile(ws) => {
                 let mut status = LieroSettingsStatus::Ok;
-                if !liero_worm_settings_box_load_profile(ws, Some(&node.clone()), &mut status) {
+                if !liero_worm_settings_box_load_profile(&mut ws.borrow_mut(), Some(&node.clone()), &mut status) {
                     panic!("Could not read {}", path(&node));
                 }
                 // A profile that ends early, or fails its checkpoint, threw
@@ -296,8 +296,8 @@ pub(crate) fn save_profile_as(player: i32, name: &[u8]) {
     let mut file = name.to_vec();
     file.extend_from_slice(b".lpf");
     let node = a.files.config.go(b"Profiles").go(&file);
-    let ws = &mut *a.menu_settings().worms[player as usize];
-    if !liero_worm_settings_box_save_profile(ws, Some(&node.clone())) {
+    let mut ws = a.menu_settings().worms[player as usize].borrow_mut();
+    if !liero_worm_settings_box_save_profile(&mut ws, Some(&node.clone())) {
         panic!("Could not write {}", path(&node));
     }
 }

@@ -417,8 +417,7 @@ fn hash_controls(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
         }
     });
     for ws in &settings.worms {
-        // SAFETY: nothing else has the new settings yet.
-        let ws = unsafe { &mut *ws.as_ptr() };
+        let mut ws = ws.borrow_mut();
         ws.data.controller = 0;
         ws.data
             .controls

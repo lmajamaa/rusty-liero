@@ -680,7 +680,8 @@ pub unsafe fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: Sh
         let s = &*settings;
         let mut indexes = [0; 2];
         for (i, ws) in s.worms.iter().enumerate() {
-            let id = liero_game_new_worm(&mut game, ws.as_ptr());
+            let id = liero_game_new_worm(&mut game, Some(ws.clone()));
+            let ws = ws.borrow();
             liero_game_list_worm(&mut game, Some(id));
             let w = game.worm_mut(id);
             w.data.health = ws.data.health;

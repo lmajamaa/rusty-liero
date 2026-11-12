@@ -588,7 +588,7 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
         for (idx, center_x, center_y) in viewports {
             let w = game.worm_at(idx as usize).expect("an empty place in a viewport");
             let worm: *mut LieroWormData = &mut w.data;
-            let ws = w.settings_mut();
+            let mut ws = w.settings_mut();
             let bot = ws.data.controller != 0;
             worms.push(LieroWeapselWorm {
                 worm,
@@ -686,6 +686,7 @@ pub unsafe fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRender
             if !ws.cached_spectator {
                 let scr = (*r).bmp.view();
                 let w = &game.settings_box().worms;
+                let w = [w[0].borrow(), w[1].borrow()];
                 liero_menu_draw_versus(
                     &scr,
                     &font,

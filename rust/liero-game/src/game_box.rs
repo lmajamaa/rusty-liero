@@ -17,7 +17,7 @@ use crate::gfx::LieroPalette;
 use crate::level::LieroLevelBox;
 use crate::renderer::{LieroRenderer, LieroRendererData};
 use crate::scene::{liero_game_draw_viewport, LieroDrawSettings};
-use crate::settings::{LieroSettingsBox, LieroWormSettingsBox, WormSettingsRef};
+use crate::settings::{LieroSettingsBox, LieroWormSettingsBox, SharedWormSettings};
 use crate::sfx::LieroSoundOut;
 use crate::shared::Shared;
 use crate::stats::LieroStats;
@@ -25,18 +25,18 @@ use crate::tc::{tc_data, LieroTcData, SharedTc};
 use crate::text::LieroStr;
 use crate::viewport::LieroViewport;
 use crate::worm::{LieroWormData, WormId};
-use std::cell::Ref;
+use std::cell::{Ref, RefMut};
 
 /// A worm: its state, its settings and its bot, if any.
 pub struct LieroWorm {
     pub data: LieroWormData,
     /// None before the worm has settings.
-    settings: Option<WormSettingsRef>,
+    settings: Option<SharedWormSettings>,
     ai: Option<Box<LieroWormAi>>,
 }
 
 impl LieroWorm {
-    fn new(settings: *mut LieroWormSettingsBox) -> Box<Self> {
+    fn new(settings: Option<SharedWormSettings>) -> Box<Self> {
         let mut w = Box::new(LieroWorm {
             data: LieroWormData::default(),
             settings: None,
@@ -61,18 +61,18 @@ impl LieroWorm {
         self.ai.as_deref_mut()
     }
 
-    /// `s` is a valid box, or null.
-    fn set_settings(&mut self, s: *mut LieroWormSettingsBox) {
-        // SAFETY: the callers pass valid boxes.
-        self.settings = (!s.is_null()).then(|| unsafe { WormSettingsRef::retain(s) });
+    fn set_settings(&mut self, s: Option<SharedWormSettings>) {
+        self.settings = s;
     }
 
-    pub(crate) fn settings(&self) -> &LieroWormSettingsBox {
-        self.settings.as_deref().expect("a worm without settings")
+    /// The worm's settings. Panics if it has none.
+    pub(crate) fn settings(&self) -> Ref<'_, LieroWormSettingsBox> {
+        self.settings.as_ref().expect("a worm without settings").borrow()
     }
 
-    pub(crate) fn settings_mut(&mut self) -> &mut LieroWormSettingsBox {
-        self.settings.as_deref_mut().expect("a worm without settings")
+    /// The worm's settings, to change. Panics if it has none.
+    pub(crate) fn settings_mut(&mut self) -> RefMut<'_, LieroWormSettingsBox> {
+        self.settings.as_ref().expect("a worm without settings").borrow_mut()
     }
 }
 
@@ -422,12 +422,9 @@ pub fn liero_game_stats(g: &mut LieroGame) -> *mut LieroStats {
     &mut *g.stats
 }
 
-/// A new worm with `settings` (which may be null for now), which the game
+/// A new worm with `settings` (which may be none for now), which the game
 /// keeps but doesn't list.
-///
-/// # Safety
-/// `settings` is a valid box, or null.
-pub unsafe fn liero_game_new_worm(g: &mut LieroGame, settings: *mut LieroWormSettingsBox) -> WormId {
+pub fn liero_game_new_worm(g: &mut LieroGame, settings: Option<SharedWormSettings>) -> WormId {
     g.pool.push(LieroWorm::new(settings));
     WormId(g.pool.len() as u32 - 1)
 }
@@ -452,14 +449,12 @@ pub fn liero_worm_data(w: &mut LieroWorm) -> *mut LieroWormData {
     &mut w.data
 }
 
-/// The worm's settings box, or null.
-pub fn liero_worm_settings(w: &LieroWorm) -> *mut LieroWormSettingsBox {
-    w.settings.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr())
+/// The worm's settings, if it has any.
+pub fn liero_worm_settings(w: &LieroWorm) -> Option<SharedWormSettings> {
+    w.settings.clone()
 }
 
-/// # Safety
-/// `s` is a valid box, or null.
-pub unsafe fn liero_worm_set_settings(w: &mut LieroWorm, s: *mut LieroWormSettingsBox) {
+pub fn liero_worm_set_settings(w: &mut LieroWorm, s: Option<SharedWormSettings>) {
     w.set_settings(s);
 }
 
@@ -561,15 +556,19 @@ pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
         .map(|&id| {
             let id = id.expect("an empty place among the game's worms");
             let w = &mut g.pool[id.0 as usize];
-            let s = w.settings();
-            let (max_health, name, color) = (
-                s.data.health,
-                LieroStr {
-                    ptr: s.name.as_ptr(),
-                    len: s.name.len(),
-                },
-                s.data.color,
-            );
+            // The name stays where it is while the menus don't change it,
+            // which they don't while a view is used.
+            let (max_health, name, color) = {
+                let s = w.settings();
+                (
+                    s.data.health,
+                    LieroStr {
+                        ptr: s.name.as_ptr(),
+                        len: s.name.len(),
+                    },
+                    s.data.color,
+                )
+            };
             LieroGameWorm {
                 data: &mut w.data,
                 id,
@@ -664,31 +663,30 @@ pub unsafe fn liero_game_view_free(v: *mut LieroGameView) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::{liero_worm_settings_box_free, liero_worm_settings_box_new};
+    use crate::settings::new_worm_settings;
     use crate::worm::LIERO_GAME_HOLDAZONE;
+    use std::rc::Rc;
 
     fn rect(x1: i32, y1: i32, x2: i32, y2: i32) -> LieroRect {
         LieroRect { x1, y1, x2, y2 }
     }
 
-    fn settings(health: i32, name: &str) -> *mut LieroWormSettingsBox {
-        let s = liero_worm_settings_box_new();
-        unsafe {
-            (*s).data.health = health;
-            (*s).name = name.as_bytes().to_vec();
-        }
+    fn settings(health: i32, name: &str) -> SharedWormSettings {
+        let s = new_worm_settings();
+        s.borrow_mut().data.health = health;
+        s.borrow_mut().name = name.as_bytes().to_vec();
         s
     }
 
     /// A game with two listed worms (the first a bot) and an unlisted one,
     /// an empty place, two viewports and a spectator one.
-    unsafe fn game(s: [*mut LieroWormSettingsBox; 3]) -> *mut LieroGame {
+    unsafe fn game(s: &[SharedWormSettings; 3]) -> *mut LieroGame {
         unsafe {
             let g = &mut *liero_game_new();
-            let a = liero_game_new_worm(g, s[0]);
-            let b = liero_game_new_worm(g, std::ptr::null_mut());
-            liero_worm_set_settings(g.worm_mut(b), s[1]);
-            let c = liero_game_new_worm(g, s[2]);
+            let a = liero_game_new_worm(g, Some(s[0].clone()));
+            let b = liero_game_new_worm(g, None);
+            liero_worm_set_settings(g.worm_mut(b), Some(s[1].clone()));
+            let c = liero_game_new_worm(g, Some(s[2].clone()));
             g.worm_mut(a).data.health = 11;
             g.worm_mut(b).data.health = 22;
             g.worm_mut(c).data.health = 33;
@@ -707,9 +705,9 @@ mod tests {
     fn copies_share_the_settings_but_not_bots_or_spectators() {
         unsafe {
             let s = [settings(100, "a"), settings(50, "b"), settings(10, "c")];
-            let g = game(s);
-            assert_eq!((*s[0]).refs(), 2);
-            assert_eq!((*s[2]).refs(), 2);
+            let g = game(&s);
+            assert_eq!(Rc::strong_count(&s[0]), 2);
+            assert_eq!(Rc::strong_count(&s[2]), 2);
 
             let c = &mut *liero_game_clone(&*g);
             assert_eq!(liero_game_worm_count(c), 3);
@@ -719,7 +717,14 @@ mod tests {
             assert_eq!(((*a).data.health, (*b).data.health), (11, 22));
             // The unlisted worms are copied too, at the same ids.
             assert_eq!(c.pool.len(), 3);
-            assert_eq!(((*s[0]).refs(), (*s[1]).refs(), (*s[2]).refs()), (3, 3, 3));
+            assert_eq!(
+                (
+                    Rc::strong_count(&s[0]),
+                    Rc::strong_count(&s[1]),
+                    Rc::strong_count(&s[2])
+                ),
+                (3, 3, 3)
+            );
             assert!(!liero_worm_ai(&mut *liero_game_worm(&mut *g, 0)).is_null());
             assert!(liero_worm_ai(&mut *a).is_null());
             assert!(liero_worm_ai(&mut *b).is_null());
@@ -757,12 +762,16 @@ mod tests {
             crate::settings::liero_settings_box_free(set);
 
             liero_game_free(c);
-            assert_eq!(((*s[0]).refs(), (*s[1]).refs(), (*s[2]).refs()), (2, 2, 2));
+            assert_eq!(
+                (
+                    Rc::strong_count(&s[0]),
+                    Rc::strong_count(&s[1]),
+                    Rc::strong_count(&s[2])
+                ),
+                (2, 2, 2)
+            );
             liero_game_free(g);
-            for b in s {
-                assert_eq!((*b).refs(), 1);
-                liero_worm_settings_box_free(b);
-            }
+            assert!(s.iter().all(|b| Rc::strong_count(b) == 1));
         }
     }
 
@@ -770,9 +779,9 @@ mod tests {
     fn assigning_replaces_the_worms_but_keeps_bots_and_spectators() {
         unsafe {
             let s = [settings(100, "a"), settings(50, "b"), settings(10, "c")];
-            let from = game(s);
+            let from = game(&s);
             let to = &mut *liero_game_new();
-            let old = liero_game_new_worm(to, s[0]);
+            let old = liero_game_new_worm(to, Some(s[0].clone()));
             liero_game_list_worm(to, Some(old));
             liero_game_add_viewport(to, rect(0, 0, 1, 1), 0, 1, 1, 0, false);
             let spectator = liero_game_add_viewport(to, rect(0, 0, 1, 1), 0, 1, 1, 0, true);
@@ -811,10 +820,7 @@ mod tests {
             );
             liero_game_free(to);
             liero_game_free(from);
-            for b in s {
-                assert_eq!((*b).refs(), 1);
-                liero_worm_settings_box_free(b);
-            }
+            assert!(s.iter().all(|b| Rc::strong_count(b) == 1));
         }
     }
 
@@ -822,11 +828,11 @@ mod tests {
     fn the_palette_has_the_first_two_worms_colours() {
         unsafe {
             let s = [settings(100, "a"), settings(50, "b"), settings(10, "c")];
-            for (i, &b) in s.iter().enumerate() {
-                (*b).data.color = 0x50 + 0x10 * i as i32;
-                (*b).data.rgb = [63, 0, 0];
+            for (i, b) in s.iter().enumerate() {
+                b.borrow_mut().data.color = 0x50 + 0x10 * i as i32;
+                b.borrow_mut().data.rgb = [63, 0, 0];
             }
-            let g = &mut *game(s);
+            let g = &mut *game(&s);
             let level = [crate::gfx::LieroColor {
                 r: 1,
                 g: 2,
@@ -847,9 +853,6 @@ mod tests {
             liero_game_origpal(g, &mut pal, &level);
             assert_eq!(pal[0x50].r, 1);
             liero_game_free(g);
-            for b in s {
-                liero_worm_settings_box_free(b);
-            }
         }
     }
 
@@ -935,8 +938,8 @@ mod tests {
     fn the_view_has_the_worms_and_viewports() {
         unsafe {
             let s = [settings(100, "aa"), settings(50, "bbb"), settings(10, "c")];
-            (*s[1]).data.color = 7;
-            let g = &mut *game(s);
+            s[1].borrow_mut().data.color = 7;
+            let g = &mut *game(&s);
             // The view takes no empty places.
             g.list.remove(1);
             let set = crate::settings::liero_settings_box_new();
@@ -971,9 +974,6 @@ mod tests {
             liero_game_view_free(v);
             liero_game_free(g);
             crate::settings::liero_settings_box_free(set);
-            for b in s {
-                liero_worm_settings_box_free(b);
-            }
         }
     }
 }

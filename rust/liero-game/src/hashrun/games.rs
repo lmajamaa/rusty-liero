@@ -191,8 +191,7 @@ pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Opt
     let s = unsafe { &mut *settings.as_ptr() };
     s.data.game_mode = game_mode;
     for ws in &s.worms {
-        // SAFETY: the settings' worms are theirs alone.
-        let ws = unsafe { &mut *ws.as_ptr() };
+        let mut ws = ws.borrow_mut();
         // The original bot
         ws.data.controller = 1;
         if let Some(names) = weapons {
@@ -216,7 +215,8 @@ pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Opt
         game.data_mut().rand.seed(seed.wrapping_mul(7919));
 
         for (i, ws) in s.worms.iter().enumerate() {
-            let id = liero_game_new_worm(&mut game, ws.as_ptr());
+            let id = liero_game_new_worm(&mut game, Some(ws.clone()));
+            let ws = ws.borrow();
             liero_game_list_worm(&mut game, Some(id));
             let w = game.worm_mut(id);
             w.data.health = ws.data.health;

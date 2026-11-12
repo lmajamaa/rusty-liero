@@ -94,7 +94,7 @@ fn add_settings_hashes(f: &mut Fnv, game: &mut LieroGame, with_index: bool) {
         if with_index {
             f.i32(w.data.index);
         }
-        add_hash(f, &worm_hash(w.settings_mut()));
+        add_hash(f, &worm_hash(&mut w.settings_mut()));
     }
 }
 

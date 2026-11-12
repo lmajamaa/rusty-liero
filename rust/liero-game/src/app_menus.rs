@@ -123,7 +123,7 @@ pub(crate) fn draw_spectator_info() {
     let line = level_line(&crate::app::menu_tc_data(), &s.level_file, &s.level_file);
     let scr = app().single.bmp.view();
     let font = crate::app::menu_font();
-    let w = &s.worms;
+    let w = [s.worms[0].borrow(), s.worms[1].borrow()];
     // SAFETY: the bitmap, font and texts are valid.
     unsafe {
         liero_menu_draw_versus(
@@ -179,6 +179,7 @@ fn palette(r: &mut LieroRenderer, cycles: u32, s: &crate::settings::LieroSetting
     d.pal = d.origpal;
     liero_palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, cycles);
     for (i, w) in s.worms.iter().enumerate() {
+        let w = w.borrow();
         liero_palette_set_worm_colour(&mut d.pal, i as i32, w.data.color, &w.data.rgb);
     }
     liero_palette_fade(&mut d.pal, d.fade_value);
