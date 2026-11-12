@@ -12,18 +12,6 @@ pub(super) fn bundled() -> crate::shared::Shared<LieroTc> {
     load_checked(&Node::new(b"TC/openliero")).expect("the hash run's TC")
 }
 
-/// # Safety
-/// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
-    unsafe {
-        if n == 0 {
-            &[]
-        } else {
-            std::slice::from_raw_parts(p, n)
-        }
-    }
-}
-
 /// A sprite set as `addSprites` hashes it.
 fn add_sprites(h: &mut Fnv, s: &LieroTcSprites) {
     let size = s.width * s.height;
@@ -66,12 +54,9 @@ pub fn hash_tc(out: &mut Out) {
     let sounds = &d.sounds;
     for (i, s) in sounds.iter().enumerate() {
         let mut h = Fnv::default();
-        // SAFETY: the sound's name and samples are the TC's.
-        unsafe {
-            h.bytes(s.name.bytes());
-            h.u32(s.len as u32);
-            h.bytes(items(s.data, s.len));
-        }
+        h.bytes(&s.name);
+        h.u32(s.data.len() as u32);
+        h.bytes(&s.data);
         h.bool(s.valid);
         out.hash("tc-sound", i as i64, h);
     }

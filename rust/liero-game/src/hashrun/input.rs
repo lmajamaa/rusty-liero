@@ -33,26 +33,13 @@ use crate::sfx::{LieroMixer, LieroSoundOut, LIERO_SOUND_LOOP, LIERO_SOUND_NORMAL
 use crate::shared::Shared;
 use crate::tc::{LieroTc, LieroTcSound};
 
-/// # Safety
-/// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
-    unsafe {
-        if n == 0 {
-            &[]
-        } else {
-            std::slice::from_raw_parts(p, n)
-        }
-    }
-}
-
 fn sounds(tc: &Shared<LieroTc>) -> &[LieroTcSound] {
     let d = tc_data(tc);
     &d.sounds
 }
 
 fn samples(s: &LieroTcSound) -> &[i16] {
-    // SAFETY: a sound's samples are as many as its count.
-    unsafe { items(s.samples, s.sample_count) }
+    &s.samples
 }
 
 fn hash_samples(out: &mut Out, tc: &Shared<LieroTc>) {
@@ -60,7 +47,7 @@ fn hash_samples(out: &mut Out, tc: &Shared<LieroTc>) {
         let mut f = Fnv::default();
         f.bool(s.valid);
         if s.valid {
-            f.u32(s.sample_count as u32);
+            f.u32(s.samples.len() as u32);
             samples(s).iter().for_each(|&v| f.i32(v.into()));
         }
         out.hash("sfx-sample", i as i64, f);

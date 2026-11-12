@@ -222,8 +222,8 @@ impl LieroSoundOut {
                 let s = &tc.sounds[sound as usize];
                 let now = m.now() as u32;
                 m.add(
-                    s.samples,
-                    s.sample_count,
+                    s.samples.as_ptr(),
+                    s.samples.len(),
                     now,
                     id as usize,
                     if loops != 0 {

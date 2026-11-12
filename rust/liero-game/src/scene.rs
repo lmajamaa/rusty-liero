@@ -239,7 +239,7 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
             .map(|w| {
                 let t = settings.loading_time.wrapping_mul(w.loading_time) / 100;
                 LieroViewWeapon {
-                    name: w.name,
+                    name: LieroStr::of(&w.name),
                     ammo: w.ammo,
                     loading_time: w.loading_time,
                     computed_loading_time: if t == 0 { 1 } else { t },
@@ -349,21 +349,21 @@ mod tests {
     use crate::viewport::{liero_viewport_free, liero_viewport_new, LIERO_VIEWPORT_SPECTATOR};
     use crate::worm::LieroWormData;
 
-    fn zeroed<T>(n: usize) -> Vec<T> {
-        (0..n).map(|_| unsafe { std::mem::zeroed() }).collect()
+    fn defaults<T: Default>(n: usize) -> Vec<T> {
+        (0..n).map(|_| T::default()).collect()
     }
 
     /// Runs `f` on a game of two worms named A and B in a TC of three
     /// weapons, with a split-screen viewport per worm and a spectator one.
     fn with_game(f: impl FnOnce(&mut LieroGameFields, &mut [LieroWormData; 2])) {
-        let mut weapons: Vec<LieroTcWeapon> = zeroed(3);
+        let mut weapons: Vec<LieroTcWeapon> = defaults(3);
         for (i, (w, t)) in weapons.iter_mut().zip([0, 1, 250]).enumerate() {
             w.id = i as i32;
             w.loading_time = t;
         }
-        let mut sobjects: Vec<LieroTcSObject> = zeroed(2);
+        let mut sobjects: Vec<LieroTcSObject> = defaults(2);
         sobjects[1].start_frame = 40;
-        let mut nobjects: Vec<LieroTcNObject> = zeroed(1);
+        let mut nobjects: Vec<LieroTcNObject> = defaults(1);
         nobjects[0].start_frame = 30;
         let mut tc = LieroTcData::empty();
         tc.weapons = weapons;

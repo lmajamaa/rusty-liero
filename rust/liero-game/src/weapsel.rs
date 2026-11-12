@@ -604,7 +604,7 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
                 ready: bot && select != 1,
             });
         }
-        let names: Vec<LieroStr> = tc.weapons.iter().map(|w| w.name).collect();
+        let names: Vec<LieroStr> = tc.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
         let spec = LieroWeapselSpec {
             worms: worms.as_ptr(),
             worm_count: worms.len() as i32,
@@ -741,10 +741,7 @@ mod tests {
 
     #[test]
     fn the_level_line_names_the_menus_level_file() {
-        let texts: Vec<LieroStr> = liero_data::exe::TEXTS
-            .iter()
-            .map(|t| LieroStr::of(t.0.as_bytes()))
-            .collect();
+        let texts = liero_data::exe::TEXTS.iter().map(|t| t.0.as_bytes().to_vec()).collect();
         let mut tc = LieroTcData::empty();
         tc.texts = texts;
         assert_eq!(level_line(&tc, b"", b"a/b.lev"), b"LevelRandom");
@@ -838,7 +835,7 @@ mod tests {
     #[test]
     fn menus_play_sounds_and_set_the_worm() {
         let order: Vec<i32> = (0..40).collect();
-        let weapons: Vec<LieroTcWeapon> = (0..40).map(|_| unsafe { std::mem::zeroed() }).collect();
+        let weapons: Vec<LieroTcWeapon> = (0..40).map(|_| LieroTcWeapon::default()).collect();
         let tc = tc(weapons, &order);
         let table = [0u32; 40];
         let mut rand = LieroRand::new(1);
@@ -899,7 +896,7 @@ mod tests {
     #[test]
     fn finalize_loads_the_weapons_and_releases_the_controls() {
         let order: Vec<i32> = (0..10).rev().collect();
-        let weapons: Vec<LieroTcWeapon> = (0..10).map(|_| unsafe { std::mem::zeroed() }).collect();
+        let weapons: Vec<LieroTcWeapon> = (0..10).map(|_| LieroTcWeapon::default()).collect();
         let tc = tc(weapons, &order);
         let mut worm = LieroWormData {
             current_weapon: 3,

@@ -170,8 +170,7 @@ fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
         // The last of the same name, as the C++ loop left it.
         let found = order.iter().rposition(|&w| {
             let w: &LieroTcWeapon = &weapons[w as usize];
-            // SAFETY: the weapon's name is the TC's.
-            (unsafe { w.name.bytes() }) == name.as_bytes()
+            w.name == name.as_bytes()
         });
         found.unwrap_or_else(|| panic!("No weapon called {name} in the TC")) as u32 + 1
     })
@@ -291,7 +290,7 @@ fn hash_stats_screen(out: &mut Out, name: &str, game: &mut LieroGame, renderer: 
 
     let mut bg = crate::renderer::LieroBitmapBox::new();
     bg.copy_from(&renderer.bmp);
-    let names: Vec<LieroStr> = d.weapons.iter().map(|w| w.name).collect();
+    let names: Vec<LieroStr> = d.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
     let screen = LieroStatsScreen::new(stats, renderer.data.render_res_x);
 
     let mut n = 0;

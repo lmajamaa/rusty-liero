@@ -870,7 +870,7 @@ mod tests {
         tc.constants = constants;
         tc.bonus_rand_timer = [1, 2, 3, 4];
         // SAFETY: all zeroes is a valid weapon.
-        tc.weapons = (0..40).map(|_| unsafe { std::mem::zeroed() }).collect();
+        tc.weapons = (0..40).map(|_| crate::tc::LieroTcWeapon::default()).collect();
         tc.hacks = vec![false; liero_data::exe::HACKS.len()];
         let s = crate::settings::liero_settings_box_new();
         unsafe {
