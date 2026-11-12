@@ -3,6 +3,8 @@
 // no COOP/COEP headers, so anything that needs threads fails here as it would there.
 //
 //   bun web/serve.ts [dir] [--port N]     # dir defaults to build/web
+//
+// A folder's page is its index.html, or the Emscripten build's openliero.html.
 
 import { resolve, join, sep } from "node:path";
 
@@ -15,7 +17,9 @@ const server = Bun.serve({
   port,
   async fetch(req) {
     let path = decodeURIComponent(new URL(req.url).pathname);
-    if (path.endsWith("/")) path += "openliero.html";
+    if (path.endsWith("/")) {
+      path += (await Bun.file(join(root, path, "index.html")).exists()) ? "index.html" : "openliero.html";
+    }
 
     const full = join(root, path);
     if (full !== root && !full.startsWith(root + sep)) {

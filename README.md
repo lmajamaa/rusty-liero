@@ -91,6 +91,18 @@ Serving the web build locally with Bun (then open http://localhost:8080):
 bun web/serve.ts build/web
 ```
 
+The web build with the Rust shell (`rust/liero-game/src/web.rs`) on
+`wasm32-unknown-unknown` instead of Emscripten, which will replace it (writes
+`build/www/index.html`, `liero_game.js` and `liero_game_bg.wasm`, with the TC
+inside the wasm). Its page is `web/index.html`; saves are kept in IndexedDB,
+and the first start copies the Emscripten build's:
+```bash
+docker compose run --rm web bun tools/web/build.ts
+```
+```bash
+bun web/serve.ts build/www --port 8082
+```
+
 With Rust installed locally, `cargo run --release --manifest-path tools/tctool/Cargo.toml -- <path-to-tc>` works too.
 
 Game code ported to Rust lives in `rust/liero-game`. The web build compiles it

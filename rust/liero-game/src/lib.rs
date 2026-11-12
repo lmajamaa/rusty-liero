@@ -48,6 +48,9 @@ pub mod scene;
 pub mod viewport;
 pub mod weapon;
 pub mod weapon_options;
+/// The web build's shell (`wasm32-unknown-unknown` only).
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub mod web;
 pub mod weapsel;
 pub mod world;
 pub mod worm;

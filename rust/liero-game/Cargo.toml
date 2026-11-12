@@ -17,6 +17,38 @@ liero-data = { path = "../liero-data" }
 miniz_oxide = { version = "=0.9.1", default-features = false, features = ["with-alloc"] }
 
 # A panic must never unwind into C++, so it aborts instead.
+# The web build (src/web), on wasm32-unknown-unknown only: calling the
+# browser from Rust. Agreed 2026-11-12. tools/web/build.ts runs the matching
+# wasm-bindgen CLI, which must be the same version as wasm-bindgen.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+wasm-bindgen = "=0.2.129"
+js-sys = "=0.3.106"
+web-sys = { version = "=0.3.106", features = [
+    "AudioBuffer",
+    "AudioContext",
+    "AudioContextOptions",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioProcessingEvent",
+    "BaseAudioContext",
+    "CanvasRenderingContext2d",
+    "Document",
+    "Element",
+    "Event",
+    "EventTarget",
+    "Gamepad",
+    "GamepadButton",
+    "HtmlCanvasElement",
+    "ImageData",
+    "KeyboardEvent",
+    "Navigator",
+    "Performance",
+    "ScriptProcessorNode",
+    "UiEvent",
+    "Window",
+    "console",
+] }
+
 [profile.dev]
 panic = "abort"
 

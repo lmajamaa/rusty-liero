@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liero</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c8c8c8;
+    font: 16px/1.4 ui-monospace, Menlo, Consolas, monospace;
+  }
+  /* The largest 8:5 box that fits the window. The game sets the canvas's
+     pixels to 320x200 or 640x400; CSS scales them up, sharp. */
+  #canvas {
+    display: block;
+    width: min(100vw, 160vh);
+    height: min(100vh, 62.5vw);
+    image-rendering: pixelated;
+    outline: none;
+  }
+  #start {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    cursor: default;
+    text-align: center;
+    padding: 16px;
+  }
+  #start.ready {
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas" width="640" height="400" oncontextmenu="event.preventDefault()"></canvas>
+<div id="start"><div id="status">Loading…</div></div>
+<script type="module">
+  // The game is rust/liero-game built for wasm32-unknown-unknown
+  // (tools/web/build.ts); its shell is src/web.rs. This page loads it, gives
+  // it the saves kept in IndexedDB, and starts it on a click, so the browser
+  // lets it play sound.
+  import init, { liero_web_add_save, liero_web_flush, liero_web_start } from "./liero_game.js";
+
+  const canvas = document.getElementById("canvas");
+  const start = document.getElementById("start");
+  const status = document.getElementById("status");
+
+  // ---- Saves: settings, profiles and replays, under /liero.
+  //
+  // Kept in the database "liero", one record per file, keyed by its path.
+  // The Emscripten build kept them in IDBFS's database "/liero"; the first
+  // time this page runs, it copies those over, so nothing is lost.
+
+  const request = (r) => new Promise((resolve, reject) => {
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+
+  function openSaves() {
+    const open = indexedDB.open("liero", 1);
+    open.onupgradeneeded = () => {
+      open.result.createObjectStore("files");
+      open.result.createObjectStore("meta");
+    };
+    return request(open);
+  }
+
+  // The Emscripten build's saves, or none. Opening a database that isn't
+  // there would make it, so that is stopped.
+  function readIdbfs() {
+    return new Promise((resolve) => {
+      let open;
+      try {
+        open = indexedDB.open("/liero");
+      } catch {
+        resolve([]);
+        return;
+      }
+      open.onupgradeneeded = (e) => e.target.transaction.abort();
+      open.onerror = () => resolve([]);
+      open.onsuccess = async () => {
+        const db = open.result;
+        try {
+          if (!db.objectStoreNames.contains("FILE_DATA")) {
+            resolve([]);
+            return;
+          }
+          const store = db.transaction("FILE_DATA").objectStore("FILE_DATA");
+          const [keys, values] = await Promise.all([request(store.getAllKeys()), request(store.getAll())]);
+          // Folders have no contents.
+          resolve(keys.map((k, i) => [k, values[i]?.contents]).filter(([k, c]) => typeof k === "string" && c)
+            .map(([k, c]) => [k, new Uint8Array(c)]));
+        } catch {
+          resolve([]);
+        } finally {
+          db.close();
+        }
+      };
+    });
+  }
+
+  async function loadSaves(db) {
+    const files = db.transaction("files").objectStore("files");
+    const [keys, values] = await Promise.all([request(files.getAllKeys()), request(files.getAll())]);
+    const saves = keys.map((k, i) => [k, values[i]]);
+    const copied = await request(db.transaction("meta").objectStore("meta").get("copied-idbfs"));
+    if (!copied) {
+      const have = new Set(keys);
+      // Read before the transaction: one left waiting closes.
+      const old = await readIdbfs();
+      const tx = db.transaction(["files", "meta"], "readwrite");
+      for (const [path, data] of old) {
+        if (!have.has(path)) {
+          tx.objectStore("files").put(data, path);
+          saves.push([path, data]);
+        }
+      }
+      tx.objectStore("meta").put(true, "copied-idbfs");
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    return saves;
+  }
+
+  let db = null;
+  // Called by the game for each file it changed: its bytes, or null if it
+  // was removed.
+  function persist(path, data) {
+    if (!db) return;
+    const store = db.transaction("files", "readwrite").objectStore("files");
+    const r = data === null ? store.delete(path) : store.put(data, path);
+    r.onerror = () => console.warn("Saving failed:", r.error);
+  }
+
+  // ---- Starting
+
+  let started = false;
+  function begin() {
+    if (started || !start.classList.contains("ready")) return;
+    started = true;
+    start.remove();
+    try {
+      // Inside the click, so the game's AudioContext may play sound.
+      liero_web_start(canvas, persist);
+      canvas.focus();
+    } catch (e) {
+      status.textContent = "The game stopped: " + e;
+      document.body.appendChild(start);
+    }
+  }
+  start.addEventListener("click", begin);
+  window.addEventListener("keydown", (e) => {
+    if (!started && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      begin();
+    }
+  });
+  // The game gives its changes every frame; these catch the last ones.
+  document.addEventListener("visibilitychange", () => {
+    if (started && document.visibilityState === "hidden") liero_web_flush();
+  });
+  window.addEventListener("pagehide", () => {
+    if (started) liero_web_flush();
+  });
+
+  try {
+    await init();
+    try {
+      db = await openSaves();
+      for (const [path, data] of await loadSaves(db)) liero_web_add_save(path, data);
+    } catch (e) {
+      // As in some private windows: the game runs, but nothing is kept.
+      console.warn("Saving is off, IndexedDB failed:", e);
+      db = null;
+    }
+    status.textContent = "Click to play";
+    start.classList.add("ready");
+  } catch (e) {
+    status.textContent = "The game couldn't load: " + e;
+  }
+</script>
+</body>
+</html>

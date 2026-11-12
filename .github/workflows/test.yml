@@ -20,6 +20,10 @@ env:
   EMSDK_VERSION: 4.0.0
   RUST_VERSION: 1.87.0
   CBINDGEN_VERSION: 0.29.0
+  # The wasm-bindgen CLI must match the crate's pin in rust/liero-game. It
+  # needs a newer Rust to build than the game's, used only for that.
+  WASM_BINDGEN_VERSION: 0.2.129
+  WASM_BINDGEN_RUST_VERSION: 1.88.0
   BUN_VERSION: 1.4.4
 
 jobs:
@@ -32,8 +36,13 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --target wasm32-unknown-emscripten
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy --target wasm32-unknown-emscripten,wasm32-unknown-unknown
           rustup default "$RUST_VERSION"
+
+      - name: Install the wasm-bindgen CLI
+        run: |
+          rustup toolchain install "$WASM_BINDGEN_RUST_VERSION" --profile minimal
+          cargo +"$WASM_BINDGEN_RUST_VERSION" install --locked wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
 
       - name: Install cbindgen
         run: cargo install --locked cbindgen --version "$CBINDGEN_VERSION"
@@ -54,6 +63,10 @@ jobs:
         working-directory: rust/liero-game
         run: cargo clippy --all-targets --target wasm32-unknown-emscripten -- -D warnings
 
+      - name: Clippy (web shell)
+        working-directory: rust/liero-game
+        run: cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
+
       - name: Rust tests (native)
         working-directory: rust/liero-game
         run: cargo test
@@ -72,6 +85,11 @@ jobs:
         run: |
           emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release
           cmake --build build/web -j
+
+      # The Rust shell on wasm32-unknown-unknown (src/web.rs), next to the
+      # Emscripten build until it replaces it.
+      - name: Build the Rust web shell
+        run: bun tools/web/build.ts
 
       # As wasm with the web build's stack, every function checking for an
       # overflow.
