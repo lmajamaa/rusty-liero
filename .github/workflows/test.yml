@@ -65,11 +65,13 @@ jobs:
 
       - name: Build the game
         run: |
-          emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release -DLIERO_STACK_CHECK=ON
+          emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release
           cmake --build build/web -j
 
-      - name: Check game-state hashes against the original C++
-        run: bun tools/hashrun/run.ts
+      # As wasm with the web build's stack, every function checking for an
+      # overflow.
+      - name: Check game-state hashes against the original C++ (wasm)
+        run: bun tools/hashrun/run.ts --wasm
 
   native:
     name: Native tools
@@ -93,3 +95,11 @@ jobs:
 
       - name: Test reading and writing TCs (liero-data)
         run: cargo test --manifest-path rust/liero-data/Cargo.toml
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Check game-state hashes against the original C++ (native)
+        run: bun tools/hashrun/run.ts

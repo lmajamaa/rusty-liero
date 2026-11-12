@@ -3145,20 +3145,6 @@ const struct LieroGameSettings *liero_game_view_settings(const struct LieroGameV
 void liero_game_view_free(struct LieroGameView *v);
 
 /**
- * Runs section `name`, calling `print(ctx, line)` for each line, with the
- * bot games `ticks` long at most and hashed every `interval`. False if it
- * isn't one Rust has.
- *
- * # Safety
- * `name` is valid, and `print` can be called with `ctx`.
- */
-bool liero_hash_section(struct LieroStr name,
-                        int32_t ticks,
-                        int32_t interval,
-                        void *ctx,
-                        void (*print)(void *ctx, struct LieroStr line));
-
-/**
  * Fills a rectangle, clipped: `fillRect`.
  *
  * # Safety
@@ -4756,6 +4742,51 @@ struct LieroStr liero_worm_settings_box_name(const struct LieroWormSettingsBox *
  * `text` must be valid.
  */
 void liero_worm_settings_box_set_name(struct LieroWormSettingsBox *s, struct LieroStr text);
+
+/**
+ * Why the last call that returned false failed, valid until the next
+ * call.
+ */
+struct LieroStr liero_shell_error(void);
+
+/**
+ * `LieroApp::start`. False if it failed, with the message in
+ * `liero_shell_error`.
+ *
+ * # Safety
+ * The paths are valid.
+ */
+bool liero_shell_start(struct LieroApp *a,
+                       struct LieroStr config,
+                       struct LieroStr tc_root,
+                       struct LieroStr tc);
+
+/**
+ * `LieroApp::save_settings_at_end`. False if it failed, with the message in
+ * `liero_shell_error`.
+ */
+bool liero_shell_save_settings(struct LieroApp *a);
+
+/**
+ * The config folder's path, for the window's icon.
+ */
+struct LieroStr liero_shell_config_path(const struct LieroApp *a);
+
+bool liero_shell_fullscreen(const struct LieroApp *a);
+
+void liero_shell_set_fullscreen(struct LieroApp *a, bool on);
+
+bool liero_shell_spectator_window(const struct LieroApp *a);
+
+void liero_shell_set_spectator_window(struct LieroApp *a, bool on);
+
+/**
+ * Plays the menus' TC's `sound` on `mixer`, if there is one.
+ *
+ * # Safety
+ * `mixer` is valid or null.
+ */
+void liero_shell_play_sound(const struct LieroApp *a, struct LieroMixer *mixer, int32_t sound);
 
 /**
  * Fills `out` with the `2 * len` samples of an 8-bit TC sound of `len`

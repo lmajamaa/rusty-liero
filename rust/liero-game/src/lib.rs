@@ -37,6 +37,7 @@ pub mod replay_file;
 pub mod screen;
 pub mod selector;
 pub mod settings;
+pub mod shell;
 pub mod shared;
 pub mod sfx;
 pub mod stats;

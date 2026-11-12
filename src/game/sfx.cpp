@@ -1,9 +1,7 @@
 #include "sfx.hpp"
 #include "console.hpp"
-#include "common.hpp"
-#include "gfx.hpp"
-#include <vector>
-#include <cassert>
+#include <cstring>
+#include <string>
 #if !DISABLE_SOUND
 #	include <SDL.h>
 #endif
@@ -63,38 +61,6 @@ void Sfx::deinit()
 	SDL_QuitSubSystem(SDL_INIT_AUDIO);
 	liero_mixer_free(mixer);
 	mixer = 0;
-#endif
-}
-
-void Sfx::play(Common& common, int sound, void* id, int loops)
-{
-#if !DISABLE_SOUND
-	if(!initialized)
-		return;
-
-	playOnMixer(mixer, common, sound, id, loops);
-#endif
-}
-
-void Sfx::stop(void* id)
-{
-#if !DISABLE_SOUND
-	if(!initialized)
-		return;
-
-	liero_mixer_stop(mixer, id);
-#endif
-}
-
-bool Sfx::isPlaying(void* id)
-{
-#if !DISABLE_SOUND
-	if(!initialized)
-		return false;
-
-	return liero_mixer_is_playing(mixer, id);
-#else
-	return false;
 #endif
 }
 

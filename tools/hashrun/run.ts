@@ -1,77 +1,74 @@
-// Runs the web build's headless hash mode (`--hash-run`, see
-// src/game/hashrun.cpp) with Bun and compares the game-state and frame hashes
-// with expected.txt, which was made from the original C++ game and drawing
-// code.
+// Builds and runs the hash run (rust/liero-game/src/bin/liero-hashrun.rs)
+// natively and compares the game-state and frame hashes with expected.txt,
+// which was made from the original C++ game and drawing code.
 //
-//   bun tools/hashrun/run.ts [dir]            # dir defaults to build/web
-//   bun tools/hashrun/run.ts [dir] --update   # rewrite expected.txt
-//   bun tools/hashrun/run.ts [dir] --only=app,menus
+//   bun tools/hashrun/run.ts             # from the repository's root
+//   bun tools/hashrun/run.ts --update    # rewrite expected.txt
+//   bun tools/hashrun/run.ts --only=app,menus
+//   bun tools/hashrun/run.ts --wasm      # as wasm, with Bun
 //
 // --only runs just those sections (tc, games, menus, settings, replays, ai,
 // input, app, levels, randomtc) and checks that each one's lines match a run
 // of expected.txt's, for quick checks such as planted bugs. A full run is still
 // the check for a commit.
 //
+// --wasm builds it for wasm32-unknown-emscripten instead and runs it with
+// Bun, with the web build's 64 KB stack and every function checking for an
+// overflow (rust/liero-game/build.rs), which a native run can't see. CI runs
+// both.
+//
 // Only regenerate expected.txt from a build whose game logic is known to be
 // right, such as the commit before a port.
 
-import { resolve, join } from "node:path";
+import { join } from "node:path";
 
 const TICKS = 30000;
 const INTERVAL = 100;
 
 const args = process.argv.slice(2);
 const update = args.includes("--update");
+const wasm = args.includes("--wasm");
 const only = args.find((a) => a.startsWith("--only="))?.slice("--only=".length) ?? "";
 if (update && only) {
   console.error("--update needs a full run, without --only");
   process.exit(1);
 }
-const dir = resolve(args.find((a) => !a.startsWith("--")) ?? "build/web");
-const expectedPath = join(import.meta.dir, "expected.txt");
-
-// Without these Emscripten keeps retrying, so a failed build would hang here.
-for (const file of ["openliero.js", "openliero.wasm", "openliero.data"]) {
-  if (!(await Bun.file(join(dir, file)).exists())) {
-    console.error(`${join(dir, file)} is missing; build the web game first`);
-    process.exit(1);
-  }
+const unknown = args.filter((a) => a !== "--update" && a !== "--wasm" && !a.startsWith("--only="));
+if (unknown.length) {
+  console.error(`Unknown arguments: ${unknown.join(" ")}`);
+  process.exit(1);
 }
+const expectedPath = join(import.meta.dir, "expected.txt");
 
 const isHash = (l: string) => /^\S+ \d+ [0-9a-f]{16}( end| frame)?$/.test(l);
 
+const runArgs = [String(TICKS), String(INTERVAL), ...(only ? [only] : [])];
+const cargo = ["cargo", "build", "--quiet", "--release", "--manifest-path", "rust/liero-game/Cargo.toml", "--bin", "liero-hashrun"];
+let run;
+if (wasm) {
+  // Built and run in two steps: cargo's runner for the wasm target is set
+  // in rust/liero-game, but the run starts here, where the TC is.
+  const target = "wasm32-unknown-emscripten";
+  const build = Bun.spawnSync([...cargo, "--target", target], { stdout: "inherit", stderr: "inherit" });
+  if (build.exitCode !== 0) process.exit(1);
+  const js = `rust/liero-game/target/${target}/release/liero-hashrun.js`;
+  run = Bun.spawnSync([process.execPath, js, ...runArgs], { stdout: "pipe", stderr: "pipe" });
+} else {
+  const build = Bun.spawnSync(cargo, { stdout: "inherit", stderr: "inherit" });
+  if (build.exitCode !== 0) process.exit(1);
+  run = Bun.spawnSync(["rust/liero-game/target/release/liero-hashrun", ...runArgs], { stdout: "pipe", stderr: "pipe" });
+}
+if (run.exitCode !== 0) {
+  // How each game and replay ended, then the error.
+  console.error(run.stderr.toString().trim());
+  console.error(`The hash run exited with ${run.exitCode}`);
+  process.exit(1);
+}
+const printed = run.stdout.toString().split("\n");
+for (const l of printed) if (l.includes(" summary: ")) console.log(l);
+
 // The hash lines, and those of each section run.
-const output: string[] = await new Promise(async (done, fail) => {
-  const out: string[] = [];
-  // Emscripten's generated script uses a global Module object if one exists.
-  (globalThis as any).Module = {
-    locateFile: (path: string) => join(dir, path),
-    print: (line: string) => out.push(line),
-    printErr: (line: string) => console.error(line),
-    onAbort: (what: unknown) => fail(new Error(`The game aborted: ${what}`)),
-    onRuntimeInitialized() {
-      try {
-        const status = (globalThis as any).Module.callMain(["--hash-run", String(TICKS), String(INTERVAL), ...(only ? [only] : [])]);
-        if (status) fail(new Error(`--hash-run exited with ${status}`));
-        // The first line is the game's version banner on normal runs; hash
-        // lines have three fields, and a fourth for the end of a game or a
-        // frame hash.
-        else {
-          for (const l of out) if (l.includes(" summary: ")) console.log(l);
-          done(out.filter((l) => isHash(l) || l.startsWith("hash-section ")));
-        }
-      } catch (e) {
-        fail(e);
-      }
-    },
-  };
-  // Emscripten's script starts with `var Module = typeof Module != "undefined"
-  // ? Module : {}`. Under require() that `var` is local and hides the global,
-  // so run the script in global scope instead, with the Node globals it uses.
-  const script = join(dir, "openliero.js");
-  Object.assign(globalThis, { require, __dirname: dir, __filename: script });
-  (0, eval)(await Bun.file(script).text());
-});
+const output = printed.filter((l) => isHash(l) || l.startsWith("hash-section "));
 
 const lines = output.filter(isHash);
 const sections: string[][] = [];
@@ -118,4 +115,4 @@ for (let i = 0; i < count; ++i) {
     process.exit(1);
   }
 }
-console.log(`All ${lines.length} game-state and frame hashes match${only ? ` (only ${only})` : ""}`);
+console.log(`All ${lines.length} game-state and frame hashes match${only ? ` (only ${only})` : ""}${wasm ? " (wasm)" : ""}`);

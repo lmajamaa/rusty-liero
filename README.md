@@ -110,17 +110,19 @@ Ported code is tested against the original C++: `rust/liero-game/reference/refer
 prints the values the tests expect, by running the same loops through the C++
 code (see the comment at its top for how to run it).
 
-Whole games are checked too: `openliero --hash-run` plays fixed-seed bot games
-without a window and prints hashes of the game state and of the drawn frames,
-and `tools/hashrun/run.ts`
-compares them with `tools/hashrun/expected.txt`, made from the original C++.
-After building the web game:
+Whole games are checked too: the hash run (`rust/liero-game/src/bin/liero-hashrun.rs`)
+plays fixed-seed bot games, replays, the menus and a scripted run of the whole
+app without a window and prints hashes of the game state and of the drawn
+frames, and `tools/hashrun/run.ts` builds it, runs it and compares them with
+`tools/hashrun/expected.txt`, made from the original C++:
 ```bash
 docker compose run --rm web bun tools/hashrun/run.ts
 ```
-For a quick check of one part, such as a planted bug, `--only=` runs just
-those sections (`tc`, `games`, `menus`, `settings`, `replays`, `ai`, `input`,
-`app`, `levels`, `randomtc`); a full run is still the check for a commit.
+`--wasm` runs it as wasm with Bun instead, with the web build's stack and a
+check for overflowing it. For a quick check of one part, such as a planted
+bug, `--only=` runs just those sections (`tc`, `games`, `menus`, `settings`,
+`replays`, `ai`, `input`, `app`, `levels`, `randomtc`); a full run is still the
+check for a commit.
 ```bash
 docker compose run --rm web bun tools/hashrun/run.ts --only=app,menus
 ```
