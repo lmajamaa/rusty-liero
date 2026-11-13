@@ -29,20 +29,16 @@ use crate::replay_file::{
 };
 use crate::screen::{current_host, LieroScreen};
 use crate::settings::{liero_settings_box_new, SharedSettings, LIERO_MAX_CONTROL_EX};
-use crate::stats::{liero_stats_presenter_screen, LieroSprite, LieroStatsScene};
+use crate::stats::liero_stats_presenter_screen;
 use crate::tc::SharedTc;
-use crate::text::LieroStr;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{
     liero_weapsel_draw_game, liero_weapsel_finish, liero_weapsel_process_game, liero_weapsel_set_focused,
-    liero_weapsel_start, tc_font, LieroWeapsel,
+    liero_weapsel_start, LieroWeapsel,
 };
 
 /// `SDL_SCANCODE_R`, which rewinds a replay.
 const SCANCODE_R: i32 = 21;
-
-/// The game modes' names on the stats screen (`Texts::gameModes`).
-const GAME_MODE_NAMES: [&str; 4] = ["Kill'em All", "Game of Tag", "Holdazone", "Scales of Justice"];
 
 /// A match played here.
 struct Local {
@@ -182,20 +178,13 @@ impl LieroController {
     }
 
     /// Ends the game's stats and opens the stats screen (`presentStats`).
-    unsafe fn present_stats(&mut self) {
-        unsafe {
-            let game = self.game().expect("no game");
-            game.stats_finish();
-            let names: Vec<LieroStr>;
-            let scene;
-            {
-                let tc = &*game.tc_ptr();
-                names = tc.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
-                scene = stats_scene(game, &app().play.data, &names);
-            }
-            let s = liero_stats_presenter_screen(&*game.stats(), &scene);
-            self.open(s);
-        }
+    fn present_stats(&mut self) {
+        let game = self.game().expect("no game");
+        game.stats_finish();
+        let g = game.stats_game();
+        let r = &app().play.data;
+        let s = liero_stats_presenter_screen(game.stats(), game.tc(), g, r.render_res_x, r.render_res_y);
+        self.open(s);
     }
 
     unsafe fn on_key(&mut self, key: i32, state: bool) {
@@ -620,53 +609,6 @@ unsafe fn start_recording(l: &mut Local) -> Result<(), String> {
     }
 }
 
-/// What the stats screen draws with (`statsScene`).
-///
-/// # Safety
-/// The game has its TC, which it keeps while the scene is used; `names`
-/// are the TC's weapons' names.
-pub(crate) unsafe fn stats_scene(
-    game: &mut LieroGame,
-    r: &crate::renderer::LieroRendererData,
-    names: &[LieroStr],
-) -> LieroStatsScene<'static> {
-    unsafe {
-        let tc: &'static crate::tc::LieroTcData = &*game.tc_ptr();
-        let sprites = &tc.worm_sprites;
-        // `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
-        let sprite = |i: i32| {
-            let frame = 2 + (if i == 0 { 1 } else { 0 }) * 7 * 3 + i * 2 * 7 * 3;
-            LieroSprite {
-                mem: sprites.frame(frame),
-                width: sprites.width,
-                height: sprites.height,
-                pitch: sprites.width,
-            }
-        };
-        let name = |g: &mut LieroGame, i| {
-            let n = &g
-                .worm_at(i)
-                .expect("an empty place among the game's worms")
-                .settings()
-                .name;
-            LieroStr::of(n)
-        };
-        let mode = game.settings_box().data.game_mode as i32;
-        LieroStatsScene {
-            font: tc_font(tc),
-            worm_sprites: [sprite(0), sprite(1)],
-            names: [name(game, 0), name(game, 1)],
-            game_mode: mode,
-            game_mode_name: LieroStr::of(GAME_MODE_NAMES[mode as usize].as_bytes()),
-            weapon_names: names.as_ptr(),
-            weapon_count: names.len(),
-            render_res_x: r.render_res_x,
-            render_res_y: r.render_res_y,
-            ticks_per_sec: 1_000_000_000,
-        }
-    }
-}
-
 /// A local match with the settings' two players (`LocalController`).
 ///
 /// # Safety
@@ -815,27 +757,6 @@ pub unsafe fn liero_controller_take_opened(c: &mut LieroController, out: *mut Li
             }
             None => false,
         }
-    }
-}
-
-/// What the stats screen draws `g`'s game with, on `r`; `names` are the
-/// TC's weapons' names, which outlive the scene.
-///
-/// # Safety
-/// The game has its TC and its first two worms; `names` points to `count`.
-pub unsafe fn liero_game_stats_scene(
-    g: &mut LieroGame,
-    r: &LieroRenderer,
-    names: *const LieroStr,
-    count: usize,
-) -> LieroStatsScene<'static> {
-    unsafe {
-        let names = if count == 0 {
-            &[][..]
-        } else {
-            std::slice::from_raw_parts(names, count)
-        };
-        stats_scene(g, &r.data, names)
     }
 }
 

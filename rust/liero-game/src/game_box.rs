@@ -188,8 +188,26 @@ impl LieroGame {
         &mut self.level
     }
 
-    pub(crate) fn stats(&mut self) -> *mut LieroStats {
-        &mut *self.stats
+    pub(crate) fn stats(&self) -> &LieroStats {
+        &self.stats
+    }
+
+    /// The game's TC, to share. Panics if it has none.
+    pub(crate) fn tc(&self) -> SharedTc {
+        self.tc.clone().expect("the game has no TC")
+    }
+
+    /// What the stats screen shows of the game besides its stats. Panics if
+    /// it has fewer than two worms.
+    pub(crate) fn stats_game(&mut self) -> crate::stats::StatsGame {
+        let name = |g: &mut Self, i| {
+            let w = g.worm_at(i).expect("an empty place among the game's worms");
+            w.settings().name.clone()
+        };
+        crate::stats::StatsGame {
+            names: [name(self, 0), name(self, 1)],
+            game_mode: self.settings_box().data.game_mode as i32,
+        }
     }
 
     /// Runs `f` with the game's view (`GameView`).
@@ -270,8 +288,13 @@ impl LieroGame {
 
     /// `NormalStatsRecorder::finish`.
     pub(crate) fn stats_finish(&mut self) {
-        // SAFETY: the view is the game's own.
-        self.with_view(|f, _| unsafe { crate::game::liero_game_stats_finish(f) });
+        let ws = Self::worms_and_settings(&self.pool, &self.list);
+        let worms: Vec<_> = ws
+            .iter()
+            .map(|(w, s)| crate::game::stats_worm(&w.data, s.data.health))
+            .collect();
+        drop(ws);
+        self.stats.finish(&worms);
     }
 
     /// `Game::focus`: the renderer's palette from the level's and the

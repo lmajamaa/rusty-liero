@@ -88,14 +88,15 @@ fn the_stats_screen_shows_each_worm_facing_the_middle() {
     let mut c = local(tc.clone(), ["left", "right"]);
     let game = c.game().unwrap();
     game.settings_box().data.game_mode = 2;
-    unsafe {
-        let s = stats_scene(game, &app().play.data, &[]);
+    let g = game.stats_game();
+    {
         let tc = game.tc_data();
+        let s = crate::stats::stats_scene(&tc, &g, 320, 200);
         let sprites = &tc.worm_sprites;
         assert_eq!(s.worm_sprites[0].mem, sprites.frame(23));
         assert_eq!(s.worm_sprites[1].mem, sprites.frame(44));
-        assert_eq!((s.names[0].bytes(), s.names[1].bytes()), (&b"left"[..], &b"right"[..]));
-        assert_eq!((s.game_mode, s.game_mode_name.bytes()), (2, &b"Holdazone"[..]));
+        assert_eq!(s.names, [&b"left"[..], &b"right"[..]]);
+        assert_eq!((s.game_mode, s.game_mode_name), (2, &b"Holdazone"[..]));
     }
     drop(c);
 }

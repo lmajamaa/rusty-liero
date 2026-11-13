@@ -257,7 +257,7 @@ pub struct LieroGameHooks {
 }
 
 /// A worm as the stats read it (`statsWorm` in C++).
-fn stats_worm(w: &LieroWormData, max_health: i32) -> LieroStatsWorm {
+pub(crate) fn stats_worm(w: &LieroWormData, max_health: i32) -> LieroStatsWorm {
     use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT};
     let pressed = |c: u32| (w.control_states >> c) & 1 != 0;
     LieroStatsWorm {
@@ -276,22 +276,6 @@ fn stats_worm(w: &LieroWormData, max_health: i32) -> LieroStatsWorm {
         right: pressed(LIERO_CONTROL_RIGHT),
         current_weapon: w.current_weapon,
         loading_left: w.weapons.map(|ww| ww.loading_left),
-    }
-}
-
-/// The end of the game for its stats (`StatsRecorder::finish`).
-///
-/// # Safety
-/// `f`'s pointers must be valid; its stats may be null.
-pub unsafe fn liero_game_stats_finish(f: &LieroGameFields) {
-    unsafe {
-        if let Some(s) = f.stats.as_mut() {
-            let worms: Vec<_> = slice(f.worms, f.worm_count.max(0) as usize)
-                .iter()
-                .map(|gw| stats_worm(&*gw.data, gw.max_health))
-                .collect();
-            s.finish(&worms);
-        }
     }
 }
 
