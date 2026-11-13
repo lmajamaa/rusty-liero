@@ -5,6 +5,7 @@
 //! What a selector lists and what choosing a file does is a `FileSource`;
 //! the app's are in `app_files.rs`.
 
+use crate::app::LieroApp;
 use crate::gfx::{liero_gfx_draw_rounded_box, LieroBitmap};
 use crate::menu::{LieroMenu, OwnedMenu};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
@@ -39,11 +40,12 @@ pub trait FileSource {
     fn list(&mut self, rel: &[u8]) -> Vec<(Vec<u8>, bool)>;
     /// Whether `rel` exists.
     fn exists(&mut self, rel: &[u8]) -> bool;
-    /// The cursor moved to file `rel`: show what it is.
-    fn preview(&mut self, _rel: &[u8]) {}
+    /// The cursor moved to file `rel`: show what it is on `app`'s screens.
+    fn preview(&mut self, _app: &LieroApp, _rel: &[u8]) {}
     /// Enter on file `rel`, whose full path is `full_path` and name `name`,
-    /// or on the random level. Returns what the screen closes with.
-    fn choose(&mut self, rel: &[u8], full_path: &[u8], name: &[u8], random: bool) -> i32;
+    /// or on the random level, in `app`. Returns what the screen closes
+    /// with.
+    fn choose(&mut self, app: &mut LieroApp, rel: &[u8], full_path: &[u8], name: &[u8], random: bool) -> i32;
 }
 
 /// What a selector lists and where it starts.
@@ -325,19 +327,19 @@ impl Selector {
     }
 
     /// Previews the file under the cursor if it's new there.
-    fn update_preview(&mut self) {
+    fn update_preview(&mut self, app: &LieroApp) {
         let cur = self.cur_sel();
         if self.previewed != cur {
             if let Some(c) = cur.filter(|&c| Some(c) != self.random && !self.nodes[c].folder) {
                 let rel = self.nodes[c].rel.clone();
-                self.source.preview(&rel);
+                self.source.preview(app, &rel);
                 self.previewed = Some(c);
             }
         }
     }
 
-    fn draw(&mut self, host: &Host) {
-        let (Some(scr), Some(font)) = (host.screen(), host.font()) else {
+    fn draw(&mut self, app: &LieroApp, host: &Host) {
+        let (Some(scr), Some(font)) = (host.screen(app), host.font(app)) else {
             return;
         };
 
@@ -349,7 +351,7 @@ impl Selector {
         }
         Self::framed_text(&scr, &font, &title, LIST_X, TITLE_Y);
 
-        self.update_preview();
+        self.update_preview(app);
 
         let cur = self.current;
         if let Some(parent) = self.nodes[cur].parent {
@@ -360,20 +362,20 @@ impl Selector {
     }
 
     /// Enter: what the screen closes with, if it closes.
-    fn choose(&mut self, host: &Host) -> Option<i32> {
+    fn choose(&mut self, app: &mut LieroApp, host: &Host) -> Option<i32> {
         if self.enter_sound {
             host.play_sound(SOUND_CHOICE);
         }
         let c = self.enter()?;
         let random = Some(c) == self.random;
         let n = &self.nodes[c];
-        Some(self.source.choose(&n.rel, &n.full_path, &n.name, random))
+        Some(self.source.choose(app, &n.rel, &n.full_path, &n.name, random))
     }
 }
 
 /// Copies the screen as it was before the selector opened over it.
-fn restore_frozen(host: &Host) {
-    let (Some(scr), Some(frozen)) = (host.screen(), host.frozen()) else {
+fn restore_frozen(app: &LieroApp, host: &Host) {
+    let (Some(scr), Some(frozen)) = (host.screen(app), host.frozen(app)) else {
         return;
     };
     let len = |b: &LieroBitmap| b.pitch.max(0) as usize * b.h.max(0) as usize;
@@ -389,15 +391,15 @@ impl Screen for Selector {
             host.process();
         }
 
-        restore_frozen(host);
-        self.draw(host);
+        restore_frozen(app, host);
+        self.draw(app, host);
 
         if !self.process(host) {
             return Tick::close(-1);
         }
 
         if host.test_key_once(SCANCODE_RETURN) || host.test_key_once(SCANCODE_KP_ENTER) {
-            if let Some(result) = self.choose(host) {
+            if let Some(result) = self.choose(app, host) {
                 return Tick::close(result);
             }
         }
@@ -499,13 +501,13 @@ mod tests {
                 .is_some_and(|e| e.iter().any(|(n, _)| n == file))
         }
 
-        fn preview(&mut self, _: &[u8]) {
+        fn preview(&mut self, _: &LieroApp, _: &[u8]) {
             if self.previews {
                 self.state.borrow_mut().previews += 1;
             }
         }
 
-        fn choose(&mut self, rel: &[u8], full: &[u8], name: &[u8], random: bool) -> i32 {
+        fn choose(&mut self, _: &mut LieroApp, rel: &[u8], full: &[u8], name: &[u8], random: bool) -> i32 {
             let s = |x: &[u8]| String::from_utf8(x.to_vec()).unwrap();
             let line = format!("{}|{}|{}|{}", s(rel), s(full), s(name), random);
             self.state.borrow_mut().chosen.push(line);
@@ -578,7 +580,7 @@ mod tests {
         let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/two.lrp", b"", false), tree_source(&t));
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
         assert_eq!(sel.cur_sel().map(|c| sel.nodes[c].name.clone()), Some(b"two".to_vec()));
-        assert_eq!(sel.choose(&Host::none()), Some(5));
+        assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), Some(5));
         assert_eq!(
             t.borrow().chosen.clone(),
             ["Replays/two.lrp|/cfg/Replays/two.lrp|two|false"]
@@ -596,7 +598,7 @@ mod tests {
     fn enter_on_a_folder_opens_it() {
         let t = tree(&[("", &[("Replays", true)]), ("Replays", &[("one.lrp", false)])]);
         let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), tree_source(&t));
-        assert_eq!(sel.choose(&Host::none()), None);
+        assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), None);
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
     }
 
@@ -604,7 +606,7 @@ mod tests {
     fn random_level_is_chosen_as_random() {
         let t = tree(&[("", &[("a.lev", false)])]);
         let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), tree_source(&t));
-        assert_eq!(sel.choose(&Host::none()), Some(5));
+        assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), Some(5));
         assert_eq!(t.borrow().chosen.clone(), ["||Random|true"]);
     }
 
@@ -617,7 +619,7 @@ mod tests {
         ]);
         let mut sel = Selector::new(&spec(b"", b"", b"", true), tree_source(&t));
         assert_eq!(names(&mut sel, ROOT), ["good"]);
-        assert_eq!(sel.choose(&Host::none()), Some(5));
+        assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), Some(5));
     }
 
     /// Keys pressed, each read once, and text typed.
@@ -687,14 +689,14 @@ mod tests {
             }),
         );
         // Random is selected first: nothing to preview.
-        sel.update_preview();
+        sel.update_preview(&LieroApp::new());
         assert_eq!(t.borrow().previews, 0);
         sel.menu(ROOT).movement(1);
-        sel.update_preview();
-        sel.update_preview();
+        sel.update_preview(&LieroApp::new());
+        sel.update_preview(&LieroApp::new());
         assert_eq!(t.borrow().previews, 1);
         sel.menu(ROOT).movement(1);
-        sel.update_preview();
+        sel.update_preview(&LieroApp::new());
         assert_eq!(t.borrow().previews, 2);
     }
 

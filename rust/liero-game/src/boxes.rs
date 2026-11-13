@@ -30,13 +30,13 @@ struct InfoBox {
 const BG_COLOR: u8 = 0;
 
 impl Screen for InfoBox {
-    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if !self.shown {
             if self.clear_screen {
-                host.menu_palette();
-                host.fill_screen(BG_COLOR);
+                host.menu_palette(app);
+                host.fill_screen(app, BG_COLOR);
             }
-            if let (Some(scr), Some(font)) = (host.screen(), host.font()) {
+            if let (Some(scr), Some(font)) = (host.screen(app), host.font(app)) {
                 liero_menu_draw_info_box(&scr, &font, &self.text, self.x, self.y);
             }
             self.shown = true;
@@ -52,7 +52,7 @@ impl Screen for InfoBox {
             if ev.key_down {
                 host.clear_keys();
                 if self.clear_screen {
-                    host.fill_screen(BG_COLOR);
+                    host.fill_screen(app, BG_COLOR);
                 }
                 return Tick::close(0);
             }
@@ -103,7 +103,7 @@ impl InputBox {
 }
 
 impl Screen for InputBox {
-    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
             let Some(ev) = host.poll_event() else {
                 return Tick::stay(false);
@@ -134,7 +134,7 @@ impl Screen for InputBox {
 
         let mut shown = self.buffer.clone();
         shown.push(b'_');
-        if let (Some(scr), Some(frozen), Some(font)) = (host.screen(), host.frozen(), host.font()) {
+        if let (Some(scr), Some(frozen), Some(font)) = (host.screen(app), host.frozen(app), host.font(app)) {
             liero_menu_draw_input_box(&scr, &frozen, &font, &shown, self.x, self.y, true);
         }
         host.text_input(true);

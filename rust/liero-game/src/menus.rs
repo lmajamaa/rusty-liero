@@ -559,7 +559,7 @@ impl LieroMenus {
             }
             Behavior::Level => self.update_level(app, kind, i),
             Behavior::OptionsSave => {
-                let name = base_name(&crate::app_files::settings_path());
+                let name = base_name(&crate::app_files::settings_path(app));
                 self.set_value(kind, i, name);
             }
             _ => {}
@@ -740,8 +740,8 @@ impl LieroMenus {
     }
 
     /// A file selector.
-    fn selector(&mut self, _app: &mut LieroApp, kind: i32, then: Then, selector: i32) -> Option<BoxedScreen> {
-        let screen = crate::app_files::open_selector(selector, self.player);
+    fn selector(&mut self, app: &mut LieroApp, kind: i32, then: Then, selector: i32) -> Option<BoxedScreen> {
+        let screen = crate::app_files::open_selector(app, selector, self.player);
         Some(self.open(kind, then, screen))
     }
 
@@ -812,7 +812,7 @@ impl LieroMenus {
                 match self.value_position(kind, i) {
                     None => None,
                     Some((x, y)) => {
-                        let name = base_name(&crate::app_files::settings_path());
+                        let name = base_name(&crate::app_files::settings_path(app));
                         Some(self.input(kind, Then::OptionsSave { item: i as i32 }, &name, 30, x, y, false))
                     }
                 }
@@ -893,7 +893,7 @@ impl LieroMenus {
             }
             Then::ProfileSaveAs => {
                 if ok && !typed.is_empty() {
-                    crate::app_files::save_profile_as(self.player, &typed);
+                    crate::app_files::save_profile_as(app, self.player, &typed);
                 }
                 sound();
                 self.update_items(app, kind);
@@ -926,7 +926,7 @@ impl LieroMenus {
             }
             Then::OptionsSave { item } => {
                 if ok && !typed.is_empty() {
-                    crate::app_files::save_options(&typed);
+                    crate::app_files::save_options(app, &typed);
                 }
                 sound();
                 let b = self.behavior(app, kind, item as usize);
@@ -946,7 +946,7 @@ impl LieroMenus {
                 return result;
             }
             Then::Tc => {
-                if crate::app_files::take_chosen_tc() {
+                if crate::app_files::take_chosen_tc(app) {
                     return MA_TC;
                 }
             }

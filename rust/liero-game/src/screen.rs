@@ -191,27 +191,27 @@ impl Host {
     pub fn play_sound(&self, id: i32) {
         self.0.play_sound(id)
     }
-    /// The screen shown, when the app draws.
-    pub fn screen(&self) -> Option<LieroBitmap<'static>> {
-        self.0.app_drawing().then(|| crate::app::app().play.bmp.view())
+    /// `app`'s screen shown, when the app draws.
+    pub fn screen<'a>(&self, app: &'a LieroApp) -> Option<LieroBitmap<'a>> {
+        self.0.app_drawing().then(|| app.play.bmp.view())
     }
     /// The copy of the screen the menus draw over.
-    pub fn frozen(&self) -> Option<LieroBitmap<'static>> {
-        self.0.app_drawing().then(|| crate::app::app().frozen.view())
+    pub fn frozen<'a>(&self, app: &'a LieroApp) -> Option<LieroBitmap<'a>> {
+        self.0.app_drawing().then(|| app.frozen.view())
     }
-    pub fn font(&self) -> Option<LieroFont<'static>> {
-        self.0.app_drawing().then(crate::app::menu_font)
+    pub fn font<'a>(&self, app: &'a LieroApp) -> Option<LieroFont<'a>> {
+        self.0.app_drawing().then(|| app.font())
     }
-    pub fn fill_screen(&self, color: u8) {
+    pub fn fill_screen(&self, app: &LieroApp, color: u8) {
         if self.0.app_drawing() {
-            crate::gfx::liero_gfx_fill(&crate::app::app().play.bmp.view(), color);
+            crate::gfx::liero_gfx_fill(&app.play.bmp.view(), color);
         }
     }
     /// Shows the screen with the TC's own palette.
-    pub fn menu_palette(&self) {
+    pub fn menu_palette(&self, app: &mut LieroApp) {
         if self.0.app_drawing() {
-            let a = crate::app::app();
-            a.play.data.pal = crate::app::menu_tc_data().palette_colors;
+            let pal = app.tc_data().palette_colors;
+            app.play.data.pal = pal;
         }
     }
     pub fn text_input(&self, on: bool) {

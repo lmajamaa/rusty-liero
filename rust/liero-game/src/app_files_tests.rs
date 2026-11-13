@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::app;
 use crate::menus::LIERO_SELECTOR_TC;
 
 /// An empty folder for one test, and this thread's app with default
@@ -52,13 +53,13 @@ fn loading_options_makes_new_settings_and_shows_their_file() {
     std::fs::create_dir_all(format!("{dir}/sub")).unwrap();
     std::fs::copy(format!("{dir}/setup.cfg"), format!("{dir}/sub/other.cfg")).unwrap();
     let mut s = source(&dir, Choice::Options);
-    assert_eq!(s.choose(b"sub/other.cfg", b"", b"other", false), -1);
+    assert_eq!(s.choose(a, b"sub/other.cfg", b"", b"other", false), -1);
 
     assert!(!std::rc::Rc::ptr_eq(a.settings.as_ref().unwrap(), &old_box));
     assert_eq!(crate::app::menu_settings().data.lives, 7);
     assert_eq!(old_worm.borrow().name, b"OLD");
     assert_eq!(old_box.borrow().data.lives, 3);
-    assert_eq!(settings_path(), in_config(a, "sub/other.cfg"));
+    assert_eq!(settings_path(a), in_config(a, "sub/other.cfg"));
 
     // A file that isn't there gives the defaults, and is still shown.
     let missing = Node::new(format!("{dir}/missing.cfg").as_bytes());
@@ -67,10 +68,10 @@ fn loading_options_makes_new_settings_and_shows_their_file() {
         crate::app::menu_settings().data.lives,
         LieroSettingsBox::defaults().borrow().data.lives
     );
-    assert_eq!(settings_path(), in_config(a, "missing.cfg"));
+    assert_eq!(settings_path(a), in_config(a, "missing.cfg"));
     // LIERO.DAT doesn't change which file is shown.
     a.load_settings(Some(&file), true);
-    assert_eq!(settings_path(), in_config(a, "missing.cfg"));
+    assert_eq!(settings_path(a), in_config(a, "missing.cfg"));
 }
 
 #[test]
@@ -92,30 +93,30 @@ fn liero_cfg_is_written_only_when_the_settings_change() {
 
 #[test]
 fn choosing_a_level_sets_its_full_path_or_random() {
-    let (_, dir) = set_up("level");
+    let (a, dir) = set_up("level");
     let mut s = source(&dir, Choice::Level);
     crate::app::menu_settings().data.random_level = true;
-    assert_eq!(s.choose(b"sub/A.LEV", b"/cfg/sub/A.LEV", b"A", false), -1);
+    assert_eq!(s.choose(a, b"sub/A.LEV", b"/cfg/sub/A.LEV", b"A", false), -1);
     assert!(!crate::app::menu_settings().data.random_level);
     assert_eq!(crate::app::menu_settings().level_file, b"/cfg/sub/A.LEV");
-    s.choose(b"", b"", b"Random", true);
+    s.choose(a, b"", b"", b"Random", true);
     assert!(crate::app::menu_settings().data.random_level);
     assert!(crate::app::menu_settings().level_file.is_empty());
 }
 
 #[test]
 fn a_profile_saved_as_a_name_loads_back() {
-    let (_, dir) = set_up("profile");
+    let (a, dir) = set_up("profile");
     crate::app::menu_settings().worms[1].borrow_mut().name = b"SAVED".to_vec();
     crate::app::menu_settings().worms[1].borrow_mut().data.health = 77;
-    save_profile_as(1, b"mine");
+    save_profile_as(a, 1, b"mine");
     assert!(std::fs::metadata(format!("{dir}/Profiles/mine.lpf")).is_ok());
 
     crate::app::menu_settings().worms[1].borrow_mut().name = b"OTHER".to_vec();
     crate::app::menu_settings().worms[1].borrow_mut().data.health = 5;
     let ws = crate::app::menu_settings().worms[1].clone();
     let mut s = source(&dir, Choice::Profile(ws));
-    s.choose(b"Profiles/mine.lpf", b"", b"mine", false);
+    s.choose(a, b"Profiles/mine.lpf", b"", b"mine", false);
     assert_eq!(crate::app::menu_settings().worms[1].borrow_mut().name, b"SAVED");
     assert_eq!(crate::app::menu_settings().worms[1].borrow_mut().data.health, 77);
     // Player 0's are left alone.
@@ -126,12 +127,12 @@ fn a_profile_saved_as_a_name_loads_back() {
 fn saving_options_writes_a_cfg_in_the_config_folder() {
     let (a, dir) = set_up("save-options");
     crate::app::menu_settings().data.lives = 42;
-    save_options(b"match");
+    save_options(a, b"match");
     assert_eq!(
         std::fs::read(format!("{dir}/match.cfg")).unwrap(),
         crate::app::menu_settings().text()
     );
-    assert_eq!(settings_path(), in_config(a, "match.cfg"));
+    assert_eq!(settings_path(a), in_config(a, "match.cfg"));
 }
 
 #[test]
@@ -140,7 +141,7 @@ fn the_selectors_start_where_the_game_left_off() {
     crate::app::menu_settings().level_file = b"some/LEVEL.LEV".to_vec();
     with_tc(a);
 
-    let (spec, _, choice) = selector_spec(LIERO_SELECTOR_LEVEL, 0);
+    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_LEVEL, 0);
     assert!(matches!(choice, Choice::Level));
     assert_eq!(
         (spec.filter.as_slice(), spec.select.as_slice(), spec.has_select),
@@ -148,26 +149,26 @@ fn the_selectors_start_where_the_game_left_off() {
     );
     assert!(spec.enter_sound && !spec.random_name.is_empty());
 
-    let (spec, _, choice) = selector_spec(LIERO_SELECTOR_PROFILE, 1);
+    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_PROFILE, 1);
     let Choice::Profile(ws) = choice else {
         panic!("not a profile")
     };
     assert!(std::rc::Rc::ptr_eq(&ws, &crate::app::menu_settings().worms[1]));
     assert_eq!((spec.select, spec.has_select), (in_config(a, "Profiles"), true));
 
-    let (spec, _, _) = selector_spec(LIERO_SELECTOR_REPLAY, 0);
+    let (spec, _, _) = selector_spec(a, LIERO_SELECTOR_REPLAY, 0);
     assert!(!spec.has_select);
     assert_eq!(spec.fallback, in_config(a, "Replays"));
     a.files.prev_replay = b"x/last.lrp".to_vec();
-    let (spec, _, _) = selector_spec(LIERO_SELECTOR_REPLAY, 0);
+    let (spec, _, _) = selector_spec(a, LIERO_SELECTOR_REPLAY, 0);
     assert_eq!((spec.select.as_slice(), spec.has_select), (&b"x/last.lrp"[..], true));
 
-    let (spec, _, choice) = selector_spec(LIERO_SELECTOR_OPTIONS, 0);
+    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_OPTIONS, 0);
     assert!(matches!(choice, Choice::Options));
     assert_eq!((spec.filter.as_slice(), spec.has_select), (&b"CFG"[..], false));
 
     a.files.tc_root = Node::new(b"../../TC");
-    let (spec, root, choice) = selector_spec(LIERO_SELECTOR_TC, 0);
+    let (spec, root, choice) = selector_spec(a, LIERO_SELECTOR_TC, 0);
     assert!(matches!(choice, Choice::Tc) && spec.tcs);
     assert_eq!(
         (spec.root.as_slice(), root.full_path()),
@@ -182,12 +183,15 @@ fn a_chosen_tc_is_switched_to_once() {
     let before = a.menu_tc();
     crate::app::menu_settings().tc = b"other".to_vec();
     let mut s = source("../../TC", Choice::Tc);
-    assert_eq!(s.choose(b"openliero", b"../../TC/openliero", b"openliero", false), -1);
+    assert_eq!(
+        s.choose(a, b"openliero", b"../../TC/openliero", b"openliero", false),
+        -1
+    );
     assert_eq!(crate::app::menu_settings().tc, b"openliero");
     assert!(std::rc::Rc::ptr_eq(&a.menu_tc(), &before));
-    assert!(take_chosen_tc());
+    assert!(take_chosen_tc(a));
     assert!(!std::rc::Rc::ptr_eq(&a.menu_tc(), &before));
-    assert!(!take_chosen_tc());
+    assert!(!take_chosen_tc(a));
 }
 
 #[test]
@@ -198,7 +202,7 @@ fn choosing_a_replay_plays_it_and_remembers_it() {
     let mut s = source(&dir, Choice::Replay);
     let full = format!("{dir}/empty.lrp");
     assert_eq!(
-        s.choose(b"empty.lrp", full.as_bytes(), b"empty", false),
+        s.choose(a, b"empty.lrp", full.as_bytes(), b"empty", false),
         LIERO_MAIN_REPLAY
     );
     assert_eq!(a.files.prev_replay, full.into_bytes());
@@ -223,9 +227,9 @@ fn a_level_is_previewed_in_miniature_on_both_screens() {
     std::fs::write(format!("{dir}/SHORT.LEV"), vec![9u8; 100]).unwrap();
 
     let mut s = source(&dir, Choice::Level);
-    s.preview(b"SHORT.LEV");
+    s.preview(a, b"SHORT.LEV");
     assert!(a.frozen.pixels().iter().all(|&p| p == 0));
-    s.preview(b"A.LEV");
+    s.preview(a, b"A.LEV");
 
     // 504 x 350 at one pixel in 10 is 50 x 35, at (134, 162).
     let v = a.frozen.view();

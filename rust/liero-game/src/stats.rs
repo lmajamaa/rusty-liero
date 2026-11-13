@@ -913,7 +913,7 @@ fn copy_rows(scr: &LieroBitmap, buf: &mut Vec<u8>, save: bool) {
 }
 
 impl Screen for StatsPresenter {
-    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
             host.process();
             if host.test_key(SCANCODE_DOWN) {
@@ -925,7 +925,7 @@ impl Screen for StatsPresenter {
             } else if host.test_key_once(SCANCODE_LEFT) {
                 self.dest_pane = (self.dest_pane - 1.0).max(-1.0);
             } else if host.test_key(SCANCODE_RETURN) || host.test_key(SCANCODE_ESCAPE) {
-                host.fill_screen(0);
+                host.fill_screen(app, 0);
                 host.clear_keys();
                 return Tick::close(0);
             }
@@ -937,12 +937,12 @@ impl Screen for StatsPresenter {
             }
         }
 
-        if let Some(scr) = host.screen() {
+        if let Some(scr) = host.screen(app) {
             copy_rows(&scr, &mut self.bg, false);
             self.draw(&scr);
         }
         // We don't use the level's palette, as its colours are unpredictable.
-        host.menu_palette();
+        host.menu_palette(app);
         self.shown = true;
         Tick::stay(true)
     }
@@ -960,7 +960,7 @@ pub(crate) fn liero_stats_presenter_screen(
     let host = crate::screen::current_host();
     host.clear_keys();
     let mut bg = Vec::new();
-    if let Some(scr) = host.screen() {
+    if let Some(scr) = host.screen(crate::app::app()) {
         copy_rows(&scr, &mut bg, true);
     }
     Box::new(StatsPresenter {

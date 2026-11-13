@@ -106,8 +106,8 @@ impl WeaponOptions {
         (0..WEAPON_COUNT).any(|i| unsafe { *self.weap_table.add(i) } == 0)
     }
 
-    fn draw(&mut self, host: &Host) {
-        let (Some(scr), Some(font)) = (host.screen(), host.font()) else {
+    fn draw(&mut self, app: &crate::app::LieroApp, host: &Host) {
+        let (Some(scr), Some(font)) = (host.screen(app), host.font(app)) else {
             return;
         };
         for (x, title) in [(179, &self.weapon_title), (249, &self.availability_title)] {
@@ -137,7 +137,7 @@ impl Screen for WeaponOptions {
         self.resumed = false;
 
         host.draw_basic_menu(app);
-        self.draw(host);
+        self.draw(app, host);
 
         if host.test_key_once(SCANCODE_UP) {
             host.play_sound(SOUND_UP);
