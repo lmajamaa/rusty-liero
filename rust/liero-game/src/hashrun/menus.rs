@@ -136,7 +136,7 @@ struct Availability {
 
 impl Availability {
     fn behavior(&self, b: &LieroMenuBox, item: i32) -> LieroItemBehavior {
-        let s = app().menu_settings();
+        let mut s = crate::app::menu_settings();
         LieroItemBehavior {
             kind: LieroItemKind::Enum,
             flag: std::ptr::null_mut(),
@@ -333,7 +333,7 @@ fn run_menus(out: &mut Out) {
     a.settings = Some(LieroSettingsBox::defaults());
     // The menus show the name of the loaded setup.
     a.files.settings_node = Node::new(b"config/LIERO.CFG");
-    for (i, ws) in a.menu_settings().worms.iter().enumerate() {
+    for (i, ws) in crate::app::menu_settings().worms.iter().enumerate() {
         let mut ws = ws.borrow_mut();
         ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
@@ -523,8 +523,8 @@ fn run_boxes(out: &mut Out) {
     ];
     let defaults = LieroSettingsBox::defaults();
     let default_colors = [
-        defaults.worms[0].borrow().data.color,
-        defaults.worms[1].borrow().data.color,
+        defaults.borrow().worms[0].borrow().data.color,
+        defaults.borrow().worms[1].borrow().data.color,
     ];
 
     for step in 0..24 {
@@ -558,8 +558,8 @@ fn run_boxes(out: &mut Out) {
     let mut f = Fnv::default();
     a.single.clear();
     let names = [
-        defaults.worms[0].borrow().name.clone(),
-        defaults.worms[1].borrow().name.clone(),
+        defaults.borrow().worms[0].borrow().name.clone(),
+        defaults.borrow().worms[1].borrow().name.clone(),
     ];
     let names: [&[u8]; 2] = [&names[0], &names[1]];
     draw_versus_info(&a.single.bmp, b"A", b"x/A.lev", names, default_colors, 320, 100);
@@ -572,8 +572,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
     let a = app();
     let settings = LieroSettingsBox::defaults();
     a.settings = Some(settings.clone());
-    // SAFETY: the app's settings are these.
-    let s = unsafe { &mut *settings.as_ptr() };
+    let mut s = settings.borrow_mut();
     s.data.select_bot_weapons = select_bot_weapons;
     let mut r = LieroRand::new(seed);
     for w in &mut s.data.weap_table {
@@ -591,6 +590,8 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
     if seed.is_multiple_of(2) {
         s.level_file = b"levels/SOME.LEV".to_vec();
     }
+    let worms = s.worms.clone();
+    drop(s);
 
     a.rand.seed(seed);
 
@@ -600,8 +601,8 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
     // worms and viewports are made as the C++ `Game` view made them.
     let mut game = unsafe { Box::from_raw(liero_game_new()) };
     unsafe {
-        liero_game_set_context(&mut game, settings.as_ptr(), Some(tc.clone()), LieroSoundOut::NONE);
-        for (i, ws) in s.worms.iter().enumerate() {
+        liero_game_set_context(&mut game, Some(settings.clone()), Some(tc.clone()), LieroSoundOut::NONE);
+        for (i, ws) in worms.iter().enumerate() {
             let id = liero_game_new_worm(&mut game, Some(ws.clone()));
             let ws = ws.borrow();
             liero_game_list_worm(&mut game, Some(id));
@@ -631,7 +632,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
             true,
         );
         let mut level = LieroLevelBox::new();
-        level.generate_from_settings(&d.level_common(), &d.palette_colors, s, &mut a.rand);
+        level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
         liero_game_focus(&mut game, &mut *a.play);
         liero_game_focus(&mut game, &mut *a.single);

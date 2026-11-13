@@ -17,9 +17,8 @@ use crate::gfx::LieroPalette;
 use crate::level::LieroLevelBox;
 use crate::renderer::{LieroRenderer, LieroRendererData};
 use crate::scene::{liero_game_draw_viewport, LieroDrawSettings};
-use crate::settings::{LieroSettingsBox, LieroWormSettingsBox, SharedWormSettings};
+use crate::settings::{LieroSettingsBox, LieroWormSettingsBox, SharedSettings, SharedWormSettings};
 use crate::sfx::LieroSoundOut;
-use crate::shared::Shared;
 use crate::stats::LieroStats;
 use crate::tc::{tc_data, LieroTcData, SharedTc};
 use crate::text::LieroStr;
@@ -100,7 +99,7 @@ pub struct LieroGame {
     level: Box<LieroLevelBox>,
     /// What the game is played with: the settings, the TC and where the
     /// sounds go. Copies share them.
-    settings: Option<Shared<LieroSettingsBox>>,
+    settings: Option<SharedSettings>,
     tc: Option<SharedTc>,
     sound: LieroSoundOut,
 }
@@ -118,19 +117,20 @@ impl LieroGame {
         self.tc.as_ref().map_or(std::ptr::null(), |t| &*tc_data(t))
     }
 
-    /// The game's settings, from its context.
-    // The `&mut` is to the settings behind a raw pointer, not to `self`; phase 4
-    // of PLAN.md replaces these pointers.
-    #[allow(clippy::mut_from_ref)]
-    pub(crate) fn settings_box(&self) -> &mut LieroSettingsBox {
-        // SAFETY: the game's reference keeps them alive.
-        unsafe { &mut *liero_game_settings(self) }
+    /// The game's settings, to share. Panics if it has none.
+    pub(crate) fn settings(&self) -> SharedSettings {
+        self.settings.clone().expect("the game has no settings")
+    }
+
+    /// The game's settings, from its context. Panics if it has none.
+    pub(crate) fn settings_box(&self) -> RefMut<'_, LieroSettingsBox> {
+        self.settings.as_ref().expect("the game has no settings").borrow_mut()
     }
 
     /// Sets the context.
     pub(crate) fn set_context_data(
         &mut self,
-        settings: Option<Shared<LieroSettingsBox>>,
+        settings: Option<SharedSettings>,
         tc: Option<SharedTc>,
         sound: LieroSoundOut,
     ) {
@@ -205,11 +205,13 @@ impl LieroGame {
 
     /// `Game::processAis`: the bots think, timed for the stats with `hooks`.
     pub(crate) fn process_ais(&mut self, hooks: Option<&crate::game::LieroGameHooks>) {
-        let d = &self.settings_box().data;
-        let ai = crate::ai::sim::LieroAiSettings {
-            frames: d.ai_frames,
-            mutations: d.ai_mutations,
-            traces: d.ai_traces,
+        let ai = {
+            let d = &self.settings_box().data;
+            crate::ai::sim::LieroAiSettings {
+                frames: d.ai_frames,
+                mutations: d.ai_mutations,
+                traces: d.ai_traces,
+            }
         };
         // SAFETY: the view is the game's own.
         self.with_view(|f, s| unsafe { crate::ai::liero_game_process_ais(f, s, &ai, hooks) });
@@ -385,21 +387,16 @@ fn draw_settings(
     }
 }
 
-/// Sets what the game is played with: the settings (or null), the TC (or
-/// none) and where its sounds go. The game and its copies keep references
-/// to the settings and the TC.
-///
-/// # Safety
-/// `settings` has a reference, or is null.
-pub unsafe fn liero_game_set_context(
+/// Sets what the game is played with: the settings and the TC (or none)
+/// and where its sounds go. The game and its copies share the settings and
+/// the TC.
+pub fn liero_game_set_context(
     g: &mut LieroGame,
-    settings: *mut LieroSettingsBox,
+    settings: Option<SharedSettings>,
     tc: Option<SharedTc>,
     sound: LieroSoundOut,
 ) {
-    unsafe {
-        g.set_context_data((!settings.is_null()).then(|| Shared::retain(settings)), tc, sound);
-    }
+    g.set_context_data(settings, tc, sound);
 }
 
 /// The game's level, at a fixed address.
@@ -407,7 +404,8 @@ pub fn liero_game_level(g: &mut LieroGame) -> *mut LieroLevelBox {
     &mut *g.level
 }
 
-/// The game's settings box.
+/// Where the game's settings box is, or null, for the replay reader and
+/// writer, which keep it while the game plays.
 pub fn liero_game_settings(g: &LieroGame) -> *mut LieroSettingsBox {
     g.settings.as_ref().map_or(std::ptr::null_mut(), |s| s.as_ptr())
 }
@@ -546,9 +544,7 @@ pub struct LieroGameView {
 /// and settings stay and the view isn't freed. The game has its settings
 /// and TC (`liero_game_set_context`).
 pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
-    // SAFETY: the game keeps its context alive.
-    let s = &*g.settings_box();
-    let settings = game_settings(&s.data, g.tc.as_ref().map(|t| tc_data(t)).as_deref());
+    let settings = game_settings(&g.settings_box().data, g.tc.as_ref().map(|t| tc_data(t)).as_deref());
     let pool: Vec<*mut LieroWormData> = g.pool.iter_mut().map(|w| &mut w.data as *mut LieroWormData).collect();
     let worms: Vec<LieroGameWorm> = g
         .list
@@ -744,8 +740,9 @@ mod tests {
             assert_ne!(*liero_game_stats(c), *liero_game_stats(&mut *g));
 
             // So is the level, but not the settings.
-            let set = crate::settings::liero_settings_box_new();
-            liero_game_set_context(&mut *g, set, None, LieroSoundOut::NONE);
+            let shared = crate::settings::liero_settings_box_new();
+            let set = shared.as_ptr();
+            liero_game_set_context(&mut *g, Some(shared.clone()), None, LieroSoundOut::NONE);
             (*liero_game_level(&mut *g)).resize(3, 2);
             let d = &mut *liero_game_clone(&*g);
             assert_eq!(liero_game_settings(d), set);
@@ -759,7 +756,6 @@ mod tests {
             assert_eq!((liero_game_settings(c), liero_game_level(c)), (set, l));
             assert_eq!((*l).data().level.width, 3);
             liero_game_free(d);
-            crate::settings::liero_settings_box_free(set);
 
             liero_game_free(c);
             assert_eq!(
@@ -869,11 +865,9 @@ mod tests {
         tc.weapons = (0..40).map(|_| crate::tc::LieroTcWeapon::default()).collect();
         tc.hacks = vec![false; liero_data::exe::HACKS.len()];
         let s = crate::settings::liero_settings_box_new();
-        unsafe {
-            (*s).data.max_bonuses = 6;
-            (*s).data.load_change = true;
-        }
-        let g = game_settings(unsafe { &(*s).data }, Some(&tc));
+        s.borrow_mut().data.max_bonuses = 6;
+        s.borrow_mut().data.load_change = true;
+        let g = game_settings(&s.borrow().data, Some(&tc));
         assert_eq!(g.bonus_rand_timer, [[1, 2], [3, 4]]);
         assert_eq!((g.weapon_count, g.max_bonuses, g.load_change), (40, 6, true));
         let k = |name| 1000 + c(name) as i32;
@@ -892,7 +886,7 @@ mod tests {
             let mut hacks = vec![false; liero_data::exe::HACKS.len()];
             hacks[h(name)] = true;
             tc.hacks = hacks;
-            let g = game_settings(unsafe { &(*s).data }, Some(&tc));
+            let g = game_settings(&s.borrow().data, Some(&tc));
             let got = [
                 g.bonus_spawn_rect,
                 g.bonus_only_health,
@@ -901,7 +895,6 @@ mod tests {
             ];
             assert_eq!(got, std::array::from_fn(|j| j == i), "{name}");
         }
-        unsafe { crate::settings::liero_settings_box_free(s) };
     }
 
     #[test]
@@ -910,8 +903,9 @@ mod tests {
         let b = crate::settings::liero_settings_box_new();
         let mut r = crate::renderer::LieroRenderer::new();
         r.set_render_resolution(640, 400);
-        unsafe {
-            let s = &mut (*b).data;
+        {
+            let mut b = b.borrow_mut();
+            let s = &mut b.data;
             s.names_on_bonuses = true;
             let d = draw_settings(s, &r.data, LIERO_STATE_GAME, true);
             assert_eq!(
@@ -930,7 +924,6 @@ mod tests {
             );
             assert!(!d.state_game && !d.is_replay);
             assert!(!draw_settings(s, &r.data, LIERO_STATE_WEAPON_SELECTION, false).state_game);
-            crate::settings::liero_settings_box_free(b);
         }
     }
 
@@ -943,9 +936,9 @@ mod tests {
             // The view takes no empty places.
             g.list.remove(1);
             let set = crate::settings::liero_settings_box_new();
-            (*set).data.game_mode = LIERO_GAME_HOLDAZONE as u32;
-            (*set).data.blood = 37;
-            liero_game_set_context(g, set, None, LieroSoundOut::NONE);
+            set.borrow_mut().data.game_mode = LIERO_GAME_HOLDAZONE as u32;
+            set.borrow_mut().data.blood = 37;
+            liero_game_set_context(g, Some(set.clone()), None, LieroSoundOut::NONE);
             (*liero_game_level(g)).resize(5, 4);
             let v = liero_game_view_new(g);
             let f = &*liero_game_view_fields(&*v);
@@ -956,7 +949,7 @@ mod tests {
                 (gs.game_mode, gs.blood, gs.zone_capture_time),
                 (LIERO_GAME_HOLDAZONE, 37, 70)
             );
-            assert_eq!(gs.weap_table, (*set).data.weap_table.as_ptr());
+            assert_eq!(gs.weap_table, set.borrow().data.weap_table.as_ptr());
             // No TC, no TC constants.
             assert_eq!((gs.weapon_count, gs.bonus_drop_chance, gs.bonus_disable), (0, 0, false));
             assert_eq!(f.worm_count, 2);
@@ -973,7 +966,6 @@ mod tests {
             assert_eq!(*f.spectator_viewports, liero_game_viewport(g, true, 0));
             liero_game_view_free(v);
             liero_game_free(g);
-            crate::settings::liero_settings_box_free(set);
         }
     }
 }

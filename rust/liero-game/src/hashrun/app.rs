@@ -543,7 +543,7 @@ pub fn hash_app(out: &mut Out) {
     a.primary_single = false;
     // As in the browser, where the lines were recorded.
     a.save_settings_on_change = true;
-    a.menu_settings().data.spectator_window = false;
+    crate::app::menu_settings().data.spectator_window = false;
     a.keys.clear();
     // SAFETY: as above.
     liero_menus_load(unsafe { &mut *a.menus });

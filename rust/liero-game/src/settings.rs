@@ -650,6 +650,11 @@ pub struct LieroSettingsBox {
 /// change them while a game behind the menu plays with them.
 pub type SharedWormSettings = Rc<RefCell<LieroWormSettingsBox>>;
 
+/// The game's settings, shared by the app's menus and the games played with
+/// them (C++'s `shared_ptr<Settings>`): the menus change them while a game
+/// behind the menu plays. A replay's game has its own.
+pub type SharedSettings = Rc<RefCell<LieroSettingsBox>>;
+
 impl LieroSettingsBox {
     /// The settings as the formats read and write them, with the worms'.
     pub(crate) fn settings(&self) -> Settings {
@@ -700,12 +705,10 @@ impl LieroSettingsBox {
 }
 
 impl LieroSettingsBox {
-    /// New settings with the defaults, with one reference (`new Settings`).
-    pub(crate) fn defaults() -> crate::shared::Shared<LieroSettingsBox> {
-        // SAFETY: the new box's reference is taken over.
-        let b = unsafe { crate::shared::Shared::adopt(liero_settings_box_new()) };
-        // SAFETY: nothing else has the new box.
-        unsafe { (*b.as_ptr()).set_settings(&Settings::default()) };
+    /// New settings with the defaults (`new Settings`).
+    pub(crate) fn defaults() -> SharedSettings {
+        let b = liero_settings_box_new();
+        b.borrow_mut().set_settings(&Settings::default());
         b
     }
 
@@ -886,13 +889,13 @@ impl Default for LieroSettingsData {
 
 /// Settings with every field zero or empty, and the worms' too; C++ then
 /// sets the defaults.
-pub fn liero_settings_box_new() -> *mut LieroSettingsBox {
-    crate::shared::new_shared(LieroSettingsBox {
+pub fn liero_settings_box_new() -> SharedSettings {
+    Rc::new(RefCell::new(LieroSettingsBox {
         data: LieroSettingsData::default(),
         tc: Vec::new(),
         level_file: Vec::new(),
         worms: [new_worm_settings(), new_worm_settings()],
-    })
+    }))
 }
 
 /// Player `i`'s worm settings.
@@ -905,26 +908,9 @@ pub fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: Shared
     s.worms[i] = w;
 }
 
-pub fn liero_settings_box_clone(s: &LieroSettingsBox) -> *mut LieroSettingsBox {
-    crate::shared::new_shared(s.clone())
-}
-
-/// Gives up a reference to `s` (from `liero_settings_box_new` or `_clone`,
-/// or a game's), freeing it with the last.
-///
-/// # Safety
-/// `s` has a reference, or is null, and this reference isn't used again.
-pub unsafe fn liero_settings_box_free(s: *mut LieroSettingsBox) {
-    unsafe {
-        if !s.is_null() {
-            crate::shared::release_shared(s);
-        }
-    }
-}
-
-/// The plain fields, which stay where they are for the box's life.
-pub fn liero_settings_box_data(s: &mut LieroSettingsBox) -> *mut LieroSettingsData {
-    &mut s.data
+/// A copy of `s` that shares its worms' settings.
+pub fn liero_settings_box_clone(s: &LieroSettingsBox) -> SharedSettings {
+    Rc::new(RefCell::new(s.clone()))
 }
 
 /// A worm's settings with every field zero or empty.
@@ -943,41 +929,35 @@ mod box_tests {
 
     #[test]
     fn a_clone_shares_the_worms() {
-        unsafe {
-            let a = liero_settings_box_new();
-            let w0 = liero_settings_box_worm(&*a, 0);
-            assert!(!Rc::ptr_eq(&w0, &liero_settings_box_worm(&*a, 1)));
-            let b = liero_settings_box_clone(&*a);
-            assert!(Rc::ptr_eq(&liero_settings_box_worm(&*b, 0), &w0));
-            // `a`, `b` and `w0`.
-            assert_eq!(Rc::strong_count(&w0), 3);
+        let a = liero_settings_box_new();
+        let w0 = liero_settings_box_worm(&a.borrow(), 0);
+        assert!(!Rc::ptr_eq(&w0, &liero_settings_box_worm(&a.borrow(), 1)));
+        let b = liero_settings_box_clone(&a.borrow());
+        assert!(Rc::ptr_eq(&liero_settings_box_worm(&b.borrow(), 0), &w0));
+        // `a`, `b` and `w0`.
+        assert_eq!(Rc::strong_count(&w0), 3);
 
-            // Setting one is the box's own.
-            let w = new_worm_settings();
-            liero_settings_box_set_worm(&mut *b, 0, w.clone());
-            assert_eq!((Rc::strong_count(&w), Rc::strong_count(&w0)), (2, 2));
-            assert!(Rc::ptr_eq(&liero_settings_box_worm(&*a, 0), &w0));
-            liero_settings_box_free(b);
-            assert_eq!(Rc::strong_count(&w), 1);
-            liero_settings_box_free(a);
-            assert_eq!(Rc::strong_count(&w0), 1);
-        }
+        // Setting one is the box's own.
+        let w = new_worm_settings();
+        liero_settings_box_set_worm(&mut b.borrow_mut(), 0, w.clone());
+        assert_eq!((Rc::strong_count(&w), Rc::strong_count(&w0)), (2, 2));
+        assert!(Rc::ptr_eq(&liero_settings_box_worm(&a.borrow(), 0), &w0));
+        drop(b);
+        assert_eq!(Rc::strong_count(&w), 1);
+        drop(a);
+        assert_eq!(Rc::strong_count(&w0), 1);
     }
 
     #[test]
     fn a_clone_is_separate() {
         let a = liero_settings_box_new();
-        unsafe {
-            (*liero_settings_box_data(&mut *a)).lives = 3;
-            (*a).tc = b"openliero".to_vec();
-            let b = liero_settings_box_clone(&*a);
-            (*liero_settings_box_data(&mut *a)).lives = 5;
-            (*a).tc = b"other".to_vec();
-            assert_eq!((*b).data.lives, 3);
-            assert_eq!((*b).tc, b"openliero");
-            liero_settings_box_free(a);
-            liero_settings_box_free(b);
-        }
+        a.borrow_mut().data.lives = 3;
+        a.borrow_mut().tc = b"openliero".to_vec();
+        let b = liero_settings_box_clone(&a.borrow());
+        a.borrow_mut().data.lives = 5;
+        a.borrow_mut().tc = b"other".to_vec();
+        assert_eq!(b.borrow().data.lives, 3);
+        assert_eq!(b.borrow().tc, b"openliero");
     }
 
     #[test]

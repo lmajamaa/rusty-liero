@@ -28,7 +28,7 @@ use crate::replay_file::{
     LieroReplayOutcome, LieroReplayReader, LieroReplayWriter,
 };
 use crate::screen::{current_host, LieroScreen};
-use crate::settings::{liero_settings_box_free, liero_settings_box_new, LieroSettingsBox, LIERO_MAX_CONTROL_EX};
+use crate::settings::{liero_settings_box_new, SharedSettings, LIERO_MAX_CONTROL_EX};
 use crate::stats::{liero_stats_presenter_screen, LieroSprite, LieroStatsScene};
 use crate::tc::SharedTc;
 use crate::text::LieroStr;
@@ -79,11 +79,11 @@ pub struct LieroController {
 
 /// A new game with the settings, the TC and the app's sound, its clock
 /// seeded from the time, as C++'s `Game` constructor did.
-unsafe fn new_game(settings: *mut LieroSettingsBox, tc: SharedTc) -> Box<LieroGame> {
+unsafe fn new_game(settings: SharedSettings, tc: SharedTc) -> Box<LieroGame> {
     unsafe {
         let host = current_host();
         let mut game = Box::from_raw(liero_game_new());
-        liero_game_set_context(&mut game, settings, Some(tc), host.sound());
+        liero_game_set_context(&mut game, Some(settings), Some(tc), host.sound());
         game.data_mut().rand.seed(host.time() as u32);
         game
     }
@@ -262,9 +262,7 @@ impl LieroController {
                 }
                 Kind::Replay(r) => {
                     if d.state == LIERO_STATE_INITIAL {
-                        let settings = liero_settings_box_new();
-                        let mut game = new_game(settings, r.tc.clone());
-                        liero_settings_box_free(settings);
+                        let mut game = new_game(liero_settings_box_new(), r.tc.clone());
                         let reader = r.reader.as_mut().expect("no replay");
                         let o = liero_replay_reader_begin(reader, &mut game);
                         if let Some(e) = caught(&o, true) {
@@ -482,8 +480,8 @@ impl LieroController {
                     w.expect("an empty place among the game's worms").data.lives = lives;
                 }
 
-                let s = &l.game.settings_box().data;
-                if s.record_replays {
+                let record = l.game.settings_box().data.record_replays;
+                if record {
                     if let Err(e) = start_recording(l) {
                         self.info_box(&format!("Error starting replay recording: {e}"));
                         self.data.going_to_menu = true;
@@ -526,7 +524,7 @@ impl LieroController {
                         .stats_x = x;
                 }
                 spectator_viewport(game, true);
-                if app().menu_settings().data.single_screen_replay {
+                if crate::app::menu_settings().data.single_screen_replay {
                     // The spectator viewport on the main screen as well.
                     spectator_viewport(game, false);
                 } else {
@@ -673,11 +671,11 @@ pub(crate) unsafe fn stats_scene(
 /// A local match with the settings' two players (`LocalController`).
 ///
 /// # Safety
-/// `settings` and `tc` have references.
-pub unsafe fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: SharedTc) -> *mut LieroController {
+/// The app has a host (`current_host`).
+pub unsafe fn liero_local_controller_new(settings: SharedSettings, tc: SharedTc) -> *mut LieroController {
     unsafe {
-        let mut game = new_game(settings, tc);
-        let s = &*settings;
+        let mut game = new_game(settings.clone(), tc);
+        let s = settings.borrow();
         let mut indexes = [0; 2];
         for (i, ws) in s.worms.iter().enumerate() {
             let id = liero_game_new_worm(&mut game, Some(ws.clone()));

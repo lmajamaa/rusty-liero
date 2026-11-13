@@ -34,15 +34,14 @@ pub fn hash_level_files(out: &mut Out) {
         }
         for with_palette in 0..2 {
             let settings = LieroSettingsBox::defaults();
-            // SAFETY: nothing else has the new settings.
-            let s = unsafe { &mut *settings.as_ptr() };
+            let mut s = settings.borrow_mut();
             s.data.random_level = false;
             s.level_file = path.clone().into_bytes();
             s.data.load_powerlevel_palette = with_palette != 0;
 
             let mut rand = LieroRand::new(1234 + i as u32);
             let mut lev = LieroLevelBox::new();
-            lev.generate_from_settings(&d.level_common(), &d.palette_colors, s, &mut rand);
+            lev.generate_from_settings(&d.level_common(), &d.palette_colors, &s, &mut rand);
 
             let l = &lev.data().level;
             let mut h = Fnv::default();

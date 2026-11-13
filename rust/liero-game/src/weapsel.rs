@@ -680,12 +680,17 @@ pub unsafe fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRender
         let font = tc_font(tc);
         let a = app();
         let g: *const LieroGame = game;
-        let line = || level_line(tc, &(*g).settings_box().level_file, &app().menu_settings().level_file);
+        // The game's settings can be the menus' own, so one at a time.
+        let line = || {
+            let game_file = (*g).settings_box().level_file.clone();
+            let menu_file = crate::app::menu_settings().level_file.clone();
+            level_line(tc, &game_file, &menu_file)
+        };
         if spectators {
             let (cx, cy) = ((*r).data.render_res_x / 2, (*r).data.render_res_y / 4);
             if !ws.cached_spectator {
                 let scr = (*r).bmp.view();
-                let w = &game.settings_box().worms;
+                let w = game.settings_box().worms.clone();
                 let w = [w[0].borrow(), w[1].borrow()];
                 liero_menu_draw_versus(
                     &scr,

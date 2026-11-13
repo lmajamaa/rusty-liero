@@ -2,7 +2,7 @@ use super::*;
 use crate::fs::Node;
 use crate::game_box::{liero_game_free, liero_game_new};
 use crate::level::LieroLevelBox;
-use crate::settings::{liero_settings_box_free, liero_settings_box_new};
+use crate::settings::{liero_settings_box_new, SharedSettings};
 use crate::tc::{LieroTc, LieroTcData, SharedTc};
 use crate::worm::LieroWormData;
 
@@ -11,7 +11,7 @@ const NO_WASM: &str = "miniz_oxide's debug compressor builds its tables on the 6
 /// A game for a replay, with what it records beside it.
 struct Setup {
     game: *mut LieroGame,
-    settings: *mut LieroSettingsBox,
+    settings: SharedSettings,
     tc: SharedTc,
 }
 
@@ -24,8 +24,13 @@ impl Setup {
             settings: liero_settings_box_new(),
             tc: LieroTc::of(tc),
         };
-        let settings = unsafe { crate::shared::Shared::retain(s.settings) };
-        unsafe { (*s.game).set_context_data(Some(settings), Some(s.tc.clone()), crate::sfx::LieroSoundOut::NONE) };
+        unsafe {
+            (*s.game).set_context_data(
+                Some(s.settings.clone()),
+                Some(s.tc.clone()),
+                crate::sfx::LieroSoundOut::NONE,
+            )
+        };
         s
     }
 
@@ -74,7 +79,7 @@ impl Setup {
                 true,
             );
             (*liero_game_data(g)).rand.x = 1234;
-            (*s.settings).data.lives = 9;
+            s.settings.borrow_mut().data.lives = 9;
         }
         s.level().resize(3, 2);
         s.level()
@@ -96,7 +101,6 @@ impl Drop for Setup {
     fn drop(&mut self) {
         unsafe {
             liero_game_free(self.game);
-            liero_settings_box_free(self.settings);
         }
     }
 }
@@ -195,7 +199,7 @@ fn plays_back_the_game_it_recorded() {
         let vp = &*liero_game_viewport(g, false, 1);
         assert_eq!((vp.shake, vp.worm_idx, vp.rect.x1), (5, 1, 160));
         assert_eq!((*liero_game_data(g)).rand.x, 1234);
-        assert_eq!((*t.settings).data.lives, 9);
+        assert_eq!(t.settings.borrow_mut().data.lives, 9);
         assert_eq!(t.level().pixels(), &[1, 5, 2, 5, 3, 4]);
         let l = t.level().data().level;
         assert_eq!(((*l.materials.add(1)).flags, (*l.materials).flags), (7, 0));
@@ -245,7 +249,7 @@ fn writes_settings_changed_while_unfocused() {
         liero_replay_writer_focus(&mut *w);
         liero_replay_writer_frame(&mut *w);
         liero_replay_writer_unfocus(&mut *w);
-        (*s.settings).data.lives = 3;
+        s.settings.borrow_mut().data.lives = 3;
         liero_replay_writer_focus(&mut *w);
         liero_replay_writer_frame(&mut *w);
         liero_replay_writer_free(w);
@@ -254,13 +258,13 @@ fn writes_settings_changed_while_unfocused() {
     let mut t = Setup::empty();
     let r = play(&p, &mut t);
     unsafe {
-        assert_eq!((*t.settings).data.lives, 9);
+        assert_eq!(t.settings.borrow_mut().data.lives, 9);
         assert!(!frame(r, &mut t).settings_changed);
         assert!(!frame(r, &mut t).settings_changed);
         let o = frame(r, &mut t);
         ok(o);
         assert!(o.settings_changed);
-        assert_eq!((*t.settings).data.lives, 3);
+        assert_eq!(t.settings.borrow_mut().data.lives, 3);
         liero_replay_reader_free(r);
     }
 }

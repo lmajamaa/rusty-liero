@@ -119,7 +119,7 @@ pub(crate) fn draw_spectator_info() {
     let a = app();
     let (cx, cy) = (a.single.data.render_res_x / 2, a.single.data.render_res_y / 4);
     a.single.bmp.copy_from(&a.frozen_spectator);
-    let s = a.menu_settings();
+    let s = crate::app::menu_settings();
     let line = level_line(&crate::app::menu_tc_data(), &s.level_file, &s.level_file);
     let scr = app().single.bmp.view();
     let font = crate::app::menu_font();
@@ -162,7 +162,7 @@ pub(crate) fn draw_menus() {
 /// unless `quitting`, the colours cycling, and the worms' colours.
 pub(crate) fn menu_fade(quitting: bool) {
     let a = app();
-    let s = a.menu_settings();
+    let s = crate::app::menu_settings();
     a.menu_cycles = a.menu_cycles.wrapping_add(1);
     for r in [&mut *a.play, &mut *a.single] {
         if r.data.fade_value < 32 && !quitting {
@@ -170,7 +170,7 @@ pub(crate) fn menu_fade(quitting: bool) {
         }
     }
     for r in [&mut *a.play, &mut *a.single] {
-        palette(r, a.menu_cycles, s);
+        palette(r, a.menu_cycles, &s);
     }
 }
 

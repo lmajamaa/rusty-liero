@@ -125,17 +125,14 @@ fn sound_game(
     let mut game = set_up_game(tc, seed, game_mode, weapons);
     let mut mixer = Box::<LieroMixer>::default();
     let m: *mut LieroMixer = &mut *mixer;
-    let settings: *mut LieroSettingsBox = game.settings_box();
-    // SAFETY: the game keeps references to its settings and TC; the mixer
-    // lives until the game's sound goes back to none.
-    unsafe {
-        liero_game_set_context(
-            &mut game,
-            settings,
-            Some(tc.clone()),
-            LieroSoundOut { mixer: m, report: None },
-        )
-    };
+    let settings = game.settings();
+    // The mixer lives until the game's sound goes back to none.
+    liero_game_set_context(
+        &mut game,
+        Some(settings.clone()),
+        Some(tc.clone()),
+        LieroSoundOut { mixer: m, report: None },
+    );
 
     let blood = game.settings_box().data.blood_particle_max;
     game.start(blood);
@@ -161,8 +158,8 @@ fn sound_game(
         }
     }
 
-    // SAFETY: as above; the mixer is dropped once the game has no sound.
-    unsafe { liero_game_set_context(&mut game, settings, Some(tc.clone()), LieroSoundOut::NONE) };
+    // The mixer is dropped once the game has no sound.
+    liero_game_set_context(&mut game, Some(settings), Some(tc.clone()), LieroSoundOut::NONE);
     drop(mixer);
 }
 
@@ -416,7 +413,7 @@ fn hash_controls(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
             2 + r.below(100)
         }
     });
-    for ws in &settings.worms {
+    for ws in &settings.borrow().worms {
         let mut ws = ws.borrow_mut();
         ws.data.controller = 0;
         ws.data
@@ -431,7 +428,7 @@ fn hash_controls(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
 
     // SAFETY: the controller keeps references to the settings and the TC,
     // and is freed below.
-    let lc = unsafe { liero_local_controller_new(settings.as_ptr(), tc.clone()) };
+    let lc = unsafe { liero_local_controller_new(settings.clone(), tc.clone()) };
     // SAFETY: the controller is new; its data and game live as long as it
     // does.
     let (d, game) = unsafe { (liero_controller_data(&mut *lc), &mut *liero_controller_game(&mut *lc)) };
