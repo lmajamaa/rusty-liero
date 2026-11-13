@@ -2,11 +2,10 @@
 //! `LieroScene` from the game's fields, as C++'s `viewport.cpp` copied it
 //! from its `Game`, and processes the viewports at the end of a tick.
 
-use crate::ai::{liero_worm_ai_traces, LieroWormAi};
+use crate::ai::LieroWormAi;
 use crate::game::{LieroGameFields, LieroGameSettings};
 use crate::gfx::LieroBitmap;
 use crate::tc::{c, h, s, LieroTcData, LieroTcSprites};
-use crate::text::LieroStr;
 use crate::viewport::{
     liero_viewport_draw, liero_viewport_process, LieroScene, LieroSpriteSet, LieroViewBObject, LieroViewBonus,
     LieroViewNObject, LieroViewSObject, LieroViewWObject, LieroViewWeapon, LieroViewWorm, LieroViewWormWeapon,
@@ -47,31 +46,18 @@ fn sprites(s: &LieroTcSprites) -> LieroSpriteSet<'_> {
     }
 }
 
-fn lstr(b: &[u8]) -> LieroStr {
-    LieroStr {
-        ptr: b.as_ptr(),
-        len: b.len(),
-    }
-}
-
 /// The worms, in the game's order (`viewWorms`).
 ///
 /// # Safety
 /// The pointers in `f` are valid, and the worms' names stay so while the
 /// views are used.
-pub(crate) unsafe fn view_worms(f: &LieroGameFields) -> Vec<LieroViewWorm> {
+pub(crate) unsafe fn view_worms<'a>(f: &LieroGameFields) -> Vec<LieroViewWorm<'a>> {
     unsafe {
         slice(f.worms, f.worm_count)
             .iter()
             .map(|gw| {
                 let w = &*gw.data;
-                let (traces, trace_count) = match (gw.ai as *const LieroWormAi).as_ref() {
-                    Some(ai) => {
-                        let mut n = 0;
-                        (liero_worm_ai_traces(ai, &mut n), n)
-                    }
-                    None => (std::ptr::null(), 0),
-                };
+                let traces = (gw.ai as *const LieroWormAi).as_ref().map_or(&[][..], |ai| ai.traces());
                 LieroViewWorm {
                     pos: w.pos,
                     visible: w.visible,
@@ -84,7 +70,7 @@ pub(crate) unsafe fn view_worms(f: &LieroGameFields) -> Vec<LieroViewWorm> {
                     lives: w.lives,
                     timer: w.timer,
                     index: w.index,
-                    name: gw.name,
+                    name: gw.name.bytes(),
                     color: gw.color,
                     pressed_change: w.control_states >> LIERO_CONTROL_CHANGE & 1 != 0,
                     pressed_fire: w.control_states >> LIERO_CONTROL_FIRE & 1 != 0,
@@ -108,7 +94,6 @@ pub(crate) unsafe fn view_worms(f: &LieroGameFields) -> Vec<LieroViewWorm> {
                     steerable_sum_x: w.steerable_sum_x,
                     steerable_sum_y: w.steerable_sum_y,
                     traces,
-                    trace_count,
                 }
             })
             .collect()
@@ -128,7 +113,7 @@ pub(crate) unsafe fn process_viewports(f: &LieroGameFields) {
             (f.spectator_viewports, f.spectator_viewport_count),
         ] {
             for &vp in slice(list, n) {
-                liero_viewport_process(&mut *vp, (*vp).kind, worms.as_ptr(), worms.len() as i32);
+                liero_viewport_process(&mut *vp, (*vp).kind, &worms);
             }
         }
     }
@@ -153,22 +138,14 @@ pub unsafe fn liero_game_draw_viewport(
         let l = lists(game, settings, vp);
 
         let scene = LieroScene {
-            worms: l.worms.as_ptr(),
-            worm_count: l.worms.len() as i32,
-            weapons: l.weapons.as_ptr(),
-            weapon_count: l.weapons.len() as i32,
-            bonuses: l.bonuses.as_ptr(),
-            bonus_count: l.bonuses.len() as i32,
-            sobjects: l.sobjects.as_ptr(),
-            sobject_count: l.sobjects.len() as i32,
-            wobjects: l.wobjects.as_ptr(),
-            wobject_count: l.wobjects.len() as i32,
-            nobjects: l.nobjects.as_ptr(),
-            nobject_count: l.nobjects.len() as i32,
-            bobjects: l.bobjects.as_ptr(),
-            bobject_count: l.bobjects.len() as i32,
-            viewports: l.banners.as_ptr(),
-            viewport_count: l.banners.len() as i32,
+            worms: &l.worms,
+            weapons: &l.weapons,
+            bonuses: &l.bonuses,
+            sobjects: &l.sobjects,
+            wobjects: &l.wobjects,
+            nobjects: &l.nobjects,
+            bobjects: &l.bobjects,
+            viewports: &l.banners,
 
             small_sprites: sprites(&tc.small_sprites),
             large_sprites: sprites(&tc.large_sprites),
@@ -177,16 +154,16 @@ pub unsafe fn liero_game_draw_viewport(
             text_sprites: sprites(&tc.text_sprites),
             font: &tc.font,
             materials: &tc.materials,
-            level: game.level,
+            level: game.level.view(),
             bonus_frames: tc.bonus_frames,
 
-            reloading: lstr(tc.text(s("Reloading"))),
-            kills: lstr(tc.text(s("Kills"))),
-            lives: lstr(tc.text(s("Lives"))),
-            press_fire: lstr(tc.text(s("PressFire"))),
-            youre_it: lstr(tc.text(s("YoureIt"))),
-            killed_msg: lstr(tc.text(s("KilledMsg"))),
-            committed_suicide_msg: lstr(tc.text(s("CommittedSuicideMsg"))),
+            reloading: tc.text(s("Reloading")),
+            kills: tc.text(s("Kills")),
+            lives: tc.text(s("Lives")),
+            press_fire: tc.text(s("PressFire")),
+            youre_it: tc.text(s("YoureIt")),
+            killed_msg: tc.text(s("KilledMsg")),
+            committed_suicide_msg: tc.text(s("CommittedSuicideMsg")),
 
             cycles: d.cycles,
             game_mode: settings.game_mode,
@@ -215,9 +192,9 @@ pub unsafe fn liero_game_draw_viewport(
 
 /// The lists a viewport draws, in C++'s order, which decides what is drawn
 /// on top, and `vp`'s place among the split-screen viewports.
-struct Lists {
-    worms: Vec<LieroViewWorm>,
-    weapons: Vec<LieroViewWeapon>,
+struct Lists<'a> {
+    worms: Vec<LieroViewWorm<'a>>,
+    weapons: Vec<LieroViewWeapon<'a>>,
     bonuses: Vec<LieroViewBonus>,
     sobjects: Vec<LieroViewSObject>,
     wobjects: Vec<LieroViewWObject>,
@@ -229,7 +206,7 @@ struct Lists {
 
 /// # Safety
 /// As for `liero_game_draw_viewport`.
-unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut LieroViewport) -> Lists {
+unsafe fn lists<'a>(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut LieroViewport) -> Lists<'a> {
     unsafe {
         let tc: &LieroTcData = &*game.tc;
         let d = &*game.game;
@@ -239,7 +216,7 @@ unsafe fn lists(game: &LieroGameFields, settings: &LieroGameSettings, vp: *mut L
             .map(|w| {
                 let t = settings.loading_time.wrapping_mul(w.loading_time) / 100;
                 LieroViewWeapon {
-                    name: LieroStr::of(&w.name),
+                    name: &w.name,
                     ammo: w.ammo,
                     loading_time: w.loading_time,
                     computed_loading_time: if t == 0 { 1 } else { t },
@@ -346,7 +323,8 @@ mod tests {
     use crate::sfx::LieroSoundOut;
     use crate::tc::LieroTcSObject;
     use crate::tc::{LieroTcNObject, LieroTcWeapon};
-    use crate::viewport::{liero_viewport_free, liero_viewport_new, LIERO_VIEWPORT_SPECTATOR};
+    use crate::text::LieroStr;
+    use crate::viewport::LIERO_VIEWPORT_SPECTATOR;
     use crate::worm::LieroWormData;
 
     fn defaults<T: Default>(n: usize) -> Vec<T> {
@@ -395,12 +373,14 @@ mod tests {
             x2: 158,
             y2: 158,
         };
-        let vps = [
-            liero_viewport_new(rect, 0, 504, 350),
-            liero_viewport_new(rect, 1, 504, 350),
+        let mut owned = [
+            LieroViewport::new(rect, 0, 504, 350),
+            LieroViewport::new(rect, 1, 504, 350),
+            LieroViewport::new(rect, 0, 504, 350),
         ];
-        let spectators = [liero_viewport_new(rect, 0, 504, 350)];
-        unsafe { (*spectators[0]).kind = LIERO_VIEWPORT_SPECTATOR };
+        owned[2].kind = LIERO_VIEWPORT_SPECTATOR;
+        let [a, b, c] = owned.each_mut().map(|v| v as *mut LieroViewport);
+        let (vps, spectators) = ([a, b], [c]);
         let pool: Vec<*mut LieroWormData> = worms.iter().map(|w| w.data).collect();
         let mut game = LieroGameData::new_boxed();
         let mut fields = LieroGameFields {
@@ -427,9 +407,6 @@ mod tests {
         // the tick does.
         let data_ptr: *mut [LieroWormData; 2] = &mut data;
         f(&mut fields, unsafe { &mut *data_ptr });
-        for vp in vps.into_iter().chain(spectators) {
-            unsafe { liero_viewport_free(vp) };
-        }
     }
 
     #[test]
@@ -457,10 +434,7 @@ mod tests {
             let l = lists(f, &settings, *f.viewports.add(1));
 
             let w = &l.worms;
-            assert_eq!(
-                (w[0].name.bytes(), w[1].name.bytes(), w[1].color),
-                (&b"A"[..], &b"B"[..], 11)
-            );
+            assert_eq!((w[0].name, w[1].name, w[1].color), (&b"A"[..], &b"B"[..], 11));
             assert!(w[1].pressed_fire && !w[1].pressed_change && !w[0].pressed_fire);
             assert_eq!((w[0].weapons[2].weapon, w[0].weapons[0].weapon), (2, -1));
             assert_eq!(
