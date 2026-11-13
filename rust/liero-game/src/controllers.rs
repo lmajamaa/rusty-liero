@@ -23,7 +23,7 @@ use crate::level::LieroLevelBox;
 use crate::renderer::LieroRenderer;
 use crate::replay::LieroReplayStatus;
 use crate::replay_file::{LieroReplayOutcome, LieroReplayReader, LieroReplayWriter};
-use crate::screen::{current_host, LieroScreen};
+use crate::screen::{current_host, BoxedScreen};
 use crate::settings::{liero_settings_box_new, SharedSettings, LIERO_MAX_CONTROL_EX};
 use crate::stats::liero_stats_presenter_screen;
 use crate::tc::SharedTc;
@@ -66,7 +66,7 @@ pub struct LieroController {
     data: LieroControllerData,
     kind: Kind,
     /// A screen opened over the game, for the game screen to push.
-    opened: Option<LieroScreen>,
+    opened: Option<BoxedScreen>,
 }
 
 /// A new game with the settings, the TC and the app's sound, its clock
@@ -152,11 +152,8 @@ impl LieroController {
     }
 
     /// Opens `s` over the game, in place of anything opened before.
-    fn open(&mut self, s: LieroScreen) {
-        if let Some(old) = self.opened.replace(s) {
-            // SAFETY: the screen was never pushed, so it's still ours.
-            unsafe { free_screen(old) };
-        }
+    fn open(&mut self, s: BoxedScreen) {
+        self.opened = Some(s);
     }
 
     /// A message over the game (`Gfx::infoBox`).
@@ -549,18 +546,6 @@ impl LieroController {
 impl Drop for LieroController {
     fn drop(&mut self) {
         self.end_record();
-        if let Some(s) = self.opened.take() {
-            // SAFETY: the screen was never pushed.
-            unsafe { free_screen(s) };
-        }
-    }
-}
-
-unsafe fn free_screen(s: LieroScreen) {
-    unsafe {
-        if let Some(free) = s.free {
-            free(s.data);
-        }
     }
 }
 
@@ -720,20 +705,9 @@ pub fn liero_controller_game(c: &mut LieroController) -> *mut LieroGame {
     c.game().map_or(std::ptr::null_mut(), |g| g as *mut LieroGame)
 }
 
-/// Moves the screen the controller opened into `out`; false if none.
-///
-/// # Safety
-/// `out` is valid.
-pub unsafe fn liero_controller_take_opened(c: &mut LieroController, out: *mut LieroScreen) -> bool {
-    unsafe {
-        match c.opened.take() {
-            Some(s) => {
-                *out = s;
-                true
-            }
-            None => false,
-        }
-    }
+/// The screen the controller opened, if any, to push.
+pub fn liero_controller_take_opened(c: &mut LieroController) -> Option<BoxedScreen> {
+    c.opened.take()
 }
 
 /// `Game::focus`: `r`'s palette from the level's and the worms' colours.

@@ -10,7 +10,7 @@
 //! is C++ (`LieroMenuScreenHooks`).
 
 use crate::menus::LieroMenus;
-use crate::screen::{Host, LieroScreen, Screen, Tick};
+use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
 const SCANCODE_RETURN: u32 = 40;
 const SCANCODE_ESCAPE: u32 = 41;
@@ -85,7 +85,7 @@ enum Phase {
 /// How a pass ended.
 enum Step {
     Done,
-    Opened(LieroScreen),
+    Opened(BoxedScreen),
     Close,
 }
 
@@ -151,7 +151,7 @@ impl MenuScreen {
 
     /// Enter on `kind`'s item. Returns the screen it opened, if any; else
     /// whether the menu closes at once.
-    fn enter(&mut self, kind: i32, how: Use) -> Result<bool, LieroScreen> {
+    fn enter(&mut self, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
         let (r, opened) = self.menus().enter(kind);
         if let Some(opened) = opened {
             self.how = how;
@@ -356,8 +356,8 @@ impl Screen for MenuScreen {
 }
 
 /// The main menu screen.
-pub fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> LieroScreen {
-    crate::screen::into_ffi(Box::new(MenuScreen {
+pub fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> BoxedScreen {
+    Box::new(MenuScreen {
         h: hooks,
         phase: Phase::Start,
         start_item: 0,
@@ -366,5 +366,5 @@ pub fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> LieroScreen {
         how: Use::Ignore,
         entered: -1,
         resumed: false,
-    }))
+    })
 }

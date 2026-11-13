@@ -13,10 +13,8 @@
 //! `liero_app_frame` runs the steps due by a clock, 14 ms each, for a caller
 //! woken by the browser or the window.
 //!
-//! Every screen is seen here through a table of functions (`LieroScreen`):
-//! C++ screens through `src/game/screen.cpp`, Rust screens through
-//! `into_ffi`. A Rust screen reaches what is still C++ (events, sound, the
-//! screen's bitmaps) through `LieroScreenHost`, which C++ sets once.
+//! A screen is a `Box<dyn Screen>`. It reaches the platform (events, sound,
+//! the clock) through `LieroScreenHost`, which the shell sets once.
 
 use std::ffi::c_void;
 use std::sync::OnceLock;
@@ -32,41 +30,20 @@ pub const STEP_MS: u32 = 14;
 pub const MAX_STEPS_PER_FRAME: u32 = 4;
 
 /// A screen, owned by the stack once pushed.
-pub struct LieroScreen {
-    pub data: *mut c_void,
-    /// Runs one step and fills in what happens next, and `next` for
-    /// `TickPush` and `TickReplace`.
-    pub tick: Option<unsafe fn(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen)>,
-    /// The screen opened on top of this one closed with `result`.
-    pub resume: Option<unsafe fn(data: *mut c_void, result: i32)>,
-    /// Frees the screen, when it closes or the stack is cleared.
-    pub free: Option<unsafe fn(data: *mut c_void)>,
-}
+pub type BoxedScreen = Box<dyn Screen>;
 
-/// What a screen does after its tick.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// Prefixed, since C puts the names in the global scope.
-#[allow(clippy::enum_variant_names)]
-pub enum LieroTickKind {
-    /// Stays on top.
-    TickStay = 0,
-    /// Opens `screen` on top; this one gets `resume` when it closes.
-    TickPush = 1,
-    /// Closes, handing `result` to the screen below.
-    TickClose = 2,
-    /// Closes, and `screen` takes its place.
-    TickReplace = 3,
+/// What happens after a screen's tick.
+pub enum Transition {
+    /// The screen stays on top.
+    Stay,
+    /// Opens a screen on top; this one gets `resume` when it closes.
+    Open(BoxedScreen),
+    /// Closes, handing the result to the screen below.
+    Close(i32),
+    /// Closes, and the screen takes its place.
+    Replace(BoxedScreen),
     /// Closes every screen: the app is done.
-    TickQuit = 4,
-}
-
-/// A tick's outcome.
-pub struct LieroTick {
-    pub kind: LieroTickKind,
-    /// The tick drew a frame for the host to show.
-    pub shown: bool,
-    /// For `TickClose`.
-    pub result: i32,
+    Quit,
 }
 
 /// What the stack calls back into.
@@ -270,48 +247,47 @@ impl Host {
     }
 }
 
-/// What a Rust screen's tick does next.
+/// A tick's outcome: what happens next, and whether it drew a frame for
+/// the host to show.
 pub struct Tick {
-    pub kind: LieroTickKind,
+    pub then: Transition,
     pub shown: bool,
-    pub result: i32,
-    pub next: Option<LieroScreen>,
 }
 
 impl Tick {
     pub fn stay(shown: bool) -> Self {
         Tick {
-            kind: LieroTickKind::TickStay,
+            then: Transition::Stay,
             shown,
-            result: 0,
-            next: None,
         }
     }
     pub fn close(result: i32) -> Self {
         Tick {
-            kind: LieroTickKind::TickClose,
+            then: Transition::Close(result),
             shown: false,
-            result,
-            next: None,
         }
     }
-    pub fn push(next: LieroScreen) -> Self {
+    pub fn push(next: BoxedScreen) -> Self {
         Tick {
-            kind: LieroTickKind::TickPush,
+            then: Transition::Open(next),
             shown: false,
-            result: 0,
-            next: Some(next),
+        }
+    }
+
+    /// The result it closes with, if it closes.
+    pub fn closed(&self) -> Option<i32> {
+        match self.then {
+            Transition::Close(r) => Some(r),
+            _ => None,
         }
     }
 }
 
-/// A screen written in Rust.
+/// A screen. What it needs when it goes, it does in `Drop`.
 pub trait Screen {
     fn tick(&mut self, host: &Host) -> Tick;
     /// The screen this one opened closed with `result`.
     fn resume(&mut self, _host: &Host, _result: i32) {}
-    /// Called before the screen is dropped.
-    fn close(&mut self, _host: &Host) {}
 }
 
 fn host() -> Host {
@@ -323,138 +299,59 @@ pub(crate) fn current_host() -> Host {
     host()
 }
 
-type BoxedScreen = Box<dyn Screen>;
-
-unsafe fn rust_tick(data: *mut c_void, out: *mut LieroTick, next: *mut LieroScreen) {
-    unsafe {
-        let s = &mut *(data as *mut BoxedScreen);
-        let t = s.tick(&host());
-        *out = LieroTick {
-            kind: t.kind,
-            shown: t.shown,
-            result: t.result,
-        };
-        if let Some(n) = t.next {
-            *next = n;
-        }
-    }
-}
-
-unsafe fn rust_resume(data: *mut c_void, result: i32) {
-    unsafe {
-        let s = &mut *(data as *mut BoxedScreen);
-        s.resume(&host(), result);
-    }
-}
-
-unsafe fn rust_free(data: *mut c_void) {
-    unsafe {
-        let mut s = Box::from_raw(data as *mut BoxedScreen);
-        s.close(&host());
-    }
-}
-
-/// A Rust screen as the stack holds it.
-pub fn into_ffi(s: BoxedScreen) -> LieroScreen {
-    LieroScreen {
-        data: Box::into_raw(Box::new(s)).cast(),
-        tick: Some(rust_tick),
-        resume: Some(rust_resume),
-        free: Some(rust_free),
-    }
-}
-
 pub struct LieroApp {
-    screens: Vec<LieroScreen>,
+    screens: Vec<BoxedScreen>,
     /// The clock's time of the last step `liero_app_frame` ran, once it has
     /// run one.
     last: Option<u32>,
 }
 
-impl LieroScreen {
-    pub(crate) fn empty() -> Self {
-        LieroScreen {
-            data: std::ptr::null_mut(),
-            tick: None,
-            resume: None,
-            free: None,
-        }
-    }
-
-    pub(crate) unsafe fn release(self) {
-        unsafe {
-            if let Some(free) = self.free {
-                free(self.data);
-            }
-        }
-    }
-}
-
 impl LieroApp {
-    fn new() -> Self {
+    /// An app with no screens.
+    pub fn new() -> Self {
         LieroApp {
             screens: Vec::new(),
             last: None,
         }
     }
 
-    unsafe fn clear(&mut self) {
-        unsafe {
-            while let Some(s) = self.screens.pop() {
-                s.release();
-            }
-        }
-    }
-
     /// One step of the top screen. False once no screen is left.
+    ///
+    /// # Safety
+    /// The host's functions are safe to call with its data.
     unsafe fn step(&mut self, host: &LieroAppHost) -> bool {
-        unsafe {
-            let Some(top) = self.screens.last() else {
-                return false;
-            };
-            let mut out = LieroTick {
-                kind: LieroTickKind::TickStay,
-                shown: false,
-                result: 0,
-            };
-            let mut next = LieroScreen::empty();
-            if let Some(tick) = top.tick {
-                tick(top.data, &mut out, &mut next);
+        let Some(top) = self.screens.last_mut() else {
+            return false;
+        };
+        let t = top.tick(&self::host());
+        if t.shown {
+            if let Some(show) = host.show {
+                unsafe { show(host.data) };
             }
-            if out.shown {
-                if let Some(show) = host.show {
-                    show(host.data);
-                }
-            }
-            match out.kind {
-                LieroTickKind::TickStay => {
-                    if !out.shown {
-                        if let Some(idle) = host.idle {
-                            idle(host.data);
-                        }
-                    }
-                }
-                LieroTickKind::TickPush => self.screens.push(next),
-                LieroTickKind::TickClose => {
-                    if let Some(s) = self.screens.pop() {
-                        s.release();
-                    }
-                    if let Some(below) = self.screens.last() {
-                        if let Some(resume) = below.resume {
-                            resume(below.data, out.result);
-                        }
-                    }
-                }
-                LieroTickKind::TickReplace => {
-                    if let Some(s) = self.screens.pop() {
-                        s.release();
-                    }
-                    self.screens.push(next);
-                }
-                LieroTickKind::TickQuit => self.clear(),
-            }
-            !self.screens.is_empty()
         }
+        match t.then {
+            Transition::Stay => {
+                if !t.shown {
+                    if let Some(idle) = host.idle {
+                        unsafe { idle(host.data) };
+                    }
+                }
+            }
+            Transition::Open(next) => self.screens.push(next),
+            Transition::Close(result) => {
+                self.screens.pop();
+                if let Some(below) = self.screens.last_mut() {
+                    below.resume(&self::host(), result);
+                }
+            }
+            Transition::Replace(next) => {
+                self.screens.pop();
+                self.screens.push(next);
+            }
+            // The top screen goes first.
+            Transition::Quit => while self.screens.pop().is_some() {},
+        }
+        !self.screens.is_empty()
     }
 
     /// How many steps are due at `now`, and moves the clock past them.
@@ -474,25 +371,21 @@ impl LieroApp {
     }
 }
 
-pub fn liero_app_new() -> *mut LieroApp {
-    Box::into_raw(Box::new(LieroApp::new()))
+impl Default for LieroApp {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-/// Frees the app and every screen on it.
-///
-/// # Safety
-/// `app` comes from `liero_app_new` and isn't used again.
-pub unsafe fn liero_app_free(app: *mut LieroApp) {
-    unsafe {
-        if !app.is_null() {
-            let mut app = Box::from_raw(app);
-            app.clear();
-        }
+impl Drop for LieroApp {
+    /// The top screen goes first.
+    fn drop(&mut self) {
+        while self.screens.pop().is_some() {}
     }
 }
 
 /// Puts `screen` on top; the stack owns it from now on.
-pub fn liero_app_push(app: &mut LieroApp, screen: LieroScreen) {
+pub fn liero_app_push(app: &mut LieroApp, screen: BoxedScreen) {
     app.screens.push(screen);
 }
 
@@ -504,7 +397,7 @@ pub fn liero_app_depth(app: &LieroApp) -> usize {
 /// Runs one step of the top screen. Returns false once no screen is left.
 ///
 /// # Safety
-/// The screens' and host's functions are safe to call with their data.
+/// The host's functions are safe to call with its data.
 pub unsafe fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost) -> bool {
     unsafe { app.step(host) }
 }
@@ -514,7 +407,7 @@ pub unsafe fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost) -> bool {
 /// screen is left.
 ///
 /// # Safety
-/// The screens' and host's functions are safe to call with their data.
+/// The host's functions are safe to call with its data.
 pub unsafe fn liero_app_frame(app: &mut LieroApp, now_ms: u32, host: &LieroAppHost) -> bool {
     unsafe {
         for _ in 0..app.due(now_ms) {
@@ -530,63 +423,58 @@ pub unsafe fn liero_app_frame(app: &mut LieroApp, now_ms: u32, host: &LieroAppHo
 mod tests {
     use super::*;
     use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// What a test screen does once it has stayed.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Then {
+        Open,
+        Close,
+        Replace,
+        Quit,
+    }
 
     // A test screen: a name, how many ticks it stays, and what it does then.
     struct Fake {
         name: &'static str,
         stays: u32,
-        then: LieroTickKind,
+        then: Then,
         open: Option<Box<Fake>>,
-        log: *const RefCell<Vec<String>>,
+        log: Rc<RefCell<Vec<String>>>,
     }
 
-    fn log(f: &Fake, s: String) {
-        unsafe { (*f.log).borrow_mut().push(s) };
+    impl Fake {
+        fn log(&self, s: String) {
+            self.log.borrow_mut().push(s);
+        }
     }
 
-    unsafe fn tick(data: *mut c_void, out: *mut LieroTick, next_out: *mut LieroScreen) {
-        unsafe {
-            let f = &mut *(data as *mut Fake);
-            log(f, format!("tick {}", f.name));
-            let out = &mut *out;
-            out.shown = f.stays.is_multiple_of(2);
-            if f.stays > 0 {
-                f.stays -= 1;
-                return;
+    impl Screen for Fake {
+        fn tick(&mut self, _host: &Host) -> Tick {
+            self.log(format!("tick {}", self.name));
+            let shown = self.stays.is_multiple_of(2);
+            if self.stays > 0 {
+                self.stays -= 1;
+                return Tick::stay(shown);
             }
-            out.result = 7;
-            out.kind = match f.open.take() {
-                Some(next) => {
-                    *next_out = screen(next);
-                    f.then
-                }
+            let then = match (self.open.take(), self.then) {
+                (Some(next), Then::Open) => Transition::Open(next),
+                (Some(next), Then::Replace) => Transition::Replace(next),
+                (_, Then::Quit) => Transition::Quit,
                 // Nothing left to open: close.
-                None if f.then == LieroTickKind::TickPush => LieroTickKind::TickClose,
-                None => f.then,
+                _ => Transition::Close(7),
             };
+            Tick { then, shown }
+        }
+
+        fn resume(&mut self, _host: &Host, result: i32) {
+            self.log(format!("resume {} {}", self.name, result));
         }
     }
 
-    unsafe fn resume(data: *mut c_void, result: i32) {
-        unsafe {
-            let f = &*(data as *mut Fake);
-            log(f, format!("resume {} {}", f.name, result));
-        }
-    }
-
-    unsafe fn free(data: *mut c_void) {
-        unsafe {
-            let f = Box::from_raw(data as *mut Fake);
-            log(&f, format!("free {}", f.name));
-        }
-    }
-
-    fn screen(f: Box<Fake>) -> LieroScreen {
-        LieroScreen {
-            data: Box::into_raw(f).cast(),
-            tick: Some(tick),
-            resume: Some(resume),
-            free: Some(free),
+    impl Drop for Fake {
+        fn drop(&mut self) {
+            self.log(format!("free {}", self.name));
         }
     }
 
@@ -609,37 +497,35 @@ mod tests {
     fn fake(
         name: &'static str,
         stays: u32,
-        then: LieroTickKind,
+        then: Then,
         open: Option<Box<Fake>>,
-        log: &RefCell<Vec<String>>,
+        log: &Rc<RefCell<Vec<String>>>,
     ) -> Box<Fake> {
         Box::new(Fake {
             name,
             stays,
             then,
             open,
-            log,
+            log: log.clone(),
         })
     }
 
     #[test]
     fn push_close_and_replace() {
-        let log = RefCell::new(Vec::new());
+        let log = Rc::new(RefCell::new(Vec::new()));
         let host = LieroAppHost {
-            data: (&log as *const RefCell<Vec<String>>).cast_mut().cast(),
+            data: Rc::as_ptr(&log).cast_mut().cast(),
             show: Some(show),
             idle: Some(idle),
         };
-        let c = fake("c", 0, LieroTickKind::TickClose, None, &log);
-        let b = fake("b", 1, LieroTickKind::TickReplace, Some(c), &log);
-        let a = fake("a", 0, LieroTickKind::TickPush, Some(b), &log);
-        let app = liero_app_new();
-        unsafe {
-            liero_app_push(&mut *app, screen(a));
-            while liero_app_step(&mut *app, &host) {}
-            liero_app_free(app);
-        }
-        let log = log.into_inner();
+        let c = fake("c", 0, Then::Close, None, &log);
+        let b = fake("b", 1, Then::Replace, Some(c), &log);
+        let a = fake("a", 0, Then::Open, Some(b), &log);
+        let mut app = LieroApp::new();
+        liero_app_push(&mut app, a);
+        while unsafe { liero_app_step(&mut app, &host) } {}
+        drop(app);
+        let log = log.borrow().clone();
         // a opens b; b waits once (no frame, so idle), then shows and is
         // replaced by c; c closes into a, which has nothing left to open and
         // closes too.
@@ -666,23 +552,22 @@ mod tests {
 
     #[test]
     fn quit_frees_every_screen() {
-        let log = RefCell::new(Vec::new());
+        let log = Rc::new(RefCell::new(Vec::new()));
         let host = LieroAppHost {
             data: std::ptr::null_mut(),
             show: None,
             idle: None,
         };
-        let b = fake("b", 0, LieroTickKind::TickQuit, None, &log);
-        let a = fake("a", 0, LieroTickKind::TickPush, Some(b), &log);
-        let app = liero_app_new();
+        let b = fake("b", 0, Then::Quit, None, &log);
+        let a = fake("a", 0, Then::Open, Some(b), &log);
+        let mut app = LieroApp::new();
+        liero_app_push(&mut app, a);
         unsafe {
-            liero_app_push(&mut *app, screen(a));
-            assert!(liero_app_step(&mut *app, &host));
-            assert!(!liero_app_step(&mut *app, &host));
-            assert_eq!(liero_app_depth(&*app), 0);
-            liero_app_free(app);
+            assert!(liero_app_step(&mut app, &host));
+            assert!(!liero_app_step(&mut app, &host));
         }
-        assert_eq!(log.into_inner(), ["tick a", "tick b", "free b", "free a"]);
+        assert_eq!(liero_app_depth(&app), 0);
+        assert_eq!(*log.borrow(), ["tick a", "tick b", "free b", "free a"]);
     }
 
     #[test]

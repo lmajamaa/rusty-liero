@@ -27,8 +27,8 @@ use crate::keys::sdl_to_dos_keysym;
 use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks};
 use crate::menus::{liero_menus_load, liero_menus_reset};
 use crate::screen::{
-    liero_app_free, liero_app_new, liero_app_push, liero_app_step, liero_screen_set_host, LieroAppHost, LieroEvent,
-    LieroScreen, LieroScreenHost, LieroTypedKey,
+    liero_app_push, liero_app_step, liero_screen_set_host, BoxedScreen, LieroApp, LieroAppHost, LieroEvent,
+    LieroScreenHost, LieroTypedKey,
 };
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
@@ -311,7 +311,7 @@ unsafe fn randomize_tc() {
     liero_tc_randomize(&app().menu_tc(), 0);
 }
 
-unsafe fn menu_screen() -> LieroScreen {
+unsafe fn menu_screen() -> BoxedScreen {
     liero_menu_screen(LieroMenuScreenHooks {
         menus: app().menus,
         randomize_tc,
@@ -581,19 +581,17 @@ pub fn hash_app(out: &mut Out) {
         idle: Some(host_idle),
     };
 
-    // SAFETY: the screens and the host are Rust's.
-    unsafe {
-        let stack = liero_app_new();
-        liero_app_push(
-            &mut *stack,
-            liero_main_screen(LieroAppHooks {
-                process: app_process,
-                menu_screen,
-            }),
-        );
-        while liero_app_step(&mut *stack, &host) && driver(|d| d.failed.is_none()) {}
-        liero_app_free(stack);
-    }
+    let mut stack = LieroApp::new();
+    liero_app_push(
+        &mut stack,
+        liero_main_screen(LieroAppHooks {
+            process: app_process,
+            menu_screen,
+        }),
+    );
+    // SAFETY: the host's functions are the hash run's.
+    while unsafe { liero_app_step(&mut stack, &host) } && driver(|d| d.failed.is_none()) {}
+    drop(stack);
 
     let d = DRIVER.take();
     d.lines.iter().for_each(|l| out.line(l));

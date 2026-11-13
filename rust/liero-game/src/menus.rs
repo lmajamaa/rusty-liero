@@ -18,7 +18,7 @@ use crate::menu::{
     LIERO_MENU_VALUE_TIME,
 };
 use crate::menu_screen::{LIERO_MENU_HIDDEN, LIERO_MENU_MAIN, LIERO_MENU_PLAYER, LIERO_MENU_SETTINGS};
-use crate::screen::{current_host, LieroScreen};
+use crate::screen::{current_host, BoxedScreen};
 use crate::settings::{LieroSettingsData, LieroWormSettingsBox, LieroWormSettingsData};
 use crate::tc::{c, s, LieroTcData};
 use crate::text::{LieroFont, LieroStr};
@@ -633,7 +633,7 @@ impl LieroMenus {
 
     /// Does what a switch, number or enum asked: show its value, update
     /// the menu or open the number box.
-    fn apply(&mut self, kind: i32, i: usize, b: &Behavior, a: LieroItemAction) -> Option<LieroScreen> {
+    fn apply(&mut self, kind: i32, i: usize, b: &Behavior, a: LieroItemAction) -> Option<BoxedScreen> {
         if a.update_item {
             self.update(kind, i, b);
         }
@@ -673,7 +673,7 @@ impl LieroMenus {
         x: i32,
         y: i32,
         digits: bool,
-    ) -> LieroScreen {
+    ) -> BoxedScreen {
         unsafe fn keep(ctx: *mut c_void, text: &[u8]) {
             unsafe {
                 *(ctx as *mut Vec<u8>) = text.to_vec();
@@ -686,7 +686,7 @@ impl LieroMenus {
         screen
     }
 
-    fn open(&mut self, kind: i32, then: Then, screen: LieroScreen) -> LieroScreen {
+    fn open(&mut self, kind: i32, then: Then, screen: BoxedScreen) -> BoxedScreen {
         self.pending = Some(Pending {
             kind,
             then,
@@ -702,14 +702,14 @@ impl LieroMenus {
     }
 
     /// A file selector.
-    fn selector(&mut self, kind: i32, then: Then, selector: i32) -> Option<LieroScreen> {
+    fn selector(&mut self, kind: i32, then: Then, selector: i32) -> Option<BoxedScreen> {
         let screen = crate::app_files::open_selector(selector, self.player);
         Some(self.open(kind, then, screen))
     }
 
     /// Enter on the selected item (`onEnter`): what it chose, or -1, and
     /// the screen it opened, if any.
-    pub fn enter(&mut self, kind: i32) -> (i32, Option<LieroScreen>) {
+    pub fn enter(&mut self, kind: i32) -> (i32, Option<BoxedScreen>) {
         let Some(i) = self.selection(kind) else {
             return (0, None);
         };
@@ -797,7 +797,7 @@ impl LieroMenus {
     }
 
     /// The weapon options screen, on the settings' weapon table.
-    fn weapon_options(&mut self) -> LieroScreen {
+    fn weapon_options(&mut self) -> BoxedScreen {
         let tc = self.tc();
         let order = tc.weapon_order();
         let weapons: Vec<LieroStr> = order.iter().map(|&w| lstr(tc.weapon_name(w as usize))).collect();
@@ -1058,14 +1058,12 @@ pub fn liero_menus_left_right(m: &mut LieroMenus, kind: i32, dir: i32) -> bool {
 /// # Safety
 /// The menus' hooks, which the item may call, are valid.
 pub unsafe fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 {
-    unsafe {
-        let (r, opened) = m.enter(kind);
-        if let Some(s) = opened {
-            s.release();
-            m.pending = None;
-        }
-        r
+    let (r, opened) = m.enter(kind);
+    if let Some(s) = opened {
+        drop(s);
+        m.pending = None;
     }
+    r
 }
 
 pub fn liero_menus_draw(
@@ -1157,19 +1155,19 @@ mod tests {
 
         let (r, opened) = m.enter(LIERO_MENU_PLAYER);
         assert_eq!(r, -1);
-        unsafe { opened.expect("key choice").release() };
+        drop(opened.expect("key choice"));
         assert!(is_extended(177));
         m.then(177);
         assert_eq!((ws.controls[1], ws.controls_ex[1]), (30, 177));
 
         let (_, opened) = m.enter(LIERO_MENU_PLAYER);
-        unsafe { opened.unwrap().release() };
+        drop(opened.unwrap());
         m.then(31);
         assert_eq!((ws.controls[1], ws.controls_ex[1]), (31, 31));
 
         // Escape keeps the key.
         let (_, opened) = m.enter(LIERO_MENU_PLAYER);
-        unsafe { opened.unwrap().release() };
+        drop(opened.unwrap());
         m.then(LIERO_DK_ESCAPE as i32);
         assert_eq!((ws.controls[1], ws.controls_ex[1]), (31, 31));
     }
@@ -1183,7 +1181,7 @@ mod tests {
             let ws = m.worm_data();
             let before = ws.controls;
             let (_, opened) = m.enter(LIERO_MENU_PLAYER);
-            unsafe { opened.expect("key choice").release() };
+            drop(opened.expect("key choice"));
             // C, which has a DOS key.
             assert!(!is_extended(46));
             m.then(46);
@@ -1197,7 +1195,7 @@ mod tests {
         let i = select(&mut m, LIERO_MENU_SETTINGS, SI_LIVES);
         for (typed, lives) in [(&b"5000"[..], 999), (b"0", 1), (b"12", 12)] {
             let (_, opened) = m.enter(LIERO_MENU_SETTINGS);
-            unsafe { opened.expect("number box").release() };
+            drop(opened.expect("number box"));
             *m.pending.as_mut().unwrap().typed = typed.to_vec();
             assert_eq!(m.then(1), -1);
             assert_eq!(m.settings().lives, lives);
@@ -1205,7 +1203,7 @@ mod tests {
         }
         // Escape keeps the number.
         let (_, opened) = m.enter(LIERO_MENU_SETTINGS);
-        unsafe { opened.unwrap().release() };
+        drop(opened.unwrap());
         *m.pending.as_mut().unwrap().typed = b"7".to_vec();
         m.then(0);
         assert_eq!(m.settings().lives, 12);

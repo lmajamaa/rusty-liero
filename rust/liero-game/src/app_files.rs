@@ -12,7 +12,7 @@ use crate::level::LieroLevelBox;
 use crate::menus::{
     LIERO_MAIN_REPLAY, LIERO_SELECTOR_LEVEL, LIERO_SELECTOR_OPTIONS, LIERO_SELECTOR_PROFILE, LIERO_SELECTOR_REPLAY,
 };
-use crate::screen::LieroScreen;
+use crate::screen::BoxedScreen;
 use crate::selector::{selector_screen, FileSource, Spec};
 use crate::settings::{
     liero_worm_settings_box_load_profile, liero_worm_settings_box_save_profile, LieroSettingsBox, LieroSettingsStatus,
@@ -199,7 +199,7 @@ impl FileSource for AppFiles {
 }
 
 /// A file selector (`LIERO_SELECTOR_*`), for `player`'s profile.
-pub(crate) fn open_selector(kind: i32, player: i32) -> LieroScreen {
+pub(crate) fn open_selector(kind: i32, player: i32) -> BoxedScreen {
     let (spec, root, choice) = selector_spec(kind, player);
     selector_screen(&spec, Box::new(AppFiles { root, choice }))
 }

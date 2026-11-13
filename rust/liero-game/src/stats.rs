@@ -13,7 +13,7 @@ use crate::cpp_sort;
 use crate::gfx::{
     liero_gfx_blit_image, liero_gfx_draw_graph, liero_gfx_draw_heatmap, liero_gfx_draw_rounded_box, LieroBitmap,
 };
-use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
+use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::tc::{tc_data, LieroTcData, LieroTcWeapon, SharedTc};
 use crate::text::{time_to_string, time_to_string_ex, LieroFont};
 
@@ -956,14 +956,14 @@ pub(crate) fn liero_stats_presenter_screen(
     game: StatsGame,
     render_res_x: i32,
     render_res_y: i32,
-) -> LieroScreen {
+) -> BoxedScreen {
     let host = crate::screen::current_host();
     host.clear_keys();
     let mut bg = Vec::new();
     if let Some(scr) = host.screen() {
         copy_rows(&scr, &mut bg, true);
     }
-    into_ffi(Box::new(StatsPresenter {
+    Box::new(StatsPresenter {
         stats: stats.clone(),
         screen: LieroStatsScreen::new(stats, render_res_x),
         tc,
@@ -975,7 +975,7 @@ pub(crate) fn liero_stats_presenter_screen(
         pane: 0.0,
         dest_pane: 0.0,
         shown: false,
-    }))
+    })
 }
 
 #[cfg(test)]

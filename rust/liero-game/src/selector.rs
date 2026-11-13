@@ -7,7 +7,7 @@
 
 use crate::gfx::{liero_gfx_draw_rounded_box, LieroBitmap};
 use crate::menu::{LieroMenu, OwnedMenu};
-use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
+use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::text::LieroFont;
 
 // SDL's scancodes.
@@ -454,8 +454,8 @@ impl Selector {
 }
 
 /// A file selector screen.
-pub fn selector_screen(spec: &Spec, source: Box<dyn FileSource>) -> LieroScreen {
-    into_ffi(Box::new(Selector::new(spec, source)))
+pub fn selector_screen(spec: &Spec, source: Box<dyn FileSource>) -> BoxedScreen {
+    Box::new(Selector::new(spec, source))
 }
 
 #[cfg(test)]

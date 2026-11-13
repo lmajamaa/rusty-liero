@@ -76,15 +76,21 @@ fn a_finished_game_goes_back_to_the_play_screen() {
         resumed: true,
     };
     let t = g.tick(&Host(Default::default()));
-    assert_eq!((t.kind, t.shown), (crate::screen::LieroTickKind::TickClose, false));
+    assert_eq!((t.closed(), t.shown), (Some(0), false));
     assert!(!a.primary_single);
     a.controller = None;
 }
 
 unsafe fn no_process() {}
 
-unsafe fn no_menu() -> LieroScreen {
-    LieroScreen::empty()
+unsafe fn no_menu() -> BoxedScreen {
+    struct Nothing;
+    impl Screen for Nothing {
+        fn tick(&mut self, _host: &Host) -> Tick {
+            Tick::close(0)
+        }
+    }
+    Box::new(Nothing)
 }
 
 #[test]

@@ -5,7 +5,7 @@ use std::ffi::c_void;
 
 use crate::keys::is_extended;
 use crate::menu::{liero_menu_draw_info_box, liero_menu_draw_input_box};
-use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
+use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
 // SDL's scancodes.
 const SCANCODE_RETURN: u32 = 40;
@@ -141,32 +141,34 @@ impl Screen for InputBox {
         self.shown = true;
         Tick::stay(true)
     }
+}
 
-    fn close(&mut self, host: &Host) {
+impl Drop for InputBox {
+    fn drop(&mut self) {
         // Text input stays off outside the box, so that the browser doesn't
         // act on the keys the game uses.
-        host.text_input(false);
+        crate::screen::current_host().text_input(false);
     }
 }
 
 /// A message centred on (x, y) until a key is pressed. With `clear_screen`
 /// it's shown alone on the screen, in the TC's palette.
-pub fn liero_info_box_screen(text: &[u8], x: i32, y: i32, clear_screen: bool) -> LieroScreen {
-    into_ffi(Box::new(InfoBox {
+pub fn liero_info_box_screen(text: &[u8], x: i32, y: i32, clear_screen: bool) -> BoxedScreen {
+    Box::new(InfoBox {
         text: text.to_vec(),
         x,
         y,
         clear_screen,
         shown: false,
         waiting: false,
-    }))
+    })
 }
 
 /// Waits for a key, joystick button or stick move and closes with its DOS
 /// key. Unless `extended`, keys only the extended controls have are passed
 /// over.
-pub fn liero_key_choice_screen(extended: bool) -> LieroScreen {
-    into_ffi(Box::new(KeyChoice { extended }))
+pub fn liero_key_choice_screen(extended: bool) -> BoxedScreen {
+    Box::new(KeyChoice { extended })
 }
 
 /// Typing at most `max_len` characters, starting from `text`, in a box
@@ -183,8 +185,8 @@ pub unsafe fn liero_input_box_screen(
     digits_only: bool,
     done: Option<LieroInputDone>,
     ctx: *mut c_void,
-) -> LieroScreen {
-    into_ffi(Box::new(InputBox {
+) -> BoxedScreen {
+    Box::new(InputBox {
         buffer: text.to_vec(),
         max_len,
         x,
@@ -193,13 +195,13 @@ pub unsafe fn liero_input_box_screen(
         done,
         ctx,
         shown: false,
-    }))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{LieroEvent, LieroScreenHost, LieroTickKind};
+    use crate::screen::{LieroEvent, LieroScreenHost};
     use std::cell::RefCell;
     use std::collections::VecDeque;
 
@@ -284,8 +286,8 @@ mod tests {
         for _ in 0..100 {
             let t = s.tick(host);
             frames += t.shown as usize;
-            if t.kind == LieroTickKind::TickClose {
-                return (t.result, frames);
+            if let Some(result) = t.closed() {
+                return (result, frames);
             }
         }
         panic!("never closed");

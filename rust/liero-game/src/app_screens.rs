@@ -10,7 +10,7 @@ use crate::controllers::{
     liero_controller_run, liero_controller_take_opened, liero_controller_unfocus, liero_local_controller_new,
 };
 use crate::level::LieroLevelBox;
-use crate::screen::{current_host, into_ffi, Host, LieroScreen, Screen, Tick};
+use crate::screen::{current_host, BoxedScreen, Host, Screen, Tick};
 
 /// What `after_menu` says to do.
 pub const LIERO_AFTER_MENU_QUIT: i32 = 0;
@@ -31,7 +31,7 @@ pub struct LieroAppHooks {
     /// (`Gfx::process(controller)`).
     pub process: unsafe fn(),
     /// The main menu screen.
-    pub menu_screen: unsafe fn() -> LieroScreen,
+    pub menu_screen: unsafe fn() -> BoxedScreen,
 }
 
 fn controller(a: &mut LieroApp) -> &mut crate::controllers::LieroController {
@@ -162,10 +162,8 @@ struct GameScreen {
 }
 
 impl GameScreen {
-    fn opened(&self) -> Option<LieroScreen> {
-        let mut s = LieroScreen::empty();
-        // SAFETY: `s` is valid.
-        unsafe { liero_controller_take_opened(controller(app()), &mut s) }.then_some(s)
+    fn opened(&self) -> Option<BoxedScreen> {
+        liero_controller_take_opened(controller(app()))
     }
 }
 
@@ -249,12 +247,12 @@ impl Screen for MainScreen {
                 }
                 LIERO_AFTER_MENU_PLAY => {
                     self.open = Open::InGame;
-                    return Tick::push(into_ffi(Box::new(GameScreen {
+                    return Tick::push(Box::new(GameScreen {
                         h,
                         next: Next::Focus,
                         shown: false,
                         resumed: false,
-                    })));
+                    }));
                 }
                 _ => {}
             }
@@ -272,12 +270,12 @@ impl Screen for MainScreen {
 }
 
 /// The app's first screen.
-pub fn liero_main_screen(hooks: LieroAppHooks) -> LieroScreen {
-    into_ffi(Box::new(MainScreen {
+pub fn liero_main_screen(hooks: LieroAppHooks) -> BoxedScreen {
+    Box::new(MainScreen {
         h: hooks,
         open: Open::Nothing,
         selection: -1,
-    }))
+    })
 }
 
 #[cfg(test)]

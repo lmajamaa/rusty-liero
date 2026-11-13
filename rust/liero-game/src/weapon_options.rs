@@ -6,7 +6,7 @@ use crate::boxes::liero_info_box_screen;
 use crate::gfx::liero_gfx_draw_rounded_box;
 use crate::item::{LieroItemBehavior, LieroItemKind};
 use crate::menu::{LieroMenu, OwnedMenu};
-use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
+use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::text::LieroStr;
 
 const SCANCODE_ESCAPE: u32 = 41;
@@ -176,8 +176,8 @@ impl Screen for WeaponOptions {
 /// # Safety
 /// `spec`'s pointers are valid for their counts, and `order`'s entries are
 /// below 40.
-pub unsafe fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> LieroScreen {
-    unsafe { into_ffi(Box::new(WeaponOptions::new(spec))) }
+pub unsafe fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> BoxedScreen {
+    unsafe { Box::new(WeaponOptions::new(spec)) }
 }
 
 impl WeaponOptions {
@@ -222,7 +222,7 @@ impl WeaponOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{LieroScreenHost, LieroTickKind};
+    use crate::screen::{LieroScreenHost, Transition};
     use std::cell::RefCell;
 
     thread_local! {
@@ -290,19 +290,18 @@ mod tests {
         let mut w = screen(&mut table);
         let h = host();
         press(&[SCANCODE_ESCAPE]);
-        assert_eq!(
-            w.tick(&h).kind,
-            LieroTickKind::TickStay,
+        assert!(
+            matches!(w.tick(&h).then, Transition::Stay),
             "keys wait for the first frame"
         );
         press(&[SCANCODE_ESCAPE]);
         let t = w.tick(&h);
-        assert_eq!(t.kind, LieroTickKind::TickPush, "every weapon off: the message");
+        assert!(matches!(t.then, Transition::Open(_)), "every weapon off: the message");
 
         // Back from the message, which read the events: no keys this tick.
         w.resume(&h, 0);
         press(&[SCANCODE_ESCAPE]);
-        assert_eq!(w.tick(&h).kind, LieroTickKind::TickStay);
+        assert!(matches!(w.tick(&h).then, Transition::Stay));
 
         // The screen reads the table through its pointer, which the
         // compiler doesn't see.
@@ -311,6 +310,6 @@ mod tests {
             table[5] = 0;
         }
         press(&[SCANCODE_ESCAPE]);
-        assert_eq!(w.tick(&h).kind, LieroTickKind::TickClose);
+        assert_eq!(w.tick(&h).closed(), Some(0));
     }
 }

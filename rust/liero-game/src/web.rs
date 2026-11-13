@@ -22,7 +22,7 @@ use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos
 use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks, LIERO_MENU_HIDDEN};
 use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items, LieroMenusHooks};
 use crate::screen::{
-    liero_app_frame, liero_app_new, liero_app_push, liero_screen_set_host, LieroAppHost, LieroEvent, LieroScreen,
+    liero_app_frame, liero_app_push, liero_screen_set_host, BoxedScreen, LieroApp, LieroAppHost, LieroEvent,
     LieroScreenHost, LieroTypedKey,
 };
 use crate::sfx::{LieroMixer, LieroSoundOut};
@@ -666,7 +666,7 @@ unsafe fn randomize_tc() {
     }
 }
 
-unsafe fn menu_screen() -> LieroScreen {
+unsafe fn menu_screen() -> BoxedScreen {
     liero_menu_screen(LieroMenuScreenHooks {
         menus: app().menus,
         randomize_tc,
@@ -912,10 +912,9 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
         sound: Some(host_sound),
         ..Default::default()
     });
-    let stack = liero_app_new();
-    // SAFETY: just made.
+    let mut stack = LieroApp::new();
     liero_app_push(
-        unsafe { &mut *stack },
+        &mut stack,
         liero_main_screen(LieroAppHooks {
             process: app_process,
             menu_screen,
@@ -931,19 +930,21 @@ type FrameFn = Closure<dyn FnMut()>;
 /// Runs the screens every animation frame (as the C++ shell's `emscripten_set_main_loop` did),
 /// with the 14 ms steps due, until they close; then saves the settings, as
 /// the game does when it ends.
-fn run_frames(stack: *mut crate::screen::LieroApp) {
+fn run_frames(stack: LieroApp) {
     let host = LieroAppHost {
         data: std::ptr::null_mut(),
         show: Some(host_show),
         idle: Some(host_idle),
     };
+    let mut stack = Some(stack);
     let next: Rc<RefCell<Option<FrameFn>>> = Rc::new(RefCell::new(None));
     let again = next.clone();
     *next.borrow_mut() = Some(Closure::new(move || {
         poll_gamepads();
         let ms = host_ticks_now();
-        // SAFETY: the stack lives until the screens close, below.
-        let running = unsafe { liero_app_frame(&mut *stack, ms, &host) };
+        let Some(s) = stack.as_mut() else { return };
+        // SAFETY: the host's functions are the shell's.
+        let running = unsafe { liero_app_frame(s, ms, &host) };
         if running {
             persist_changes();
             if let Some(f) = again.borrow().as_ref() {
@@ -951,8 +952,7 @@ fn run_frames(stack: *mut crate::screen::LieroApp) {
             }
             return;
         }
-        // SAFETY: closed; nothing uses it after this.
-        unsafe { crate::screen::liero_app_free(stack) };
+        stack = None;
         if let Err(e) = app().save_settings_at_end() {
             web_sys::console::error_1(&e.into());
         }
