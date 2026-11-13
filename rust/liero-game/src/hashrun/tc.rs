@@ -4,24 +4,12 @@
 
 use super::{Fnv, Out};
 use crate::fs::Node;
-use crate::tc::{load_checked, LieroTc, LieroTcData, LieroTcSprites, LIERO_TC_FONT_CHARS};
+use crate::tc::{load_checked, LieroTcData, LieroTcSprites, SharedTc, LIERO_TC_FONT_CHARS};
 use liero_data::save;
 
 /// The TC the hash run uses.
-pub(super) fn bundled() -> crate::shared::Shared<LieroTc> {
+pub(super) fn bundled() -> SharedTc {
     load_checked(&Node::new(b"TC/openliero")).expect("the hash run's TC")
-}
-
-/// # Safety
-/// `p` is valid for `n` items, or `n` is 0.
-unsafe fn items<'a, T>(p: *const T, n: usize) -> &'a [T] {
-    unsafe {
-        if n == 0 {
-            &[]
-        } else {
-            std::slice::from_raw_parts(p, n)
-        }
-    }
 }
 
 /// A sprite set as `addSprites` hashes it.
@@ -38,9 +26,9 @@ fn add_sprites(h: &mut Fnv, s: &LieroTcSprites) {
 
 pub fn hash_tc(out: &mut Out) {
     let tc = bundled();
-    let m = tc.model().expect("the TC loaded");
-    // SAFETY: a TC from `load_checked` has its data.
-    let d: &LieroTcData = unsafe { &*crate::tc::liero_tc_data(&tc) };
+    let t = tc.borrow();
+    let m = t.model().expect("the TC loaded");
+    let d: &LieroTcData = t.data().expect("the TC loaded");
 
     out.hash("tc-cfg", 0, Fnv::of(&save::tc_text(m)));
 
@@ -63,16 +51,12 @@ pub fn hash_tc(out: &mut Out) {
         out.hash("tc-sobject", i as i64, h);
     }
 
-    // SAFETY: the TC's lists are as long as their counts.
-    let sounds = unsafe { items(d.sounds, d.sound_count) };
+    let sounds = &d.sounds;
     for (i, s) in sounds.iter().enumerate() {
         let mut h = Fnv::default();
-        // SAFETY: the sound's name and samples are the TC's.
-        unsafe {
-            h.bytes(s.name.bytes());
-            h.u32(s.len as u32);
-            h.bytes(items(s.data, s.len));
-        }
+        h.bytes(&s.name);
+        h.u32(s.data.len() as u32);
+        h.bytes(&s.data);
         h.bool(s.valid);
         out.hash("tc-sound", i as i64, h);
     }
@@ -97,9 +81,8 @@ pub fn hash_tc(out: &mut Out) {
     out.hash("tc-font", 0, h);
 
     let mut h = Fnv::default();
-    h.u32(d.weapon_count as u32);
-    // SAFETY: there is an order entry for each weapon.
-    for &i in unsafe { items(d.weap_order, d.weapon_count) } {
+    h.u32(d.weapons.len() as u32);
+    for &i in &d.weap_order {
         h.i32(i);
     }
     add_sprites(&mut h, &d.worm_sprites);
@@ -112,8 +95,7 @@ pub fn hash_tc(out: &mut Out) {
 /// `std::random_device` in the C++.
 pub fn hash_random_tc(out: &mut Out) {
     let tc = bundled();
-    // SAFETY: nothing else has this TC.
-    let t = unsafe { &mut *tc.as_ptr() };
+    let mut t = tc.borrow_mut();
     // Any seed: only the shuffle, which isn't hashed, uses it.
     t.randomize(0);
     let m = t.model().expect("the TC loaded");

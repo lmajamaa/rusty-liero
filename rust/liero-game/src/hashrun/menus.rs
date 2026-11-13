@@ -38,7 +38,6 @@ use crate::rand::LieroRand;
 use crate::renderer::{LieroBitmapBox, LieroRenderer};
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
-use crate::tc::LieroTcWeapon;
 use crate::text::LieroStr;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{
@@ -233,7 +232,7 @@ impl Ops {
 
     fn draw(&self, b: &mut LieroMenuBox, r: &LieroRenderer, disabled: bool, x: i32, show: bool) {
         let a = app();
-        let font = a.font();
+        let font = crate::app::menu_font();
         let scr = r.bmp.view();
         match self {
             Ops::Menus(kind) => liero_menus_draw(menus(a), *kind, &scr, &font, disabled, x, show),
@@ -335,8 +334,7 @@ fn run_menus(out: &mut Out) {
     // The menus show the name of the loaded setup.
     a.files.settings_node = Node::new(b"config/LIERO.CFG");
     for (i, ws) in a.menu_settings().worms.iter().enumerate() {
-        // SAFETY: the menus' settings' worms are the app's.
-        let ws = unsafe { &mut *ws.as_ptr() };
+        let mut ws = ws.borrow_mut();
         ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
         for j in 0..7 {
@@ -424,7 +422,7 @@ fn run_menus(out: &mut Out) {
 
     // Long enough to scroll, and searched by any part of the name like the
     // file selectors.
-    let tc = a.tc_data();
+    let tc = crate::app::menu_tc_data();
     let b = liero_menu_box_new(179, 28, false);
     // SAFETY: the box is new, and freed below.
     let weapons = unsafe { &mut *b };
@@ -485,13 +483,12 @@ fn draw_versus_info(
     center_x: i32,
     center_y: i32,
 ) {
-    let a = app();
-    let level = level_line(a.tc_data(), level_file, level_file_for_name);
+    let level = level_line(&crate::app::menu_tc_data(), level_file, level_file_for_name);
     // SAFETY: the bitmap and font are live.
     unsafe {
         liero_menu_draw_versus(
             &bmp.view(),
-            &a.font(),
+            &crate::app::menu_font(),
             LieroStr::of(&level),
             LieroStr::of(names[0]),
             LieroStr::of(names[1]),
@@ -525,7 +522,10 @@ fn run_boxes(out: &mut Out) {
         b"1234567890",
     ];
     let defaults = LieroSettingsBox::defaults();
-    let default_colors = [defaults.worms[0].data.color, defaults.worms[1].data.color];
+    let default_colors = [
+        defaults.worms[0].borrow().data.color,
+        defaults.worms[1].borrow().data.color,
+    ];
 
     for step in 0..24 {
         let mut f = Fnv::default();
@@ -539,7 +539,7 @@ fn run_boxes(out: &mut Out) {
         add_screen(&mut f, &a.single);
 
         a.play.clear();
-        let font = a.font();
+        let font = crate::app::menu_font();
         let scr = a.play.bmp.view();
         let text = texts[r.below(6) as usize];
         let x = 20 + r.below(280) as i32;
@@ -557,7 +557,11 @@ fn run_boxes(out: &mut Out) {
     // A one-character level file still names the level.
     let mut f = Fnv::default();
     a.single.clear();
-    let names: [&[u8]; 2] = [&defaults.worms[0].name, &defaults.worms[1].name];
+    let names = [
+        defaults.worms[0].borrow().name.clone(),
+        defaults.worms[1].borrow().name.clone(),
+    ];
+    let names: [&[u8]; 2] = [&names[0], &names[1]];
     draw_versus_info(&a.single.bmp, b"A", b"x/A.lev", names, default_colors, 320, 100);
     add_screen(&mut f, &a.single);
     print(out, "menu-boxes-short", 0, f);
@@ -576,8 +580,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
         *w = if r.below(6) == 0 { 1 + r.below(2) } else { 0 };
     }
     for (i, ws) in s.worms.iter().enumerate() {
-        // SAFETY: the settings' worms are theirs.
-        let ws = unsafe { &mut *ws.as_ptr() };
+        let mut ws = ws.borrow_mut();
         ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
         ws.data.controller = if i == 1 { controller1 } else { 0 };
@@ -591,15 +594,16 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
 
     a.rand.seed(seed);
 
-    let tc = a.tc.clone().expect("no TC");
+    let tc = a.menu_tc();
     let d = tc_data(&tc);
     // SAFETY: the game keeps references to the settings and the TC; its
     // worms and viewports are made as the C++ `Game` view made them.
     let mut game = unsafe { Box::from_raw(liero_game_new()) };
     unsafe {
-        liero_game_set_context(&mut game, settings.as_ptr(), tc.as_ptr(), LieroSoundOut::NONE);
+        liero_game_set_context(&mut game, settings.as_ptr(), Some(tc.clone()), LieroSoundOut::NONE);
         for (i, ws) in s.worms.iter().enumerate() {
-            let id = liero_game_new_worm(&mut game, ws.as_ptr());
+            let id = liero_game_new_worm(&mut game, Some(ws.clone()));
+            let ws = ws.borrow();
             liero_game_list_worm(&mut game, Some(id));
             let w = game.worm_mut(id);
             w.data.health = ws.data.health;
@@ -675,8 +679,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
             let w = w.expect("an empty place among the game's worms");
             for j in 0..5 {
                 f.u32(w.settings().data.weapons[j]);
-                // SAFETY: a slot's weapon is the TC's.
-                f.i32(unsafe { w.data.weapons[j].kind.cast::<LieroTcWeapon>().as_ref() }.map_or(-1, |k| k.id));
+                f.i32(w.data.weapons[j].kind);
             }
         }
 
@@ -705,9 +708,9 @@ pub fn hash_menus(out: &mut Out) {
     let tc = super::tc::bundled();
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    a.play.load_palette(tc_data(&tc));
-    a.single.load_palette(tc_data(&tc));
-    a.tc = Some(tc);
+    a.play.load_palette(&tc_data(&tc));
+    a.single.load_palette(&tc_data(&tc));
+    a.set_tc(Some(tc));
     a.menu_cycles = 0;
 
     run_menus(out);

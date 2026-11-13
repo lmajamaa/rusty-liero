@@ -30,7 +30,7 @@ use crate::replay_file::{
 use crate::screen::{current_host, LieroScreen};
 use crate::settings::{liero_settings_box_free, liero_settings_box_new, LieroSettingsBox, LIERO_MAX_CONTROL_EX};
 use crate::stats::{liero_stats_presenter_screen, LieroSprite, LieroStatsScene};
-use crate::tc::LieroTc;
+use crate::tc::SharedTc;
 use crate::text::LieroStr;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{
@@ -55,7 +55,7 @@ struct Local {
 struct Replay {
     reader: Option<Box<LieroReplayReader>>,
     /// The TC the game is made with.
-    tc: *mut LieroTc,
+    tc: SharedTc,
     game: Option<Box<LieroGame>>,
     /// The game as it started, which R rewinds to, and where in the replay
     /// that was.
@@ -79,11 +79,11 @@ pub struct LieroController {
 
 /// A new game with the settings, the TC and the app's sound, its clock
 /// seeded from the time, as C++'s `Game` constructor did.
-unsafe fn new_game(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> Box<LieroGame> {
+unsafe fn new_game(settings: *mut LieroSettingsBox, tc: SharedTc) -> Box<LieroGame> {
     unsafe {
         let host = current_host();
         let mut game = Box::from_raw(liero_game_new());
-        liero_game_set_context(&mut game, settings, tc, host.sound());
+        liero_game_set_context(&mut game, settings, Some(tc), host.sound());
         game.data_mut().rand.seed(host.time() as u32);
         game
     }
@@ -190,8 +190,8 @@ impl LieroController {
             let names: Vec<LieroStr>;
             let scene;
             {
-                let tc = &*game.tc_data();
-                names = (0..tc.weapon_count).map(|i| (*tc.weapons.add(i)).name).collect();
+                let tc = &*game.tc_ptr();
+                names = tc.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
                 scene = stats_scene(game, &app().play.data, &names);
             }
             let s = liero_stats_presenter_screen(&*game.stats(), &scene);
@@ -263,7 +263,7 @@ impl LieroController {
                 Kind::Replay(r) => {
                     if d.state == LIERO_STATE_INITIAL {
                         let settings = liero_settings_box_new();
-                        let mut game = new_game(settings, r.tc);
+                        let mut game = new_game(settings, r.tc.clone());
                         liero_settings_box_free(settings);
                         let reader = r.reader.as_mut().expect("no replay");
                         let o = liero_replay_reader_begin(reader, &mut game);
@@ -634,7 +634,7 @@ pub(crate) unsafe fn stats_scene(
     names: &[LieroStr],
 ) -> LieroStatsScene<'static> {
     unsafe {
-        let tc: &'static crate::tc::LieroTcData = &*game.tc_data();
+        let tc: &'static crate::tc::LieroTcData = &*game.tc_ptr();
         let sprites = &tc.worm_sprites;
         // `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
         let sprite = |i: i32| {
@@ -674,13 +674,14 @@ pub(crate) unsafe fn stats_scene(
 ///
 /// # Safety
 /// `settings` and `tc` have references.
-pub unsafe fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: *mut LieroTc) -> *mut LieroController {
+pub unsafe fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: SharedTc) -> *mut LieroController {
     unsafe {
         let mut game = new_game(settings, tc);
         let s = &*settings;
         let mut indexes = [0; 2];
         for (i, ws) in s.worms.iter().enumerate() {
-            let id = liero_game_new_worm(&mut game, ws.as_ptr());
+            let id = liero_game_new_worm(&mut game, Some(ws.clone()));
+            let ws = ws.borrow();
             liero_game_list_worm(&mut game, Some(id));
             let w = game.worm_mut(id);
             w.data.health = ws.data.health;
@@ -704,13 +705,12 @@ pub unsafe fn liero_local_controller_new(settings: *mut LieroSettingsBox, tc: *m
 ///
 /// # Safety
 /// `tc` has a reference, which the controller keeps while it lives.
-pub unsafe fn liero_replay_controller_new(node: &Node, tc: *mut LieroTc) -> *mut LieroController {
+pub unsafe fn liero_replay_controller_new(node: &Node, tc: SharedTc) -> *mut LieroController {
     unsafe {
         let reader = liero_replay_reader_new(node);
         if reader.is_null() {
             return std::ptr::null_mut();
         }
-        let tc = crate::shared::retain_shared(tc);
         let r = Replay {
             reader: Some(Box::from_raw(reader)),
             tc,
@@ -719,16 +719,6 @@ pub unsafe fn liero_replay_controller_new(node: &Node, tc: *mut LieroTc) -> *mut
             initial_pos: 0,
         };
         Box::into_raw(LieroController::new(Kind::Replay(r)))
-    }
-}
-
-impl Drop for Replay {
-    fn drop(&mut self) {
-        // The games go before the TC they use.
-        self.game = None;
-        self.initial = None;
-        // SAFETY: the reference taken in `liero_replay_controller_new`.
-        unsafe { crate::tc::liero_tc_free(self.tc) };
     }
 }
 

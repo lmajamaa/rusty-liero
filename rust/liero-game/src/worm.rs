@@ -4,8 +4,6 @@
 //! The tick (`Worm::process`) is in `world/worm.rs`, where it can reach the
 //! rest of the game.
 
-use crate::game::LieroGameData;
-use crate::level::{LieroLevel, LieroLevelCommon};
 use crate::math::{ftoi, LieroIVec2};
 use crate::object::LieroNinjarope;
 use crate::weapon::{LieroWormWeapon, LIERO_SELECTABLE_WEAPONS};
@@ -136,7 +134,7 @@ impl Default for LieroWormData {
             index: 0,
             reacts: [0; 4],
             weapons: [LieroWormWeapon {
-                kind: std::ptr::null(),
+                kind: -1,
                 ammo: 0,
                 delay_left: 0,
                 loading_left: 0,
@@ -231,10 +229,6 @@ pub struct LieroWormConstants {
 
 /// Everything else `Worm::process` reads from the game.
 pub struct LieroWormEnv {
-    pub level: LieroLevel,
-    pub common: LieroLevelCommon,
-    /// The game's state: its random numbers, and the 'it' of Game of Tag.
-    pub game: *mut LieroGameData,
     pub cycles: i32,
     /// `LIERO_GAME_*`.
     pub game_mode: i32,

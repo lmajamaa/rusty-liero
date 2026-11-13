@@ -5,64 +5,53 @@
 //! change any object, this one included: an explosion pushes it, hitting a
 //! worm can free it, and a new object can take its slot when the list is
 //! full. So the step reads the slot afresh after each such call, at the
-//! points C++ read it, and changes it through a copy that is written back
-//! at once, never holding a reference across a call.
+//! points C++ read it, and changes it in its slot between calls.
 
 use super::*;
 
-impl World<'_> {
+impl<'a> World<'a> {
     /// A copy of non-weapon object `slot`.
     fn nobj(&self, slot: usize) -> LieroNObject {
-        // SAFETY: the list is valid for the tick, and nothing holds a
-        // reference into it while this copies.
-        unsafe { (*self.nobjects()).arr[slot] }
+        self.g.data.nobjects.arr[slot]
     }
 
-    /// Changes non-weapon object `slot` with `f`, through a copy that is
-    /// written back before this returns.
-    fn update_nobj<R>(&self, slot: usize, f: impl FnOnce(&mut LieroNObject) -> R) -> R {
-        let mut o = self.nobj(slot);
-        let r = f(&mut o);
-        // SAFETY: as in `nobj`.
-        unsafe { (*self.nobjects()).arr[slot] = o };
-        r
+    /// Changes non-weapon object `slot` in place with `f`.
+    fn update_nobj<R>(&mut self, slot: usize, f: impl FnOnce(&mut LieroNObject) -> R) -> R {
+        f(&mut self.g.data.nobjects.arr[slot])
     }
 
     /// The type of non-weapon object `slot`.
-    fn nobj_type(&self, slot: usize) -> &LieroTcNObject {
-        // SAFETY: an object's type is the TC's.
-        unsafe { &*(self.nobj(slot).kind as *const LieroTcNObject) }
+    fn nobj_type(&self, slot: usize) -> &'a LieroTcNObject {
+        self.nobject_type(self.nobj(slot).kind)
     }
 
     /// `Game::pixelMat`: whether the pixel's colour is dirt or rock. This
     /// reads the TC's table, not the level's material cache, as C++ does.
     fn pixel_dirt_rock(&self, x: i32, y: i32) -> bool {
-        // SAFETY: the level is valid for the tick.
-        let pix = unsafe { self.g.f.level.get() }.pixel(x, y);
-        self.tc().materials[pix as usize].dirt_rock()
+        let pix = self.g.level.pixel(x, y);
+        self.tc.materials[pix as usize].dirt_rock()
     }
 
     pub(super) fn blocked(&self, x: i32, y: i32) -> bool {
-        !inside(&self.g.f.level, x, y) || self.pixel_dirt_rock(x, y)
+        !inside(&self.g.level, x, y) || self.pixel_dirt_rock(x, y)
     }
 
     /// `createNObject`: a non-weapon object of `kind`, in a free slot or
     /// the last one. Returns the slot.
     pub(super) fn create_nobject(
-        &self,
+        &mut self,
         kind: i32,
         vel: LieroIVec2,
         pos: LieroIVec2,
         color: i32,
         owner_idx: i32,
-        fired_by: *mut LieroWormWeapon,
+        fired_by: FiredBy,
     ) -> usize {
         let t = self.nobject_type(kind);
-        // SAFETY: as in `nobj`.
-        let slot = unsafe { (*self.nobjects()).new_object_reuse() };
+        let slot = self.g.data.nobjects.new_object_reuse();
 
         self.update_nobj(slot, |o| {
-            o.kind = (t as *const LieroTcNObject).cast();
+            o.kind = kind;
             o.owner_idx = owner_idx;
             o.pos = pos;
             o.vel = vel;
@@ -96,13 +85,13 @@ impl World<'_> {
 
     /// `createNObject1`.
     pub(super) fn create_nobject1(
-        &self,
+        &mut self,
         kind: i32,
         mut vel: LieroIVec2,
         pos: LieroIVec2,
         color: i32,
         owner_idx: i32,
-        fired_by: *mut LieroWormWeapon,
+        fired_by: FiredBy,
     ) {
         let t = self.nobject_type(kind);
         let d = t.distribution;
@@ -120,14 +109,14 @@ impl World<'_> {
     /// `createNObject2`.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn create_nobject2(
-        &self,
+        &mut self,
         kind: i32,
         angle: i32,
         mut vel: LieroIVec2,
         pos: LieroIVec2,
         color: i32,
         owner_idx: i32,
-        fired_by: *mut LieroWormWeapon,
+        fired_by: FiredBy,
     ) {
         let t = self.nobject_type(kind);
         let real_speed = t.speed.wrapping_sub(self.rand(t.speed_v as u32) as i32);
@@ -151,15 +140,15 @@ impl World<'_> {
 
     /// An explosion or smoke of `kind` at the object's position, owned
     /// like it.
-    fn nobj_create_sobject(&self, slot: usize, kind: i32) {
+    fn nobj_create_sobject(&mut self, slot: usize, kind: i32) {
         let o = self.nobj(slot);
         self.create_sobject(kind, ftoi(o.pos.x), ftoi(o.pos.y), o.owner_idx, o.fired_by, None);
     }
 
     /// `NObject::process`.
-    pub(super) fn process_nobject(&self, slot: usize) {
+    pub(super) fn process_nobject(&mut self, slot: usize) {
         let t = self.nobj_type(slot);
-        let level = self.g.f.level;
+        let (width, height) = (self.g.level.width, self.g.level.height);
 
         let mut bounced = false;
         let mut do_explode = false;
@@ -212,11 +201,11 @@ impl World<'_> {
             if inew_pos.y < 0 {
                 o.pos.y = 0;
             }
-            if inew_pos.x >= level.width {
-                o.pos.x = itof(level.width);
+            if inew_pos.x >= width {
+                o.pos.x = itof(width);
             }
-            if inew_pos.y >= level.height {
-                o.pos.y = itof(level.height);
+            if inew_pos.y >= height {
+                o.pos.y = itof(height);
             }
         });
 
@@ -273,16 +262,12 @@ impl World<'_> {
 
             if t.dirt_effect >= 0 {
                 let p = ftoi_vec(self.nobj(slot).pos);
-                let common = self.tc().level_common();
-                // SAFETY: the level is valid for the tick, and nothing else
-                // has the game's random numbers during the call.
-                unsafe {
-                    let mut lv = level.get();
-                    lv.draw_dirt_effect(&common, &mut *self.rand_ptr(), t.dirt_effect, p.x - 7, p.y - 7);
-                    if self.g.s.shadow {
-                        lv.correct_shadow(&common, p.x - 10, p.y - 10, p.x + 11, p.y + 11);
-                    }
-                }
+                self.dirt_effect(
+                    t.dirt_effect,
+                    p.x - 7,
+                    p.y - 7,
+                    [p.x - 10, p.y - 10, p.x + 11, p.y + 11],
+                );
             }
 
             for _ in 0..t.splinter_amount.max(0) {
@@ -296,25 +281,23 @@ impl World<'_> {
                     o.pos,
                     t.splinter_colour - color_sub,
                     o.owner_idx,
-                    null_mut(),
+                    FiredBy::NONE,
                 );
             }
 
             if self.nobj(slot).used {
-                // SAFETY: as in `nobj`.
-                unsafe { (*self.nobjects()).free(slot) };
+                self.g.data.nobjects.free(slot);
             }
         }
     }
 
     /// Draws the object's current frame onto the level at (x, y), with the
     /// shadow corrected.
-    fn nobj_draw_on_map(&self, slot: usize, x: i32, y: i32) {
+    fn nobj_draw_on_map(&mut self, slot: usize, x: i32, y: i32) {
         let t = self.nobj_type(slot);
-        let sprite = self.tc().small_sprites.frame(t.start_frame + self.nobj(slot).cur_frame);
-        // SAFETY: the level is valid for the tick.
-        let mut level = unsafe { self.g.f.level.get() };
-        let common = self.tc().level_common();
+        let sprite = self.tc.small_sprites.frame(t.start_frame + self.nobj(slot).cur_frame);
+        let level = &mut self.g.level;
+        let common = self.tc.level_common();
         level.blit_image(&common, sprite, x, y, 7, 7);
         // x and y are 3 left of and above the object. This seems like an overly
         // large rectangle.
@@ -325,17 +308,16 @@ impl World<'_> {
 
     /// The worm loop in `NObject::process`: hurts the worms the object
     /// hits, and may free it. Returns true when it should explode.
-    fn nobj_hit_worms(&self, slot: usize) -> bool {
+    fn nobj_hit_worms(&mut self, slot: usize) -> bool {
         let t = self.nobj_type(slot);
         let mut do_explode = false;
 
         for i in 0..self.worm_count() {
-            let w = self.worm(i);
             let o = self.nobj(slot);
 
             if self.spec_worm_hit(ftoi(o.pos.x), ftoi(o.pos.y), t.detect_distance, i) {
-                // SAFETY: the worm is valid for the tick.
-                unsafe { (*w).vel = add((*w).vel, mul_div(o.vel, t.blow_away, 100)) };
+                let w = self.g.worm_mut(i);
+                w.vel = add(w.vel, mul_div(o.vel, t.blow_away, 100));
 
                 self.g.damage(i, t.hit_damage, o.owner_idx);
 
@@ -343,8 +325,7 @@ impl World<'_> {
                 self.damage_dealt(o.owner_idx, o.fired_by, i, t.hit_damage, o.has_hit);
                 self.update_nobj(slot, |o| o.has_hit = true);
 
-                // SAFETY: as above.
-                if t.hit_damage > 0 && unsafe { (*w).health } > 0 && self.rand(3) == 0 {
+                if t.hit_damage > 0 && self.worm(i).health > 0 && self.rand(3) == 0 {
                     self.hurt_sound(i);
                 }
 
@@ -353,14 +334,13 @@ impl World<'_> {
                 for _ in 0..blood.max(0) {
                     let angle = self.rand(128) as i32;
                     let o = self.nobj(slot);
-                    self.create_nobject2(6, angle, div(o.vel, 3), o.pos, 0, o.owner_idx, null_mut());
+                    self.create_nobject2(6, angle, div(o.vel, 3), o.pos, 0, o.owner_idx, FiredBy::NONE);
                 }
 
                 if t.worm_explode {
                     do_explode = true;
                 } else if t.worm_destroy && self.nobj(slot).used {
-                    // SAFETY: as in `nobj`.
-                    unsafe { (*self.nobjects()).free(slot) };
+                    self.g.data.nobjects.free(slot);
                 }
             }
         }

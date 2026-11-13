@@ -596,7 +596,7 @@ impl Level<'_> {
 }
 
 /// Makes a slice from a C++ pointer, which may be null when `len` is 0.
-unsafe fn slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
+pub(crate) unsafe fn slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
     unsafe {
         if len == 0 {
             &[]

@@ -7,7 +7,7 @@
 //! (`ninjarope.cpp`) are in `world/`, where they can create other objects
 //! and hit worms directly.
 
-use crate::level::{LieroLevel, LieroLevelCommon};
+use crate::level::{Common, Level};
 use crate::math::{ftoi, itof, LieroIVec2};
 use crate::objects::{LieroBonus, LieroSObject};
 use crate::rand::LieroRand;
@@ -43,7 +43,7 @@ pub(crate) fn ftoi_vec(v: LieroIVec2) -> LieroIVec2 {
 
 /// Like C++'s `Level::inside`: negative coordinates wrap to large unsigned
 /// values and fail.
-pub(crate) fn inside(level: &LieroLevel, x: i32, y: i32) -> bool {
+pub(crate) fn inside(level: &Level, x: i32, y: i32) -> bool {
     (x as u32) < (level.width as u32) && (y as u32) < (level.height as u32)
 }
 
@@ -58,13 +58,7 @@ pub struct LieroBObject {
 impl LieroBObject {
     /// Moves the particle one tick. Returns false when it left the level or
     /// landed and coloured a pixel, so C++ frees it.
-    pub fn process(
-        &mut self,
-        level: &LieroLevel,
-        common: &LieroLevelCommon,
-        rand: &mut LieroRand,
-        gravity: i32,
-    ) -> bool {
+    pub fn process(&mut self, level: &mut Level, common: &Common, rand: &mut LieroRand, gravity: i32) -> bool {
         self.pos = add(self.pos, self.vel);
         let ipos = ftoi_vec(self.pos);
 
@@ -72,10 +66,8 @@ impl LieroBObject {
             return false;
         }
 
-        // SAFETY: the caller's views are valid for the call.
-        let (mut lv, cv) = unsafe { (level.get(), common.get()) };
-        let c = lv.pixel(ipos.x, ipos.y);
-        let m = lv.mat(ipos.x, ipos.y);
+        let c = level.pixel(ipos.x, ipos.y);
+        let m = level.mat(ipos.x, ipos.y);
 
         if m.background() {
             self.vel.y = self.vel.y.wrapping_add(gravity);
@@ -93,7 +85,7 @@ impl LieroBObject {
         };
 
         let w = base + rand.below(3) as u8;
-        lv.set_pixel(ipos.x, ipos.y, w, &cv);
+        level.set_pixel(ipos.x, ipos.y, w, common);
         false
     }
 }
@@ -110,12 +102,8 @@ impl LieroBonus {
     /// Moves the bonus box one tick: falling, bouncing on the ground and
     /// counting down `timer`. Returns true when the timer ran out, so C++
     /// explodes it. `x` must be inside the level.
-    ///
-    /// # Safety
-    /// See `LieroLevel`.
-    pub unsafe fn process(&mut self, level: &LieroLevel, constants: &LieroBonusConstants) -> bool {
-        // SAFETY: as the caller promises.
-        let lv = unsafe { level.get() };
+    pub fn process(&mut self, level: &Level, constants: &LieroBonusConstants) -> bool {
+        let lv = level;
 
         self.y = self.y.wrapping_add(self.vel_y);
 

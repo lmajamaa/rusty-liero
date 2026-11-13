@@ -3,57 +3,48 @@
 //! As with non-weapon objects (`nobject.rs`), an object is worked on by its
 //! slot. What a step calls can change it, or free it: an explosion pushes
 //! or chain-explodes it. So the step reads the slot afresh after each such
-//! call, at the points C++ read it, and changes it through a copy that is
-//! written back at once.
+//! call, at the points C++ read it, and changes it in its slot between
+//! calls.
 
 use super::*;
 use crate::weapon::{ENDLESS_LASER_ID, LIERO_SHOT_DTYPE2, LIERO_SHOT_LASER, LIERO_SHOT_STEERABLE};
 
-impl World<'_> {
+impl<'a> World<'a> {
     /// A copy of weapon object `slot`.
     pub(super) fn wobj(&self, slot: usize) -> LieroWObject {
-        // SAFETY: the list is valid for the tick, and nothing holds a
-        // reference into it while this copies.
-        unsafe { (*self.wobjects()).arr[slot] }
+        self.g.data.wobjects.arr[slot]
     }
 
-    /// Changes weapon object `slot` with `f`, through a copy that is
-    /// written back before this returns.
-    pub(super) fn update_wobj<R>(&self, slot: usize, f: impl FnOnce(&mut LieroWObject) -> R) -> R {
-        let mut o = self.wobj(slot);
-        let r = f(&mut o);
-        // SAFETY: as in `wobj`.
-        unsafe { (*self.wobjects()).arr[slot] = o };
-        r
+    /// Changes weapon object `slot` in place with `f`.
+    pub(super) fn update_wobj<R>(&mut self, slot: usize, f: impl FnOnce(&mut LieroWObject) -> R) -> R {
+        f(&mut self.g.data.wobjects.arr[slot])
     }
 
     /// The weapon of weapon object `slot`.
-    fn wobj_weapon(&self, slot: usize) -> &LieroTcWeapon {
-        // SAFETY: a weapon object's weapon is the TC's.
-        unsafe { &*(self.wobj(slot).kind as *const LieroTcWeapon) }
+    fn wobj_weapon(&self, slot: usize) -> &'a LieroTcWeapon {
+        self.weapon(self.wobj(slot).kind)
     }
 
-    fn spread(&self, d: i32) -> i32 {
+    fn spread(&mut self, d: i32) -> i32 {
         self.rand((d * 2) as u32) as i32 - d
     }
 
     /// `fireWeapon`: one part of a shot of `kind`.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn fire_weapon(
-        &self,
+        &mut self,
         kind: &LieroTcWeapon,
         angle: i32,
         vel: LieroIVec2,
         speed: i32,
         pos: LieroIVec2,
         owner_idx: i32,
-        ww: *mut LieroWormWeapon,
+        ww: FiredBy,
     ) {
-        // SAFETY: as in `wobj`.
-        let slot = unsafe { (*self.wobjects()).new_object_reuse() };
+        let slot = self.g.data.wobjects.new_object_reuse();
 
         self.update_wobj(slot, |o| {
-            o.kind = (kind as *const LieroTcWeapon).cast();
+            o.kind = kind.id;
             o.pos = pos;
             o.owner_idx = owner_idx;
 
@@ -65,8 +56,7 @@ impl World<'_> {
         self.damage_potential(owner_idx, ww, kind.hit_damage);
         self.shot(owner_idx, ww);
 
-        // SAFETY: nothing else has the game's random numbers during the call.
-        let launch = weapon_view(kind).launch(unsafe { &mut *self.rand_ptr() }, angle, vel, speed);
+        let launch = weapon_view(kind).launch(&mut self.g.data.rand, angle, vel, speed);
         self.update_wobj(slot, |o| {
             o.vel = launch.vel;
             o.cur_frame = launch.cur_frame;
@@ -76,12 +66,11 @@ impl World<'_> {
 
     /// `WObject::blowUpObject`: frees the object, then makes its explosion,
     /// sound, splinters and dirt effect, caused by worm `cause_idx`.
-    pub(super) fn blow_up_wobject(&self, slot: usize, cause_idx: i32) {
+    pub(super) fn blow_up_wobject(&mut self, slot: usize, cause_idx: i32) {
         let o = self.wobj(slot);
         let (pos, vel) = (o.pos, o.vel);
 
-        // SAFETY: as in `wobj`.
-        unsafe { (*self.wobjects()).free(slot) };
+        self.g.data.wobjects.free(slot);
 
         // A freed slot keeps its object until a new one takes it, and only
         // a worm firing makes weapon objects.
@@ -127,46 +116,34 @@ impl World<'_> {
 
         if w.dirt_effect >= 0 {
             let (ix, iy) = (ftoi(x), ftoi(y));
-            let common = self.tc().level_common();
-            // SAFETY: the level is valid for the tick, and nothing else has
-            // the game's random numbers during the call.
-            unsafe {
-                let mut lv = self.g.f.level.get();
-                lv.draw_dirt_effect(&common, &mut *self.rand_ptr(), w.dirt_effect, ix - 7, iy - 7);
-                if self.g.s.shadow {
-                    lv.correct_shadow(&common, ix - 10, iy - 10, ix + 11, iy + 11);
-                }
-            }
+            self.dirt_effect(w.dirt_effect, ix - 7, iy - 7, [ix - 10, iy - 10, ix + 11, iy + 11]);
         }
     }
 
     /// An explosion or smoke of `kind` at the object's position, owned
     /// like it.
-    fn wobj_create_sobject(&self, slot: usize, kind: i32) {
+    fn wobj_create_sobject(&mut self, slot: usize, kind: i32) {
         let o = self.wobj(slot);
         self.create_sobject(kind, ftoi(o.pos.x), ftoi(o.pos.y), o.owner_idx, o.fired_by, None);
     }
 
     /// `WObject::process`.
-    pub(super) fn process_wobject(&self, slot: usize) {
+    pub(super) fn process_wobject(&mut self, slot: usize) {
         let o = self.wobj(slot);
         let owner_idx = o.owner_idx;
-        let owner = self.worm(owner_idx);
-        let kind = self.wobj_weapon(slot);
-        let index = ((kind as *const LieroTcWeapon as usize).wrapping_sub(self.tc().weapons as usize)
-            / std::mem::size_of::<LieroTcWeapon>()) as i32;
+        let (kind, index) = (self.wobj_weapon(slot), o.kind);
 
         // As liero would do this while rendering, we try to do it as early as possible
-        // SAFETY: the worm is valid for the tick.
         if self.hack(h("RemExp"))
             && index == self.constant(c("RemExpObject")) - 1
-            && unsafe { pressed(owner, LIERO_CONTROL_CHANGE) && pressed(owner, LIERO_CONTROL_FIRE) }
+            && pressed(self.worm(owner_idx), LIERO_CONTROL_CHANGE)
+            && pressed(self.worm(owner_idx), LIERO_CONTROL_FIRE)
         {
             self.update_wobj(slot, |o| o.time_left = 0);
         }
 
         let w = weapon_view(kind);
-        let level = self.g.f.level;
+        let (width, height) = (self.g.level.width, self.g.level.height);
         let cycles = self.cycles();
         let larpa_vel_div = self.constant(c("SplinterLarpaVelDiv"));
         let crackler_vel_div = self.constant(c("SplinterCracklerVelDiv"));
@@ -184,8 +161,8 @@ impl World<'_> {
                 let mut new_vel = mul_div(dir, w.speed, 100);
 
                 // Whether the owner is steering: visible and holding up.
-                // SAFETY: the worm is valid for the tick.
-                if unsafe { (*owner).visible && pressed(owner, LIERO_CONTROL_UP) } {
+                let owner = self.worm(owner_idx);
+                if owner.visible && pressed(owner, LIERO_CONTROL_UP) {
                     new_vel = add(new_vel, mul_div(dir, w.add_speed, 100));
                 }
 
@@ -267,11 +244,11 @@ impl World<'_> {
                 if inew_pos.y < 0 {
                     o.pos.y = 0;
                 }
-                if inew_pos.x >= level.width {
-                    o.pos.x = itof(level.width - 1);
+                if inew_pos.x >= width {
+                    o.pos.x = itof(width - 1);
                 }
-                if inew_pos.y >= level.height {
-                    o.pos.y = itof(level.height - 1);
+                if inew_pos.y >= height {
+                    o.pos.y = itof(height - 1);
                 }
             });
 
@@ -325,8 +302,7 @@ impl World<'_> {
                 self.blow_up_wobject(slot, self.wobj(slot).owner_idx);
                 return;
             } else if do_remove {
-                // SAFETY: as in `wobj`.
-                unsafe { (*self.wobjects()).free(slot) };
+                self.g.data.wobjects.free(slot);
                 return;
             }
 
@@ -338,13 +314,11 @@ impl World<'_> {
 
     /// Adds `impulse` to the objects within 2 pixels of weapon object
     /// `slot`, but the weapon objects of its weapon and owner.
-    fn push_objects(&self, slot: usize, impulse: LieroIVec2) {
+    fn push_objects(&mut self, slot: usize, impulse: LieroIVec2) {
         let o = self.wobj(slot);
         let (pos, kind, owner) = (o.pos, o.kind, o.owner_idx);
 
-        // SAFETY: nothing else has the lists during the loops, which call
-        // nothing.
-        let l = unsafe { &mut *self.wobjects() };
+        let l = &mut self.g.data.wobjects;
         let mut wr = Cursor::default();
         while let Some(n) = wr.next(l) {
             let i = &mut l.arr[n];
@@ -353,8 +327,7 @@ impl World<'_> {
             }
         }
 
-        // SAFETY: as above.
-        let l = unsafe { &mut *self.nobjects() };
+        let l = &mut self.g.data.nobjects;
         let mut nr = Cursor::default();
         while let Some(n) = nr.next(l) {
             let i = &mut l.arr[n];
@@ -367,19 +340,18 @@ impl World<'_> {
     /// The worm loop in `WObject::process`: hurts the worms weapon object
     /// `slot` hits. `owner` is its owner when the step began. Returns
     /// whether it should explode, and whether it should disappear.
-    fn wobj_hit_worms(&self, slot: usize, owner: i32) -> (bool, bool) {
+    fn wobj_hit_worms(&mut self, slot: usize, owner: i32) -> (bool, bool) {
         let w = self.wobj_weapon(slot);
         let (mut explode, mut remove) = (false, false);
 
         for i in 0..self.worm_count() {
-            let worm = self.worm(i);
             let o = self.wobj(slot);
 
             if (w.hit_damage != 0 || w.blow_away != 0 || w.blood_on_hit != 0 || w.worm_collide)
                 && self.spec_worm_hit(ftoi(o.pos.x), ftoi(o.pos.y), w.detect_distance, i)
             {
-                // SAFETY: the worm is valid for the tick.
-                unsafe { (*worm).vel = add((*worm).vel, mul_div(o.vel, w.blow_away, 100)) };
+                let worm = self.g.worm_mut(i);
+                worm.vel = add(worm.vel, mul_div(o.vel, w.blow_away, 100));
 
                 self.g.damage(i, w.hit_damage, o.owner_idx);
                 let o = self.wobj(slot);
@@ -394,13 +366,11 @@ impl World<'_> {
                 for _ in 0..blood_amount.max(0) {
                     let angle = self.rand(128) as i32;
                     let o = self.wobj(slot);
-                    // SAFETY: as above.
-                    let index = unsafe { (*worm).index };
+                    let index = self.worm(i).index;
                     self.create_nobject2(6, angle, div(o.vel, 3), o.pos, 0, index, o.fired_by);
                 }
 
-                // SAFETY: as above.
-                if w.hit_damage > 0 && unsafe { (*worm).health } > 0 && self.rand(3) == 0 {
+                if w.hit_damage > 0 && self.worm(i).health > 0 && self.rand(3) == 0 {
                     self.hurt_sound(i);
                 }
 

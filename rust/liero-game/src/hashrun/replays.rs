@@ -24,8 +24,7 @@ use crate::replay_file::{
 };
 use crate::settings::{LieroSettingsBox, LieroWormSettingsBox};
 use crate::sfx::LieroSoundOut;
-use crate::shared::Shared;
-use crate::tc::LieroTc;
+use crate::tc::SharedTc;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use liero_data::gash::Hash;
 use liero_data::settings::{self as data, Settings, WormSettings};
@@ -95,7 +94,7 @@ fn add_settings_hashes(f: &mut Fnv, game: &mut LieroGame, with_index: bool) {
         if with_index {
             f.i32(w.data.index);
         }
-        add_hash(f, &worm_hash(w.settings_mut()));
+        add_hash(f, &worm_hash(&mut w.settings_mut()));
     }
 }
 
@@ -271,7 +270,7 @@ fn play_back(
 /// does in a replay.
 pub(super) fn hash_replay(
     out: &mut Out,
-    tc: &Shared<LieroTc>,
+    tc: &SharedTc,
     name: &str,
     path: &str,
     interval: i32,
@@ -291,7 +290,7 @@ pub(super) fn hash_replay(
 
     let mut renderer = LieroRenderer::new();
     renderer.set_render_resolution(320, 200);
-    renderer.load_palette(tc_data(tc));
+    renderer.load_palette(&tc_data(tc));
 
     let reader = liero_replay_reader_new(&node(path));
     assert!(!reader.is_null(), "Could not read {path}");
@@ -306,7 +305,7 @@ pub(super) fn hash_replay(
         let settings = LieroSettingsBox::defaults();
         // SAFETY: the game keeps references to the settings and the TC.
         let mut g = unsafe { Box::from_raw(liero_game_new()) };
-        unsafe { liero_game_set_context(&mut g, settings.as_ptr(), tc.as_ptr(), LieroSoundOut::NONE) };
+        unsafe { liero_game_set_context(&mut g, settings.as_ptr(), Some(tc.clone()), LieroSoundOut::NONE) };
         // SAFETY: the reader fills in `g`, which outlives it here.
         let o = unsafe { liero_replay_reader_begin(r, &mut g) };
         if let Some(e) = thrown(&o) {
@@ -366,7 +365,7 @@ struct SettingsChange {
 }
 
 /// Starts a bot game as the bot games do and runs it `ticks` ticks.
-fn bot_game(tc: &Shared<LieroTc>, seed: u32, game_mode: u32, ticks: i32) -> Box<LieroGame> {
+fn bot_game(tc: &SharedTc, seed: u32, game_mode: u32, ticks: i32) -> Box<LieroGame> {
     let mut game = set_up_game(tc, seed, game_mode, None);
     let blood = game.settings_box().data.blood_particle_max;
     game.start(blood);
@@ -382,7 +381,7 @@ fn bot_game(tc: &Shared<LieroTc>, seed: u32, game_mode: u32, ticks: i32) -> Box<
 /// starts; otherwise after that many ticks.
 #[allow(clippy::too_many_arguments)]
 fn record_game(
-    tc: &Shared<LieroTc>,
+    tc: &SharedTc,
     path: &str,
     seed: u32,
     game_mode: u32,

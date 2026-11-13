@@ -12,10 +12,9 @@ use super::games::{bot_tick, set_up_game, tc_data, GAME_OF_TAG, HOLDAZONE, HOOKS
 use super::{Fnv, Out};
 use crate::ai::{liero_worm_ai_hash, liero_worm_ai_rand};
 use crate::controllers::liero_game_focus;
-use crate::game_box::{liero_worm_ai, liero_worm_set_ai};
+use crate::game_box::liero_worm_set_ai;
 use crate::renderer::LieroRenderer;
-use crate::shared::Shared;
-use crate::tc::LieroTc;
+use crate::tc::SharedTc;
 
 struct AiConfig {
     name: &'static str,
@@ -77,7 +76,7 @@ const CONFIGS: [AiConfig; 6] = [
     ),
 ];
 
-fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32) {
+fn run_ai_game(out: &mut Out, tc: &SharedTc, c: &AiConfig, interval: i32) {
     let mut game = set_up_game(tc, c.seed, c.game_mode, c.weapons);
     let s = &mut game.settings_box().data;
     s.ai_frames = c.ai_frames;
@@ -90,11 +89,8 @@ fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32)
         let w = game.worm_at(i).expect("no worm");
         w.settings_mut().data.controller = 2;
         let testing = w.data.index == 0;
-        // SAFETY: the worm is the game's, and its AI is new.
-        unsafe {
-            liero_worm_set_ai(w, 2, c.ai_parallels as usize, testing);
-            liero_worm_ai_rand(&mut *liero_worm_ai(w)).seed(c.seed.wrapping_mul(31).wrapping_add(i as u32));
-        }
+        liero_worm_set_ai(w, 2, c.ai_parallels as usize, testing);
+        liero_worm_ai_rand(w.ai_mut().expect("a bot")).seed(c.seed.wrapping_mul(31).wrapping_add(i as u32));
     }
 
     let blood = game.settings_box().data.blood_particle_max;
@@ -105,7 +101,7 @@ fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32)
     split.set_render_resolution(320, 200);
     spectator.set_render_resolution(640, 400);
     for r in [&mut split, &mut spectator] {
-        r.load_palette(tc_data(tc));
+        r.load_palette(&tc_data(tc));
         // SAFETY: the renderer is a live one.
         unsafe { liero_game_focus(&mut game, &mut **r) };
     }
@@ -127,8 +123,7 @@ fn run_ai_game(out: &mut Out, tc: &Shared<LieroTc>, c: &AiConfig, interval: i32)
             out.hash(&format!("{name}-controls"), tick.into(), controls);
             for i in 0..2 {
                 let w = game.worm_at(i).expect("no worm");
-                // SAFETY: the worm has its AI.
-                let h = liero_worm_ai_hash(unsafe { &*liero_worm_ai(w) });
+                let h = liero_worm_ai_hash(w.ai_mut().expect("a bot"));
                 out.line(&format!("{name}-ai{i} {tick} {h:016x}"));
             }
             out.line(&format!(

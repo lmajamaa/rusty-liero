@@ -2,23 +2,24 @@
 //!
 //! The reading itself is `liero_data::load`, from a file node (`fs.rs`),
 //! since a TC can be a folder, a zip file or both joined. C++ copies the
-//! result into `Common` from the `LieroTcData` views here, which point into
-//! the `LieroTc` until it's freed.
+//! result into `Common` from the `LieroTcData` here, which owns everything
+//! it holds.
 
 use crate::fs::Node;
 use crate::gfx::LieroColor;
 use crate::level::{LieroTexture, LIERO_TEXTURE_COUNT};
 use crate::rand::LieroRand;
 use crate::sfx::samples_from_tc;
-use crate::text::LieroStr;
 use liero_data::model::{self, Common};
 use liero_data::Error;
+use std::cell::{Ref, RefCell};
+use std::rc::Rc;
 
+#[derive(Default)]
 pub struct LieroTcWeapon {
     /// Its index in the TC's weapons.
     pub id: i32,
-    pub name: LieroStr,
-    pub id_str: LieroStr,
+    pub name: Vec<u8>,
     pub detect_distance: i32,
     pub affect_by_worm: bool,
     pub blow_away: i32,
@@ -70,9 +71,9 @@ pub struct LieroTcWeapon {
     pub chain_explosion: bool,
 }
 
+#[derive(Default)]
 pub struct LieroTcNObject {
     pub id: i32,
-    pub id_str: LieroStr,
     pub detect_distance: i32,
     pub gravity: i32,
     pub speed: i32,
@@ -103,9 +104,9 @@ pub struct LieroTcNObject {
     pub time_to_explo_v: i32,
 }
 
+#[derive(Default)]
 pub struct LieroTcSObject {
     pub id: i32,
-    pub id_str: LieroStr,
     pub start_sound: i32,
     pub num_sounds: i32,
     pub anim_delay: i32,
@@ -120,25 +121,24 @@ pub struct LieroTcSObject {
     pub dirt_effect: i32,
 }
 
+#[derive(Default)]
 pub struct LieroTcSound {
-    pub name: LieroStr,
+    pub name: Vec<u8>,
     /// Signed 8-bit samples.
-    pub data: *const u8,
-    pub len: usize,
+    pub data: Vec<u8>,
     /// False when the WAV file had another format: the game has no sound.
     pub valid: bool,
-    /// The 16-bit samples the mixer plays, twice as many as `len`
-    /// (`SfxSample::createSound`). They stay put while a sound plays.
-    pub samples: *const i16,
-    pub sample_count: usize,
+    /// The 16-bit samples the mixer plays, twice as many as `data`
+    /// (`SfxSample::createSound`). The TC's sounds are never changed after
+    /// loading, so they stay put while a sound plays.
+    pub samples: Vec<i16>,
 }
 
 /// A TC's sprites: `count` of `width` x `height` pixels, one after the
-/// other. Only this module makes them, pointing into storage the TC owns,
-/// and they live in the TC's `LieroTcData`, so a borrow of one is a borrow
-/// of the TC.
+/// other.
+#[derive(Default)]
 pub struct LieroTcSprites {
-    data: *const u8,
+    data: Vec<u8>,
     pub width: i32,
     pub height: i32,
     pub count: i32,
@@ -149,21 +149,14 @@ pub const LIERO_TC_FONT_CHARS: usize = 250;
 
 /// Everything `Common` gets from a TC.
 pub struct LieroTcData {
-    pub weapons: *const LieroTcWeapon,
-    pub weapon_count: usize,
-    pub nobjects: *const LieroTcNObject,
-    pub nobject_count: usize,
-    pub sobjects: *const LieroTcSObject,
-    pub sobject_count: usize,
-    pub sounds: *const LieroTcSound,
-    pub sound_count: usize,
+    pub weapons: Vec<LieroTcWeapon>,
+    pub nobjects: Vec<LieroTcNObject>,
+    pub sobjects: Vec<LieroTcSObject>,
+    pub sounds: Vec<LieroTcSound>,
     /// In the order of `LIERO_CDEFS`, `LIERO_SDEFS` and `LIERO_HDEFS`.
-    pub constants: *const i32,
-    pub constant_count: usize,
-    pub texts: *const LieroStr,
-    pub text_count: usize,
-    pub hacks: *const bool,
-    pub hack_count: usize,
+    pub constants: Vec<i32>,
+    pub texts: Vec<Vec<u8>>,
+    pub hacks: Vec<bool>,
     /// 6-bit VGA palette, red, green and blue for each of 256 entries.
     pub palette: [u8; 768],
     /// The same palette as the game's `Palette` holds it (`Common::exepal`).
@@ -184,7 +177,7 @@ pub struct LieroTcData {
     pub font: [crate::gfx::LieroFontChar; LIERO_TC_FONT_CHARS],
     /// Precomputed: weapon indexes sorted by name, and the worm and fire cone
     /// sprites facing both ways (`Common::precompute`).
-    pub weap_order: *const i32,
+    pub weap_order: Vec<i32>,
     pub worm_sprites: LieroTcSprites,
     pub fire_cone_sprites: LieroTcSprites,
 }
@@ -193,37 +186,13 @@ pub struct LieroTcData {
 pub struct LieroTc {
     error: String,
     common: Option<Common>,
-    weapons: Vec<LieroTcWeapon>,
-    nobjects: Vec<LieroTcNObject>,
-    sobjects: Vec<LieroTcSObject>,
-    sounds: Vec<LieroTcSound>,
-    samples: Vec<Vec<i16>>,
-    constants: Vec<i32>,
-    texts: Vec<LieroStr>,
-    hacks: Vec<bool>,
-    weap_order: Vec<i32>,
-    worm_sprites: Vec<u8>,
-    fire_cone_sprites: Vec<u8>,
     data: Option<Box<LieroTcData>>,
-}
-
-fn str(s: &[u8]) -> LieroStr {
-    LieroStr {
-        ptr: s.as_ptr(),
-        len: s.len(),
-    }
 }
 
 impl LieroTcSprites {
     /// Every sprite's pixels.
     pub fn pixels(&self) -> &[u8] {
-        let len = (self.width.max(0) * self.height.max(0) * self.count.max(0)) as usize;
-        if len == 0 {
-            return &[];
-        }
-        // SAFETY: `data` points to the sprites, which the TC owns and keeps
-        // for as long as its data, which `self` is borrowed from.
-        unsafe { std::slice::from_raw_parts(self.data, len) }
+        &self.data
     }
 
     /// Sprite `frame`'s pixels. Panics on a frame there isn't.
@@ -235,8 +204,9 @@ impl LieroTcSprites {
 }
 
 fn sprites(s: &model::SpriteSet) -> LieroTcSprites {
+    let len = s.width * s.height * s.count;
     LieroTcSprites {
-        data: s.data.as_ptr(),
+        data: s.data[..len].to_vec(),
         width: s.width as i32,
         height: s.height as i32,
         count: s.count as i32,
@@ -309,17 +279,6 @@ impl LieroTc {
         LieroTc {
             error,
             common: None,
-            weapons: Vec::new(),
-            nobjects: Vec::new(),
-            sobjects: Vec::new(),
-            sounds: Vec::new(),
-            samples: Vec::new(),
-            constants: Vec::new(),
-            texts: Vec::new(),
-            hacks: Vec::new(),
-            weap_order: Vec::new(),
-            worm_sprites: Vec::new(),
-            fire_cone_sprites: Vec::new(),
             data: None,
         }
     }
@@ -330,14 +289,13 @@ impl LieroTc {
         }
         let mut tc = LieroTc::failed(String::new());
         let c = &common;
-        tc.weapons = c
+        let weapons: Vec<_> = c
             .weapons
             .iter()
             .enumerate()
             .map(|(i, w)| LieroTcWeapon {
                 id: i as i32,
-                name: str(&w.name),
-                id_str: str(w.id_str.as_bytes()),
+                name: w.name.clone(),
                 detect_distance: w.detect_distance,
                 affect_by_worm: w.affect_by_worm,
                 blow_away: w.blow_away,
@@ -389,13 +347,12 @@ impl LieroTc {
                 chain_explosion: w.chain_explosion,
             })
             .collect();
-        tc.nobjects = c
+        let nobjects: Vec<_> = c
             .nobjects
             .iter()
             .enumerate()
             .map(|(i, n)| LieroTcNObject {
                 id: i as i32,
-                id_str: str(n.id_str.as_bytes()),
                 detect_distance: n.detect_distance,
                 gravity: n.gravity,
                 speed: n.speed,
@@ -426,13 +383,12 @@ impl LieroTc {
                 time_to_explo_v: n.time_to_explo_v,
             })
             .collect();
-        tc.sobjects = c
+        let sobjects: Vec<_> = c
             .sobjects
             .iter()
             .enumerate()
             .map(|(i, s)| LieroTcSObject {
                 id: i as i32,
-                id_str: str(s.id_str.as_bytes()),
                 start_sound: s.start_sound,
                 num_sounds: s.num_sounds,
                 anim_delay: s.anim_delay,
@@ -447,38 +403,21 @@ impl LieroTc {
                 dirt_effect: s.dirt_effect,
             })
             .collect();
-        tc.samples = c
+        let sounds: Vec<_> = c
             .sounds
             .iter()
             .map(|s| {
                 let data = s.data.as_deref().unwrap_or(&[]);
-                let mut out = vec![0i16; data.len() * 2];
-                samples_from_tc(data, &mut out);
-                out
-            })
-            .collect();
-        tc.sounds = c
-            .sounds
-            .iter()
-            .zip(&tc.samples)
-            .map(|(s, samples)| {
-                let data = s.data.as_deref().unwrap_or(&[]);
+                let mut samples = vec![0i16; data.len() * 2];
+                samples_from_tc(data, &mut samples);
                 LieroTcSound {
-                    name: str(s.name.as_bytes()),
-                    data: data.as_ptr(),
-                    len: data.len(),
+                    name: s.name.as_bytes().to_vec(),
+                    data: data.to_vec(),
                     valid: s.data.is_some(),
-                    samples: samples.as_ptr(),
-                    sample_count: samples.len(),
+                    samples,
                 }
             })
             .collect();
-        tc.constants = c.constants.iter().map(|&(_, v)| v).collect();
-        tc.texts = c.texts.iter().map(|(_, t)| str(t)).collect();
-        tc.hacks = c.hacks.iter().map(|&(_, h)| h).collect();
-        tc.weap_order = weapon_order(&c.weapons);
-        tc.worm_sprites = worm_sprites(&c.large_sprites);
-        tc.fire_cone_sprites = fire_cone_sprites(&c.large_sprites);
 
         let mut palette = [0u8; 768];
         for (i, entry) in c.palette.iter().enumerate() {
@@ -507,20 +446,13 @@ impl LieroTc {
         });
 
         let data = LieroTcData {
-            weapons: tc.weapons.as_ptr(),
-            weapon_count: tc.weapons.len(),
-            nobjects: tc.nobjects.as_ptr(),
-            nobject_count: tc.nobjects.len(),
-            sobjects: tc.sobjects.as_ptr(),
-            sobject_count: tc.sobjects.len(),
-            sounds: tc.sounds.as_ptr(),
-            sound_count: tc.sounds.len(),
-            constants: tc.constants.as_ptr(),
-            constant_count: tc.constants.len(),
-            texts: tc.texts.as_ptr(),
-            text_count: tc.texts.len(),
-            hacks: tc.hacks.as_ptr(),
-            hack_count: tc.hacks.len(),
+            weapons,
+            nobjects,
+            sobjects,
+            sounds,
+            constants: c.constants.iter().map(|&(_, v)| v).collect(),
+            texts: c.texts.iter().map(|(_, t)| t.to_vec()).collect(),
+            hacks: c.hacks.iter().map(|&(_, h)| h).collect(),
             palette,
             palette_colors: std::array::from_fn(|i| LieroColor {
                 r: palette[i * 3],
@@ -544,28 +476,52 @@ impl LieroTc {
             large_sprites: sprites(&c.large_sprites),
             text_sprites: sprites(&c.text_sprites),
             font,
-            weap_order: tc.weap_order.as_ptr(),
+            weap_order: weapon_order(&c.weapons),
             worm_sprites: LieroTcSprites {
-                data: tc.worm_sprites.as_ptr(),
+                data: worm_sprites(&c.large_sprites),
                 width: 16,
                 height: 16,
                 count: 2 * 2 * 21,
             },
             fire_cone_sprites: LieroTcSprites {
-                data: tc.fire_cone_sprites.as_ptr(),
+                data: fire_cone_sprites(&c.large_sprites),
                 width: 16,
                 height: 16,
                 count: 2 * 7,
             },
         };
         tc.data = Some(Box::new(data));
-        // The views point into `common`'s heap data, which moving it keeps.
         tc.common = Some(common);
         Ok(tc)
     }
 }
 
 impl LieroTcData {
+    /// A TC with no tables and every other field zero, for tests.
+    #[cfg(test)]
+    pub(crate) fn empty() -> Box<Self> {
+        let mut tc = crate::objects::zeroed_box::<Self>();
+        // SAFETY: all zeros is a valid value of every field but the tables
+        // and sprites, which are written before the box is used.
+        unsafe {
+            let p = tc.as_mut_ptr();
+            std::ptr::addr_of_mut!((*p).weapons).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).nobjects).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).sobjects).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).sounds).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).constants).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).texts).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).hacks).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).weap_order).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).small_sprites).write(Default::default());
+            std::ptr::addr_of_mut!((*p).large_sprites).write(Default::default());
+            std::ptr::addr_of_mut!((*p).text_sprites).write(Default::default());
+            std::ptr::addr_of_mut!((*p).worm_sprites).write(Default::default());
+            std::ptr::addr_of_mut!((*p).fire_cone_sprites).write(Default::default());
+            tc.assume_init()
+        }
+    }
+
     /// What levels are made with (`Common::levelCommon`).
     pub(crate) fn level_common(&self) -> crate::level::Common<'_> {
         crate::level::Common {
@@ -582,15 +538,17 @@ impl LieroTc {
     /// order the object types get theirs in is shuffled from `shuffle_seed`;
     /// the C++ shuffled it with `std::random_device`, so it never repeated.
     pub fn randomize(&mut self, shuffle_seed: u32) {
-        let Some(c) = &self.common else { return };
+        let Some(d) = &mut self.data else {
+            return;
+        };
         let mut r = LieroRand::new(14);
-        let sobjects = self.sobjects.len() as u32;
-        let nobjects = self.nobjects.len() as u32;
-        let sounds = self.sounds.len() as u32;
-        let small = c.small_sprites.count as u32;
-        let large = c.large_sprites.count as u32;
+        let sobjects = d.sobjects.len() as u32;
+        let nobjects = d.nobjects.len() as u32;
+        let sounds = d.sounds.len() as u32;
+        let small = d.small_sprites.count as u32;
+        let large = d.large_sprites.count as u32;
 
-        let mut order: Vec<usize> = (0..self.nobjects.len()).collect();
+        let mut order: Vec<usize> = (0..d.nobjects.len()).collect();
         let mut shuffle = LieroRand::new(shuffle_seed);
         for i in (1..order.len()).rev() {
             order.swap(i, shuffle.below(i as u32 + 1) as usize);
@@ -598,7 +556,7 @@ impl LieroTc {
 
         // `r(n)` as the C++ wrote it: unsigned, then stored in an int.
         let mut r = |n: u32| r.below(n) as i32;
-        for w in &mut self.weapons {
+        for w in &mut d.weapons {
             w.add_speed = r(30) - 5;
             w.affect_by_explosions = r(2) == 0;
             w.affect_by_worm = r(3) == 0;
@@ -650,7 +608,7 @@ impl LieroTc {
         }
 
         for (idx, &i) in order.iter().enumerate() {
-            let n = &mut self.nobjects[i];
+            let n = &mut d.nobjects[i];
             n.affect_by_explosions = r(5) == 0;
             n.blood_on_hit = r(5);
             n.blood_trail = r(10) == 0;
@@ -684,7 +642,7 @@ impl LieroTc {
             n.worm_explode = r(2) == 0;
         }
 
-        for s in &mut self.sobjects {
+        for s in &mut d.sobjects {
             s.anim_delay = 1 + r(10);
             s.blow_away = if r(2) == 0 { r(10000) } else { 0 };
             s.damage = r(30);
@@ -701,13 +659,10 @@ impl LieroTc {
     }
 }
 
-/// F8's random TC (`LieroTc::randomize`). What `liero_tc_data` points to
-/// changes in place.
-///
-/// # Safety
-/// `tc` must come from `liero_tc_load`.
-pub unsafe fn liero_tc_randomize(tc: &mut LieroTc, shuffle_seed: u32) {
-    tc.randomize(shuffle_seed);
+/// F8's random TC (`LieroTc::randomize`), in place: the games that share
+/// the TC, as one behind the menu does, play with it too, as in C++.
+pub fn liero_tc_randomize(tc: &RefCell<LieroTc>, shuffle_seed: u32) {
+    tc.borrow_mut().randomize(shuffle_seed);
 }
 
 /// Loads the TC in `node`, each file at its path inside it (`/` between
@@ -726,30 +681,40 @@ fn load(node: &Node) -> LieroTc {
     }
 }
 
-/// Loads the TC in `node` (`Common::load`). Always returns a TC to free with
-/// `liero_tc_free`; its `error` says whether loading failed.
-pub fn liero_tc_load(node: &Node) -> *mut LieroTc {
-    crate::shared::new_shared(load(node))
+/// A TC as the app, the controllers and the games hold it (C++'s
+/// `shared_ptr<Common>`). Only F8 changes it after loading.
+pub type SharedTc = Rc<RefCell<LieroTc>>;
+
+/// Loads the TC in `node` (`Common::load`). Always returns a TC; its
+/// `error` says whether loading failed.
+pub fn liero_tc_load(node: &Node) -> SharedTc {
+    Rc::new(RefCell::new(load(node)))
 }
 
-/// The loaded data, or null if loading failed. Valid until `liero_tc_free`.
-///
-/// # Safety
-/// `tc` must come from `liero_tc_load`.
-pub unsafe fn liero_tc_data(tc: &LieroTc) -> *const LieroTcData {
-    match &tc.data {
-        Some(d) => &**d,
-        None => std::ptr::null(),
+/// The data of a TC that loaded. Panics on one that didn't.
+pub fn tc_data(tc: &RefCell<LieroTc>) -> Ref<'_, LieroTcData> {
+    Ref::map(tc.borrow(), |t| t.data().expect("the TC didn't load"))
+}
+
+impl LieroTc {
+    /// The loaded data, or none if loading failed.
+    pub fn data(&self) -> Option<&LieroTcData> {
+        self.data.as_deref()
     }
-}
 
-/// # Safety
-/// `tc` must come from `liero_tc_load` and not be used afterwards.
-pub unsafe fn liero_tc_free(tc: *mut LieroTc) {
-    unsafe {
-        if !tc.is_null() {
-            crate::shared::release_shared(tc);
-        }
+    /// Why loading failed, or empty.
+    pub fn error(&self) -> &str {
+        &self.error
+    }
+
+    /// A TC of `data` alone, for tests.
+    #[cfg(test)]
+    pub(crate) fn of(data: Box<LieroTcData>) -> SharedTc {
+        Rc::new(RefCell::new(LieroTc {
+            error: String::new(),
+            common: None,
+            data: Some(data),
+        }))
     }
 }
 
@@ -767,7 +732,7 @@ impl LieroTc {
     /// Weapon `i` as the game has it, F8's changes included, as the model's.
     pub(crate) fn weapon_model(&self, i: usize) -> model::Weapon {
         let mut m = self.common.as_ref().expect("the TC didn't load").weapons[i].clone();
-        let w = &self.weapons[i];
+        let w = &self.data.as_ref().expect("the TC didn't load").weapons[i];
         copy_fields!(
             m,
             w,
@@ -827,7 +792,7 @@ impl LieroTc {
     /// Special object `i` as the game has it, as the model's.
     pub(crate) fn sobject_model(&self, i: usize) -> model::SObject {
         let mut m = self.common.as_ref().expect("the TC didn't load").sobjects[i].clone();
-        let o = &self.sobjects[i];
+        let o = &self.data.as_ref().expect("the TC didn't load").sobjects[i];
         copy_fields!(
             m,
             o,
@@ -851,18 +816,18 @@ impl LieroTc {
 /// Loads the TC in `node` as `Common::load` did, or the message it threw:
 /// the TC can't be read, or its constants, texts and hacks aren't the
 /// game's.
-pub fn load_checked(node: &Node) -> Result<crate::shared::Shared<LieroTc>, String> {
-    let tc = crate::shared::Shared::new(load(node));
+pub fn load_checked(node: &Node) -> Result<SharedTc, String> {
+    let tc = load(node);
     let Some(d) = tc.data.as_deref() else {
         return Err(format!("Could not load the TC: {}", tc.error));
     };
-    if d.constant_count != liero_data::exe::CONSTANT_ORDER.len()
-        || d.text_count != liero_data::exe::TEXTS.len()
-        || d.hack_count != liero_data::exe::HACKS.len()
+    if d.constants.len() != liero_data::exe::CONSTANT_ORDER.len()
+        || d.texts.len() != liero_data::exe::TEXTS.len()
+        || d.hacks.len() != liero_data::exe::HACKS.len()
     {
         return Err("The TC's constants, texts and hacks don't match the game's".into());
     }
-    Ok(tc)
+    Ok(Rc::new(RefCell::new(tc)))
 }
 
 const fn str_eq(a: &str, b: &str) -> bool {
@@ -922,31 +887,27 @@ pub(crate) const fn s(name: &str) -> usize {
 impl LieroTcData {
     /// TC constant `i` (`common.C[i]`), from `c`.
     pub(crate) fn constant(&self, i: usize) -> i32 {
-        assert!(i < self.constant_count);
-        unsafe { *self.constants.add(i) }
+        self.constants[i]
     }
 
     /// TC hack `i` (`common.H[i]`), from `h`.
     pub(crate) fn hack(&self, i: usize) -> bool {
-        assert!(i < self.hack_count);
-        unsafe { *self.hacks.add(i) }
+        self.hacks[i]
     }
 
     /// TC text `i` (`common.S[i]`), from `s`.
     pub(crate) fn text(&self, i: usize) -> &[u8] {
-        assert!(i < self.text_count);
-        unsafe { (*self.texts.add(i)).bytes() }
+        &self.texts[i]
     }
 
     /// The weapons in menu order (`weapOrder`), as indexes into `weapons`.
     pub(crate) fn weapon_order(&self) -> &[i32] {
-        unsafe { std::slice::from_raw_parts(self.weap_order, self.weapon_count) }
+        &self.weap_order
     }
 
     /// Weapon `i`'s name.
     pub(crate) fn weapon_name(&self, i: usize) -> &[u8] {
-        assert!(i < self.weapon_count);
-        unsafe { (*self.weapons.add(i)).name.bytes() }
+        &self.weapons[i].name
     }
 }
 
@@ -1061,18 +1022,13 @@ mod tests {
 
         let from_folder = Node::new(b"../../TC/openliero");
         let from_zip = Node::new(format!("{dir}/openliero").as_bytes());
-        unsafe {
-            let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
-            assert!((*b).error.is_empty(), "{}", (*b).error);
-            let (da, db) = (&*liero_tc_data(&*a), &*liero_tc_data(&*b));
-            assert_eq!(da.weapon_count, db.weapon_count);
-            assert_eq!(da.sound_count, db.sound_count);
-            for i in 0..da.sound_count {
-                let (sa, sb) = (&*da.sounds.add(i), &*db.sounds.add(i));
-                assert_eq!((sa.valid, sa.len), (sb.valid, sb.len));
-            }
-            liero_tc_free(a);
-            liero_tc_free(b);
+        let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
+        assert!(b.borrow().error.is_empty(), "{}", b.borrow().error);
+        let (da, db) = (tc_data(&a), tc_data(&b));
+        assert_eq!(da.weapons.len(), db.weapons.len());
+        assert_eq!(da.sounds.len(), db.sounds.len());
+        for (sa, sb) in da.sounds.iter().zip(&db.sounds) {
+            assert_eq!((sa.valid, sa.data.len()), (sb.valid, sb.data.len()));
         }
     }
 
@@ -1080,25 +1036,21 @@ mod tests {
     fn loads_from_a_node_and_reports_errors() {
         // Relative to the crate, where the tests run.
         let node = Node::new(b"../../TC/openliero");
-        unsafe {
-            let tc = liero_tc_load(&node);
-            assert!((*tc).error.is_empty(), "{}", (*tc).error);
-            let data = &*liero_tc_data(&*tc);
-            assert_eq!(data.weapon_count, 40);
-            assert_eq!(data.font[b'A' as usize].width, 5);
-            liero_tc_free(tc);
+        let tc = liero_tc_load(&node);
+        assert!(tc.borrow().error.is_empty(), "{}", tc.borrow().error);
+        let data = tc_data(&tc);
+        assert_eq!(data.weapons.len(), 40);
+        assert_eq!(data.font[b'A' as usize].width, 5);
 
-            assert!(load_checked(&node).is_ok());
-            assert_eq!(
-                load_checked(&Node::new(b"target/no-such-tc")).err().as_deref(),
-                Some("Could not load the TC: Could not read tc.cfg")
-            );
+        assert!(load_checked(&node).is_ok());
+        assert_eq!(
+            load_checked(&Node::new(b"target/no-such-tc")).err().as_deref(),
+            Some("Could not load the TC: Could not read tc.cfg")
+        );
 
-            let missing = Node::new(b"target/no-such-tc");
-            let tc = liero_tc_load(&missing);
-            assert_eq!((*tc).error, "Could not read tc.cfg");
-            assert!(liero_tc_data(&*tc).is_null());
-            liero_tc_free(tc);
-        }
+        let missing = Node::new(b"target/no-such-tc");
+        let tc = liero_tc_load(&missing);
+        assert_eq!(tc.borrow().error, "Could not read tc.cfg");
+        assert!(tc.borrow().data().is_none());
     }
 }

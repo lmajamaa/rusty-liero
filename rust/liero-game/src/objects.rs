@@ -11,11 +11,8 @@
 //! The lists are 74 KB in all, more than the web build's 64 KB stack, so
 //! they are only ever made and copied on the heap.
 
-use std::ffi::c_void;
-
 use crate::math::LieroIVec2;
 use crate::object::LieroBObject;
-use crate::weapon::LieroWormWeapon;
 
 /// List sizes, as in `Game`'s typedefs.
 pub const LIERO_MAX_BONUSES: usize = 99;
@@ -48,19 +45,33 @@ pub struct LieroSObject {
     pub anim_delay: i32,
 }
 
+/// The weapon slot that fired an object, for the stats: the id of the
+/// worm and the slot, or `NONE`. C++ kept a pointer to the slot; the stats
+/// read the weapon in it when the object hits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FiredBy {
+    /// The worm's `WormId`, or -1.
+    pub worm: i32,
+    pub slot: i32,
+}
+
+impl FiredBy {
+    pub const NONE: FiredBy = FiredBy { worm: -1, slot: 0 };
+}
+
 /// A weapon object, laid out like C++'s `WObject`.
 #[derive(Clone, Copy, Debug)]
 pub struct LieroWObject {
     pub used: bool,
     pub pos: LieroIVec2,
     pub vel: LieroIVec2,
-    /// The C++ `Weapon`.
-    pub kind: *const c_void,
+    /// The weapon that fired it: its index in the TC's weapons.
+    pub kind: i32,
     pub owner_idx: i32,
     pub cur_frame: i32,
     pub time_left: i32,
     /// The weapon slot that fired it, for stats.
-    pub fired_by: *mut LieroWormWeapon,
+    pub fired_by: FiredBy,
     pub has_hit: bool,
 }
 
@@ -71,12 +82,12 @@ pub struct LieroNObject {
     pub pos: LieroIVec2,
     pub vel: LieroIVec2,
     pub time_left: i32,
-    /// The C++ `NObjectType`.
-    pub kind: *const c_void,
+    /// Its type: the index in the TC's non-weapon objects.
+    pub kind: i32,
     pub owner_idx: i32,
     pub cur_frame: i32,
     /// The weapon slot that fired it, for stats.
-    pub fired_by: *mut LieroWormWeapon,
+    pub fired_by: FiredBy,
     pub has_hit: bool,
 }
 

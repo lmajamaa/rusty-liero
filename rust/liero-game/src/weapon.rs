@@ -7,8 +7,6 @@
 //! and lasers (`WObject::process` and `WObject::blowUpObject`) in
 //! `world/wobject.rs`.
 
-use std::ffi::c_void;
-
 use crate::math::{cos_sin, LieroIVec2};
 use crate::object::add;
 use crate::rand::LieroRand;
@@ -83,8 +81,8 @@ pub struct LieroWeapon {
 /// A worm's weapon slot, laid out like C++'s `WormWeapon`.
 #[derive(Clone, Copy, Debug)]
 pub struct LieroWormWeapon {
-    /// The C++ `Weapon`.
-    pub kind: *const c_void,
+    /// The weapon: its index in the TC's weapons, or -1 for none.
+    pub kind: i32,
     pub ammo: i32,
     pub delay_left: i32,
     pub loading_left: i32,

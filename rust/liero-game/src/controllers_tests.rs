@@ -2,12 +2,12 @@ use super::*;
 use crate::fs::Node;
 use crate::keys::sdl_to_dos;
 use crate::settings::LieroSettingsBox;
-use crate::tc::liero_tc_data;
+use crate::tc::SharedTc;
 
 /// The bundled TC, with one reference for the test.
-fn tc() -> *mut LieroTc {
+fn tc() -> SharedTc {
     let tc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
-    assert!(!unsafe { liero_tc_data(&*tc) }.is_null());
+    assert!(tc.borrow().data().is_some());
     tc
 }
 
@@ -19,11 +19,11 @@ fn menu_settings() -> *mut LieroSettingsBox {
 }
 
 /// A local match with the worms named `names`, on a level of its own.
-fn local(tc: *mut LieroTc, names: [&str; 2]) -> Box<LieroController> {
+fn local(tc: SharedTc, names: [&str; 2]) -> Box<LieroController> {
     unsafe {
         let settings = liero_settings_box_new();
         for (w, name) in (*settings).worms.iter_mut().zip(names) {
-            w.name = name.as_bytes().to_vec();
+            w.borrow_mut().name = name.as_bytes().to_vec();
         }
         let mut c = Box::from_raw(liero_local_controller_new(settings, tc));
         liero_settings_box_free(settings);
@@ -35,7 +35,7 @@ fn local(tc: *mut LieroTc, names: [&str; 2]) -> Box<LieroController> {
 #[test]
 fn escape_fades_to_the_menu_once() {
     let tc = tc();
-    let mut c = local(tc, ["a", "b"]);
+    let mut c = local(tc.clone(), ["a", "b"]);
     unsafe {
         c.on_key(LIERO_DK_ESCAPE as i32, true);
         assert_eq!((c.data.fade_value, c.data.going_to_menu), (31, true));
@@ -46,7 +46,7 @@ fn escape_fades_to_the_menu_once() {
         // A replay takes Escape and nothing else.
         let mut r = LieroController::new(Kind::Replay(Replay {
             reader: None,
-            tc: crate::shared::retain_shared(tc),
+            tc: tc.clone(),
             game: None,
             initial: None,
             initial_pos: 0,
@@ -56,24 +56,22 @@ fn escape_fades_to_the_menu_once() {
         r.on_key(LIERO_DK_ESCAPE as i32, false);
         assert_eq!((r.data.fade_value, r.data.going_to_menu), (31, true));
         drop((c, r));
-        crate::tc::liero_tc_free(tc);
     }
 }
 
 #[test]
 fn replays_are_named_after_four_characters_of_each_name() {
     let tc = tc();
-    let mut c = local(tc, ["Ab!cdef", "x-y z9"]);
+    let mut c = local(tc.clone(), ["Ab!cdef", "x-y z9"]);
     // No host, so no time.
     assert_eq!(unsafe { replay_name(c.game().unwrap()) }, b" Abc-xy.lrp");
     drop(c);
-    unsafe { crate::tc::liero_tc_free(tc) };
 }
 
 #[test]
 fn focus_starts_weapon_selection_and_sets_both_palettes() {
     let tc = tc();
-    let mut c = local(tc, ["a", "b"]);
+    let mut c = local(tc.clone(), ["a", "b"]);
     c.game().unwrap().level_box_mut().data_mut().origpal[200].r = 7;
     let a = app();
     a.play.data.origpal[200].r = 0;
@@ -83,25 +81,24 @@ fn focus_starts_weapon_selection_and_sets_both_palettes() {
     assert_eq!((a.play.data.origpal[200].r, a.single.data.origpal[200].r), (7, 7));
     assert_eq!((c.data.fade_value, c.data.going_to_menu), (0, false));
     drop(c);
-    unsafe { crate::tc::liero_tc_free(tc) };
 }
 
 #[test]
 fn the_stats_screen_shows_each_worm_facing_the_middle() {
     let tc = tc();
-    let mut c = local(tc, ["left", "right"]);
+    let mut c = local(tc.clone(), ["left", "right"]);
     let game = c.game().unwrap();
     game.settings_box().data.game_mode = 2;
     unsafe {
         let s = stats_scene(game, &app().play.data, &[]);
-        let sprites = &(*game.tc_data()).worm_sprites;
+        let tc = game.tc_data();
+        let sprites = &tc.worm_sprites;
         assert_eq!(s.worm_sprites[0].mem, sprites.frame(23));
         assert_eq!(s.worm_sprites[1].mem, sprites.frame(44));
         assert_eq!((s.names[0].bytes(), s.names[1].bytes()), (&b"left"[..], &b"right"[..]));
         assert_eq!((s.game_mode, s.game_mode_name.bytes()), (2, &b"Holdazone"[..]));
     }
     drop(c);
-    unsafe { crate::tc::liero_tc_free(tc) };
 }
 
 #[test]
@@ -113,13 +110,12 @@ fn r_rewinds_a_replay_to_its_start() {
     let tc = tc();
     unsafe {
         // A short game recorded.
-        let mut c = local(tc, ["a", "b"]);
+        let mut c = local(tc.clone(), ["a", "b"]);
         let game = c.game().unwrap();
         // Weapons, as weapon selection gives them.
-        let weapons = (*game.tc_data()).weapons;
         for w in game.listed_worms() {
             for (i, ww) in w.unwrap().data.weapons.iter_mut().enumerate() {
-                ww.kind = weapons.add(i).cast();
+                ww.kind = i as i32;
             }
         }
         let blood = game.settings_box().data.blood_particle_max;
@@ -159,14 +155,13 @@ fn r_rewinds_a_replay_to_its_start() {
             (0, 218)
         );
         drop(r);
-        crate::tc::liero_tc_free(tc);
     }
 }
 
 #[test]
 fn the_game_fades_in_to_fully_shown() {
     let tc = tc();
-    let mut c = local(tc, ["a", "b"]);
+    let mut c = local(tc.clone(), ["a", "b"]);
     unsafe {
         for _ in 0..40 {
             assert!(c.process());
@@ -180,5 +175,24 @@ fn the_game_fades_in_to_fully_shown() {
         assert!(!c.process());
     }
     drop(c);
-    unsafe { crate::tc::liero_tc_free(tc) };
+}
+
+#[test]
+fn f8_changes_the_tc_of_the_game_behind_the_menu() {
+    let tc = tc();
+    let mut c = local(tc.clone(), ["a", "b"]);
+    let ammo =
+        |c: &mut LieroController| -> Vec<i32> { c.game().unwrap().tc_data().weapons.iter().map(|w| w.ammo).collect() };
+    let before = ammo(&mut c);
+    crate::tc::liero_tc_randomize(&tc, 0);
+    let after = ammo(&mut c);
+    assert_ne!(after, before);
+    assert_eq!(
+        after,
+        crate::tc::tc_data(&tc)
+            .weapons
+            .iter()
+            .map(|w| w.ammo)
+            .collect::<Vec<_>>()
+    );
 }

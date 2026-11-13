@@ -2,19 +2,19 @@ use super::*;
 use crate::controllers::{liero_controller_is_replay, LieroController};
 use crate::fs::Node;
 use crate::settings::{liero_settings_box_new, LieroSettingsBox};
-use crate::tc::LieroTc;
+use crate::tc::SharedTc;
 
 thread_local! {
     static SETTINGS: *mut LieroSettingsBox = liero_settings_box_new();
-    static TC: *mut LieroTc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
+    static TC: SharedTc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
 }
 
 unsafe fn settings() -> *mut LieroSettingsBox {
     SETTINGS.with(|s| *s)
 }
 
-unsafe fn tc() -> *mut LieroTc {
-    TC.with(|t| *t)
+fn tc() -> SharedTc {
+    TC.with(|t| t.clone())
 }
 
 /// This thread's app with the menus' settings and the bundled TC, and a
@@ -24,8 +24,8 @@ fn set_up() -> &'static mut LieroApp {
     // SAFETY: the app takes references of its own.
     unsafe {
         crate::app::liero_app_set_settings(a, settings());
-        crate::app::liero_app_set_tc(a, tc());
     }
+    a.set_tc(Some(tc()));
     restart(a);
     a
 }

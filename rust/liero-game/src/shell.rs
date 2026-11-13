@@ -42,9 +42,9 @@ impl LieroApp {
 
         let node = self.files.tc_root.go(&self.menu_settings().tc);
         let loaded = crate::tc::load_checked(&node)?;
-        self.tc = Some(loaded);
-        let d = self.tc_data();
-        self.play.load_palette(d);
+        self.set_tc(Some(loaded));
+        let d = crate::app::menu_tc_data();
+        self.play.load_palette(&d);
         Ok(())
     }
 
@@ -85,7 +85,8 @@ pub unsafe fn liero_shell_play_sound(a: &LieroApp, mixer: *mut LieroMixer, sound
         if mixer.is_null() {
             return;
         }
-        LieroSoundOut { mixer, report: None }.play(a.tc_data(), sound, std::ptr::null_mut(), 0);
+        let tc = a.menu_tc();
+        LieroSoundOut { mixer, report: None }.play(&crate::tc::tc_data(&tc), sound, std::ptr::null_mut(), 0);
     }
 }
 
@@ -115,7 +116,7 @@ mod tests {
         assert_eq!(read(&format!("{dir}/liero.cfg")), LieroSettingsBox::defaults().text());
         assert_eq!(a.files.config.full_path(), format!("./{dir}").as_bytes());
         assert_eq!(a.menu_settings().tc, b"openliero");
-        assert!(a.tc.is_some());
+        assert!(a.has_tc());
     }
 
     #[test]

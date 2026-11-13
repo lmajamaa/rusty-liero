@@ -13,26 +13,15 @@ use crate::menu::{
 use crate::menu_screen::{LIERO_MENU_MAIN, LIERO_MENU_SETTINGS};
 use crate::menus::{liero_menus_box, liero_menus_cur, liero_menus_draw, liero_menus_set_cur, liero_menus_update_items};
 use crate::renderer::LieroRenderer;
-use crate::tc::{s as text, LieroTcData};
-use crate::text::LieroFont;
+use crate::tc::s as text;
 use crate::text::LieroStr;
-use crate::weapsel::{level_line, tc_font};
+use crate::weapsel::level_line;
 
 /// The main menu's items `menu_start` changes (`MainMenu`).
 const MAIN_RESUME_GAME: i32 = 0;
 const MAIN_NEW_GAME: i32 = 1;
 
 impl LieroApp {
-    /// The menus' TC's data.
-    pub(crate) fn tc_data(&self) -> &'static LieroTcData {
-        // SAFETY: C++ keeps the TC, which has its data, while it runs.
-        unsafe { &*crate::tc::liero_tc_data(&*self.menu_tc()) }
-    }
-
-    pub(crate) fn font(&self) -> LieroFont<'static> {
-        tc_font(self.tc_data())
-    }
-
     fn menus(&self) -> &'static mut crate::menus::LieroMenus {
         // SAFETY: C++ keeps the menus while it runs.
         unsafe { self.menus.as_mut().expect("no menus") }
@@ -63,8 +52,8 @@ fn set_string(b: &mut LieroMenuBox, id: i32, s: &str) {
 /// level's miniature on the spectator one. Returns the item F1 picks.
 pub(crate) fn menu_start() -> i32 {
     let a = app();
-    let tc = a.tc_data();
-    let font = a.font();
+    let tc = crate::app::menu_tc_data();
+    let font = crate::app::menu_font();
     let center_x = a.single.data.render_res_x / 2;
     let scr = a.play.bmp.view();
     liero_gfx_fill_rect(&scr, 0, 151, 160, 7, 0);
@@ -117,7 +106,7 @@ pub(crate) fn draw_basic_menu() {
         menus,
         LIERO_MENU_MAIN,
         &a.play.bmp.view(),
-        &a.font(),
+        &crate::app::menu_font(),
         disabled,
         -1,
         true,
@@ -131,10 +120,10 @@ pub(crate) fn draw_spectator_info() {
     let (cx, cy) = (a.single.data.render_res_x / 2, a.single.data.render_res_y / 4);
     a.single.bmp.copy_from(&a.frozen_spectator);
     let s = a.menu_settings();
-    let line = level_line(a.tc_data(), &s.level_file, &s.level_file);
+    let line = level_line(&crate::app::menu_tc_data(), &s.level_file, &s.level_file);
     let scr = app().single.bmp.view();
-    let font = a.font();
-    let w = &s.worms;
+    let font = crate::app::menu_font();
+    let w = [s.worms[0].borrow(), s.worms[1].borrow()];
     // SAFETY: the bitmap, font and texts are valid.
     unsafe {
         liero_menu_draw_versus(
@@ -161,7 +150,7 @@ pub(crate) fn draw_menus() {
     let a = app();
     let menus = a.menus();
     let cur = liero_menus_cur(menus);
-    let (scr, font) = (a.play.bmp.view(), a.font());
+    let (scr, font) = (a.play.bmp.view(), crate::app::menu_font());
     if cur == LIERO_MENU_MAIN {
         liero_menus_draw(menus, LIERO_MENU_SETTINGS, &scr, &font, true, -1, false);
     } else {
@@ -190,6 +179,7 @@ fn palette(r: &mut LieroRenderer, cycles: u32, s: &crate::settings::LieroSetting
     d.pal = d.origpal;
     liero_palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, cycles);
     for (i, w) in s.worms.iter().enumerate() {
+        let w = w.borrow();
         liero_palette_set_worm_colour(&mut d.pal, i as i32, w.data.color, &w.data.rgb);
     }
     liero_palette_fade(&mut d.pal, d.fade_value);

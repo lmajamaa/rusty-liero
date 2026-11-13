@@ -290,8 +290,8 @@ impl LieroMenus {
         &mut self.worm().data
     }
 
-    fn tc<'a>(&self) -> &'a LieroTcData {
-        crate::app::app().tc_data()
+    fn tc(&self) -> std::cell::Ref<'static, LieroTcData> {
+        crate::app::menu_tc_data()
     }
 
     /// `Gfx::loadMenus`: the items, added to what the menus have.
@@ -449,7 +449,7 @@ impl LieroMenus {
                 let ws = self.worm_data();
                 if (PL_WEAP0..PL_WEAP0 + 5).contains(&id) {
                     let slot = (id - PL_WEAP0) as usize;
-                    let count = self.tc().weapon_count as u32;
+                    let count = self.tc().weapons.len() as u32;
                     return Behavior::Weapon {
                         slot,
                         item: enumeration(&mut ws.weapons[slot], 1, count),
@@ -984,7 +984,10 @@ impl LieroMenus {
 
 /// `player`'s settings in the app's.
 fn worm_settings<'a>(player: i32) -> &'a mut LieroWormSettingsBox {
-    // SAFETY: the app's settings hold a reference to them.
+    // SAFETY: the app's settings hold them. The menus keep references into
+    // them between calls (`Behavior::Weapon`), which a `RefMut` can't, so
+    // they go around the `RefCell`; nothing else borrows them while the
+    // menus run, as the game behind the menu doesn't tick.
     unsafe { &mut *crate::app::app().menu_settings().worms[player as usize].as_ptr() }
 }
 
