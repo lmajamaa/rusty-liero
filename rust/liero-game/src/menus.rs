@@ -8,6 +8,7 @@
 //! is read and written in the app's settings when a key changes it. The
 //! window's double size and full screen are shown by the platform.
 
+use crate::app::LieroApp;
 use crate::boxes::{liero_input_box_screen, liero_key_choice_screen};
 use crate::gfx::LieroBitmap;
 use crate::item::{LieroItemAction, LieroItemBehavior};
@@ -20,10 +21,12 @@ use crate::menu::{
 use crate::menu_screen::{LIERO_MENU_HIDDEN, LIERO_MENU_MAIN, LIERO_MENU_PLAYER, LIERO_MENU_SETTINGS};
 use crate::screen::{current_host, BoxedScreen};
 use crate::settings::{LieroSettingsData, LieroWormSettingsBox};
-use crate::tc::{c, s, LieroTcData};
+use crate::tc::{c, s};
 use crate::text::{LieroFont, LieroStr};
 use crate::weapon_options::{liero_weapon_options_screen, LieroWeaponOptionsSpec};
+use std::cell::RefCell;
 use std::ffi::c_void;
+use std::rc::Rc;
 
 const SOUND_CHOICE: i32 = 27;
 
@@ -166,6 +169,9 @@ enum Then {
     Tc,
 }
 
+/// The app's menus, which the menu screen shares.
+pub type SharedMenus = Rc<RefCell<LieroMenus>>;
+
 struct Pending {
     kind: i32,
     then: Then,
@@ -264,19 +270,11 @@ impl LieroMenus {
         &mut self.menus[kind as usize].0
     }
 
-    fn settings(&self) -> std::cell::RefMut<'static, crate::settings::LieroSettingsBox> {
-        crate::app::menu_settings()
-    }
-
     /// Runs `f` on the player menu's worm's settings.
-    fn with_worm<R>(&self, f: impl FnOnce(&mut LieroWormSettingsBox) -> R) -> R {
-        let ws = self.settings().worms[self.player as usize].clone();
+    fn with_worm<R>(&self, app: &LieroApp, f: impl FnOnce(&mut LieroWormSettingsBox) -> R) -> R {
+        let ws = app.settings_mut().worms[self.player as usize].clone();
         let mut w = ws.borrow_mut();
         f(&mut w)
-    }
-
-    fn tc(&self) -> std::cell::Ref<'static, LieroTcData> {
-        crate::app::menu_tc_data()
     }
 
     /// `Gfx::loadMenus`: the items, added to what the menus have.
@@ -389,7 +387,7 @@ impl LieroMenus {
     }
 
     /// What `kind`'s item `i` does (`getItemBehavior`).
-    fn behavior(&mut self, kind: i32, i: usize) -> Behavior {
+    fn behavior(&mut self, app: &mut LieroApp, kind: i32, i: usize) -> Behavior {
         let id = self.menu(kind).ids[i];
         match kind {
             LIERO_MENU_MAIN => match id {
@@ -404,7 +402,7 @@ impl LieroMenus {
                 SI_LOADING_TIMES => number(integer(0, 9999, 1, true), |s| &mut s.loading_time),
                 SI_MAX_BONUSES => number(integer(0, 99, 1, false), |s| &mut s.max_bonuses),
                 SI_AMOUNT_OF_BLOOD => {
-                    let tc = self.tc();
+                    let tc = app.tc_data();
                     let mut b = integer(0, tc.constant(c("BloodLimit")), tc.constant(c("BloodStepUp")), true);
                     b.allow_entry = false;
                     number(b, |s| &mut s.blood)
@@ -473,35 +471,35 @@ impl LieroMenus {
     }
 
     /// The value `setting` has now.
-    fn get(&self, setting: Setting) -> i32 {
+    fn get(&self, app: &LieroApp, setting: Setting) -> i32 {
         match setting {
-            Setting::Flag(f) => i32::from(*f(&mut self.settings().data)),
-            Setting::Number(f) => *f(&mut self.settings().data),
-            Setting::Choice(f) => *f(&mut self.settings().data) as i32,
-            Setting::WormHealth => self.with_worm(|w| w.data.health),
-            Setting::WormRgb(i) => self.with_worm(|w| w.data.rgb[i]),
-            Setting::WormController => self.with_worm(|w| w.data.controller as i32),
-            Setting::WormWeapon(slot) => self.with_worm(|w| w.data.weapons[slot] as i32),
+            Setting::Flag(f) => i32::from(*f(&mut app.settings_mut().data)),
+            Setting::Number(f) => *f(&mut app.settings_mut().data),
+            Setting::Choice(f) => *f(&mut app.settings_mut().data) as i32,
+            Setting::WormHealth => self.with_worm(app, |w| w.data.health),
+            Setting::WormRgb(i) => self.with_worm(app, |w| w.data.rgb[i]),
+            Setting::WormController => self.with_worm(app, |w| w.data.controller as i32),
+            Setting::WormWeapon(slot) => self.with_worm(app, |w| w.data.weapons[slot] as i32),
             Setting::PaletteColor => self.palette_color,
-            Setting::DoubleRes => i32::from(crate::app::app().double_res),
-            Setting::Fullscreen => i32::from(self.settings().data.fullscreen),
+            Setting::DoubleRes => i32::from(app.double_res),
+            Setting::Fullscreen => i32::from(app.settings_mut().data.fullscreen),
         }
     }
 
     /// Changes `setting` to `v`.
-    fn set(&mut self, setting: Setting, v: i32) {
+    fn set(&mut self, app: &mut LieroApp, setting: Setting, v: i32) {
         match setting {
-            Setting::Flag(f) => *f(&mut self.settings().data) = v != 0,
-            Setting::Number(f) => *f(&mut self.settings().data) = v,
-            Setting::Choice(f) => *f(&mut self.settings().data) = v as u32,
-            Setting::WormHealth => self.with_worm(|w| w.data.health = v),
-            Setting::WormRgb(i) => self.with_worm(|w| w.data.rgb[i] = v),
-            Setting::WormController => self.with_worm(|w| w.data.controller = v as u32),
-            Setting::WormWeapon(slot) => self.with_worm(|w| w.data.weapons[slot] = v as u32),
+            Setting::Flag(f) => *f(&mut app.settings_mut().data) = v != 0,
+            Setting::Number(f) => *f(&mut app.settings_mut().data) = v,
+            Setting::Choice(f) => *f(&mut app.settings_mut().data) = v as u32,
+            Setting::WormHealth => self.with_worm(app, |w| w.data.health = v),
+            Setting::WormRgb(i) => self.with_worm(app, |w| w.data.rgb[i] = v),
+            Setting::WormController => self.with_worm(app, |w| w.data.controller = v as u32),
+            Setting::WormWeapon(slot) => self.with_worm(app, |w| w.data.weapons[slot] = v as u32),
             Setting::PaletteColor => self.palette_color = v,
             // The platform shows these; the options menu updates itself.
             Setting::DoubleRes => {
-                crate::app::app().double_res = v != 0;
+                app.double_res = v != 0;
                 current_host().set_double_res(v != 0);
             }
             // The platform sets it, if it has a window to show it in.
@@ -518,26 +516,26 @@ impl LieroMenus {
     }
 
     /// The player's profile file, if there is one.
-    fn profile_path(&self) -> Option<Vec<u8>> {
-        self.with_worm(|w| w.profile_path())
+    fn profile_path(&self, app: &LieroApp) -> Option<Vec<u8>> {
+        self.with_worm(app, |w| w.profile_path())
     }
 
     /// Shows item `i`'s value (`onUpdate`).
-    fn update(&mut self, kind: i32, i: usize, b: &Behavior) {
+    fn update(&mut self, app: &mut LieroApp, kind: i32, i: usize, b: &Behavior) {
         match b {
             Behavior::Weapon { slot } => {
                 // Shown by the weapon's name, in menu order.
-                let v = self.get(Setting::WormWeapon(*slot)) as usize;
-                let tc = self.tc();
+                let v = self.get(app, Setting::WormWeapon(*slot)) as usize;
+                let tc = app.tc_data();
                 let name = tc.weapon_name(tc.weapon_order()[v - 1] as usize).to_vec();
                 self.set_value(kind, i, name);
             }
             Behavior::Item(it, setting) => {
-                let v = it.value_text(self.get(*setting));
+                let v = it.value_text(self.get(app, *setting));
                 self.set_value(kind, i, v);
             }
             Behavior::Key { index, extended } => {
-                let k = self.with_worm(|w| {
+                let k = self.with_worm(app, |w| {
                     if *extended {
                         w.data.controls_ex[*index]
                     } else {
@@ -547,19 +545,19 @@ impl LieroMenus {
                 self.set_value(kind, i, key_name(k));
             }
             Behavior::WormName => {
-                let name = self.with_worm(|w| w.name.clone());
+                let name = self.with_worm(app, |w| w.name.clone());
                 self.set_value(kind, i, name);
             }
             Behavior::ProfileSave { save_as: false } => {
-                let has = self.profile_path().is_some();
+                let has = self.profile_path(app).is_some();
                 self.menu(kind).visible[i] = has;
             }
             Behavior::ProfileLoaded => {
-                let p = self.profile_path();
+                let p = self.profile_path(app);
                 self.set_value(kind, i, p.as_deref().map(base_name).unwrap_or_default());
                 self.menu(kind).visible[i] = p.is_some();
             }
-            Behavior::Level => self.update_level(kind, i),
+            Behavior::Level => self.update_level(app, kind, i),
             Behavior::OptionsSave => {
                 let name = base_name(&crate::app_files::settings_path());
                 self.set_value(kind, i, name);
@@ -569,9 +567,9 @@ impl LieroMenus {
     }
 
     /// The level item's value, and the regenerate item's name to go with it.
-    fn update_level(&mut self, kind: i32, i: usize) {
-        let st = self.settings();
-        let tc = self.tc();
+    fn update_level(&mut self, app: &mut LieroApp, kind: i32, i: usize) {
+        let st = app.settings_mut();
+        let tc = app.tc_data();
         let (value, regen) = if !st.data.random_level {
             let mut v = b"\"".to_vec();
             v.extend(base_name(&st.level_file));
@@ -587,14 +585,14 @@ impl LieroMenus {
     }
 
     /// `Menu::updateItems`: every item's value, then what the menu shows.
-    pub fn update_items(&mut self, kind: i32) {
+    pub fn update_items(&mut self, app: &mut LieroApp, kind: i32) {
         for i in 0..self.menu(kind).len() {
-            let b = self.behavior(kind, i);
-            self.update(kind, i, &b);
+            let b = self.behavior(app, kind, i);
+            self.update(app, kind, i, &b);
         }
         if kind == LIERO_MENU_SETTINGS {
             // `SettingsMenu::onUpdate`: the game mode's own items.
-            let mode = self.settings().data.game_mode;
+            let mode = app.settings_mut().data.game_mode;
             let shown: &[i32] = match mode {
                 0 | 3 => &[SI_LIVES],
                 1 => &[SI_TIME_TO_LOSE],
@@ -627,61 +625,68 @@ impl LieroMenus {
     }
 
     /// Left or right on the selected item. False to stop repeating it.
-    pub fn left_right(&mut self, kind: i32, dir: i32) -> bool {
+    pub fn left_right(&mut self, app: &mut LieroApp, kind: i32, dir: i32) -> bool {
         let Some(i) = self.selection(kind) else { return false };
-        let b = self.behavior(kind, i);
+        let b = self.behavior(app, kind, i);
         let (it, setting) = match &b {
             Behavior::Item(it, setting) => (*it, *setting),
-            Behavior::Weapon { slot } => (self.weapon_item(), Setting::WormWeapon(*slot)),
+            Behavior::Weapon { slot } => (self.weapon_item(app), Setting::WormWeapon(*slot)),
             _ => return true,
         };
-        let a = self.change(&it, setting, |it, v| {
-            it.left_right(v, dir, crate::app::app().menu_cycles)
-        });
+        let cycles = app.menu_cycles;
+        let a = self.change(app, &it, setting, |it, v| it.left_right(v, dir, cycles));
         // Left and right never open the number box.
-        let _ = self.apply(kind, i, &b, a);
+        let _ = self.apply(app, kind, i, &b, a);
         a.keep_going
     }
 
     /// A player's weapon: one of the TC's, shown by name.
-    fn weapon_item(&self) -> LieroItemBehavior<'static> {
-        LieroItemBehavior::enumeration(1, self.tc().weapons.len() as i32, &[])
+    fn weapon_item(&self, app: &LieroApp) -> LieroItemBehavior<'static> {
+        LieroItemBehavior::enumeration(1, app.tc_data().weapons.len() as i32, &[])
     }
 
     /// Runs a key on item `it`, which edits `setting`, and writes the
     /// value it gives back if it changed.
     fn change(
         &mut self,
+        app: &mut LieroApp,
         it: &LieroItemBehavior,
         setting: Setting,
         key: impl FnOnce(&LieroItemBehavior, i32) -> (i32, LieroItemAction),
     ) -> LieroItemAction {
-        let v = self.get(setting);
+        let v = self.get(app, setting);
         let (new_v, a) = key(it, v);
         if new_v != v {
-            self.set(setting, new_v);
+            self.set(app, setting, new_v);
         }
         a
     }
 
     /// Does what a switch, number or enum asked: show its value, update
     /// the menu or open the number box.
-    fn apply(&mut self, kind: i32, i: usize, b: &Behavior, a: LieroItemAction) -> Option<BoxedScreen> {
+    fn apply(
+        &mut self,
+        app: &mut LieroApp,
+        kind: i32,
+        i: usize,
+        b: &Behavior,
+        a: LieroItemAction,
+    ) -> Option<BoxedScreen> {
         if a.update_item {
-            self.update(kind, i, b);
+            self.update(app, kind, i, b);
         }
         // The window's switches show in other items too (`setFullscreen`
         // and `setDoubleRes` update the menu).
         let id = self.menu(kind).ids[i];
         if a.update_menu || (kind == LIERO_MENU_HIDDEN && a.update_item && (id == HM_DOUBLE_RES || id == HM_FULLSCREEN))
         {
-            self.update_items(kind);
+            self.update_items(app, kind);
         }
         if a.enter_digits > 0 {
             let (x, y) = self.menu(kind).item_position(i as i32)?;
             let x = x + self.menu(kind).m.value_offset_x;
             let Behavior::Item(_, setting) = b else { return None };
-            let text = self.get(*setting).to_string().into_bytes();
+            let text = self.get(app, *setting).to_string().into_bytes();
             return Some(self.input(
                 kind,
                 Then::Integer { item: i as i32 },
@@ -735,25 +740,25 @@ impl LieroMenus {
     }
 
     /// A file selector.
-    fn selector(&mut self, kind: i32, then: Then, selector: i32) -> Option<BoxedScreen> {
+    fn selector(&mut self, _app: &mut LieroApp, kind: i32, then: Then, selector: i32) -> Option<BoxedScreen> {
         let screen = crate::app_files::open_selector(selector, self.player);
         Some(self.open(kind, then, screen))
     }
 
     /// Enter on the selected item (`onEnter`): what it chose, or -1, and
     /// the screen it opened, if any.
-    pub fn enter(&mut self, kind: i32) -> (i32, Option<BoxedScreen>) {
+    pub fn enter(&mut self, app: &mut LieroApp, kind: i32) -> (i32, Option<BoxedScreen>) {
         let Some(i) = self.selection(kind) else {
             return (0, None);
         };
-        let b = self.behavior(kind, i);
+        let b = self.behavior(app, kind, i);
         let host = current_host();
         let sound = || host.play_sound(SOUND_CHOICE);
         let opened = match b {
             Behavior::None | Behavior::ProfileLoaded => None,
             Behavior::Item(it, setting) => {
-                let a = self.change(&it, setting, |it, v| it.enter(v));
-                self.apply(kind, i, &b, a)
+                let a = self.change(app, &it, setting, |it, v| it.enter(v));
+                self.apply(app, kind, i, &b, a)
             }
             Behavior::Key { index, extended } => {
                 sound();
@@ -762,11 +767,11 @@ impl LieroMenus {
             }
             Behavior::WormName => {
                 sound();
-                self.with_worm(|w| w.data.random_name = false);
+                self.with_worm(app, |w| w.data.random_name = false);
                 match self.value_position(kind, i) {
                     None => None,
                     Some((x, y)) => {
-                        let name = self.with_worm(|w| w.name.clone());
+                        let name = self.with_worm(app, |w| w.name.clone());
                         Some(self.input(kind, Then::WormName { item: i as i32 }, &name, 20, x, y, false))
                     }
                 }
@@ -777,8 +782,8 @@ impl LieroMenus {
                     None => None,
                     Some((x, y)) if save_as => Some(self.input(kind, Then::ProfileSaveAs, b"", 30, x, y, false)),
                     Some(_) => {
-                        if self.with_worm(|w| w.save_to_profile()) {
-                            self.update_items(kind);
+                        if self.with_worm(app, |w| w.save_to_profile()) {
+                            self.update_items(app, kind);
                         }
                         None
                     }
@@ -791,15 +796,15 @@ impl LieroMenus {
             }
             Behavior::ProfileLoad => {
                 sound();
-                self.selector(kind, Then::SoundAndUpdate, LIERO_SELECTOR_PROFILE)
+                self.selector(app, kind, Then::SoundAndUpdate, LIERO_SELECTOR_PROFILE)
             }
             Behavior::Level => {
                 sound();
-                self.selector(kind, Then::Level { item: i as i32 }, LIERO_SELECTOR_LEVEL)
+                self.selector(app, kind, Then::Level { item: i as i32 }, LIERO_SELECTOR_LEVEL)
             }
             Behavior::WeaponOptions => {
                 sound();
-                let screen = self.weapon_options();
+                let screen = self.weapon_options(app);
                 Some(self.open(kind, Then::Sound, screen))
             }
             Behavior::OptionsSave => {
@@ -814,23 +819,23 @@ impl LieroMenus {
             }
             Behavior::OptionsSelect => {
                 sound();
-                self.selector(kind, Then::SoundAndUpdate, LIERO_SELECTOR_OPTIONS)
+                self.selector(app, kind, Then::SoundAndUpdate, LIERO_SELECTOR_OPTIONS)
             }
             Behavior::ReplaySelect => {
                 sound();
-                self.selector(kind, Then::Replay, LIERO_SELECTOR_REPLAY)
+                self.selector(app, kind, Then::Replay, LIERO_SELECTOR_REPLAY)
             }
             Behavior::TcSelect => {
                 sound();
-                self.selector(kind, Then::Tc, LIERO_SELECTOR_TC)
+                self.selector(app, kind, Then::Tc, LIERO_SELECTOR_TC)
             }
         };
         (-1, opened)
     }
 
     /// The weapon options screen, on the settings' weapon table.
-    fn weapon_options(&mut self) -> BoxedScreen {
-        let tc = self.tc();
+    fn weapon_options(&mut self, app: &mut LieroApp) -> BoxedScreen {
+        let tc = app.tc_data();
         let order = tc.weapon_order();
         let weapons: Vec<LieroStr> = order.iter().map(|&w| lstr(tc.weapon_name(w as usize))).collect();
         let states = names(&WEAPON_STATES);
@@ -838,7 +843,7 @@ impl LieroMenus {
             names: weapons.as_ptr(),
             order: order.as_ptr(),
             count: weapons.len(),
-            weap_table: self.settings().data.weap_table.as_mut_ptr(),
+            weap_table: app.settings_mut().data.weap_table.as_mut_ptr(),
             states: states.as_ptr(),
             state_count: states.len(),
             weapon_title: lstr(tc.text(s("Weapon"))),
@@ -850,7 +855,7 @@ impl LieroMenus {
 
     /// The screen the last item opened closed with `result`: what the item
     /// does with it, and what it chose, or -1.
-    pub fn then(&mut self, result: i32) -> i32 {
+    pub fn then(&mut self, app: &mut LieroApp, result: i32) -> i32 {
         let Some(Pending { kind, then, typed }) = self.pending.take() else {
             return -1;
         };
@@ -862,7 +867,7 @@ impl LieroMenus {
             Then::Key { item, index } => {
                 let k = result as u32;
                 if k != LIERO_DK_ESCAPE {
-                    self.with_worm(|w| {
+                    self.with_worm(app, |w| {
                         let ws = &mut w.data;
                         // Dig has only an extended control (`PlDig`'s
                         // `KeyBehavior` binds `controlsEx` twice).
@@ -871,68 +876,70 @@ impl LieroMenus {
                         }
                         ws.controls_ex[index] = k;
                     });
-                    let b = self.behavior(kind, item as usize);
-                    self.update(kind, item as usize, &b);
+                    let b = self.behavior(app, kind, item as usize);
+                    self.update(app, kind, item as usize, &b);
                 }
                 host.clear_keys();
             }
             Then::WormName { item } => {
                 if ok {
-                    self.with_worm(|w| w.name = typed);
+                    self.with_worm(app, |w| w.name = typed);
                 }
                 // An empty name stays empty: `Settings::generateName` does
                 // nothing.
                 sound();
-                let b = self.behavior(kind, item as usize);
-                self.update(kind, item as usize, &b);
+                let b = self.behavior(app, kind, item as usize);
+                self.update(app, kind, item as usize, &b);
             }
             Then::ProfileSaveAs => {
                 if ok && !typed.is_empty() {
                     crate::app_files::save_profile_as(self.player, &typed);
                 }
                 sound();
-                self.update_items(kind);
+                self.update_items(app, kind);
             }
             Then::WeaponSearch { slot } => {
                 if ok {
-                    let tc = self.tc();
-                    let order = tc.weapon_order();
-                    let names: Vec<LieroStr> = order.iter().map(|&w| lstr(tc.weapon_name(w as usize))).collect();
-                    let closest = unsafe {
-                        liero_menu_closest_name(names.as_ptr(), names.len() as i32, typed.as_ptr(), typed.len())
+                    let closest = {
+                        let tc = app.tc_data();
+                        let order = tc.weapon_order();
+                        let names: Vec<LieroStr> = order.iter().map(|&w| lstr(tc.weapon_name(w as usize))).collect();
+                        unsafe {
+                            liero_menu_closest_name(names.as_ptr(), names.len() as i32, typed.as_ptr(), typed.len())
+                        }
                     };
                     if closest >= 0 {
-                        self.set(Setting::WormWeapon(slot), 1 + closest);
+                        self.set(app, Setting::WormWeapon(slot), 1 + closest);
                     }
-                    self.update_items(kind);
+                    self.update_items(app, kind);
                 }
             }
             Then::Integer { item } => {
-                let b = self.behavior(kind, item as usize);
+                let b = self.behavior(app, kind, item as usize);
                 if let Behavior::Item(it, setting) = &b {
                     if ok && !typed.is_empty() {
                         let v = atoi(&typed).clamp(it.min, it.max);
-                        self.set(*setting, v);
+                        self.set(app, *setting, v);
                     }
                 }
-                self.update(kind, item as usize, &b);
+                self.update(app, kind, item as usize, &b);
             }
             Then::OptionsSave { item } => {
                 if ok && !typed.is_empty() {
                     crate::app_files::save_options(&typed);
                 }
                 sound();
-                let b = self.behavior(kind, item as usize);
-                self.update(kind, item as usize, &b);
+                let b = self.behavior(app, kind, item as usize);
+                self.update(app, kind, item as usize, &b);
             }
             Then::Level { item } => {
                 sound();
-                self.update_level(kind, item as usize);
+                self.update_level(app, kind, item as usize);
             }
             Then::Sound => sound(),
             Then::SoundAndUpdate => {
                 sound();
-                self.update_items(kind);
+                self.update_items(app, kind);
             }
             Then::Replay => {
                 sound();
@@ -948,20 +955,20 @@ impl LieroMenus {
     }
 
     /// Opens the player menu on `player`'s settings (`Gfx::playerSettings`).
-    pub fn player_settings(&mut self, player: i32) {
+    pub fn player_settings(&mut self, app: &mut LieroApp, player: i32) {
         self.player = player;
-        self.update_items(LIERO_MENU_PLAYER);
+        self.update_items(app, LIERO_MENU_PLAYER);
         self.menu(LIERO_MENU_PLAYER).move_to(0);
         self.cur = LIERO_MENU_PLAYER;
     }
 
     /// `Gfx::openHiddenMenu`.
-    pub fn open_hidden(&mut self) {
+    pub fn open_hidden(&mut self, app: &mut LieroApp) {
         if self.cur == LIERO_MENU_HIDDEN {
             return;
         }
         self.cur = LIERO_MENU_HIDDEN;
-        self.update_items(LIERO_MENU_HIDDEN);
+        self.update_items(app, LIERO_MENU_HIDDEN);
         self.menu(LIERO_MENU_HIDDEN).move_to(0);
     }
 
@@ -979,20 +986,31 @@ impl LieroMenus {
 
     /// Draws `kind`, with the player menu's colour bars and the options
     /// menu's palette entry.
-    fn draw(&mut self, kind: i32, scr: &LieroBitmap, font: &LieroFont, disabled: bool, x: i32, show: bool) {
+    #[allow(clippy::too_many_arguments)]
+    fn draw(
+        &mut self,
+        app: &LieroApp,
+        kind: i32,
+        scr: &LieroBitmap,
+        font: &LieroFont,
+        disabled: bool,
+        x: i32,
+        show: bool,
+    ) {
         struct Ctx<'a> {
             ids: Vec<i32>,
             kind: i32,
             scr: LieroBitmap<'a>,
             player: i32,
             palette_color: i32,
+            settings: crate::settings::SharedSettings,
         }
         unsafe fn overlay(ctx: *mut c_void, item: i32, x: i32, y: i32, selected: bool, _disabled: bool) {
             unsafe {
                 let c = &*(ctx as *const Ctx);
                 let id = c.ids[item as usize];
                 if c.kind == LIERO_MENU_PLAYER && (PL_RED..=PL_BLUE).contains(&id) {
-                    let ws = crate::app::menu_settings().worms[c.player as usize].clone();
+                    let ws = c.settings.borrow().worms[c.player as usize].clone();
                     let ws = &ws.borrow().data;
                     liero_menu_draw_rgb_overlay(&c.scr, x, y, selected, ws.rgb[(id - PL_RED) as usize], ws.color);
                 } else if c.kind == LIERO_MENU_HIDDEN && id == HM_PALETTE_SELECT {
@@ -1006,6 +1024,7 @@ impl LieroMenus {
             scr: *scr,
             player: self.player,
             palette_color: self.palette_color,
+            settings: app.shared_settings(),
         };
         let hooks = LieroMenuHooks {
             ctx: &ctx as *const Ctx as *mut c_void,
@@ -1025,8 +1044,8 @@ fn atoi(s: &[u8]) -> i32 {
 }
 
 /// The menus, empty (`Menu(x, y)` for each).
-pub fn liero_menus_new() -> *mut LieroMenus {
-    Box::into_raw(Box::new(LieroMenus::new()))
+pub fn liero_menus_new() -> SharedMenus {
+    Rc::new(RefCell::new(LieroMenus::new()))
 }
 
 /// Empties the menus, as they were made, keeping their addresses.
@@ -1058,25 +1077,22 @@ pub fn liero_menus_set_cur(m: &mut LieroMenus, kind: i32) {
     m.cur = kind;
 }
 
-pub fn liero_menus_player_settings(m: &mut LieroMenus, player: i32) {
-    m.player_settings(player);
+pub fn liero_menus_player_settings(m: &mut LieroMenus, app: &mut LieroApp, player: i32) {
+    m.player_settings(app, player);
 }
 
-pub fn liero_menus_update_items(m: &mut LieroMenus, kind: i32) {
-    m.update_items(kind);
+pub fn liero_menus_update_items(m: &mut LieroMenus, app: &mut LieroApp, kind: i32) {
+    m.update_items(app, kind);
 }
 
-pub fn liero_menus_left_right(m: &mut LieroMenus, kind: i32, dir: i32) -> bool {
-    m.left_right(kind, dir)
+pub fn liero_menus_left_right(m: &mut LieroMenus, app: &mut LieroApp, kind: i32, dir: i32) -> bool {
+    m.left_right(app, kind, dir)
 }
 
 /// Enter on `kind`'s selected item. A screen it opened is dropped: the menu
 /// checks only press items that open none.
-///
-/// # Safety
-/// The menus' hooks, which the item may call, are valid.
-pub unsafe fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 {
-    let (r, opened) = m.enter(kind);
+pub fn liero_menus_enter(m: &mut LieroMenus, app: &mut LieroApp, kind: i32) -> i32 {
+    let (r, opened) = m.enter(app, kind);
     if let Some(s) = opened {
         drop(s);
         m.pending = None;
@@ -1084,8 +1100,10 @@ pub unsafe fn liero_menus_enter(m: &mut LieroMenus, kind: i32) -> i32 {
     r
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn liero_menus_draw(
     m: &mut LieroMenus,
+    app: &LieroApp,
     kind: i32,
     scr: &LieroBitmap,
     font: &LieroFont,
@@ -1093,12 +1111,13 @@ pub fn liero_menus_draw(
     x: i32,
     show_disabled_selection: bool,
 ) {
-    m.draw(kind, scr, font, disabled, x, show_disabled_selection);
+    m.draw(app, kind, scr, font, disabled, x, show_disabled_selection);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::app;
 
     #[test]
     fn base_names() {
@@ -1129,7 +1148,7 @@ mod tests {
 
     /// The player menu's worm's settings.
     fn worm(m: &LieroMenus) -> crate::settings::SharedWormSettings {
-        m.settings().worms[m.player as usize].clone()
+        app().settings_mut().worms[m.player as usize].clone()
     }
 
     fn select(m: &mut LieroMenus, kind: i32, id: i32) -> usize {
@@ -1155,22 +1174,22 @@ mod tests {
             (ws.controls[1], ws.controls_ex[1])
         };
 
-        let (r, opened) = m.enter(LIERO_MENU_PLAYER);
+        let (r, opened) = m.enter(app(), LIERO_MENU_PLAYER);
         assert_eq!(r, -1);
         drop(opened.expect("key choice"));
         assert!(is_extended(177));
-        m.then(177);
+        m.then(app(), 177);
         assert_eq!(keys(), (30, 177));
 
-        let (_, opened) = m.enter(LIERO_MENU_PLAYER);
+        let (_, opened) = m.enter(app(), LIERO_MENU_PLAYER);
         drop(opened.unwrap());
-        m.then(31);
+        m.then(app(), 31);
         assert_eq!(keys(), (31, 31));
 
         // Escape keeps the key.
-        let (_, opened) = m.enter(LIERO_MENU_PLAYER);
+        let (_, opened) = m.enter(app(), LIERO_MENU_PLAYER);
         drop(opened.unwrap());
-        m.then(LIERO_DK_ESCAPE as i32);
+        m.then(app(), LIERO_DK_ESCAPE as i32);
         assert_eq!(keys(), (31, 31));
     }
 
@@ -1182,11 +1201,11 @@ mod tests {
             select(&mut m, LIERO_MENU_PLAYER, PL_DIG);
             let w = worm(&m);
             let before = w.borrow().data.controls;
-            let (_, opened) = m.enter(LIERO_MENU_PLAYER);
+            let (_, opened) = m.enter(app(), LIERO_MENU_PLAYER);
             drop(opened.expect("key choice"));
             // C, which has a DOS key.
             assert!(!is_extended(46));
-            m.then(46);
+            m.then(app(), 46);
             let ws = &w.borrow().data;
             assert_eq!((ws.controls, ws.controls_ex[7]), (before, 46));
         }
@@ -1197,19 +1216,19 @@ mod tests {
         let mut m = menus();
         let i = select(&mut m, LIERO_MENU_SETTINGS, SI_LIVES);
         for (typed, lives) in [(&b"5000"[..], 999), (b"0", 1), (b"12", 12)] {
-            let (_, opened) = m.enter(LIERO_MENU_SETTINGS);
+            let (_, opened) = m.enter(app(), LIERO_MENU_SETTINGS);
             drop(opened.expect("number box"));
             *m.pending.as_mut().unwrap().typed = typed.to_vec();
-            assert_eq!(m.then(1), -1);
-            assert_eq!(m.settings().data.lives, lives);
+            assert_eq!(m.then(app(), 1), -1);
+            assert_eq!(app().settings_mut().data.lives, lives);
             assert_eq!(value(&mut m, LIERO_MENU_SETTINGS, i), lives.to_string().into_bytes());
         }
         // Escape keeps the number.
-        let (_, opened) = m.enter(LIERO_MENU_SETTINGS);
+        let (_, opened) = m.enter(app(), LIERO_MENU_SETTINGS);
         drop(opened.unwrap());
         *m.pending.as_mut().unwrap().typed = b"7".to_vec();
-        m.then(0);
-        assert_eq!(m.settings().data.lives, 12);
+        m.then(app(), 0);
+        assert_eq!(app().settings_mut().data.lives, 12);
     }
 
     #[test]
@@ -1221,7 +1240,7 @@ mod tests {
         let mut steps = Vec::new();
         for cycle in 1..=12 {
             crate::app::app().menu_cycles = cycle;
-            assert!(m.left_right(LIERO_MENU_PLAYER, -1));
+            assert!(m.left_right(app(), LIERO_MENU_PLAYER, -1));
             steps.push(start - worm(&m).borrow().data.health);
         }
         assert_eq!(steps, [0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3]);
@@ -1232,8 +1251,8 @@ mod tests {
         let mut m = menus();
         let frames = m.index_of(LIERO_MENU_HIDDEN, HM_AI_FRAMES).unwrap();
         select(&mut m, LIERO_MENU_HIDDEN, HM_DOUBLE_RES);
-        m.settings().data.ai_frames = 123;
-        m.left_right(LIERO_MENU_HIDDEN, 1);
+        app().settings_mut().data.ai_frames = 123;
+        m.left_right(app(), LIERO_MENU_HIDDEN, 1);
         assert!(crate::app::app().double_res);
         assert_eq!(value(&mut m, LIERO_MENU_HIDDEN, frames), b"123");
     }

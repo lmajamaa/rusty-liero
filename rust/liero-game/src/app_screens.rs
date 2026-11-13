@@ -246,7 +246,7 @@ impl Screen for MainScreen {
         // The level, or the game left off, behind the menu.
         draw(app, false);
         self.open = Open::InMenu;
-        Tick::push(liero_menu_screen(app.menus))
+        Tick::push(liero_menu_screen(app.shared_menus()))
     }
 
     fn resume(&mut self, _app: &mut LieroApp, _host: &Host, result: i32) {

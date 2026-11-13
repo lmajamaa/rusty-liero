@@ -222,9 +222,9 @@ impl Host {
     }
     /// The frozen screen with the main menu over it, greyed out while
     /// another menu is up (`Gfx::drawBasicMenu`).
-    pub fn draw_basic_menu(&self) {
+    pub fn draw_basic_menu(&self, app: &mut LieroApp) {
         if self.0.app_drawing() {
-            crate::app_menus::draw_basic_menu();
+            crate::app_menus::draw_basic_menu(app);
         }
     }
     pub fn test_key_once(&self, scancode: u32) -> bool {
@@ -238,9 +238,9 @@ impl Host {
     }
     /// Fades the menus in and cycles their colours, once a frame
     /// (`Gfx::menuFade`).
-    pub fn menu_fade(&self) {
+    pub fn menu_fade(&self, app: &mut LieroApp) {
         if self.0.app_drawing() {
-            crate::app_menus::menu_fade(false);
+            crate::app_menus::menu_fade(app, false);
         }
     }
     pub fn time(&self) -> i64 {

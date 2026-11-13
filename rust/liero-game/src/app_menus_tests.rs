@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::app;
 use crate::controller::LIERO_STATE_GAME;
 use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::fs::Node;
@@ -17,9 +18,9 @@ fn set_up() -> &'static mut LieroApp {
             crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
         ));
     }
-    if a.menus.is_null() {
+    if a.menus.is_none() {
         let menus = liero_menus_new();
-        crate::menus::liero_menus_load(unsafe { &mut *menus });
+        crate::menus::liero_menus_load(&mut menus.borrow_mut());
         crate::app::liero_app_set_menus(a, menus);
     }
     a.play.set_render_resolution(320, 200);
@@ -38,7 +39,7 @@ fn the_menu_starts_black_with_the_levels_miniature_behind_it() {
     a.play.data.fade_value = 20;
     a.single.data.fade_value = 20;
     a.menu_cycles = 9;
-    menu_start();
+    menu_start(a);
     assert_eq!(
         (a.play.data.fade_value, a.single.data.fade_value, a.menu_cycles),
         (0, 0, 0)
@@ -70,11 +71,11 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
         a.single.bmp.pixels() == before
     };
 
-    draw_spectator_info();
+    draw_spectator_info(a);
     assert!(shows(a, b"SETUP") && !shows(a, b"PAUSED"));
 
     unsafe { (*liero_controller_data(a.controller.as_deref_mut().unwrap())).state = LIERO_STATE_GAME };
-    draw_spectator_info();
+    draw_spectator_info(a);
     assert!(shows(a, b"PAUSED") && !shows(a, b"SETUP"));
     a.controller = None;
 }

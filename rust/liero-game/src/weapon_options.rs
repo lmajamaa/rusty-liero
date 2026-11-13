@@ -119,7 +119,7 @@ impl WeaponOptions {
 }
 
 impl Screen for WeaponOptions {
-    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         // Back from the message: it read the events.
         if self.shown && !self.resumed {
             host.process();
@@ -136,7 +136,7 @@ impl Screen for WeaponOptions {
         }
         self.resumed = false;
 
-        host.draw_basic_menu();
+        host.draw_basic_menu(app);
         self.draw(host);
 
         if host.test_key_once(SCANCODE_UP) {
@@ -163,7 +163,7 @@ impl Screen for WeaponOptions {
         }
         self.menu.on_keys(host, false);
 
-        host.menu_fade();
+        host.menu_fade(app);
         self.shown = true;
         Tick::stay(true)
     }

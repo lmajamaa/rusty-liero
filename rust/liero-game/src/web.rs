@@ -20,7 +20,7 @@ use crate::controllers::liero_controller_on_key;
 use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, LieroColor};
 use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, LieroKeyChanges};
 use crate::menu_screen::LIERO_MENU_HIDDEN;
-use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items};
+use crate::menus::{liero_menus_load, liero_menus_new};
 use crate::screen::{
     liero_app_frame, liero_app_push, liero_screen_set_host, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack,
 };
@@ -428,7 +428,7 @@ fn set_fullscreen(on: bool, update_menu: bool) {
     show_fullscreen(on);
     if update_menu {
         // SAFETY: the app's menus live as long as it does.
-        liero_menus_update_items(unsafe { &mut *a.menus }, LIERO_MENU_HIDDEN);
+        a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
     }
 }
 
@@ -454,7 +454,7 @@ fn on_fullscreen_change() {
     if !shown && crate::shell::liero_shell_fullscreen(a) {
         crate::shell::liero_shell_set_fullscreen(a, false);
         // SAFETY: the app's menus live as long as it does.
-        liero_menus_update_items(unsafe { &mut *a.menus }, LIERO_MENU_HIDDEN);
+        a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
     }
 }
 
@@ -807,10 +807,9 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     // TODO from the C++: better seeding.
     a.rand.seed((js_sys::Date::now() / 1000.0) as u32);
     let menus = liero_menus_new();
+    liero_menus_load(&mut menus.borrow_mut());
     a.primary_single = false;
     crate::app::liero_app_set_menus(a, menus);
-    // SAFETY: just made.
-    liero_menus_load(unsafe { &mut *menus });
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
     // The browser can close the tab at any time, so the menu saves liero.cfg

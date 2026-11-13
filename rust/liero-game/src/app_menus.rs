@@ -3,7 +3,7 @@
 //! game behind the menus, who plays whom on the spectator screen, and the
 //! menus' palettes fading in and cycling.
 
-use crate::app::{app, LieroApp};
+use crate::app::LieroApp;
 use crate::controllers::{liero_controller_level, liero_controller_running};
 use crate::gfx::{liero_gfx_fill_rect, liero_palette_fade, liero_palette_rotate_from, liero_palette_set_worm_colour};
 use crate::menu::{
@@ -11,7 +11,7 @@ use crate::menu::{
     liero_menu_box_set_visibility, liero_menu_draw_versus, LieroMenuBox,
 };
 use crate::menu_screen::{LIERO_MENU_MAIN, LIERO_MENU_SETTINGS};
-use crate::menus::{liero_menus_box, liero_menus_cur, liero_menus_draw, liero_menus_set_cur, liero_menus_update_items};
+use crate::menus::liero_menus_draw;
 use crate::renderer::LieroRenderer;
 use crate::tc::s as text;
 use crate::text::LieroStr;
@@ -22,15 +22,10 @@ const MAIN_RESUME_GAME: i32 = 0;
 const MAIN_NEW_GAME: i32 = 1;
 
 impl LieroApp {
-    fn menus(&self) -> &'static mut crate::menus::LieroMenus {
-        // SAFETY: C++ keeps the menus while it runs.
-        unsafe { self.menus.as_mut().expect("no menus") }
-    }
-
     // Clippy's suggestion, passing the function, doesn't compile: an
     // `extern "C"` fn isn't a Rust closure over the reference.
     #[allow(clippy::redundant_closure)]
-    fn running(&mut self) -> bool {
+    fn running(&self) -> bool {
         self.controller.as_deref().is_some_and(|c| liero_controller_running(c))
     }
 }
@@ -43,24 +38,23 @@ fn index_of(b: &LieroMenuBox, id: i32) -> i32 {
 }
 
 fn set_string(b: &mut LieroMenuBox, id: i32, s: &str) {
-    // SAFETY: the text outlives the call, which copies it.
     liero_menu_box_set_string(b, index_of(b, id), s.as_bytes());
 }
 
 /// Sets the menus up for the main menu screen (`Gfx::menuStart`): the
 /// copyright line, resume or new game first, the frozen screens with the
 /// level's miniature on the spectator one. Returns the item F1 picks.
-pub(crate) fn menu_start() -> i32 {
-    let a = app();
-    let tc = crate::app::menu_tc_data();
-    let font = crate::app::menu_font();
+pub(crate) fn menu_start(a: &mut LieroApp) -> i32 {
     let center_x = a.single.data.render_res_x / 2;
-    let scr = a.play.bmp.view();
-    liero_gfx_fill_rect(&scr, 0, 151, 160, 7, 0);
-    font.text(&scr, tc.text(text("Copyright2")), 2, 152, 19, 1);
+    {
+        let scr = a.play.bmp.view();
+        liero_gfx_fill_rect(&scr, 0, 151, 160, 7, 0);
+        a.font().text(&scr, a.tc_data().text(text("Copyright2")), 2, 152, 19, 1);
+    }
 
-    let menus = a.menus();
-    let main = unsafe { &mut *liero_menus_box(menus, LIERO_MENU_MAIN) };
+    let menus = a.shared_menus();
+    let mut menus = menus.borrow_mut();
+    let main = menus.box_of(LIERO_MENU_MAIN);
     let start = if a.running() {
         liero_menu_box_set_visibility(main, index_of(main, MAIN_RESUME_GAME), true);
         set_string(main, MAIN_RESUME_GAME, "RESUME GAME (F1)");
@@ -72,13 +66,13 @@ pub(crate) fn menu_start() -> i32 {
         MAIN_NEW_GAME
     };
 
-    liero_menu_box_move_to(main, 0);
-    liero_menu_box_move_to(unsafe { &mut *liero_menus_box(menus, LIERO_MENU_SETTINGS) }, 0);
-    liero_menus_update_items(menus, LIERO_MENU_SETTINGS);
+    liero_menu_box_move_to(menus.box_of(LIERO_MENU_MAIN), 0);
+    liero_menu_box_move_to(menus.box_of(LIERO_MENU_SETTINGS), 0);
+    menus.update_items(a, LIERO_MENU_SETTINGS);
 
     a.play.data.fade_value = 0;
     a.single.data.fade_value = 0;
-    liero_menus_set_cur(menus, LIERO_MENU_MAIN);
+    menus.set_cur(LIERO_MENU_MAIN);
 
     a.frozen.copy_from(&a.play.bmp);
     a.single.clear();
@@ -97,16 +91,17 @@ pub(crate) fn menu_start() -> i32 {
 
 /// The frozen screen with the main menu over it, greyed out while another
 /// menu is up (`Gfx::drawBasicMenu`).
-pub(crate) fn draw_basic_menu() {
-    let a = app();
+pub(crate) fn draw_basic_menu(a: &mut LieroApp) {
     a.play.bmp.copy_from(&a.frozen);
-    let menus = a.menus();
-    let disabled = liero_menus_cur(menus) != LIERO_MENU_MAIN;
+    let menus = a.shared_menus();
+    let mut menus = menus.borrow_mut();
+    let disabled = menus.cur() != LIERO_MENU_MAIN;
     liero_menus_draw(
-        menus,
+        &mut menus,
+        a,
         LIERO_MENU_MAIN,
         &a.play.bmp.view(),
-        &crate::app::menu_font(),
+        &a.font(),
         disabled,
         -1,
         true,
@@ -115,14 +110,13 @@ pub(crate) fn draw_basic_menu() {
 
 /// Who plays whom, the level and whether a game is paused, on the frozen
 /// spectator screen (`Gfx::drawSpectatorInfo`).
-pub(crate) fn draw_spectator_info() {
-    let a = app();
+pub(crate) fn draw_spectator_info(a: &mut LieroApp) {
     let (cx, cy) = (a.single.data.render_res_x / 2, a.single.data.render_res_y / 4);
     a.single.bmp.copy_from(&a.frozen_spectator);
-    let s = crate::app::menu_settings();
-    let line = level_line(&crate::app::menu_tc_data(), &s.level_file, &s.level_file);
-    let scr = app().single.bmp.view();
-    let font = crate::app::menu_font();
+    let s = a.settings_mut();
+    let line = level_line(&a.tc_data(), &s.level_file, &s.level_file);
+    let scr = a.single.bmp.view();
+    let font = a.font();
     let w = [s.worms[0].borrow(), s.worms[1].borrow()];
     // SAFETY: the bitmap, font and texts are valid.
     unsafe {
@@ -137,32 +131,32 @@ pub(crate) fn draw_spectator_info() {
             cx,
             cy,
         );
-        let state: &[u8] = if a.running() { b"PAUSED" } else { b"SETUP" };
-        font.centered(&scr, state, cx, cy + 48, 7, 2);
     }
+    let state: &[u8] = if a.running() { b"PAUSED" } else { b"SETUP" };
+    font.centered(&scr, state, cx, cy + 48, 7, 2);
 }
 
 /// The main menu screen's frame: the frozen screens with the menus over
 /// them, the settings menu beside the main menu while it's current.
-pub(crate) fn draw_menus() {
-    draw_basic_menu();
-    draw_spectator_info();
-    let a = app();
-    let menus = a.menus();
-    let cur = liero_menus_cur(menus);
-    let (scr, font) = (a.play.bmp.view(), crate::app::menu_font());
+pub(crate) fn draw_menus(a: &mut LieroApp) {
+    draw_basic_menu(a);
+    draw_spectator_info(a);
+    let menus = a.shared_menus();
+    let mut menus = menus.borrow_mut();
+    let cur = menus.cur();
+    let (scr, font) = (a.play.bmp.view(), a.font());
     if cur == LIERO_MENU_MAIN {
-        liero_menus_draw(menus, LIERO_MENU_SETTINGS, &scr, &font, true, -1, false);
+        liero_menus_draw(&mut menus, a, LIERO_MENU_SETTINGS, &scr, &font, true, -1, false);
     } else {
-        liero_menus_draw(menus, cur, &scr, &font, false, -1, false);
+        liero_menus_draw(&mut menus, a, cur, &scr, &font, false, -1, false);
     }
 }
 
 /// The menus' palette for the next frame (`Gfx::menuFade`): fading in
 /// unless `quitting`, the colours cycling, and the worms' colours.
-pub(crate) fn menu_fade(quitting: bool) {
-    let a = app();
-    let s = crate::app::menu_settings();
+pub(crate) fn menu_fade(a: &mut LieroApp, quitting: bool) {
+    let settings = a.shared_settings();
+    let s = settings.borrow();
     a.menu_cycles = a.menu_cycles.wrapping_add(1);
     for r in [&mut *a.play, &mut *a.single] {
         if r.data.fade_value < 32 && !quitting {
@@ -186,8 +180,7 @@ fn palette(r: &mut LieroRenderer, cycles: u32, s: &crate::settings::LieroSetting
 }
 
 /// Both screens black before the menu's first frame.
-pub(crate) fn clear_palettes() {
-    let a = app();
+pub(crate) fn clear_palettes(a: &mut LieroApp) {
     for r in [&mut *a.play, &mut *a.single] {
         r.data.pal = [Default::default(); 256];
     }

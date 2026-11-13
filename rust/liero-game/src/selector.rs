@@ -384,7 +384,7 @@ fn restore_frozen(host: &Host) {
 }
 
 impl Screen for Selector {
-    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
             host.process();
         }
@@ -402,7 +402,7 @@ impl Screen for Selector {
             }
         }
 
-        host.menu_fade();
+        host.menu_fade(app);
         self.shown = true;
         Tick::stay(true)
     }

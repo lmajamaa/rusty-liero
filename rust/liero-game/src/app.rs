@@ -47,8 +47,8 @@ pub struct LieroApp {
     font: Vec<crate::gfx::LieroFontChar>,
     /// The folders, the settings file and the TC chosen (`app_files.rs`).
     pub files: crate::app_files::Files,
-    /// The menus, which C++ makes.
-    pub menus: *mut crate::menus::LieroMenus,
+    /// The menus, which the menu screen shares.
+    pub menus: Option<crate::menus::SharedMenus>,
     /// The match or replay being played, or behind the menu.
     pub controller: Option<Box<LieroController>>,
     /// Whether the screen shows the single screen renderer, for a replay on
@@ -75,6 +75,26 @@ impl LieroApp {
     /// Whether the menus have a TC yet.
     pub fn has_tc(&self) -> bool {
         self.tc.is_some()
+    }
+
+    /// The menus' TC's data. Panics if there's no TC.
+    pub(crate) fn tc_data(&self) -> Ref<'_, LieroTcData> {
+        tc_data(self.tc.as_ref().expect("no TC"))
+    }
+
+    /// The menus' settings. Panics if there are none, or if they're borrowed.
+    pub fn settings_mut(&self) -> RefMut<'_, LieroSettingsBox> {
+        self.settings.as_ref().expect("no menu settings").borrow_mut()
+    }
+
+    /// The menus' TC's font.
+    pub(crate) fn font(&self) -> crate::text::LieroFont<'_> {
+        crate::text::LieroFont { chars: &self.font }
+    }
+
+    /// The menus. Panics if there are none yet.
+    pub(crate) fn shared_menus(&self) -> crate::menus::SharedMenus {
+        self.menus.clone().expect("no menus")
     }
 
     /// Makes `tc` (or none) the menus' TC.
@@ -127,7 +147,7 @@ impl LieroApp {
             font: Vec::new(),
             files: Default::default(),
             controller: None,
-            menus: std::ptr::null_mut(),
+            menus: None,
             primary_single: false,
             save_settings_on_change: false,
         }
@@ -183,8 +203,8 @@ pub fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
 }
 
 /// The menus the app draws.
-pub fn liero_app_set_menus(a: &mut LieroApp, menus: *mut crate::menus::LieroMenus) {
-    a.menus = menus;
+pub fn liero_app_set_menus(a: &mut LieroApp, menus: crate::menus::SharedMenus) {
+    a.menus = Some(menus);
 }
 
 #[cfg(test)]

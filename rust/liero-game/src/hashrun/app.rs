@@ -510,9 +510,7 @@ pub fn hash_app(out: &mut Out) {
     // Fresh menus, as the game starts with: the menu checks before this one
     // leave items hidden and selected.
     let a = app();
-    assert!(!a.menus.is_null(), "no menus");
-    // SAFETY: the app's menus are C++'s, which live as long as it does.
-    liero_menus_reset(unsafe { &mut *a.menus });
+    liero_menus_reset(&mut a.shared_menus().borrow_mut());
     a.settings = Some(LieroSettingsBox::defaults());
     let tc = super::tc::bundled();
     a.play.set_render_resolution(320, 200);
@@ -529,8 +527,7 @@ pub fn hash_app(out: &mut Out) {
     a.save_settings_on_change = true;
     crate::app::menu_settings().data.spectator_window = false;
     a.keys.clear();
-    // SAFETY: as above.
-    liero_menus_load(unsafe { &mut *a.menus });
+    liero_menus_load(&mut a.shared_menus().borrow_mut());
 
     let mut script = Script {
         steps: VecDeque::new(),

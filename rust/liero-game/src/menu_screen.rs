@@ -10,8 +10,9 @@
 //! is seeded by the platform.
 
 use crate::app::LieroApp;
-use crate::menus::LieroMenus;
+use crate::menus::{LieroMenus, SharedMenus};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
+use std::cell::RefMut;
 
 const SCANCODE_RETURN: u32 = 40;
 const SCANCODE_ESCAPE: u32 = 41;
@@ -82,7 +83,7 @@ enum Step {
 
 struct MenuScreen {
     /// The app's menus, which outlive the screen.
-    menus: *mut LieroMenus,
+    menus: SharedMenus,
     phase: Phase,
     start_item: i32,
     selected: i32,
@@ -93,17 +94,13 @@ struct MenuScreen {
 }
 
 impl MenuScreen {
-    // The `&mut` is to the menus behind a raw pointer, not to `self`; phase 4
-    // of PLAN.md replaces these pointers.
-    #[allow(clippy::mut_from_ref)]
-    fn menus(&self) -> &mut LieroMenus {
-        // SAFETY: C++'s menus outlive the screen, and only it uses them
-        // while it runs.
-        unsafe { &mut *self.menus }
+    fn menus(&self) -> RefMut<'_, LieroMenus> {
+        self.menus.borrow_mut()
     }
 
-    fn menu(&self, kind: i32) -> &mut crate::menu::LieroMenuBox {
-        self.menus().box_of(kind)
+    /// Runs `f` on `kind`'s menu.
+    fn menu<R>(&self, kind: i32, f: impl FnOnce(&mut crate::menu::OwnedMenu) -> R) -> R {
+        f(&mut self.menus().box_of(kind).0)
     }
 
     fn cur(&self) -> i32 {
@@ -115,16 +112,14 @@ impl MenuScreen {
     }
 
     fn move_main_to(&self, id: i32) {
-        let main = self.menu(LIERO_MENU_MAIN);
-        let i = (0..main.0.len())
-            .find(|&i| main.0.ids[i] == id)
-            .map_or(-1, |i| i as i32);
-        main.0.move_to(i);
+        self.menu(LIERO_MENU_MAIN, |main| {
+            let i = (0..main.len()).find(|&i| main.ids[i] == id).map_or(-1, |i| i as i32);
+            main.move_to(i);
+        });
     }
 
     fn main_selected_id(&self) -> i32 {
-        let main = self.menu(LIERO_MENU_MAIN);
-        main.0.selected().map_or(-1, |i| main.0.ids[i])
+        self.menu(LIERO_MENU_MAIN, |main| main.selected().map_or(-1, |i| main.ids[i]))
     }
 
     /// What an item's `onEnter` returned, put to `how`. True if the menu
@@ -143,8 +138,8 @@ impl MenuScreen {
 
     /// Enter on `kind`'s item. Returns the screen it opened, if any; else
     /// whether the menu closes at once.
-    fn enter(&mut self, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
-        let (r, opened) = self.menus().enter(kind);
+    fn enter(&mut self, app: &mut LieroApp, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
+        let (r, opened) = self.menus().enter(app, kind);
         if let Some(opened) = opened {
             self.how = how;
             return Err(opened);
@@ -161,7 +156,7 @@ impl MenuScreen {
         // Enter or F3 on an item: stop at `part` if it opened a screen.
         macro_rules! enter {
             ($kind:expr, $how:expr, $part:expr) => {
-                match self.enter($kind, $how) {
+                match self.enter(app, $kind, $how) {
                     Err(screen) => {
                         self.part = $part;
                         return Step::Opened(screen);
@@ -175,7 +170,7 @@ impl MenuScreen {
             if app.save_settings_on_change {
                 app.save_settings_if_changed();
             }
-            crate::app_menus::draw_menus();
+            crate::app_menus::draw_menus(app);
 
             if host.test_key_once(SCANCODE_ESCAPE) {
                 if self.cur() == LIERO_MENU_MAIN {
@@ -186,11 +181,11 @@ impl MenuScreen {
             }
             if host.test_key_once(SCANCODE_UP) {
                 host.play_sound(SOUND_UP);
-                self.menu(self.cur()).0.movement(-1);
+                self.menu(self.cur(), |m| m.movement(-1));
             }
             if host.test_key_once(SCANCODE_DOWN) {
                 host.play_sound(SOUND_DOWN);
-                self.menu(self.cur()).0.movement(1);
+                self.menu(self.cur(), |m| m.movement(1));
             }
 
             if host.test_key_once(SCANCODE_RETURN) || host.test_key_once(SCANCODE_KP_ENTER) {
@@ -201,9 +196,9 @@ impl MenuScreen {
                     match s {
                         LIERO_MAIN_SETTINGS => self.set_cur(LIERO_MENU_SETTINGS),
                         LIERO_MAIN_PLAYER1_SETTINGS | LIERO_MAIN_PLAYER2_SETTINGS => {
-                            self.menus().player_settings(s - LIERO_MAIN_PLAYER1_SETTINGS)
+                            self.menus().player_settings(app, s - LIERO_MAIN_PLAYER1_SETTINGS)
                         }
-                        LIERO_MAIN_ADVANCED => self.menus().open_hidden(),
+                        LIERO_MAIN_ADVANCED => self.menus().open_hidden(app),
                         LIERO_MAIN_REPLAYS => {
                             enter!(cur, Use::Select, Part::AfterEnter);
                         }
@@ -233,7 +228,7 @@ impl MenuScreen {
             }
             if host.test_key_once(SCANCODE_F2) {
                 self.move_main_to(LIERO_MAIN_ADVANCED);
-                self.menus().open_hidden();
+                self.menus().open_hidden(app);
             }
             if host.test_key_once(SCANCODE_F3) {
                 self.set_cur(LIERO_MENU_MAIN);
@@ -244,11 +239,11 @@ impl MenuScreen {
 
         if host.test_key_once(SCANCODE_F5) {
             self.move_main_to(LIERO_MAIN_PLAYER1_SETTINGS);
-            self.menus().player_settings(0);
+            self.menus().player_settings(app, 0);
         }
         if host.test_key_once(SCANCODE_F6) {
             self.move_main_to(LIERO_MAIN_PLAYER2_SETTINGS);
-            self.menus().player_settings(1);
+            self.menus().player_settings(app, 1);
         }
         if host.test_key_once(SCANCODE_F7) {
             self.move_main_to(LIERO_MAIN_SETTINGS);
@@ -262,7 +257,8 @@ impl MenuScreen {
         }
 
         for (key, dir) in [(SCANCODE_LEFT, -1), (SCANCODE_RIGHT, 1)] {
-            if host.test_key(key) && !self.menus().left_right(self.cur(), dir) {
+            let cur = self.cur();
+            if host.test_key(key) && !self.menus().left_right(app, cur, dir) {
                 // Let go of them, so they act once (`resetLeftRight`).
                 let keys = &mut app.keys;
                 keys.release_sdl(SCANCODE_LEFT as i32);
@@ -272,11 +268,11 @@ impl MenuScreen {
 
         if host.test_key_once(SCANCODE_PAGEUP) {
             host.play_sound(SOUND_UP);
-            self.menu(self.cur()).0.movement_page(-1);
+            self.menu(self.cur(), |m| m.movement_page(-1));
         }
         if host.test_key_once(SCANCODE_PAGEDOWN) {
             host.play_sound(SOUND_DOWN);
-            self.menu(self.cur()).0.movement_page(1);
+            self.menu(self.cur(), |m| m.movement_page(1));
         }
 
         self.part = Part::Top;
@@ -288,7 +284,7 @@ impl MenuScreen {
             Step::Close => Tick::close(self.selected),
             Step::Opened(screen) => Tick::push(screen),
             Step::Done => {
-                host.menu_fade();
+                host.menu_fade(app);
                 Tick::stay(true)
             }
         }
@@ -311,12 +307,12 @@ impl Screen for MenuScreen {
 
         match self.phase {
             Phase::Start => {
-                crate::app_menus::clear_palettes();
+                crate::app_menus::clear_palettes(app);
                 self.phase = Phase::Setup;
                 Tick::stay(true)
             }
             Phase::Setup => {
-                self.start_item = crate::app_menus::menu_start();
+                self.start_item = crate::app_menus::menu_start(app);
                 self.selected = -1;
                 self.phase = Phase::Menu;
                 self.run_step(app, host)
@@ -327,14 +323,14 @@ impl Screen for MenuScreen {
                 }
                 self.phase = Phase::FadeOut;
                 app.play.data.fade_value = 32;
-                crate::app_menus::menu_fade(true);
+                crate::app_menus::menu_fade(app, true);
                 Tick::stay(true)
             }
             Phase::FadeOut => {
                 let v = &mut app.play.data.fade_value;
                 *v -= 1;
                 if *v > 0 {
-                    crate::app_menus::menu_fade(true);
+                    crate::app_menus::menu_fade(app, true);
                     return Tick::stay(true);
                 }
                 Tick::close(self.selected)
@@ -342,14 +338,15 @@ impl Screen for MenuScreen {
         }
     }
 
-    fn resume(&mut self, _app: &mut LieroApp, _host: &Host, result: i32) {
-        self.entered = self.menus().then(result);
+    fn resume(&mut self, app: &mut LieroApp, _host: &Host, result: i32) {
+        let entered = self.menus().then(app, result);
+        self.entered = entered;
         self.resumed = true;
     }
 }
 
 /// The main menu screen.
-pub fn liero_menu_screen(menus: *mut LieroMenus) -> BoxedScreen {
+pub fn liero_menu_screen(menus: SharedMenus) -> BoxedScreen {
     Box::new(MenuScreen {
         menus,
         phase: Phase::Start,

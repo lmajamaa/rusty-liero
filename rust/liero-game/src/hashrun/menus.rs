@@ -71,9 +71,12 @@ const SC_A: u32 = 4;
 const SC_TAB: u32 = 43;
 const SDLK_TAB: i32 = 9;
 
-fn menus(a: &LieroApp) -> &'static mut LieroMenus {
-    // SAFETY: C++ keeps the menus while it runs.
-    unsafe { a.menus.as_mut().expect("no menus") }
+/// Runs `f` on the app's menus.
+fn with_menus<R>(f: impl FnOnce(&mut LieroMenus, &mut LieroApp) -> R) -> R {
+    let a = app();
+    let menus = a.shared_menus();
+    let mut m = menus.borrow_mut();
+    f(&mut m, a)
 }
 
 fn bytes(s: LieroStr) -> Vec<u8> {
@@ -183,7 +186,7 @@ impl Ops {
     fn left_right(&self, b: &mut LieroMenuBox, dir: i32) {
         match self {
             Ops::Menus(kind) => {
-                liero_menus_left_right(menus(app()), *kind, dir);
+                with_menus(|m, a| liero_menus_left_right(m, a, *kind, dir));
             }
             Ops::Availability(av) => {
                 if selection_valid(b) {
@@ -198,10 +201,9 @@ impl Ops {
 
     fn enter(&self, b: &mut LieroMenuBox) {
         match self {
-            // SAFETY: the menus are C++'s, with the app's settings.
-            Ops::Menus(kind) => unsafe {
-                liero_menus_enter(menus(app()), *kind);
-            },
+            Ops::Menus(kind) => {
+                with_menus(|m, a| liero_menus_enter(m, a, *kind));
+            }
             Ops::Availability(av) => {
                 if selection_valid(b) {
                     let sel = selection(b);
@@ -215,17 +217,16 @@ impl Ops {
 
     fn update_items(&self, b: &mut LieroMenuBox) {
         match self {
-            Ops::Menus(kind) => liero_menus_update_items(menus(app()), *kind),
+            Ops::Menus(kind) => with_menus(|m, a| liero_menus_update_items(m, a, *kind)),
             Ops::Availability(av) => av.update_items(b),
         }
     }
 
     fn draw(&self, b: &mut LieroMenuBox, r: &LieroRenderer, disabled: bool, x: i32, show: bool) {
-        let a = app();
         let font = crate::app::menu_font();
         let scr = r.bmp.view();
         match self {
-            Ops::Menus(kind) => liero_menus_draw(menus(a), *kind, &scr, &font, disabled, x, show),
+            Ops::Menus(kind) => with_menus(|m, a| liero_menus_draw(m, a, *kind, &scr, &font, disabled, x, show)),
             Ops::Availability(_) => {
                 unsafe fn no_overlay(_: *mut std::ffi::c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
                 let hooks = LieroMenuHooks {
@@ -332,10 +333,9 @@ fn run_menus(out: &mut Out) {
         }
     }
 
-    let m = menus(a);
-    liero_menus_load(m);
+    with_menus(|m, _| liero_menus_load(m));
     // SAFETY: the menus' boxes live as long as they do.
-    let menu = |kind| unsafe { &mut *liero_menus_box(menus(app()), kind) };
+    let menu = |kind| unsafe { &mut *with_menus(|m, _| liero_menus_box(m, kind)) };
 
     // As the menu loop sets them up before a game.
     let main = menu(LIERO_MENU_MAIN);
@@ -377,7 +377,7 @@ fn run_menus(out: &mut Out) {
         400,
     );
 
-    liero_menus_player_settings(menus(a), 0);
+    with_menus(|m, a| liero_menus_player_settings(m, a, 0));
     let player_no_enter: Vec<i32> = (PL_NAME..=PL_LOAD_PROFILE).filter(|&id| id != PL_CONTROLLER).collect();
     run_menu(
         out,

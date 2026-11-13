@@ -114,8 +114,8 @@ pub fn hash_run(ticks: i32, interval: i32, only: &[String], out: &mut dyn FnMut(
         ));
     }
     let a = app();
-    if a.menus.is_null() {
-        a.menus = liero_menus_new();
+    if a.menus.is_none() {
+        a.menus = Some(liero_menus_new());
     }
     let mut out = Out(out);
     for name in SECTIONS
