@@ -21,9 +21,7 @@ use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activ
 use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, LieroKeyChanges};
 use crate::menu_screen::LIERO_MENU_HIDDEN;
 use crate::menus::{liero_menus_load, liero_menus_new};
-use crate::screen::{
-    liero_app_frame, liero_app_push, liero_screen_set_host, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack,
-};
+use crate::screen::{liero_app_frame, liero_app_push, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack};
 use crate::sfx::{LieroMixer, LieroSoundOut};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -835,7 +833,6 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     }
 
     let platform: Rc<dyn Platform> = Rc::new(WebPlatform);
-    liero_screen_set_host(platform.clone());
     let mut stack = ScreenStack::new();
     liero_app_push(&mut stack, liero_main_screen());
     run_frames(stack, Host::new(platform));

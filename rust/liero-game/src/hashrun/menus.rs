@@ -34,6 +34,7 @@ use crate::menus::{
 };
 use crate::rand::LieroRand;
 use crate::renderer::{LieroBitmapBox, LieroRenderer};
+use crate::screen::Host;
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
 use crate::text::LieroStr;
@@ -186,7 +187,7 @@ impl Ops {
     fn left_right(&self, b: &mut LieroMenuBox, dir: i32) {
         match self {
             Ops::Menus(kind) => {
-                with_menus(|m, a| liero_menus_left_right(m, a, *kind, dir));
+                with_menus(|m, a| liero_menus_left_right(m, a, &Host::none(), *kind, dir));
             }
             Ops::Availability(av) => {
                 if selection_valid(b) {
@@ -202,7 +203,7 @@ impl Ops {
     fn enter(&self, b: &mut LieroMenuBox) {
         match self {
             Ops::Menus(kind) => {
-                with_menus(|m, a| liero_menus_enter(m, a, *kind));
+                with_menus(|m, a| liero_menus_enter(m, a, &Host::none(), *kind));
             }
             Ops::Availability(av) => {
                 if selection_valid(b) {

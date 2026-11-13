@@ -164,14 +164,14 @@ pub unsafe fn liero_game_process_ais(
             let place = (i + phase) % n;
             let w = *game.worms.add(place);
             let Some(ai) = w.ai.as_mut() else { continue };
-            let start = hooks.map(|h| (h.hires_ticks)(h.ctx));
+            let start = hooks.map(|h| (h.hires_ticks)());
             let controls = match ai {
                 LieroWormAi::Dumb(r) => sim::process_dumb(r, game, place as i32),
                 LieroWormAi::Follow(f) => sim::process(f, game, settings, ai_settings, place as i32),
             };
             (*w.data).control_states = controls;
             if let (Some(h), Some(start), Some(stats)) = (hooks, start, game.stats.as_mut()) {
-                stats.ai_process_time((*w.data).index, (h.hires_ticks)(h.ctx).wrapping_sub(start));
+                stats.ai_process_time((*w.data).index, (h.hires_ticks)().wrapping_sub(start));
             }
         }
     }

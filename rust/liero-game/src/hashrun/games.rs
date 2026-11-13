@@ -21,7 +21,6 @@ use crate::stats::{stats_scene, LieroStatsScreen};
 use crate::tc::{LieroTcData, LieroTcWeapon, SharedTc};
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{liero_weapsel_finish, liero_weapsel_free, liero_weapsel_start};
-use std::ffi::c_void;
 
 pub const KILL_EM_ALL: u32 = 0;
 pub const GAME_OF_TAG: u32 = 1;
@@ -168,15 +167,12 @@ fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
     })
 }
 
-unsafe fn no_ticks(_: *mut c_void) -> u64 {
+fn no_ticks() -> u64 {
     0
 }
 
 /// What a tick runs with: the stats clock isn't hashed.
-pub(super) const HOOKS: LieroGameHooks = LieroGameHooks {
-    ctx: std::ptr::null_mut(),
-    hires_ticks: no_ticks,
-};
+pub(super) const HOOKS: LieroGameHooks<'static> = LieroGameHooks { hires_ticks: &no_ticks };
 
 /// A bot-vs-bot game as the hash run sets it up, before it starts, with
 /// random weapons when `weapons` is None (`setUpGame`).

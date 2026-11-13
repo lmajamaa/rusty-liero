@@ -19,7 +19,7 @@ use crate::menu::{
     LIERO_MENU_VALUE_TIME,
 };
 use crate::menu_screen::{LIERO_MENU_HIDDEN, LIERO_MENU_MAIN, LIERO_MENU_PLAYER, LIERO_MENU_SETTINGS};
-use crate::screen::{current_host, BoxedScreen};
+use crate::screen::{BoxedScreen, Host};
 use crate::settings::{LieroSettingsData, LieroWormSettingsBox};
 use crate::tc::{c, s};
 use crate::text::{LieroFont, LieroStr};
@@ -487,7 +487,7 @@ impl LieroMenus {
     }
 
     /// Changes `setting` to `v`.
-    fn set(&mut self, app: &mut LieroApp, setting: Setting, v: i32) {
+    fn set(&mut self, app: &mut LieroApp, host: &Host, setting: Setting, v: i32) {
         match setting {
             Setting::Flag(f) => *f(&mut app.settings_mut().data) = v != 0,
             Setting::Number(f) => *f(&mut app.settings_mut().data) = v,
@@ -500,10 +500,10 @@ impl LieroMenus {
             // The platform shows these; the options menu updates itself.
             Setting::DoubleRes => {
                 app.double_res = v != 0;
-                current_host().set_double_res(v != 0);
+                host.set_double_res(v != 0);
             }
             // The platform sets it, if it has a window to show it in.
-            Setting::Fullscreen => current_host().set_fullscreen(v != 0),
+            Setting::Fullscreen => host.set_fullscreen(v != 0),
         }
     }
 
@@ -625,7 +625,7 @@ impl LieroMenus {
     }
 
     /// Left or right on the selected item. False to stop repeating it.
-    pub fn left_right(&mut self, app: &mut LieroApp, kind: i32, dir: i32) -> bool {
+    pub fn left_right(&mut self, app: &mut LieroApp, host: &Host, kind: i32, dir: i32) -> bool {
         let Some(i) = self.selection(kind) else { return false };
         let b = self.behavior(app, kind, i);
         let (it, setting) = match &b {
@@ -634,7 +634,10 @@ impl LieroMenus {
             _ => return true,
         };
         let cycles = app.menu_cycles;
-        let a = self.change(app, &it, setting, |it, v| it.left_right(v, dir, cycles));
+        if let Some(s) = it.left_right_sound(dir) {
+            host.play_sound(s);
+        }
+        let a = self.change(app, host, &it, setting, |it, v| it.left_right(v, dir, cycles));
         // Left and right never open the number box.
         let _ = self.apply(app, kind, i, &b, a);
         a.keep_going
@@ -650,6 +653,7 @@ impl LieroMenus {
     fn change(
         &mut self,
         app: &mut LieroApp,
+        host: &Host,
         it: &LieroItemBehavior,
         setting: Setting,
         key: impl FnOnce(&LieroItemBehavior, i32) -> (i32, LieroItemAction),
@@ -657,7 +661,7 @@ impl LieroMenus {
         let v = self.get(app, setting);
         let (new_v, a) = key(it, v);
         if new_v != v {
-            self.set(app, setting, new_v);
+            self.set(app, host, setting, new_v);
         }
         a
     }
@@ -747,17 +751,17 @@ impl LieroMenus {
 
     /// Enter on the selected item (`onEnter`): what it chose, or -1, and
     /// the screen it opened, if any.
-    pub fn enter(&mut self, app: &mut LieroApp, kind: i32) -> (i32, Option<BoxedScreen>) {
+    pub fn enter(&mut self, app: &mut LieroApp, host: &Host, kind: i32) -> (i32, Option<BoxedScreen>) {
         let Some(i) = self.selection(kind) else {
             return (0, None);
         };
         let b = self.behavior(app, kind, i);
-        let host = current_host();
         let sound = || host.play_sound(SOUND_CHOICE);
         let opened = match b {
             Behavior::None | Behavior::ProfileLoaded => None,
             Behavior::Item(it, setting) => {
-                let a = self.change(app, &it, setting, |it, v| it.enter(v));
+                host.play_sound(crate::item::SOUND_ENTER);
+                let a = self.change(app, host, &it, setting, |it, v| it.enter(v));
                 self.apply(app, kind, i, &b, a)
             }
             Behavior::Key { index, extended } => {
@@ -855,11 +859,10 @@ impl LieroMenus {
 
     /// The screen the last item opened closed with `result`: what the item
     /// does with it, and what it chose, or -1.
-    pub fn then(&mut self, app: &mut LieroApp, result: i32) -> i32 {
+    pub fn then(&mut self, app: &mut LieroApp, host: &Host, result: i32) -> i32 {
         let Some(Pending { kind, then, typed }) = self.pending.take() else {
             return -1;
         };
-        let host = current_host();
         let sound = || host.play_sound(SOUND_CHOICE);
         let ok = result != 0;
         let typed = *typed;
@@ -909,7 +912,7 @@ impl LieroMenus {
                         }
                     };
                     if closest >= 0 {
-                        self.set(app, Setting::WormWeapon(slot), 1 + closest);
+                        self.set(app, host, Setting::WormWeapon(slot), 1 + closest);
                     }
                     self.update_items(app, kind);
                 }
@@ -919,7 +922,7 @@ impl LieroMenus {
                 if let Behavior::Item(it, setting) = &b {
                     if ok && !typed.is_empty() {
                         let v = atoi(&typed).clamp(it.min, it.max);
-                        self.set(app, *setting, v);
+                        self.set(app, host, *setting, v);
                     }
                 }
                 self.update(app, kind, item as usize, &b);
@@ -1085,14 +1088,14 @@ pub fn liero_menus_update_items(m: &mut LieroMenus, app: &mut LieroApp, kind: i3
     m.update_items(app, kind);
 }
 
-pub fn liero_menus_left_right(m: &mut LieroMenus, app: &mut LieroApp, kind: i32, dir: i32) -> bool {
-    m.left_right(app, kind, dir)
+pub fn liero_menus_left_right(m: &mut LieroMenus, app: &mut LieroApp, host: &Host, kind: i32, dir: i32) -> bool {
+    m.left_right(app, host, kind, dir)
 }
 
 /// Enter on `kind`'s selected item. A screen it opened is dropped: the menu
 /// checks only press items that open none.
-pub fn liero_menus_enter(m: &mut LieroMenus, app: &mut LieroApp, kind: i32) -> i32 {
-    let (r, opened) = m.enter(app, kind);
+pub fn liero_menus_enter(m: &mut LieroMenus, app: &mut LieroApp, host: &Host, kind: i32) -> i32 {
+    let (r, opened) = m.enter(app, host, kind);
     if let Some(s) = opened {
         drop(s);
         m.pending = None;
@@ -1174,22 +1177,22 @@ mod tests {
             (ws.controls[1], ws.controls_ex[1])
         };
 
-        let (r, opened) = m.enter(app(), LIERO_MENU_PLAYER);
+        let (r, opened) = m.enter(app(), &Host::none(), LIERO_MENU_PLAYER);
         assert_eq!(r, -1);
         drop(opened.expect("key choice"));
         assert!(is_extended(177));
-        m.then(app(), 177);
+        m.then(app(), &Host::none(), 177);
         assert_eq!(keys(), (30, 177));
 
-        let (_, opened) = m.enter(app(), LIERO_MENU_PLAYER);
+        let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_PLAYER);
         drop(opened.unwrap());
-        m.then(app(), 31);
+        m.then(app(), &Host::none(), 31);
         assert_eq!(keys(), (31, 31));
 
         // Escape keeps the key.
-        let (_, opened) = m.enter(app(), LIERO_MENU_PLAYER);
+        let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_PLAYER);
         drop(opened.unwrap());
-        m.then(app(), LIERO_DK_ESCAPE as i32);
+        m.then(app(), &Host::none(), LIERO_DK_ESCAPE as i32);
         assert_eq!(keys(), (31, 31));
     }
 
@@ -1201,11 +1204,11 @@ mod tests {
             select(&mut m, LIERO_MENU_PLAYER, PL_DIG);
             let w = worm(&m);
             let before = w.borrow().data.controls;
-            let (_, opened) = m.enter(app(), LIERO_MENU_PLAYER);
+            let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_PLAYER);
             drop(opened.expect("key choice"));
             // C, which has a DOS key.
             assert!(!is_extended(46));
-            m.then(app(), 46);
+            m.then(app(), &Host::none(), 46);
             let ws = &w.borrow().data;
             assert_eq!((ws.controls, ws.controls_ex[7]), (before, 46));
         }
@@ -1216,18 +1219,18 @@ mod tests {
         let mut m = menus();
         let i = select(&mut m, LIERO_MENU_SETTINGS, SI_LIVES);
         for (typed, lives) in [(&b"5000"[..], 999), (b"0", 1), (b"12", 12)] {
-            let (_, opened) = m.enter(app(), LIERO_MENU_SETTINGS);
+            let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_SETTINGS);
             drop(opened.expect("number box"));
             *m.pending.as_mut().unwrap().typed = typed.to_vec();
-            assert_eq!(m.then(app(), 1), -1);
+            assert_eq!(m.then(app(), &Host::none(), 1), -1);
             assert_eq!(app().settings_mut().data.lives, lives);
             assert_eq!(value(&mut m, LIERO_MENU_SETTINGS, i), lives.to_string().into_bytes());
         }
         // Escape keeps the number.
-        let (_, opened) = m.enter(app(), LIERO_MENU_SETTINGS);
+        let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_SETTINGS);
         drop(opened.unwrap());
         *m.pending.as_mut().unwrap().typed = b"7".to_vec();
-        m.then(app(), 0);
+        m.then(app(), &Host::none(), 0);
         assert_eq!(app().settings_mut().data.lives, 12);
     }
 
@@ -1240,7 +1243,7 @@ mod tests {
         let mut steps = Vec::new();
         for cycle in 1..=12 {
             crate::app::app().menu_cycles = cycle;
-            assert!(m.left_right(app(), LIERO_MENU_PLAYER, -1));
+            assert!(m.left_right(app(), &Host::none(), LIERO_MENU_PLAYER, -1));
             steps.push(start - worm(&m).borrow().data.health);
         }
         assert_eq!(steps, [0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3]);
@@ -1252,7 +1255,7 @@ mod tests {
         let frames = m.index_of(LIERO_MENU_HIDDEN, HM_AI_FRAMES).unwrap();
         select(&mut m, LIERO_MENU_HIDDEN, HM_DOUBLE_RES);
         app().settings_mut().data.ai_frames = 123;
-        m.left_right(app(), LIERO_MENU_HIDDEN, 1);
+        m.left_right(app(), &Host::none(), LIERO_MENU_HIDDEN, 1);
         assert!(crate::app::app().double_res);
         assert_eq!(value(&mut m, LIERO_MENU_HIDDEN, frames), b"123");
     }

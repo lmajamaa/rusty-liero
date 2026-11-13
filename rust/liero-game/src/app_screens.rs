@@ -41,9 +41,8 @@ fn with_controller<R>(a: &mut LieroApp, f: impl FnOnce(&mut LieroController, &mu
 }
 
 /// A new local controller with the menus' settings and TC.
-fn new_local(a: &mut LieroApp) -> Box<crate::controllers::LieroController> {
-    // SAFETY: the app has a host while it runs.
-    unsafe { Box::from_raw(liero_local_controller_new(a.shared_settings(), a.menu_tc())) }
+fn new_local(a: &mut LieroApp, host: &Host) -> Box<crate::controllers::LieroController> {
+    liero_local_controller_new(host, a.shared_settings(), a.menu_tc())
 }
 
 /// A level made from the menus' settings with the app's random numbers.
@@ -63,9 +62,9 @@ fn swap_level(c: &mut crate::controllers::LieroController, level: &mut LieroLeve
 }
 
 /// A new controller with a new level behind the menu (`restartApp`).
-fn restart(a: &mut LieroApp) {
+fn restart(a: &mut LieroApp, host: &Host) {
     a.controller = None;
-    a.controller = Some(new_local(a));
+    a.controller = Some(new_local(a, host));
     let mut level = new_level(a);
     swap_level(controller(a), &mut level);
     let game = crate::controllers::liero_controller_game(controller(a));
@@ -78,10 +77,10 @@ fn restart(a: &mut LieroApp) {
 
 /// Does what the menu chose (`afterMenu`): quits, starts over with a new
 /// TC, or plays.
-fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
+fn after_menu(a: &mut LieroApp, host: &Host, selection: i32) -> i32 {
     match selection {
         MAIN_NEW_GAME => {
-            let mut new = new_local(a);
+            let mut new = new_local(a, host);
             let settings = a.shared_settings();
             // SAFETY: the controller's level is valid while it is.
             let old = a
@@ -118,7 +117,7 @@ fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
             }
         }
         MAIN_TC => {
-            restart(a);
+            restart(a, host);
             return LIERO_AFTER_MENU_RESTART;
         }
         _ => {}
@@ -180,7 +179,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Focus {
             // SAFETY: the controller is valid.
-            with_controller(app, |c, app| unsafe { liero_controller_focus(c, app) });
+            with_controller(app, |c, app| unsafe { liero_controller_focus(c, app, host) });
             self.next = Next::Process;
             if let Some(s) = Self::opened(app) {
                 return Tick::push(s);
@@ -189,7 +188,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Process {
             // SAFETY: the controller is valid.
-            self.next = if with_controller(app, |c, app| unsafe { liero_controller_run(c, app) }) {
+            self.next = if with_controller(app, |c, app| unsafe { liero_controller_run(c, app, host) }) {
                 Next::Draw
             } else {
                 Next::Finish
@@ -233,11 +232,11 @@ struct MainScreen {
 }
 
 impl Screen for MainScreen {
-    fn tick(&mut self, app: &mut LieroApp, _host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
         if self.open == Open::Nothing {
-            restart(app);
+            restart(app, host);
         } else if self.open == Open::InMenu {
-            match after_menu(app, self.selection) {
+            match after_menu(app, host, self.selection) {
                 LIERO_AFTER_MENU_QUIT => {
                     app.controller = None;
                     return Tick::close(0);

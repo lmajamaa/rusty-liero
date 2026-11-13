@@ -25,9 +25,7 @@ use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
 use crate::keys::sdl_to_dos_keysym;
 use crate::menus::{liero_menus_load, liero_menus_reset};
-use crate::screen::{
-    liero_app_push, liero_app_step, liero_screen_set_host, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack,
-};
+use crate::screen::{liero_app_push, liero_app_step, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack};
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
 use std::cell::RefCell;
@@ -529,7 +527,6 @@ pub fn hash_app(out: &mut Out) {
     });
 
     let platform: Rc<dyn Platform> = Rc::new(HashPlatform);
-    liero_screen_set_host(platform.clone());
     let host = Host::new(platform);
 
     let mut stack = ScreenStack::new();

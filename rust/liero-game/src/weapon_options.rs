@@ -83,12 +83,15 @@ impl WeaponOptions {
     }
 
     /// `Menu::onLeftRight` on the selected item.
-    fn left_right(&mut self, dir: i32) {
+    fn left_right(&mut self, host: &Host, dir: i32) {
         let Some(i) = self.menu.selected() else {
             return;
         };
         let names = self.state_names();
         let b = Self::behavior(&names);
+        if let Some(s) = b.left_right_sound(dir) {
+            host.play_sound(s);
+        }
         let (v, a) = b.left_right(self.value(i), dir, 0);
         // SAFETY: as in `value`.
         unsafe { *self.entry(i) = v as u32 };
@@ -148,10 +151,10 @@ impl Screen for WeaponOptions {
             self.menu.movement(1);
         }
         if app.test_key_once(SCANCODE_LEFT) {
-            self.left_right(-1);
+            self.left_right(host, -1);
         }
         if app.test_key_once(SCANCODE_RIGHT) {
-            self.left_right(1);
+            self.left_right(host, 1);
         }
         if app.test_key_once(SCANCODE_PAGEUP) {
             host.play_sound(SOUND_UP);
@@ -258,7 +261,7 @@ mod tests {
         table[1] = 2;
         let mut w = screen(&mut table);
         assert_eq!(w.menu.values, [b"BANNED".to_vec(), b"MENU".to_vec()]);
-        w.left_right(1);
+        w.left_right(&Host::none(), 1);
         assert_eq!(table[1], 0, "wraps round");
         assert_eq!(w.menu.values[0], b"MENU".to_vec());
     }

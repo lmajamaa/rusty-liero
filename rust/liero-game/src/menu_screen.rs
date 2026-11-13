@@ -138,8 +138,8 @@ impl MenuScreen {
 
     /// Enter on `kind`'s item. Returns the screen it opened, if any; else
     /// whether the menu closes at once.
-    fn enter(&mut self, app: &mut LieroApp, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
-        let (r, opened) = self.menus().enter(app, kind);
+    fn enter(&mut self, app: &mut LieroApp, host: &Host, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
+        let (r, opened) = self.menus().enter(app, host, kind);
         if let Some(opened) = opened {
             self.how = how;
             return Err(opened);
@@ -156,7 +156,7 @@ impl MenuScreen {
         // Enter or F3 on an item: stop at `part` if it opened a screen.
         macro_rules! enter {
             ($kind:expr, $how:expr, $part:expr) => {
-                match self.enter(app, $kind, $how) {
+                match self.enter(app, host, $kind, $how) {
                     Err(screen) => {
                         self.part = $part;
                         return Step::Opened(screen);
@@ -258,7 +258,7 @@ impl MenuScreen {
 
         for (key, dir) in [(SCANCODE_LEFT, -1), (SCANCODE_RIGHT, 1)] {
             let cur = self.cur();
-            if app.test_key(key) && !self.menus().left_right(app, cur, dir) {
+            if app.test_key(key) && !self.menus().left_right(app, host, cur, dir) {
                 // Let go of them, so they act once (`resetLeftRight`).
                 let keys = &mut app.keys;
                 keys.release_sdl(SCANCODE_LEFT as i32);
@@ -338,8 +338,8 @@ impl Screen for MenuScreen {
         }
     }
 
-    fn resume(&mut self, app: &mut LieroApp, _host: &Host, result: i32) {
-        let entered = self.menus().then(app, result);
+    fn resume(&mut self, app: &mut LieroApp, host: &Host, result: i32) {
+        let entered = self.menus().then(app, host, result);
         self.entered = entered;
         self.resumed = true;
     }

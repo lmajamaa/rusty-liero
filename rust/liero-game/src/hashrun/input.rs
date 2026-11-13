@@ -426,9 +426,12 @@ fn hash_controls(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
             .for_each(|c| *c = pool[r.below(12) as usize]);
     }
 
-    // SAFETY: the controller keeps references to the settings and the TC,
-    // and is freed below.
-    let lc = unsafe { liero_local_controller_new(settings.clone(), tc.clone()) };
+    // Freed below.
+    let lc = Box::into_raw(liero_local_controller_new(
+        &crate::screen::Host::none(),
+        settings.clone(),
+        tc.clone(),
+    ));
     // SAFETY: the controller is new; its data and game live as long as it
     // does.
     let (d, game) = unsafe { (liero_controller_data(&mut *lc), &mut *liero_controller_game(&mut *lc)) };

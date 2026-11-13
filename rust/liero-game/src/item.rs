@@ -7,11 +7,11 @@
 use crate::menu::{
     liero_menu_enum_change, liero_menu_integer_left_right, liero_menu_value_text, LIERO_MENU_VALUE_INTEGER,
 };
-use crate::screen::current_host;
 
 const SOUND_RIGHT: i32 = 25;
 const SOUND_LEFT: i32 = 26;
-const SOUND_ENTER: i32 = 27;
+/// The sound Enter on any item plays.
+pub const SOUND_ENTER: i32 = 27;
 
 /// How an item shows and changes its value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,15 +98,18 @@ impl<'a> LieroItemBehavior<'a> {
         (new_v, a)
     }
 
+    /// The sound left (`dir` < 0) or right plays first, if any: switches
+    /// and enums play one, numbers none.
+    pub fn left_right_sound(&self, dir: i32) -> Option<i32> {
+        (self.kind != LieroItemKind::Integer).then_some(if dir > 0 { SOUND_RIGHT } else { SOUND_LEFT })
+    }
+
     /// Left (`dir` < 0) or right on the item with value `v`, with the menu's
     /// frame count for numbers that repeat while the key is held: the new
-    /// value and what to do.
+    /// value and what to do. The caller plays `left_right_sound`.
     pub fn left_right(&self, v: i32, dir: i32, menu_cycles: u32) -> (i32, LieroItemAction) {
-        let host = current_host();
-        let side_sound = || host.play_sound(if dir > 0 { SOUND_RIGHT } else { SOUND_LEFT });
         match self.kind {
             LieroItemKind::Switch => {
-                side_sound();
                 let a = LieroItemAction {
                     update_item: true,
                     ..Default::default()
@@ -130,16 +133,13 @@ impl<'a> LieroItemBehavior<'a> {
                 };
                 (new_v, a)
             }
-            LieroItemKind::Enum => {
-                side_sound();
-                self.change_enum(v, dir)
-            }
+            LieroItemKind::Enum => self.change_enum(v, dir),
         }
     }
 
     /// Enter on the item with value `v`: the new value and what to do.
+    /// The caller plays `SOUND_ENTER` first.
     pub fn enter(&self, v: i32) -> (i32, LieroItemAction) {
-        current_host().play_sound(SOUND_ENTER);
         match self.kind {
             LieroItemKind::Switch => {
                 let a = LieroItemAction {

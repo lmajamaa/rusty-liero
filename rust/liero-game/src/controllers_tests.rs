@@ -20,15 +20,13 @@ fn menu_settings() -> SharedSettings {
 
 /// A local match with the worms named `names`, on a level of its own.
 fn local(tc: SharedTc, names: [&str; 2]) -> Box<LieroController> {
-    unsafe {
-        let settings = liero_settings_box_new();
-        for (w, name) in settings.borrow().worms.iter().zip(names) {
-            w.borrow_mut().name = name.as_bytes().to_vec();
-        }
-        let mut c = Box::from_raw(liero_local_controller_new(settings, tc));
-        c.game().unwrap().level_box_mut().resize(504, 350);
-        c
+    let settings = liero_settings_box_new();
+    for (w, name) in settings.borrow().worms.iter().zip(names) {
+        w.borrow_mut().name = name.as_bytes().to_vec();
     }
+    let mut c = liero_local_controller_new(&Host::none(), settings, tc);
+    c.game().unwrap().level_box_mut().resize(504, 350);
+    c
 }
 
 #[test]
@@ -63,7 +61,7 @@ fn replays_are_named_after_four_characters_of_each_name() {
     let tc = tc();
     let mut c = local(tc.clone(), ["Ab!cdef", "x-y z9"]);
     // No host, so no time.
-    assert_eq!(unsafe { replay_name(c.game().unwrap()) }, b" Abc-xy.lrp");
+    assert_eq!(unsafe { replay_name(&Host::none(), c.game().unwrap()) }, b" Abc-xy.lrp");
     drop(c);
 }
 
@@ -75,7 +73,7 @@ fn focus_starts_weapon_selection_and_sets_both_palettes() {
     let a = &mut LieroApp::new();
     a.play.data.origpal[200].r = 0;
     a.single.data.origpal[200].r = 0;
-    unsafe { c.focus(a) };
+    unsafe { c.focus(a, &Host::none()) };
     assert_eq!(c.data.state, LIERO_STATE_WEAPON_SELECTION);
     assert_eq!((a.play.data.origpal[200].r, a.single.data.origpal[200].r), (7, 7));
     assert_eq!((c.data.fade_value, c.data.going_to_menu), (0, false));
@@ -125,7 +123,7 @@ fn r_rewinds_a_replay_to_its_start() {
         for i in 0..30 {
             game.worm_at(0).unwrap().data.control_states = if i % 3 == 0 { 1 } else { 4 };
             w.frame(game);
-            game.process_frame(&game_hooks());
+            game.process_frame(&LieroGameHooks { hires_ticks: &|| 0 });
         }
         drop(w);
         drop(c);
@@ -133,20 +131,20 @@ fn r_rewinds_a_replay_to_its_start() {
         let a = &mut LieroApp::new();
         crate::app::liero_app_set_settings(a, Some(menu_settings()));
         let mut r = Box::from_raw(liero_replay_controller_new(&node, tc));
-        r.focus(a);
+        r.focus(a, &Host::none());
         assert_eq!(r.data.state, LIERO_STATE_GAME);
-        assert!(r.process(a));
+        assert!(r.process(a, &Host::none()));
         let pos = |r: &LieroController| match &r.kind {
             Kind::Replay(r) => r.reader.as_ref().unwrap().pos(),
             _ => unreachable!(),
         };
         let (p1, c1) = (pos(&r), r.game().unwrap().data_mut().cycles);
         for _ in 0..5 {
-            assert!(r.process(a));
+            assert!(r.process(a, &Host::none()));
         }
         assert_ne!(pos(&r), p1);
         a.keys.set(sdl_to_dos(SCANCODE_R), true);
-        assert!(r.process(a));
+        assert!(r.process(a, &Host::none()));
         assert_eq!((pos(&r), r.game().unwrap().data_mut().cycles), (p1, c1));
         // The worms' stats places, which replays don't store.
         let g = r.game().unwrap();
@@ -165,15 +163,15 @@ fn the_game_fades_in_to_fully_shown() {
     let a = &mut LieroApp::new();
     unsafe {
         for _ in 0..40 {
-            assert!(c.process(a));
+            assert!(c.process(a, &Host::none()));
         }
         assert_eq!(c.data.fade_value, LIERO_FADE_SHOWN);
         // Then out to the menu, which ends it.
         c.data.going_to_menu = true;
         for _ in 0..LIERO_FADE_SHOWN {
-            assert!(c.process(a));
+            assert!(c.process(a, &Host::none()));
         }
-        assert!(!c.process(a));
+        assert!(!c.process(a, &Host::none()));
     }
     drop(c);
 }

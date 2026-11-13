@@ -6,9 +6,6 @@
 //! viewports: their shake and death banner move with every tick the AI
 //! plays out.
 
-use std::ffi::c_void;
-use std::ptr::null_mut;
-
 use super::dumb::{self, LieroDumbAiWorm};
 use super::path::LevelView;
 use super::predictive::{Games, LieroAiGame, LieroAiWeapon, LieroAiWorm};
@@ -45,16 +42,13 @@ pub struct SimGame {
     _pool: Vec<*mut LieroWormData>,
 }
 
-unsafe fn no_ticks(_: *mut c_void) -> u64 {
+fn no_ticks() -> u64 {
     0
 }
 
 /// `NullSoundPlayer` and the base `StatsRecorder`, and no viewports to
 /// process.
-const NO_HOOKS: LieroGameHooks = LieroGameHooks {
-    ctx: null_mut(),
-    hires_ticks: no_ticks,
-};
+const NO_HOOKS: LieroGameHooks<'static> = LieroGameHooks { hires_ticks: &no_ticks };
 
 impl SimGame {
     /// The game the AI is in.

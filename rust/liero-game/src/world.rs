@@ -111,7 +111,7 @@ pub(crate) struct World<'a> {
     /// The stats the tick records, if any.
     stats: Option<&'a mut LieroStats>,
     sound: LieroSoundOut,
-    h: &'a LieroGameHooks,
+    h: &'a LieroGameHooks<'a>,
 }
 
 impl<'a> World<'a> {
@@ -121,7 +121,7 @@ impl<'a> World<'a> {
     /// As `Game::new`; the TC, the viewports and the stats (which may be
     /// null) are valid for `'a` too, and nothing else uses the viewports
     /// or the stats meanwhile.
-    pub(crate) unsafe fn new(f: &'a LieroGameFields, s: &'a LieroGameSettings, h: &'a LieroGameHooks) -> Self {
+    pub(crate) unsafe fn new(f: &'a LieroGameFields, s: &'a LieroGameSettings, h: &'a LieroGameHooks<'a>) -> Self {
         unsafe {
             let viewports = |list: *const *mut LieroViewport, n: i32| -> Vec<&'a mut LieroViewport> {
                 slice(list, n.max(0) as usize).iter().map(|&v| &mut *v).collect()
@@ -253,7 +253,7 @@ impl<'a> World<'a> {
     /// The stats' start or end of a tick.
     fn stats_tick(&mut self, end: bool) {
         if self.stats.is_some() {
-            let ticks = unsafe { (self.h.hires_ticks)(self.h.ctx) };
+            let ticks = (self.h.hires_ticks)();
             let worms = self.g.stats_worms();
             let s = self.stats.as_deref_mut().unwrap();
             if end {

@@ -952,13 +952,13 @@ impl Screen for StatsPresenter {
 /// `render_res_x` x `render_res_y`, over what the screen shows now.
 pub(crate) fn liero_stats_presenter_screen(
     app: &mut crate::app::LieroApp,
+    host: &Host,
     stats: &LieroStats,
     tc: SharedTc,
     game: StatsGame,
     render_res_x: i32,
     render_res_y: i32,
 ) -> BoxedScreen {
-    let host = crate::screen::current_host();
     app.clear_keys();
     let mut bg = Vec::new();
     if let Some(scr) = host.screen(app) {

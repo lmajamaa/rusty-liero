@@ -17,7 +17,6 @@
 //! the clock) through a `Host`, over the `Platform` the shell sets once.
 
 use crate::app::LieroApp;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::gfx::LieroBitmap;
@@ -134,17 +133,6 @@ pub trait Platform {
 struct NoPlatform;
 
 impl Platform for NoPlatform {}
-
-thread_local! {
-    static PLATFORM: RefCell<Option<Rc<dyn Platform>>> = const { RefCell::new(None) };
-}
-
-/// Sets the platform the screens use. Only the first call counts.
-pub fn liero_screen_set_host(platform: Rc<dyn Platform>) {
-    PLATFORM.with(|p| {
-        p.borrow_mut().get_or_insert(platform);
-    });
-}
 
 /// The platform as the screens use it, with the app's drawing.
 #[derive(Clone)]
@@ -288,11 +276,6 @@ pub trait Screen {
     fn resume(&mut self, _app: &mut LieroApp, _host: &Host, _result: i32) {}
 }
 
-/// The platform the shell set, as a host.
-pub(crate) fn current_host() -> Host {
-    PLATFORM.with(|p| p.borrow().clone()).map_or_else(Host::none, Host)
-}
-
 pub struct ScreenStack {
     screens: Vec<BoxedScreen>,
     /// The clock's time of the last step `liero_app_frame` ran, once it has
@@ -402,6 +385,7 @@ pub fn liero_app_frame(stack: &mut ScreenStack, now_ms: u32, app: &mut LieroApp,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
 
     /// What a test screen does once it has stayed.
     #[derive(Clone, Copy, PartialEq)]

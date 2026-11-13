@@ -93,6 +93,8 @@ struct InputBox {
     done: Option<LieroInputDone>,
     ctx: *mut c_void,
     shown: bool,
+    /// The host that turned text input on, to turn it off again.
+    host: Option<Host>,
 }
 
 impl InputBox {
@@ -138,6 +140,7 @@ impl Screen for InputBox {
             liero_menu_draw_input_box(&scr, &frozen, &font, &shown, self.x, self.y, true);
         }
         host.text_input(true);
+        self.host = Some(host.clone());
         self.shown = true;
         Tick::stay(true)
     }
@@ -147,7 +150,9 @@ impl Drop for InputBox {
     fn drop(&mut self) {
         // Text input stays off outside the box, so that the browser doesn't
         // act on the keys the game uses.
-        crate::screen::current_host().text_input(false);
+        if let Some(host) = &self.host {
+            host.text_input(false);
+        }
     }
 }
 
@@ -195,6 +200,7 @@ pub unsafe fn liero_input_box_screen(
         done,
         ctx,
         shown: false,
+        host: None,
     })
 }
 
@@ -274,6 +280,7 @@ mod tests {
             done: Some(keep),
             ctx: (out as *mut Vec<u8>).cast(),
             shown: false,
+            host: None,
         }
     }
 

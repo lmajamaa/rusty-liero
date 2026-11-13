@@ -25,7 +25,7 @@ fn set_up() -> &'static mut LieroApp {
     }
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    let mut c = unsafe { Box::from_raw(liero_local_controller_new(a.shared_settings(), a.menu_tc())) };
+    let mut c = liero_local_controller_new(&crate::screen::Host::none(), a.shared_settings(), a.menu_tc());
     let level = unsafe { &mut *liero_controller_level(&mut c) };
     level.resize(504, 350);
     level.set_pixels(&vec![7; 504 * 350], |_| Default::default());
