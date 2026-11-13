@@ -600,9 +600,9 @@ impl EvaluateResult {
     pub fn weighted_score(&self) -> f64 {
         let n = self.score_over_time.len();
         let mut r = 0.0;
-        for i in 1..n {
+        for (i, score) in self.score_over_time.iter().enumerate().skip(1) {
             let weight = (n - i) as f64 / n as f64;
-            r += self.score_over_time[i] * weight;
+            r += score * weight;
         }
         r + self.future_score
     }
@@ -859,8 +859,8 @@ impl FollowAi {
                             if w.weapons[wi].loading_left > 0 {
                                 let distance_from_current = weapon_change_offset(wi as i32, w.current_weapon).abs();
                                 let mut loaded_distance = 5;
-                                for lw in 0..5 {
-                                    if w.weapons[lw].loading_left == 0 {
+                                for (lw, weapon) in w.weapons.iter().enumerate().take(5) {
+                                    if weapon.loading_left == 0 {
                                         loaded_distance =
                                             loaded_distance.min(weapon_change_offset(lw as i32, wi as i32).abs());
                                     }

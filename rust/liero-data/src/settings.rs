@@ -478,9 +478,9 @@ fn read_legacy_base<S: Source + ?Sized>(s: &mut Settings, r: &mut In<S>) -> Resu
         *w = limit(r.u8()?, 3);
     }
 
-    for i in 0..2 {
-        for j in 0..3 {
-            s.worms[i].rgb[j] = (r.u8()? & 63) as i32;
+    for ws in s.worms.iter_mut().take(2) {
+        for c in ws.rgb.iter_mut().take(3) {
+            *c = (r.u8()? & 63) as i32;
         }
     }
 

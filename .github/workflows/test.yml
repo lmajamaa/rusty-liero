@@ -16,11 +16,9 @@ permissions:
   contents: read
 
 env:
-  RUST_VERSION: 1.87.0
-  # The wasm-bindgen CLI must match the crate's pin in rust/liero-game. It
-  # needs a newer Rust to build than the game's, used only for that.
+  RUST_VERSION: 1.100.0
+  # The wasm-bindgen CLI must match the crate's pin in rust/liero-game.
   WASM_BINDGEN_VERSION: 0.2.129
-  WASM_BINDGEN_RUST_VERSION: 1.88.0
   BUN_VERSION: 1.4.4
 
 jobs:
@@ -37,9 +35,7 @@ jobs:
           rustup default "$RUST_VERSION"
 
       - name: Install the wasm-bindgen CLI
-        run: |
-          rustup toolchain install "$WASM_BINDGEN_RUST_VERSION" --profile minimal
-          cargo +"$WASM_BINDGEN_RUST_VERSION" install --locked wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
+        run: cargo install --locked wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2

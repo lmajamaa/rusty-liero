@@ -199,6 +199,7 @@ impl Games for Sims {
     fn worm(&mut self, g: Self::G, place: i32) -> LieroAiWorm {
         unsafe {
             let g = &*g;
+            let tc = &*g.fields.tc;
             let w = &*g.worm(place);
             LieroAiWorm {
                 index: w.index,
@@ -212,7 +213,7 @@ impl Games for Sims {
                 settings_health: g.worms[place as usize].max_health,
                 current_weapon: w.current_weapon,
                 weapons: w.weapons.map(|ww| {
-                    let t = &(*g.fields.tc).weapons[ww.kind as usize];
+                    let t = &tc.weapons[ww.kind as usize];
                     LieroAiWeapon {
                         ammo: ww.ammo,
                         delay_left: ww.delay_left,
@@ -282,7 +283,8 @@ pub unsafe fn process_dumb(rand: &mut LieroRand, fields: &LieroGameFields, place
     unsafe {
         let worms = std::slice::from_raw_parts(fields.worms, fields.worm_count as usize);
         let me = &*worms[place as usize].data;
-        let w = &(*fields.tc).weapons[me.weapons[me.current_weapon as usize].kind as usize];
+        let tc = &*fields.tc;
+        let w = &tc.weapons[me.weapons[me.current_weapon as usize].kind as usize];
 
         let worm = LieroDumbAiWorm {
             pos: [me.pos.x, me.pos.y],
