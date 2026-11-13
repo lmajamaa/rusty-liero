@@ -228,25 +228,24 @@ mod tests {
     use crate::screen::{Platform, Transition};
     use std::cell::RefCell;
 
-    thread_local! {
-        static KEYS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+    /// The keys pressed, each read once.
+    #[derive(Default)]
+    struct KeyPlatform {
+        keys: RefCell<Vec<u32>>,
     }
 
-    /// Keys from `KEYS`.
-    struct KeyPlatform;
-
-    impl Platform for KeyPlatform {
-        fn test_key_once(&self, sc: u32) -> bool {
-            KEYS.with(|k| {
-                let mut k = k.borrow_mut();
-                let found = k.iter().position(|&x| x == sc);
-                found.map(|i| k.remove(i)).is_some()
-            })
+    impl KeyPlatform {
+        fn press(&self, keys: &[u32]) {
+            *self.keys.borrow_mut() = keys.to_vec();
         }
     }
 
-    fn press(keys: &[u32]) {
-        KEYS.with(|k| *k.borrow_mut() = keys.to_vec());
+    impl Platform for KeyPlatform {
+        fn test_key_once(&self, sc: u32) -> bool {
+            let mut k = self.keys.borrow_mut();
+            let found = k.iter().position(|&x| x == sc);
+            found.map(|i| k.remove(i)).is_some()
+        }
     }
 
     fn s(b: &'static [u8]) -> LieroStr {
@@ -274,8 +273,9 @@ mod tests {
         unsafe { WeaponOptions::new(&spec) }
     }
 
-    fn host() -> Host {
-        Host::new(std::rc::Rc::new(KeyPlatform))
+    fn host() -> (Host, std::rc::Rc<KeyPlatform>) {
+        let p = std::rc::Rc::new(KeyPlatform::default());
+        (Host::new(p.clone()), p)
     }
 
     #[test]
@@ -293,19 +293,19 @@ mod tests {
     fn escape_needs_a_weapon_on() {
         let mut table = [1; WEAPON_COUNT];
         let mut w = screen(&mut table);
-        let h = host();
-        press(&[SCANCODE_ESCAPE]);
+        let (h, p) = host();
+        p.press(&[SCANCODE_ESCAPE]);
         assert!(
             matches!(w.tick(&h).then, Transition::Stay),
             "keys wait for the first frame"
         );
-        press(&[SCANCODE_ESCAPE]);
+        p.press(&[SCANCODE_ESCAPE]);
         let t = w.tick(&h);
         assert!(matches!(t.then, Transition::Open(_)), "every weapon off: the message");
 
         // Back from the message, which read the events: no keys this tick.
         w.resume(&h, 0);
-        press(&[SCANCODE_ESCAPE]);
+        p.press(&[SCANCODE_ESCAPE]);
         assert!(matches!(w.tick(&h).then, Transition::Stay));
 
         // The screen reads the table through its pointer, which the
@@ -314,7 +314,7 @@ mod tests {
         {
             table[5] = 0;
         }
-        press(&[SCANCODE_ESCAPE]);
+        p.press(&[SCANCODE_ESCAPE]);
         assert_eq!(w.tick(&h).closed(), Some(0));
     }
 }

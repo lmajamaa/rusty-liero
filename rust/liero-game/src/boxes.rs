@@ -204,37 +204,46 @@ mod tests {
     use crate::screen::{LieroEvent, Platform};
     use std::cell::RefCell;
     use std::collections::VecDeque;
+    use std::rc::Rc;
 
-    thread_local! {
-        static EVENTS: RefCell<VecDeque<LieroEvent>> = const { RefCell::new(VecDeque::new()) };
-        static LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// Gives out its events, and logs what the screen asks of it.
+    #[derive(Default)]
+    struct TestPlatform {
+        events: RefCell<VecDeque<LieroEvent>>,
+        log: RefCell<Vec<String>>,
     }
 
-    /// Events from `EVENTS`; logs into `LOG`.
-    struct TestPlatform;
+    impl TestPlatform {
+        fn log(&self, line: String) {
+            self.log.borrow_mut().push(line);
+        }
+    }
 
     impl Platform for TestPlatform {
         fn poll_event(&self) -> Option<LieroEvent> {
-            EVENTS.with(|e| e.borrow_mut().pop_front())
+            self.events.borrow_mut().pop_front()
         }
         fn play_sound(&self, id: i32) {
-            LOG.with(|l| l.borrow_mut().push(format!("sound {id}")));
+            self.log(format!("sound {id}"));
         }
         fn process(&self) {
-            LOG.with(|l| l.borrow_mut().push("process".into()));
+            self.log("process".into());
         }
         fn clear_keys(&self) {
-            LOG.with(|l| l.borrow_mut().push("clear".into()));
+            self.log("clear".into());
         }
         fn text_input(&self, on: bool) {
-            LOG.with(|l| l.borrow_mut().push(format!("text {on}")));
+            self.log(format!("text {on}"));
         }
     }
 
-    fn host(events: &[LieroEvent]) -> Host {
-        EVENTS.with(|e| *e.borrow_mut() = events.iter().copied().collect());
-        LOG.with(|l| l.borrow_mut().clear());
-        Host::new(std::rc::Rc::new(TestPlatform))
+    /// A host with `events`, and its platform to read the log from.
+    fn host(events: &[LieroEvent]) -> (Host, Rc<TestPlatform>) {
+        let p = Rc::new(TestPlatform {
+            events: RefCell::new(events.iter().copied().collect()),
+            ..Default::default()
+        });
+        (Host::new(p.clone()), p)
     }
 
     fn typed(c: u8) -> LieroEvent {
@@ -286,7 +295,7 @@ mod tests {
 
     #[test]
     fn typing_editing_and_enter() {
-        let h = host(&[
+        let (h, p) = host(&[
             typed(b'A'),
             typed(b'B'),
             down(SCANCODE_BACKSPACE),
@@ -300,7 +309,7 @@ mod tests {
         assert_eq!(run(&mut b, &h), (1, 6));
         assert_eq!(out, b"XAC");
         assert_eq!(
-            LOG.with(|l| l.borrow().clone()),
+            p.log.borrow().clone(),
             ["text true"; 6]
                 .iter()
                 .map(|s| s.to_string())
@@ -311,7 +320,7 @@ mod tests {
 
     #[test]
     fn digits_only_and_escape() {
-        let h = host(&[typed(b'1'), typed(b'x'), typed(b'2'), down(SCANCODE_ESCAPE)]);
+        let (h, _) = host(&[typed(b'1'), typed(b'x'), typed(b'2'), down(SCANCODE_ESCAPE)]);
         let mut out = b"unchanged".to_vec();
         let mut b = input(b"", 10, true, &mut out);
         assert_eq!(run(&mut b, &h).0, 0);
@@ -337,15 +346,15 @@ mod tests {
             ..Default::default()
         };
 
-        let h = host(&[not_a_key, extended, plain]);
+        let (h, _) = host(&[not_a_key, extended, plain]);
         assert_eq!(run(&mut KeyChoice { extended: false }, &h).0, 0x11);
-        let h = host(&[extended, plain]);
+        let (h, _) = host(&[extended, plain]);
         assert_eq!(run(&mut KeyChoice { extended: true }, &h).0, ext as i32);
     }
 
     #[test]
     fn info_box_shows_once_and_closes_on_a_key() {
-        let h = host(&[typed(b'a'), down(57)]);
+        let (h, p) = host(&[typed(b'a'), down(57)]);
         let mut b = InfoBox {
             text: b"HI".to_vec(),
             x: 0,
@@ -357,6 +366,6 @@ mod tests {
         // The events that came before the box is shown are read once, then
         // a key closes it.
         assert_eq!(run(&mut b, &h), (0, 1));
-        assert_eq!(LOG.with(|l| l.borrow().clone()), ["process", "clear"]);
+        assert_eq!(*p.log.borrow(), ["process", "clear"]);
     }
 }
