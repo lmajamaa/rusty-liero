@@ -98,7 +98,6 @@ fn game_hooks() -> LieroGameHooks {
     LieroGameHooks {
         ctx: std::ptr::null_mut(),
         hires_ticks: host_hires_ticks,
-        process_viewports: true,
     }
 }
 
@@ -434,7 +433,7 @@ impl LieroController {
                             spectators,
                         );
                     } else {
-                        l.game.draw(renderer, state, spectators, false);
+                        l.game.draw(&mut *renderer, state, spectators, false);
                     }
                 }
                 Kind::Replay(r) => {
@@ -442,7 +441,7 @@ impl LieroController {
                         r.game
                             .as_mut()
                             .expect("no game")
-                            .draw(renderer, state, spectators, true);
+                            .draw(&mut *renderer, state, spectators, true);
                     }
                 }
             }

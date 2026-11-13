@@ -16,7 +16,7 @@ use crate::game::{LieroGameData, LieroGameFields, LieroGameWorm, LieroRect};
 use crate::gfx::LieroPalette;
 use crate::level::LieroLevelBox;
 use crate::renderer::{LieroRenderer, LieroRendererData};
-use crate::scene::{liero_game_draw_viewport, LieroDrawSettings};
+use crate::scene::{LieroDrawSettings, SceneSource, WormLooks};
 use crate::settings::{LieroSettingsBox, LieroWormSettingsBox, SharedSettings, SharedWormSettings};
 use crate::sfx::LieroSoundOut;
 use crate::stats::LieroStats;
@@ -53,6 +53,11 @@ impl LieroWorm {
             settings: self.settings.clone(),
             ai: None,
         })
+    }
+
+    /// The worm's bot, if any.
+    pub(crate) fn ai(&self) -> Option<&LieroWormAi> {
+        self.ai.as_deref()
     }
 
     /// The worm's bot, if any.
@@ -106,6 +111,7 @@ pub struct LieroGame {
 
 impl LieroGame {
     /// The game's TC's data, from its context. Panics if it has none.
+    #[cfg(test)]
     pub(crate) fn tc_data(&self) -> Ref<'_, LieroTcData> {
         tc_data(self.tc.as_ref().expect("the game has no TC"))
     }
@@ -201,6 +207,39 @@ impl LieroGame {
     pub(crate) fn process_frame(&mut self, hooks: &crate::game::LieroGameHooks) {
         // SAFETY: the view is the game's own.
         self.with_view(|f, s| unsafe { crate::game::liero_game_process_frame(f, s, hooks) });
+        self.process_viewports();
+    }
+
+    /// The listed worms with their settings, for the viewports. Panics on
+    /// an empty place.
+    fn worms_and_settings<'a>(
+        pool: &'a [Box<LieroWorm>],
+        list: &[Option<WormId>],
+    ) -> Vec<(&'a LieroWorm, Ref<'a, LieroWormSettingsBox>)> {
+        list.iter()
+            .map(|id| {
+                let w = &*pool[id.expect("an empty place among the game's worms").0 as usize];
+                (w, w.settings())
+            })
+            .collect()
+    }
+
+    /// `Game::processViewports`: each viewport follows its worm and moves
+    /// its banner.
+    fn process_viewports(&mut self) {
+        let LieroGame {
+            pool,
+            list,
+            viewports,
+            spectators,
+            ..
+        } = self;
+        let ws = Self::worms_and_settings(pool, list);
+        let views = view_worms(&ws);
+        crate::scene::process_viewports(
+            &views,
+            viewports.iter_mut().chain(spectators.iter_mut()).map(|v| &mut **v),
+        );
     }
 
     /// `Game::processAis`: the bots think, timed for the stats with `hooks`.
@@ -249,36 +288,43 @@ impl LieroGame {
 
     /// `Game::draw`: the split-screen viewports, or with `spectators` the
     /// spectator ones, on `r`, and the palette with the TC's colour
-    /// animations, the fade and the screen flash.
-    ///
-    /// # Safety
-    /// The game has its context; `r` is valid and the game's worms don't
-    /// point into it.
-    pub(crate) unsafe fn draw(&mut self, r: *mut LieroRenderer, state: i32, spectators: bool, is_replay: bool) {
-        unsafe {
-            let d = draw_settings(&self.settings_box().data, &(*r).data, state, is_replay);
-            let scr = (*r).bmp.view();
-            let v = liero_game_view_new(self);
-            let (f, gs) = (&(*v).fields, &(*v).settings);
-            let (list, count) = if spectators {
-                (f.spectator_viewports, f.spectator_viewport_count)
-            } else {
-                (f.viewports, f.viewport_count)
-            };
-            for i in 0..count.max(0) as usize {
-                liero_game_draw_viewport(f, gs, &d, *list.add(i), &scr);
-            }
-            liero_game_view_free(v);
-            let data = &mut (*r).data;
-            crate::gfx::liero_game_palette(
-                &mut data.pal,
-                &data.origpal,
-                &self.tc_data().color_anim,
-                self.data.cycles,
-                data.fade_value,
-                self.data.screen_flash,
-            );
-        }
+    /// animations, the fade and the screen flash. The game has its context.
+    pub(crate) fn draw(&mut self, r: &mut LieroRenderer, state: i32, spectators: bool, is_replay: bool) {
+        let LieroGame {
+            data,
+            pool,
+            list,
+            viewports,
+            spectators: spectator_list,
+            level,
+            settings,
+            tc,
+            ..
+        } = self;
+        let settings = settings.as_ref().expect("the game has no settings").borrow();
+        let tc = tc_data(tc.as_ref().expect("the game has no TC"));
+        let gs = game_settings(&settings.data, Some(&tc));
+        let d = draw_settings(&settings.data, &r.data, state, is_replay);
+        let ws = Self::worms_and_settings(pool, list);
+        let src = SceneSource {
+            data,
+            worms: view_worms(&ws),
+            tc: &tc,
+            level: level.view(),
+            settings: &gs,
+        };
+        let scr = r.bmp.view();
+        let spectator_list = spectators.then_some(&mut spectator_list[..]);
+        crate::scene::draw_viewports(&src, &d, viewports, spectator_list, &scr);
+        let rd = &mut r.data;
+        crate::gfx::liero_game_palette(
+            &mut rd.pal,
+            &rd.origpal,
+            &tc.color_anim,
+            data.cycles,
+            rd.fade_value,
+            data.screen_flash,
+        );
     }
 
     fn worms(&self) -> impl Iterator<Item = Option<&LieroWorm>> {
@@ -367,6 +413,20 @@ pub fn liero_game_assign(to: &mut LieroGame, from: &LieroGame) {
     *to.stats = *stats;
     to.level.assign(&level);
     (to.settings, to.tc, to.sound) = (settings, tc, sound);
+}
+
+/// The views of the listed worms, in order.
+fn view_worms<'a>(ws: &'a [(&'a LieroWorm, Ref<'a, LieroWormSettingsBox>)]) -> Vec<crate::viewport::LieroViewWorm<'a>> {
+    ws.iter()
+        .map(|(w, s)| {
+            let looks = WormLooks {
+                max_health: s.data.health,
+                name: &s.name,
+                color: s.data.color,
+            };
+            crate::scene::view_worm(&w.data, looks, w.ai())
+        })
+        .collect()
 }
 
 /// What drawing a viewport takes of the settings and the renderer.

@@ -183,8 +183,7 @@ pub fn hash_frame(game: &mut LieroGame, split: &mut LieroRenderer, spectator: &m
     let mut f = Fnv::default();
     for (r, spectators) in [(split, false), (spectator, true)] {
         r.clear();
-        // SAFETY: the renderer is a live one.
-        unsafe { game.draw(r, LIERO_STATE_GAME, spectators, false) };
+        game.draw(r, LIERO_STATE_GAME, spectators, false);
         add_screen(&mut f, r);
     }
     f.0

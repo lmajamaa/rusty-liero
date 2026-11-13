@@ -248,15 +248,12 @@ pub struct LieroGameSettings {
     pub load_change: bool,
 }
 
-/// What the tick takes from C++: the clock, and whether to move the
-/// viewports. `ctx` is passed back to `hires_ticks`.
+/// What the tick takes from the host: the clock. `ctx` is passed back to
+/// `hires_ticks`.
 pub struct LieroGameHooks {
     pub ctx: *mut c_void,
     /// The clock the stats time ticks with (`appHiresTicks`).
     pub hires_ticks: unsafe fn(ctx: *mut c_void) -> u64,
-    /// Whether the tick ends by processing the viewports, which the AI's
-    /// copies of the game don't.
-    pub process_viewports: bool,
 }
 
 /// A worm as the stats read it (`statsWorm` in C++).
@@ -627,9 +624,6 @@ impl Game<'_> {
 pub unsafe fn liero_game_process_frame(game: &LieroGameFields, settings: &LieroGameSettings, hooks: &LieroGameHooks) {
     unsafe {
         World::new(game, settings, hooks).process_frame();
-        if hooks.process_viewports {
-            crate::scene::process_viewports(game);
-        }
     }
 }
 

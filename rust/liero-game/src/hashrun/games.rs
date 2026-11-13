@@ -179,7 +179,6 @@ unsafe fn no_ticks(_: *mut c_void) -> u64 {
 pub(super) const HOOKS: LieroGameHooks = LieroGameHooks {
     ctx: std::ptr::null_mut(),
     hires_ticks: no_ticks,
-    process_viewports: true,
 };
 
 /// A bot-vs-bot game as the hash run sets it up, before it starts, with
