@@ -1,8 +1,8 @@
 //! The app's outer screens (`MainScreen` and `GameScreen` in C++): a level
 //! behind the main menu, then whatever the menu chose, and a game run by the
 //! controller until it stops. What the menu's choices do is here too
-//! (`restartApp` and `afterMenu`); reading the frame's events and the menu
-//! screen are C++ (`LieroAppHooks`).
+//! (`restartApp` and `afterMenu`).
+//! The menus themselves are `menu_screen.rs`.
 
 use crate::app::{app, LieroApp};
 use crate::controllers::{
@@ -10,7 +10,8 @@ use crate::controllers::{
     liero_controller_run, liero_controller_take_opened, liero_controller_unfocus, liero_local_controller_new,
 };
 use crate::level::LieroLevelBox;
-use crate::screen::{current_host, BoxedScreen, Host, Screen, Tick};
+use crate::menu_screen::liero_menu_screen;
+use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
 /// What `after_menu` says to do.
 pub const LIERO_AFTER_MENU_QUIT: i32 = 0;
@@ -23,16 +24,6 @@ const MAIN_NEW_GAME: i32 = 1;
 const MAIN_QUIT: i32 = 6;
 const MAIN_REPLAY: i32 = 8;
 const MAIN_TC: i32 = 9;
-
-/// What the app's screens call in C++.
-#[derive(Clone, Copy)]
-pub struct LieroAppHooks {
-    /// Reads the frame's events, passing keys to the controller
-    /// (`Gfx::process(controller)`).
-    pub process: unsafe fn(),
-    /// The main menu screen.
-    pub menu_screen: unsafe fn() -> BoxedScreen,
-}
 
 fn controller(a: &mut LieroApp) -> &mut crate::controllers::LieroController {
     a.controller.as_deref_mut().expect("no controller")
@@ -155,7 +146,6 @@ enum Next {
 /// runs (the stats screen, a message) is pushed on top, and the game goes on
 /// from where it stopped when that closes.
 struct GameScreen {
-    h: LieroAppHooks,
     next: Next,
     shown: bool,
     resumed: bool,
@@ -168,14 +158,13 @@ impl GameScreen {
 }
 
 impl Screen for GameScreen {
-    fn tick(&mut self, _host: &Host) -> Tick {
-        let h = self.h;
+    fn tick(&mut self, host: &Host) -> Tick {
         // Each tick reads the events that came with the frame before it,
         // unless a screen the controller opened just closed: it read them.
         if self.resumed {
             self.resumed = false;
         } else if self.shown {
-            unsafe { (h.process)() };
+            host.process_controller();
         }
 
         if self.next == Next::Focus {
@@ -203,7 +192,7 @@ impl Screen for GameScreen {
             let a = app();
             a.primary_single = false;
             liero_controller_unfocus(controller(a));
-            current_host().clear_keys();
+            host.clear_keys();
             return Tick::close(0);
         }
 
@@ -228,7 +217,6 @@ enum Open {
 
 /// The app: a level behind the main menu, then whatever the menu chose.
 struct MainScreen {
-    h: LieroAppHooks,
     /// What's open on top of it.
     open: Open,
     selection: i32,
@@ -236,7 +224,6 @@ struct MainScreen {
 
 impl Screen for MainScreen {
     fn tick(&mut self, _host: &Host) -> Tick {
-        let h = self.h;
         if self.open == Open::Nothing {
             restart(app());
         } else if self.open == Open::InMenu {
@@ -248,7 +235,6 @@ impl Screen for MainScreen {
                 LIERO_AFTER_MENU_PLAY => {
                     self.open = Open::InGame;
                     return Tick::push(Box::new(GameScreen {
-                        h,
                         next: Next::Focus,
                         shown: false,
                         resumed: false,
@@ -261,7 +247,7 @@ impl Screen for MainScreen {
         // The level, or the game left off, behind the menu.
         draw(app(), false);
         self.open = Open::InMenu;
-        Tick::push(unsafe { (h.menu_screen)() })
+        Tick::push(liero_menu_screen(app().menus))
     }
 
     fn resume(&mut self, _host: &Host, result: i32) {
@@ -270,9 +256,8 @@ impl Screen for MainScreen {
 }
 
 /// The app's first screen.
-pub fn liero_main_screen(hooks: LieroAppHooks) -> BoxedScreen {
+pub fn liero_main_screen() -> BoxedScreen {
     Box::new(MainScreen {
-        h: hooks,
         open: Open::Nothing,
         selection: -1,
     })

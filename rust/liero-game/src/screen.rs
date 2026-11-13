@@ -77,6 +77,9 @@ pub trait Platform {
     }
     /// Reads every event due into the key states (`Gfx::process`).
     fn process(&self) {}
+    /// The same during a game, passing the keys to the controller
+    /// (`Gfx::process(controller)`).
+    fn process_controller(&self) {}
     fn clear_keys(&self) {}
     fn play_sound(&self, _id: i32) {}
     /// Turns the browser's text input on or off.
@@ -120,6 +123,10 @@ pub trait Platform {
     fn sound(&self) -> crate::sfx::LieroSoundOut {
         crate::sfx::LieroSoundOut::NONE
     }
+    /// A seed for F8's random TC.
+    fn random_seed(&self) -> u32 {
+        0
+    }
     /// Shows the frame a tick drew.
     fn show(&self) {}
     /// The top screen is waiting for an event and showed nothing.
@@ -159,6 +166,12 @@ impl Host {
     }
     pub fn process(&self) {
         self.0.process()
+    }
+    pub fn process_controller(&self) {
+        self.0.process_controller()
+    }
+    pub fn random_seed(&self) -> u32 {
+        self.0.random_seed()
     }
     pub fn clear_keys(&self) {
         self.0.clear_keys()

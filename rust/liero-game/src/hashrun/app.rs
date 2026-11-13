@@ -20,19 +20,16 @@ use super::game::add_screen;
 use super::games::tc_data;
 use super::{Fnv, Out};
 use crate::app::app;
-use crate::app_screens::{liero_main_screen, LieroAppHooks};
+use crate::app_screens::liero_main_screen;
 use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
 use crate::keys::sdl_to_dos_keysym;
-use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks};
 use crate::menus::{liero_menus_load, liero_menus_reset};
 use crate::screen::{
-    liero_app_push, liero_app_step, liero_screen_set_host, BoxedScreen, Host, LieroApp, LieroEvent, LieroTypedKey,
-    Platform,
+    liero_app_push, liero_app_step, liero_screen_set_host, Host, LieroApp, LieroEvent, LieroTypedKey, Platform,
 };
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
-use crate::tc::liero_tc_randomize;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -215,6 +212,11 @@ impl Platform for HashPlatform {
         process(false);
     }
 
+    /// The frame's events, with their keys for the controller.
+    fn process_controller(&self) {
+        process(true);
+    }
+
     fn clear_keys(&self) {
         app().keys.clear();
     }
@@ -298,23 +300,6 @@ impl Platform for HashPlatform {
             }
         });
     }
-}
-
-/// The frame's events, with their keys for the controller.
-unsafe fn app_process() {
-    process(true);
-}
-
-unsafe fn randomize_tc() {
-    // F8 isn't in the script; the game seeds it from the system.
-    liero_tc_randomize(&app().menu_tc(), 0);
-}
-
-unsafe fn menu_screen() -> BoxedScreen {
-    liero_menu_screen(LieroMenuScreenHooks {
-        menus: app().menus,
-        randomize_tc,
-    })
 }
 
 /// Builds the timeline: `t` is the frame the next event happens on.
@@ -563,13 +548,7 @@ pub fn hash_app(out: &mut Out) {
     let host = Host::new(platform);
 
     let mut stack = LieroApp::new();
-    liero_app_push(
-        &mut stack,
-        liero_main_screen(LieroAppHooks {
-            process: app_process,
-            menu_screen,
-        }),
-    );
+    liero_app_push(&mut stack, liero_main_screen());
     while liero_app_step(&mut stack, &host) && driver(|d| d.failed.is_none()) {}
     drop(stack);
 

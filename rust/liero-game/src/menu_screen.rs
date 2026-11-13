@@ -7,7 +7,7 @@
 //! open a screen, and the screen goes on where it stopped when that one
 //! closes. The app sets the menus up and draws them (`app_menus.rs`);
 //! saving the settings is the app's (`app_files.rs`), and F8's random TC
-//! is C++ (`LieroMenuScreenHooks`).
+//! is seeded by the platform.
 
 use crate::menus::LieroMenus;
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
@@ -33,7 +33,7 @@ const SOUND_UP: i32 = 26;
 const SOUND_DOWN: i32 = 25;
 const SOUND_CHOICE: i32 = 27;
 
-/// The menus, as `LieroMenuScreenHooks` names them.
+/// The menus.
 pub const LIERO_MENU_MAIN: i32 = 0;
 pub const LIERO_MENU_SETTINGS: i32 = 1;
 pub const LIERO_MENU_PLAYER: i32 = 2;
@@ -47,16 +47,6 @@ pub const LIERO_MAIN_ADVANCED: i32 = 5;
 pub const LIERO_MAIN_QUIT: i32 = 6;
 pub const LIERO_MAIN_REPLAYS: i32 = 7;
 pub const LIERO_MAIN_TC: i32 = 9;
-
-/// What the menu screen calls in C++. Menus are named by the
-/// `LIERO_MENU_*` constants.
-#[derive(Clone, Copy)]
-pub struct LieroMenuScreenHooks {
-    /// The menus, which outlive the screen.
-    pub menus: *mut LieroMenus,
-    /// F8: the developers' random TC.
-    pub randomize_tc: unsafe fn(),
-}
 
 /// Where a pass stopped for a screen an item opened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,7 +80,8 @@ enum Step {
 }
 
 struct MenuScreen {
-    h: LieroMenuScreenHooks,
+    /// The app's menus, which outlive the screen.
+    menus: *mut LieroMenus,
     phase: Phase,
     start_item: i32,
     selected: i32,
@@ -107,7 +98,7 @@ impl MenuScreen {
     fn menus(&self) -> &mut LieroMenus {
         // SAFETY: C++'s menus outlive the screen, and only it uses them
         // while it runs.
-        unsafe { &mut *self.h.menus }
+        unsafe { &mut *self.menus }
     }
 
     fn menu(&self, kind: i32) -> &mut crate::menu::LieroMenuBox {
@@ -162,7 +153,6 @@ impl MenuScreen {
 
     /// One pass of the menu's loop (`Gfx::menuStep`).
     fn step(&mut self, host: &Host) -> Step {
-        let h = self.h;
         if self.part != Part::Top && self.take_result(self.how, self.entered) {
             return Step::Close;
         }
@@ -265,7 +255,11 @@ impl MenuScreen {
             self.set_cur(LIERO_MENU_SETTINGS);
         }
         if host.test_key_once(SCANCODE_F8) {
-            unsafe { (h.randomize_tc)() };
+            // F8: the developers' random TC.
+            let a = crate::app::app();
+            if a.has_tc() {
+                crate::tc::liero_tc_randomize(&a.menu_tc(), host.random_seed());
+            }
         }
 
         for (key, dir) in [(SCANCODE_LEFT, -1), (SCANCODE_RIGHT, 1)] {
@@ -356,9 +350,9 @@ impl Screen for MenuScreen {
 }
 
 /// The main menu screen.
-pub fn liero_menu_screen(hooks: LieroMenuScreenHooks) -> BoxedScreen {
+pub fn liero_menu_screen(menus: *mut LieroMenus) -> BoxedScreen {
     Box::new(MenuScreen {
-        h: hooks,
+        menus,
         phase: Phase::Start,
         start_item: 0,
         selected: -1,

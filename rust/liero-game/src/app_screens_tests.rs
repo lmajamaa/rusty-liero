@@ -65,12 +65,7 @@ fn resuming_a_replay_shows_the_single_screen() {
 fn a_finished_game_goes_back_to_the_play_screen() {
     let a = set_up();
     a.primary_single = true;
-    let hooks = LieroAppHooks {
-        process: no_process,
-        menu_screen: no_menu,
-    };
     let mut g = GameScreen {
-        h: hooks,
         next: Next::Finish,
         shown: false,
         resumed: true,
@@ -79,18 +74,6 @@ fn a_finished_game_goes_back_to_the_play_screen() {
     assert_eq!((t.closed(), t.shown), (Some(0), false));
     assert!(!a.primary_single);
     a.controller = None;
-}
-
-unsafe fn no_process() {}
-
-unsafe fn no_menu() -> BoxedScreen {
-    struct Nothing;
-    impl Screen for Nothing {
-        fn tick(&mut self, _host: &Host) -> Tick {
-            Tick::close(0)
-        }
-    }
-    Box::new(Nothing)
 }
 
 #[test]

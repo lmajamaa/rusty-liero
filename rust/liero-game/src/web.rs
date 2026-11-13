@@ -15,18 +15,16 @@
 //! went by `keyCode` instead, which differs for some keys on other layouts.
 
 use crate::app::app;
-use crate::app_screens::{liero_main_screen, LieroAppHooks};
+use crate::app_screens::liero_main_screen;
 use crate::controllers::liero_controller_on_key;
 use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, LieroColor};
 use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, LieroKeyChanges};
-use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks, LIERO_MENU_HIDDEN};
+use crate::menu_screen::LIERO_MENU_HIDDEN;
 use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items, LieroMenusHooks};
 use crate::screen::{
-    liero_app_frame, liero_app_push, liero_screen_set_host, BoxedScreen, Host, LieroApp, LieroEvent, LieroTypedKey,
-    Platform,
+    liero_app_frame, liero_app_push, liero_screen_set_host, Host, LieroApp, LieroEvent, LieroTypedKey, Platform,
 };
 use crate::sfx::{LieroMixer, LieroSoundOut};
-use crate::tc::liero_tc_randomize;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -558,6 +556,10 @@ impl Platform for WebPlatform {
         process(false);
     }
 
+    fn process_controller(&self) {
+        process(true);
+    }
+
     fn clear_keys(&self) {
         app().keys.clear();
     }
@@ -623,6 +625,10 @@ impl Platform for WebPlatform {
         }
     }
 
+    fn random_seed(&self) -> u32 {
+        (js_sys::Math::random() * 4_294_967_296.0) as u32
+    }
+
     fn show(&self) {
         show_frame();
     }
@@ -648,24 +654,6 @@ unsafe fn menus_set_double_res(on: bool) {
 
 unsafe fn menus_set_fullscreen(on: bool) {
     set_fullscreen(on, false);
-}
-
-unsafe fn app_process() {
-    process(true);
-}
-
-/// F8 on the menu: the developers' random TC.
-unsafe fn randomize_tc() {
-    if app().has_tc() {
-        liero_tc_randomize(&app().menu_tc(), (js_sys::Math::random() * 4_294_967_296.0) as u32);
-    }
-}
-
-unsafe fn menu_screen() -> BoxedScreen {
-    liero_menu_screen(LieroMenuScreenHooks {
-        menus: app().menus,
-        randomize_tc,
-    })
 }
 
 // ---- Sound
@@ -893,13 +881,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     let platform: Rc<dyn Platform> = Rc::new(WebPlatform);
     liero_screen_set_host(platform.clone());
     let mut stack = LieroApp::new();
-    liero_app_push(
-        &mut stack,
-        liero_main_screen(LieroAppHooks {
-            process: app_process,
-            menu_screen,
-        }),
-    );
+    liero_app_push(&mut stack, liero_main_screen());
     run_frames(stack, Host::new(platform));
     Ok(())
 }
