@@ -566,7 +566,7 @@ mod tests {
         let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/two.lrp", b"", false), tree_source());
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
         assert_eq!(sel.cur_sel().map(|c| sel.nodes[c].name.clone()), Some(b"two".to_vec()));
-        assert_eq!(sel.choose(&Host(Default::default())), Some(5));
+        assert_eq!(sel.choose(&Host::none()), Some(5));
         assert_eq!(
             CHOSEN.with(|c| c.borrow().clone()),
             ["Replays/two.lrp|/cfg/Replays/two.lrp|two|false"]
@@ -584,7 +584,7 @@ mod tests {
     fn enter_on_a_folder_opens_it() {
         tree(&[("", &[("Replays", true)]), ("Replays", &[("one.lrp", false)])]);
         let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), tree_source());
-        assert_eq!(sel.choose(&Host(Default::default())), None);
+        assert_eq!(sel.choose(&Host::none()), None);
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
     }
 
@@ -592,7 +592,7 @@ mod tests {
     fn random_level_is_chosen_as_random() {
         tree(&[("", &[("a.lev", false)])]);
         let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), tree_source());
-        assert_eq!(sel.choose(&Host(Default::default())), Some(5));
+        assert_eq!(sel.choose(&Host::none()), Some(5));
         assert_eq!(CHOSEN.with(|c| c.borrow().clone()), ["||Random|true"]);
     }
 
@@ -605,7 +605,7 @@ mod tests {
         ]);
         let mut sel = Selector::new(&spec(b"", b"", b"", true), tree_source());
         assert_eq!(names(&mut sel, ROOT), ["good"]);
-        assert_eq!(sel.choose(&Host(Default::default())), Some(5));
+        assert_eq!(sel.choose(&Host::none()), Some(5));
     }
 
     thread_local! {
@@ -614,23 +614,19 @@ mod tests {
         static PREVIEWS: RefCell<u32> = const { RefCell::new(0) };
     }
 
-    unsafe fn key_once(sc: u32) -> bool {
-        KEYS.with(|k| {
-            let mut k = k.borrow_mut();
-            let found = k.iter().position(|&x| x == sc);
-            found.map(|i| k.remove(i)).is_some()
-        })
-    }
+    /// Keys from `KEYS`, typed text from `TYPED`.
+    struct KeyPlatform;
 
-    unsafe fn typed(out: *mut crate::screen::LieroTypedKey, cap: usize) -> usize {
-        unsafe {
-            TYPED.with(|t| {
-                let t = std::mem::take(&mut *t.borrow_mut());
-                for (i, k) in t.iter().take(cap).enumerate() {
-                    *out.add(i) = *k;
-                }
-                t.len().min(cap)
+    impl crate::screen::Platform for KeyPlatform {
+        fn test_key_once(&self, sc: u32) -> bool {
+            KEYS.with(|k| {
+                let mut k = k.borrow_mut();
+                let found = k.iter().position(|&x| x == sc);
+                found.map(|i| k.remove(i)).is_some()
             })
+        }
+        fn typed_keys(&self) -> Vec<crate::screen::LieroTypedKey> {
+            TYPED.with(|t| std::mem::take(&mut *t.borrow_mut()))
         }
     }
 
@@ -645,11 +641,7 @@ mod tests {
                 })
                 .collect()
         });
-        Host(crate::screen::LieroScreenHost {
-            test_key_once: Some(key_once),
-            typed_keys: Some(typed),
-            ..Default::default()
-        })
+        Host::new(std::rc::Rc::new(KeyPlatform))
     }
 
     #[test]

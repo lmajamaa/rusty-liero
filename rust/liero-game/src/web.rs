@@ -22,14 +22,13 @@ use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos
 use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks, LIERO_MENU_HIDDEN};
 use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items, LieroMenusHooks};
 use crate::screen::{
-    liero_app_frame, liero_app_push, liero_screen_set_host, BoxedScreen, LieroApp, LieroAppHost, LieroEvent,
-    LieroScreenHost, LieroTypedKey,
+    liero_app_frame, liero_app_push, liero_screen_set_host, BoxedScreen, Host, LieroApp, LieroEvent, LieroTypedKey,
+    Platform,
 };
 use crate::sfx::{LieroMixer, LieroSoundOut};
 use crate::tc::liero_tc_randomize;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
-use std::ffi::c_void;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{Clamped, JsCast};
@@ -513,11 +512,22 @@ fn show_frame() {
     });
 }
 
-// ---- What the screens call (LieroScreenHost)
+// ---- What the screens call
 
-unsafe fn host_poll_event(out: *mut LieroEvent) -> bool {
-    unsafe {
-        let Some(ev) = next_event() else { return false };
+fn mixer() -> *mut LieroMixer {
+    shell(|s| s.mixer).unwrap_or(std::ptr::null_mut())
+}
+
+fn ticks_now() -> u32 {
+    (now_ms() - shell(|s| s.start_ms)) as u32
+}
+
+/// The browser, as the screens see it.
+struct WebPlatform;
+
+impl Platform for WebPlatform {
+    fn poll_event(&self) -> Option<LieroEvent> {
+        let ev = next_event()?;
         process_event(ev, false);
         let mut e = LieroEvent::default();
         match ev {
@@ -541,68 +551,60 @@ unsafe fn host_poll_event(out: *mut LieroEvent) -> bool {
                 }
             }
         }
-        *out = e;
+        Some(e)
+    }
+
+    fn process(&self) {
+        process(false);
+    }
+
+    fn clear_keys(&self) {
+        app().keys.clear();
+    }
+
+    fn play_sound(&self, id: i32) {
+        // SAFETY: the mixer is the shell's, or null.
+        unsafe {
+            crate::shell::liero_shell_play_sound(app(), mixer(), id);
+        }
+    }
+
+    fn text_input(&self, on: bool) {
+        shell(|s| s.text_input = on);
+    }
+
+    fn test_key_once(&self, scancode: u32) -> bool {
+        app().keys.test_sdl_once(scancode as i32)
+    }
+
+    fn test_key(&self, scancode: u32) -> bool {
+        app().keys.test_sdl(scancode as i32)
+    }
+
+    fn typed_keys(&self) -> Vec<LieroTypedKey> {
+        shell(|s| s.key_buf.clone())
+    }
+
+    fn ticks(&self) -> u32 {
+        ticks_now()
+    }
+
+    fn app_drawing(&self) -> bool {
         true
     }
-}
 
-unsafe fn host_process() {
-    process(false);
-}
-
-unsafe fn host_clear_keys() {
-    app().keys.clear();
-}
-
-fn mixer() -> *mut LieroMixer {
-    shell(|s| s.mixer).unwrap_or(std::ptr::null_mut())
-}
-
-unsafe fn host_play_sound(id: i32) {
-    unsafe {
-        crate::shell::liero_shell_play_sound(app(), mixer(), id);
+    fn hires_ticks(&self) -> u64 {
+        (now_ms() * 1_000_000.0) as u64
     }
-}
 
-unsafe fn host_text_input(on: bool) {
-    shell(|s| s.text_input = on);
-}
-
-unsafe fn host_test_key_once(scancode: u32) -> bool {
-    app().keys.test_sdl_once(scancode as i32)
-}
-
-unsafe fn host_test_key(scancode: u32) -> bool {
-    app().keys.test_sdl(scancode as i32)
-}
-
-unsafe fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
-    unsafe {
-        shell(|s| {
-            let n = s.key_buf.len().min(cap);
-            std::ptr::copy_nonoverlapping(s.key_buf.as_ptr(), out, n);
-            n
-        })
+    fn time(&self) -> i64 {
+        (js_sys::Date::now() / 1000.0) as i64
     }
-}
 
-unsafe fn host_ticks() -> u32 {
-    (now_ms() - shell(|s| s.start_ms)) as u32
-}
-
-unsafe fn host_hires_ticks() -> u64 {
-    (now_ms() * 1_000_000.0) as u64
-}
-
-unsafe fn host_time() -> i64 {
-    (js_sys::Date::now() / 1000.0) as i64
-}
-
-/// `t` as "%Y-%m-%d %H.%M.%S" in local time, as `strftime` wrote it.
-unsafe fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
-    unsafe {
+    /// `t` as "%Y-%m-%d %H.%M.%S" in local time, as `strftime` wrote it.
+    fn replay_time(&self, t: i64) -> Vec<u8> {
         let d = js_sys::Date::new(&JsValue::from_f64(t as f64 * 1000.0));
-        let s = format!(
+        format!(
             "{:04}-{:02}-{:02} {:02}.{:02}.{:02}",
             d.get_full_year(),
             d.get_month() + 1,
@@ -610,31 +612,24 @@ unsafe fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
             d.get_hours(),
             d.get_minutes(),
             d.get_seconds()
-        );
-        // strftime writes nothing if the text and its 0 don't fit.
-        if s.len() >= cap {
-            return 0;
+        )
+        .into_bytes()
+    }
+
+    fn sound(&self) -> LieroSoundOut {
+        LieroSoundOut {
+            mixer: mixer(),
+            report: None,
         }
-        std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len());
-        *out.add(s.len()) = 0;
-        s.len()
     }
-}
 
-unsafe fn host_sound() -> LieroSoundOut {
-    LieroSoundOut {
-        mixer: mixer(),
-        report: None,
+    fn show(&self) {
+        show_frame();
     }
-}
 
-unsafe fn host_show(_: *mut c_void) {
-    show_frame();
+    // The next step comes with a later animation frame, by which time the
+    // event may have come: `idle` does nothing.
 }
-
-/// The next step comes with a later animation frame, by which time the
-/// event may have come.
-unsafe fn host_idle(_: *mut c_void) {}
 
 // ---- The menus' and app's hooks
 
@@ -895,23 +890,8 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
         f.forget();
     }
 
-    liero_screen_set_host(&LieroScreenHost {
-        poll_event: Some(host_poll_event),
-        process: Some(host_process),
-        clear_keys: Some(host_clear_keys),
-        play_sound: Some(host_play_sound),
-        text_input: Some(host_text_input),
-        test_key_once: Some(host_test_key_once),
-        typed_keys: Some(host_typed_keys),
-        ticks: Some(host_ticks),
-        test_key: Some(host_test_key),
-        app_drawing: true,
-        time: Some(host_time),
-        hires_ticks: Some(host_hires_ticks),
-        replay_time: Some(host_replay_time),
-        sound: Some(host_sound),
-        ..Default::default()
-    });
+    let platform: Rc<dyn Platform> = Rc::new(WebPlatform);
+    liero_screen_set_host(platform.clone());
     let mut stack = LieroApp::new();
     liero_app_push(
         &mut stack,
@@ -920,7 +900,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
             menu_screen,
         }),
     );
-    run_frames(stack);
+    run_frames(stack, Host::new(platform));
     Ok(())
 }
 
@@ -930,21 +910,15 @@ type FrameFn = Closure<dyn FnMut()>;
 /// Runs the screens every animation frame (as the C++ shell's `emscripten_set_main_loop` did),
 /// with the 14 ms steps due, until they close; then saves the settings, as
 /// the game does when it ends.
-fn run_frames(stack: LieroApp) {
-    let host = LieroAppHost {
-        data: std::ptr::null_mut(),
-        show: Some(host_show),
-        idle: Some(host_idle),
-    };
+fn run_frames(stack: LieroApp, host: Host) {
     let mut stack = Some(stack);
     let next: Rc<RefCell<Option<FrameFn>>> = Rc::new(RefCell::new(None));
     let again = next.clone();
     *next.borrow_mut() = Some(Closure::new(move || {
         poll_gamepads();
-        let ms = host_ticks_now();
+        let ms = ticks_now();
         let Some(s) = stack.as_mut() else { return };
-        // SAFETY: the host's functions are the shell's.
-        let running = unsafe { liero_app_frame(s, ms, &host) };
+        let running = liero_app_frame(s, ms, &host);
         if running {
             persist_changes();
             if let Some(f) = again.borrow().as_ref() {
@@ -966,9 +940,4 @@ fn run_frames(stack: LieroApp) {
     if let Some(f) = next.borrow().as_ref() {
         let _ = window().request_animation_frame(f.as_ref().unchecked_ref());
     };
-}
-
-fn host_ticks_now() -> u32 {
-    // SAFETY: no pointers.
-    unsafe { host_ticks() }
 }

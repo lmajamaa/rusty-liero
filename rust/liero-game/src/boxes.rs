@@ -201,7 +201,7 @@ pub unsafe fn liero_input_box_screen(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{LieroEvent, LieroScreenHost};
+    use crate::screen::{LieroEvent, Platform};
     use std::cell::RefCell;
     use std::collections::VecDeque;
 
@@ -210,40 +210,31 @@ mod tests {
         static LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
 
-    unsafe fn poll(out: *mut LieroEvent) -> bool {
-        unsafe {
-            EVENTS
-                .with(|e| e.borrow_mut().pop_front())
-                .map(|ev| *out = ev)
-                .is_some()
+    /// Events from `EVENTS`; logs into `LOG`.
+    struct TestPlatform;
+
+    impl Platform for TestPlatform {
+        fn poll_event(&self) -> Option<LieroEvent> {
+            EVENTS.with(|e| e.borrow_mut().pop_front())
         }
-    }
-    unsafe fn sound(id: i32) {
-        LOG.with(|l| l.borrow_mut().push(format!("sound {id}")));
-    }
-    unsafe fn process() {
-        LOG.with(|l| l.borrow_mut().push("process".into()));
-    }
-    unsafe fn clear() {
-        LOG.with(|l| l.borrow_mut().push("clear".into()));
-    }
-    unsafe fn text_input(on: bool) {
-        LOG.with(|l| l.borrow_mut().push(format!("text {on}")));
+        fn play_sound(&self, id: i32) {
+            LOG.with(|l| l.borrow_mut().push(format!("sound {id}")));
+        }
+        fn process(&self) {
+            LOG.with(|l| l.borrow_mut().push("process".into()));
+        }
+        fn clear_keys(&self) {
+            LOG.with(|l| l.borrow_mut().push("clear".into()));
+        }
+        fn text_input(&self, on: bool) {
+            LOG.with(|l| l.borrow_mut().push(format!("text {on}")));
+        }
     }
 
     fn host(events: &[LieroEvent]) -> Host {
         EVENTS.with(|e| *e.borrow_mut() = events.iter().copied().collect());
         LOG.with(|l| l.borrow_mut().clear());
-        Host(LieroScreenHost {
-            poll_event: Some(poll),
-            process: Some(process),
-            clear_keys: Some(clear),
-            play_sound: Some(sound),
-            fill_screen: None,
-            menu_palette: None,
-            text_input: Some(text_input),
-            ..Default::default()
-        })
+        Host::new(std::rc::Rc::new(TestPlatform))
     }
 
     fn typed(c: u8) -> LieroEvent {

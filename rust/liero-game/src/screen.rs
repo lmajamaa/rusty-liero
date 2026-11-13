@@ -14,10 +14,10 @@
 //! woken by the browser or the window.
 //!
 //! A screen is a `Box<dyn Screen>`. It reaches the platform (events, sound,
-//! the clock) through `LieroScreenHost`, which the shell sets once.
+//! the clock) through a `Host`, over the `Platform` the shell sets once.
 
-use std::ffi::c_void;
-use std::sync::OnceLock;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::gfx::LieroBitmap;
 use crate::text::LieroFont;
@@ -46,15 +46,6 @@ pub enum Transition {
     Quit,
 }
 
-/// What the stack calls back into.
-pub struct LieroAppHost {
-    pub data: *mut c_void,
-    /// Shows the frame a tick drew.
-    pub show: Option<unsafe fn(data: *mut c_void)>,
-    /// The top screen is waiting for an event and showed nothing.
-    pub idle: Option<unsafe fn(data: *mut c_void)>,
-}
-
 /// An event as a Rust screen sees it. C++ has already passed it to
 /// `Gfx::processEvent`, so the key states are up to date.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -77,173 +68,173 @@ pub struct LieroTypedKey {
     pub scancode: u32,
 }
 
-/// What a Rust screen calls in C++.
-#[derive(Clone, Copy, Default)]
-pub struct LieroScreenHost {
-    /// The next event, if one is due (`Gfx::pollEvent`, then `processEvent`).
-    pub poll_event: Option<unsafe fn(out: *mut LieroEvent) -> bool>,
+/// What the screens need of the platform: events and keys, sound, the
+/// clock, and showing a frame. Each does nothing by default.
+pub trait Platform {
+    /// The next event, if one is due, already read into the key states.
+    fn poll_event(&self) -> Option<LieroEvent> {
+        None
+    }
     /// Reads every event due into the key states (`Gfx::process`).
-    pub process: Option<unsafe fn()>,
-    pub clear_keys: Option<unsafe fn()>,
-    pub play_sound: Option<unsafe fn(id: i32)>,
-    /// Fills the screen with one colour.
-    pub fill_screen: Option<unsafe fn(color: u8)>,
-    /// Shows the screen with the TC's own palette.
-    pub menu_palette: Option<unsafe fn()>,
+    fn process(&self) {}
+    fn clear_keys(&self) {}
+    fn play_sound(&self, _id: i32) {}
     /// Turns the browser's text input on or off.
-    pub text_input: Option<unsafe fn(on: bool)>,
+    fn text_input(&self, _on: bool) {}
     /// Whether an SDL key was pressed since it was last asked about, which
     /// it then forgets (`Gfx::testSDLKeyOnce`).
-    pub test_key_once: Option<unsafe fn(scancode: u32) -> bool>,
-    /// The keys typed this frame, at most `cap`; returns how many.
-    pub typed_keys: Option<unsafe fn(out: *mut LieroTypedKey, cap: usize) -> usize>,
-    /// The menus' clock, in milliseconds (`appTicks`).
-    pub ticks: Option<unsafe fn() -> u32>,
-    /// Fades the menus in and cycles their colours, once a frame
-    /// (`Gfx::menuFade`).
-    pub menu_fade: Option<unsafe fn()>,
+    fn test_key_once(&self, _scancode: u32) -> bool {
+        false
+    }
     /// Whether an SDL key is held (`Gfx::testSDLKey`).
-    pub test_key: Option<unsafe fn(scancode: u32) -> bool>,
-    /// The frozen screen with the main menu over it, greyed out while
-    /// another menu is up (`Gfx::drawBasicMenu`).
-    pub draw_basic_menu: Option<unsafe fn()>,
-    /// The app draws: the screen, the frozen screen, the font, filling the
-    /// screen, the menu palette, the menu fade and the basic menu come from
-    /// the Rust app (`app_menus.rs`) instead of the functions above. Tests
-    /// leave it off.
-    pub app_drawing: bool,
+    fn test_key(&self, _scancode: u32) -> bool {
+        false
+    }
+    /// The keys typed this frame.
+    fn typed_keys(&self) -> Vec<LieroTypedKey> {
+        Vec::new()
+    }
+    /// The menus' clock, in milliseconds (`appTicks`).
+    fn ticks(&self) -> u32 {
+        0
+    }
+    /// The app draws: the screens draw on the app's screen, frozen screen
+    /// and font. Tests leave it off, and drawing is skipped.
+    fn app_drawing(&self) -> bool {
+        false
+    }
     /// The time, in seconds since 1970 (`appTime`).
-    pub time: Option<unsafe fn() -> i64>,
+    fn time(&self) -> i64 {
+        0
+    }
     /// The stats' clock, in nanoseconds (`appHiresTicks`).
-    pub hires_ticks: Option<unsafe fn() -> u64>,
+    fn hires_ticks(&self) -> u64 {
+        0
+    }
     /// `t` as a replay's name starts, "%Y-%m-%d %H.%M.%S", in local time,
-    /// or UTC in the hash run. Writes at most `cap` bytes
-    /// and returns how many.
-    pub replay_time: Option<unsafe fn(t: i64, out: *mut u8, cap: usize) -> usize>,
+    /// or UTC in the hash run.
+    fn replay_time(&self, _t: i64) -> Vec<u8> {
+        Vec::new()
+    }
     /// Where the games' sounds go (`DefaultSoundPlayer::out`).
-    pub sound: Option<unsafe fn() -> crate::sfx::LieroSoundOut>,
+    fn sound(&self) -> crate::sfx::LieroSoundOut {
+        crate::sfx::LieroSoundOut::NONE
+    }
+    /// Shows the frame a tick drew.
+    fn show(&self) {}
+    /// The top screen is waiting for an event and showed nothing.
+    fn idle(&self) {}
 }
 
-static HOST: OnceLock<LieroScreenHost> = OnceLock::new();
+/// A platform that does nothing, before the shell sets one.
+struct NoPlatform;
 
-/// Sets the functions Rust screens call. Only the first call counts.
-pub fn liero_screen_set_host(host: &LieroScreenHost) {
-    let _ = HOST.set(*host);
+impl Platform for NoPlatform {}
+
+thread_local! {
+    static PLATFORM: RefCell<Option<Rc<dyn Platform>>> = const { RefCell::new(None) };
 }
 
-/// `LieroScreenHost` for Rust code: a missing function does nothing.
-#[derive(Clone, Copy)]
-pub struct Host(pub LieroScreenHost);
+/// Sets the platform the screens use. Only the first call counts.
+pub fn liero_screen_set_host(platform: Rc<dyn Platform>) {
+    PLATFORM.with(|p| {
+        p.borrow_mut().get_or_insert(platform);
+    });
+}
+
+/// The platform as the screens use it, with the app's drawing.
+#[derive(Clone)]
+pub struct Host(Rc<dyn Platform>);
 
 impl Host {
+    pub fn new(platform: Rc<dyn Platform>) -> Self {
+        Host(platform)
+    }
+    /// A host that does nothing.
+    pub fn none() -> Self {
+        Host(Rc::new(NoPlatform))
+    }
     pub fn poll_event(&self) -> Option<LieroEvent> {
-        let mut ev = LieroEvent::default();
-        let f = self.0.poll_event?;
-        unsafe { f(&mut ev) }.then_some(ev)
+        self.0.poll_event()
     }
     pub fn process(&self) {
-        if let Some(f) = self.0.process {
-            unsafe { f() }
-        }
+        self.0.process()
     }
     pub fn clear_keys(&self) {
-        if let Some(f) = self.0.clear_keys {
-            unsafe { f() }
-        }
+        self.0.clear_keys()
     }
     pub fn play_sound(&self, id: i32) {
-        if let Some(f) = self.0.play_sound {
-            unsafe { f(id) }
-        }
+        self.0.play_sound(id)
     }
     /// The screen shown, when the app draws.
     pub fn screen(&self) -> Option<LieroBitmap<'static>> {
-        self.0.app_drawing.then(|| crate::app::app().play.bmp.view())
+        self.0.app_drawing().then(|| crate::app::app().play.bmp.view())
     }
     /// The copy of the screen the menus draw over.
     pub fn frozen(&self) -> Option<LieroBitmap<'static>> {
-        self.0.app_drawing.then(|| crate::app::app().frozen.view())
+        self.0.app_drawing().then(|| crate::app::app().frozen.view())
     }
     pub fn font(&self) -> Option<LieroFont<'static>> {
-        self.0.app_drawing.then(crate::app::menu_font)
+        self.0.app_drawing().then(crate::app::menu_font)
     }
     pub fn fill_screen(&self, color: u8) {
-        if self.0.app_drawing {
+        if self.0.app_drawing() {
             crate::gfx::liero_gfx_fill(&crate::app::app().play.bmp.view(), color);
-            return;
-        }
-        if let Some(f) = self.0.fill_screen {
-            unsafe { f(color) }
         }
     }
+    /// Shows the screen with the TC's own palette.
     pub fn menu_palette(&self) {
-        if self.0.app_drawing {
+        if self.0.app_drawing() {
             let a = crate::app::app();
             a.play.data.pal = crate::app::menu_tc_data().palette_colors;
-            return;
-        }
-        if let Some(f) = self.0.menu_palette {
-            unsafe { f() }
         }
     }
     pub fn text_input(&self, on: bool) {
-        if let Some(f) = self.0.text_input {
-            unsafe { f(on) }
-        }
+        self.0.text_input(on)
     }
     pub fn test_key(&self, scancode: u32) -> bool {
-        self.0.test_key.is_some_and(|f| unsafe { f(scancode) })
+        self.0.test_key(scancode)
     }
+    /// The frozen screen with the main menu over it, greyed out while
+    /// another menu is up (`Gfx::drawBasicMenu`).
     pub fn draw_basic_menu(&self) {
-        if self.0.app_drawing {
+        if self.0.app_drawing() {
             crate::app_menus::draw_basic_menu();
-            return;
-        }
-        if let Some(f) = self.0.draw_basic_menu {
-            unsafe { f() }
         }
     }
     pub fn test_key_once(&self, scancode: u32) -> bool {
-        self.0.test_key_once.is_some_and(|f| unsafe { f(scancode) })
+        self.0.test_key_once(scancode)
     }
     pub fn typed_keys(&self) -> Vec<LieroTypedKey> {
-        let Some(f) = self.0.typed_keys else {
-            return Vec::new();
-        };
-        let mut keys = vec![LieroTypedKey::default(); 32];
-        let n = unsafe { f(keys.as_mut_ptr(), keys.len()) };
-        keys.truncate(n.min(32));
-        keys
+        self.0.typed_keys()
     }
     pub fn ticks(&self) -> u32 {
-        self.0.ticks.map_or(0, |f| unsafe { f() })
+        self.0.ticks()
     }
+    /// Fades the menus in and cycles their colours, once a frame
+    /// (`Gfx::menuFade`).
     pub fn menu_fade(&self) {
-        if self.0.app_drawing {
+        if self.0.app_drawing() {
             crate::app_menus::menu_fade(false);
-            return;
-        }
-        if let Some(f) = self.0.menu_fade {
-            unsafe { f() }
         }
     }
     pub fn time(&self) -> i64 {
-        self.0.time.map_or(0, |f| unsafe { f() })
+        self.0.time()
     }
     pub fn hires_ticks(&self) -> u64 {
-        self.0.hires_ticks.map_or(0, |f| unsafe { f() })
+        self.0.hires_ticks()
     }
     pub fn replay_time(&self, t: i64) -> Vec<u8> {
-        let Some(f) = self.0.replay_time else {
-            return Vec::new();
-        };
-        let mut buf = vec![0; 512];
-        let n = unsafe { f(t, buf.as_mut_ptr(), buf.len()) };
-        buf.truncate(n.min(512));
-        buf
+        self.0.replay_time(t)
     }
     pub fn sound(&self) -> crate::sfx::LieroSoundOut {
-        self.0.sound.map_or(crate::sfx::LieroSoundOut::NONE, |f| unsafe { f() })
+        self.0.sound()
+    }
+    fn show(&self) {
+        self.0.show()
+    }
+    fn idle(&self) {
+        self.0.idle()
     }
 }
 
@@ -290,13 +281,9 @@ pub trait Screen {
     fn resume(&mut self, _host: &Host, _result: i32) {}
 }
 
-fn host() -> Host {
-    Host(HOST.get().copied().unwrap_or_default())
-}
-
-/// The host, for a screen being made from C++.
+/// The platform the shell set, as a host.
 pub(crate) fn current_host() -> Host {
-    host()
+    PLATFORM.with(|p| p.borrow().clone()).map_or_else(Host::none, Host)
 }
 
 pub struct LieroApp {
@@ -316,32 +303,25 @@ impl LieroApp {
     }
 
     /// One step of the top screen. False once no screen is left.
-    ///
-    /// # Safety
-    /// The host's functions are safe to call with its data.
-    unsafe fn step(&mut self, host: &LieroAppHost) -> bool {
+    fn step(&mut self, host: &Host) -> bool {
         let Some(top) = self.screens.last_mut() else {
             return false;
         };
-        let t = top.tick(&self::host());
+        let t = top.tick(host);
         if t.shown {
-            if let Some(show) = host.show {
-                unsafe { show(host.data) };
-            }
+            host.show();
         }
         match t.then {
             Transition::Stay => {
                 if !t.shown {
-                    if let Some(idle) = host.idle {
-                        unsafe { idle(host.data) };
-                    }
+                    host.idle();
                 }
             }
             Transition::Open(next) => self.screens.push(next),
             Transition::Close(result) => {
                 self.screens.pop();
                 if let Some(below) = self.screens.last_mut() {
-                    below.resume(&self::host(), result);
+                    below.resume(host, result);
                 }
             }
             Transition::Replace(next) => {
@@ -394,36 +374,27 @@ pub fn liero_app_depth(app: &LieroApp) -> usize {
     app.screens.len()
 }
 
-/// Runs one step of the top screen. Returns false once no screen is left.
-///
-/// # Safety
-/// The host's functions are safe to call with its data.
-pub unsafe fn liero_app_step(app: &mut LieroApp, host: &LieroAppHost) -> bool {
-    unsafe { app.step(host) }
+/// Runs one step of the top screen with `host`. Returns false once no
+/// screen is left.
+pub fn liero_app_step(app: &mut LieroApp, host: &Host) -> bool {
+    app.step(host)
 }
 
 /// Runs the steps due at `now_ms` on the caller's clock: one on the first
 /// call, then one per 14 ms passed, at most four. Returns false once no
 /// screen is left.
-///
-/// # Safety
-/// The host's functions are safe to call with its data.
-pub unsafe fn liero_app_frame(app: &mut LieroApp, now_ms: u32, host: &LieroAppHost) -> bool {
-    unsafe {
-        for _ in 0..app.due(now_ms) {
-            if !app.step(host) {
-                return false;
-            }
+pub fn liero_app_frame(app: &mut LieroApp, now_ms: u32, host: &Host) -> bool {
+    for _ in 0..app.due(now_ms) {
+        if !app.step(host) {
+            return false;
         }
-        !app.screens.is_empty()
     }
+    !app.screens.is_empty()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
-    use std::rc::Rc;
 
     /// What a test screen does once it has stayed.
     #[derive(Clone, Copy, PartialEq)]
@@ -478,19 +449,15 @@ mod tests {
         }
     }
 
-    unsafe fn show(data: *mut c_void) {
-        unsafe {
-            (*(data as *const RefCell<Vec<String>>))
-                .borrow_mut()
-                .push("show".into());
-        }
-    }
+    /// Logs the frames shown and the idle steps.
+    struct LogPlatform(Rc<RefCell<Vec<String>>>);
 
-    unsafe fn idle(data: *mut c_void) {
-        unsafe {
-            (*(data as *const RefCell<Vec<String>>))
-                .borrow_mut()
-                .push("idle".into());
+    impl Platform for LogPlatform {
+        fn show(&self) {
+            self.0.borrow_mut().push("show".into());
+        }
+        fn idle(&self) {
+            self.0.borrow_mut().push("idle".into());
         }
     }
 
@@ -513,17 +480,13 @@ mod tests {
     #[test]
     fn push_close_and_replace() {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let host = LieroAppHost {
-            data: Rc::as_ptr(&log).cast_mut().cast(),
-            show: Some(show),
-            idle: Some(idle),
-        };
+        let host = Host::new(Rc::new(LogPlatform(log.clone())));
         let c = fake("c", 0, Then::Close, None, &log);
         let b = fake("b", 1, Then::Replace, Some(c), &log);
         let a = fake("a", 0, Then::Open, Some(b), &log);
         let mut app = LieroApp::new();
         liero_app_push(&mut app, a);
-        while unsafe { liero_app_step(&mut app, &host) } {}
+        while liero_app_step(&mut app, &host) {}
         drop(app);
         let log = log.borrow().clone();
         // a opens b; b waits once (no frame, so idle), then shows and is
@@ -553,19 +516,13 @@ mod tests {
     #[test]
     fn quit_frees_every_screen() {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let host = LieroAppHost {
-            data: std::ptr::null_mut(),
-            show: None,
-            idle: None,
-        };
+        let host = Host::none();
         let b = fake("b", 0, Then::Quit, None, &log);
         let a = fake("a", 0, Then::Open, Some(b), &log);
         let mut app = LieroApp::new();
         liero_app_push(&mut app, a);
-        unsafe {
-            assert!(liero_app_step(&mut app, &host));
-            assert!(!liero_app_step(&mut app, &host));
-        }
+        assert!(liero_app_step(&mut app, &host));
+        assert!(!liero_app_step(&mut app, &host));
         assert_eq!(liero_app_depth(&app), 0);
         assert_eq!(*log.borrow(), ["tick a", "tick b", "free b", "free a"]);
     }

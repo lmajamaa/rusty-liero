@@ -222,19 +222,24 @@ impl WeaponOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{LieroScreenHost, Transition};
+    use crate::screen::{Platform, Transition};
     use std::cell::RefCell;
 
     thread_local! {
         static KEYS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     }
 
-    unsafe fn key_once(sc: u32) -> bool {
-        KEYS.with(|k| {
-            let mut k = k.borrow_mut();
-            let found = k.iter().position(|&x| x == sc);
-            found.map(|i| k.remove(i)).is_some()
-        })
+    /// Keys from `KEYS`.
+    struct KeyPlatform;
+
+    impl Platform for KeyPlatform {
+        fn test_key_once(&self, sc: u32) -> bool {
+            KEYS.with(|k| {
+                let mut k = k.borrow_mut();
+                let found = k.iter().position(|&x| x == sc);
+                found.map(|i| k.remove(i)).is_some()
+            })
+        }
     }
 
     fn press(keys: &[u32]) {
@@ -267,10 +272,7 @@ mod tests {
     }
 
     fn host() -> Host {
-        Host(LieroScreenHost {
-            test_key_once: Some(key_once),
-            ..Default::default()
-        })
+        Host::new(std::rc::Rc::new(KeyPlatform))
     }
 
     #[test]

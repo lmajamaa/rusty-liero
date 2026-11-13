@@ -75,7 +75,7 @@ fn a_finished_game_goes_back_to_the_play_screen() {
         shown: false,
         resumed: true,
     };
-    let t = g.tick(&Host(Default::default()));
+    let t = g.tick(&Host::none());
     assert_eq!((t.closed(), t.shown), (Some(0), false));
     assert!(!a.primary_single);
     a.controller = None;
