@@ -14,9 +14,7 @@ use crate::game_box::{
 };
 use crate::level::LieroLevelBox;
 use crate::renderer::LieroRenderer;
-use crate::replay_file::{
-    liero_replay_writer_begin, liero_replay_writer_frame, liero_replay_writer_free, liero_replay_writer_new,
-};
+use crate::replay_file::LieroReplayWriter;
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
 use crate::stats::{stats_scene, LieroStatsScreen};
@@ -310,16 +308,13 @@ fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interv
     // Records a replay of the game, as the local controller does when
     // replays are on, to play it back afterwards.
     let path = format!("/tmp/{name}.lrp");
-    let writer = liero_replay_writer_new(&Node::new(path.as_bytes()));
-    assert!(!writer.is_null(), "Could not write {path}");
-    // SAFETY: the writer is new, and records the game while both live.
-    unsafe {
-        let o = liero_replay_writer_begin(&mut *writer, &mut game);
-        assert!(
-            o.status == crate::replay::LieroReplayStatus::Ok,
-            "the replay didn't begin"
-        );
-    }
+    let mut writer =
+        LieroReplayWriter::new(&Node::new(path.as_bytes())).unwrap_or_else(|| panic!("Could not write {path}"));
+    let o = writer.begin(&mut game);
+    assert!(
+        o.status == crate::replay::LieroReplayStatus::Ok,
+        "the replay didn't begin"
+    );
 
     let blood = game.settings_box().data.blood_particle_max;
     game.start(blood);
@@ -343,8 +338,7 @@ fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interv
 
     for tick in 1..=ticks {
         bot_tick(&mut game);
-        // SAFETY: the writer records the game, which lives.
-        unsafe { liero_replay_writer_frame(&mut *writer) };
+        writer.frame(&mut game);
         game.process_frame(&HOOKS);
 
         let over = game.is_over();
@@ -363,8 +357,8 @@ fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interv
     }
 
     hash_stats_screen(out, name, &mut game, &mut split, &d);
-    // SAFETY: the writer is done with; freeing it finishes the file.
-    unsafe { liero_replay_writer_free(writer) };
+    // Finishes the file.
+    drop(writer);
     super::replays::hash_replay(out, tc, name, &path, 1000, ticks, 0);
 
     let g = game.data_mut().cycles;

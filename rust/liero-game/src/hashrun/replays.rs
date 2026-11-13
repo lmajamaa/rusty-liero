@@ -16,12 +16,7 @@ use crate::game_box::{
 };
 use crate::renderer::LieroRenderer;
 use crate::replay::{LieroReplayStatus, LIERO_REPLAY_VERSION};
-use crate::replay_file::{
-    liero_replay_reader_begin, liero_replay_reader_frame, liero_replay_reader_free, liero_replay_reader_new,
-    liero_replay_reader_pos, liero_replay_reader_set_pos, liero_replay_writer_begin, liero_replay_writer_focus,
-    liero_replay_writer_frame, liero_replay_writer_free, liero_replay_writer_new, liero_replay_writer_set_version,
-    liero_replay_writer_unfocus, LieroReplayOutcome, LieroReplayReader, LieroReplayWriter,
-};
+use crate::replay_file::{LieroReplayOutcome, LieroReplayReader, LieroReplayWriter};
 use crate::settings::{LieroSettingsBox, LieroWormSettingsBox};
 use crate::sfx::LieroSoundOut;
 use crate::tc::SharedTc;
@@ -147,8 +142,7 @@ fn hash_loaded(f: &mut Fnv, game: &mut LieroGame) {
 /// What C++ threw for an outcome: "archive error" for a checkpoint, an
 /// exception otherwise.
 fn thrown(o: &LieroReplayOutcome) -> Option<String> {
-    // SAFETY: the message lives until the next call on the replay.
-    let message = String::from_utf8_lossy(unsafe { o.message.bytes() }).into_owned();
+    let message = o.message;
     match o.status {
         LieroReplayStatus::ReadError => Some(format!("exception: {message}")),
         LieroReplayStatus::CheckError => Some(format!("archive error: {message}")),
@@ -164,8 +158,7 @@ fn playback_frame(
     game: &mut LieroGame,
     renderer: &mut LieroRenderer,
 ) -> Result<bool, String> {
-    // SAFETY: the reader plays back `game`, which lives.
-    let o = unsafe { liero_replay_reader_frame(reader) };
+    let o = reader.frame(game);
     if o.end {
         return Ok(false);
     }
@@ -232,7 +225,7 @@ fn play_back(
         // SAFETY: the clone is the caller's.
         unsafe { Box::from_raw(liero_game_clone(game)) }
     });
-    let initial_pos = liero_replay_reader_pos(reader);
+    let initial_pos = reader.pos();
 
     while *ticks < max_ticks {
         if !playback_frame(reader, game, renderer)? {
@@ -249,7 +242,7 @@ fn play_back(
                 // As R in the replay controller: back to the start, then
                 // play to here again, which has to give the same game.
                 liero_game_assign(game, &start);
-                liero_replay_reader_set_pos(reader, initial_pos);
+                reader.set_pos(initial_pos);
                 let mut t = 0;
                 while t < rewind_at && playback_frame(reader, game, renderer)? {
                     game.process_frame(&HOOKS);
@@ -292,10 +285,8 @@ pub(super) fn hash_replay(
     renderer.set_render_resolution(320, 200);
     renderer.load_palette(&tc_data(tc));
 
-    let reader = liero_replay_reader_new(&node(path));
-    assert!(!reader.is_null(), "Could not read {path}");
-    // SAFETY: the reader is new, and freed below.
-    let r = unsafe { &mut *reader };
+    let mut reader = LieroReplayReader::new(&node(path)).unwrap_or_else(|| panic!("Could not read {path}"));
+    let r = &mut reader;
 
     let mut game: Option<Box<LieroGame>> = None;
     let mut ticks = 0;
@@ -306,8 +297,7 @@ pub(super) fn hash_replay(
         // SAFETY: a new game.
         let mut g = unsafe { Box::from_raw(liero_game_new()) };
         liero_game_set_context(&mut g, Some(settings), Some(tc.clone()), LieroSoundOut::NONE);
-        // SAFETY: the reader fills in `g`, which outlives it here.
-        let o = unsafe { liero_replay_reader_begin(r, &mut g) };
+        let o = r.begin(&mut g);
         if let Some(e) = thrown(&o) {
             return Err(e);
         }
@@ -347,9 +337,7 @@ pub(super) fn hash_replay(
     out.hash(&format!("{name}-replay-end"), ticks as i64, f);
     eprintln!("{name}: {outcome} after {ticks} ticks");
 
-    // SAFETY: the reader isn't used again; the game it filled is dropped
-    // after it.
-    unsafe { liero_replay_reader_free(reader) };
+    drop(reader);
     drop(game);
     // The run has a fixed heap, which holds the in-memory files too.
     crate::disk::remove_file(super::on_disk(path).as_bytes());
@@ -390,52 +378,41 @@ fn record_game(
     version: i32,
     changes: &[SettingsChange],
 ) {
-    let w = liero_replay_writer_new(&node(path));
-    assert!(!w.is_null(), "Could not write {path}");
-    // SAFETY: the writer is new, records the game while both live, and is
-    // freed (finishing the file) before the game goes.
-    unsafe {
-        let writer: &mut LieroReplayWriter = &mut *w;
-        liero_replay_writer_set_version(writer, version);
-        let mut game = if start_tick == 0 {
-            let mut game = set_up_game(tc, seed, game_mode, None);
-            assert!(
-                thrown(&liero_replay_writer_begin(writer, &mut game)).is_none(),
-                "the replay didn't begin"
-            );
-            let blood = game.settings_box().data.blood_particle_max;
-            game.start(blood);
-            game
-        } else {
-            let mut game = bot_game(tc, seed, game_mode, start_tick);
-            assert!(
-                thrown(&liero_replay_writer_begin(writer, &mut game)).is_none(),
-                "the replay didn't begin"
-            );
-            game
-        };
+    let mut writer = LieroReplayWriter::new(&node(path)).unwrap_or_else(|| panic!("Could not write {path}"));
+    writer.set_version(version);
+    let mut game = if start_tick == 0 {
+        let mut game = set_up_game(tc, seed, game_mode, None);
+        assert!(thrown(&writer.begin(&mut game)).is_none(), "the replay didn't begin");
+        let blood = game.settings_box().data.blood_particle_max;
+        game.start(blood);
+        game
+    } else {
+        let mut game = bot_game(tc, seed, game_mode, start_tick);
+        assert!(thrown(&writer.begin(&mut game)).is_none(), "the replay didn't begin");
+        game
+    };
 
-        for tick in 0..ticks {
-            for c in changes.iter().filter(|c| c.tick == tick) {
-                // As when the options menu is opened during a game.
-                liero_replay_writer_unfocus(writer);
-                {
-                    let s = &mut game.settings_box().data;
-                    s.loading_time = c.loading_time;
-                    s.max_bonuses = c.max_bonuses;
-                    s.blood = c.blood;
-                }
-                if let Some(name) = c.worm_name {
-                    game.worm_at(1).expect("no second worm").settings_mut().name = name.as_bytes().to_vec();
-                }
-                liero_replay_writer_focus(writer);
+    for tick in 0..ticks {
+        for c in changes.iter().filter(|c| c.tick == tick) {
+            // As when the options menu is opened during a game.
+            writer.unfocus(&mut game);
+            {
+                let s = &mut game.settings_box().data;
+                s.loading_time = c.loading_time;
+                s.max_bonuses = c.max_bonuses;
+                s.blood = c.blood;
             }
-            bot_tick(&mut game);
-            liero_replay_writer_frame(writer);
-            game.process_frame(&HOOKS);
+            if let Some(name) = c.worm_name {
+                game.worm_at(1).expect("no second worm").settings_mut().name = name.as_bytes().to_vec();
+            }
+            writer.focus(&mut game);
         }
-        liero_replay_writer_free(w);
+        bot_tick(&mut game);
+        writer.frame(&mut game);
+        game.process_frame(&HOOKS);
     }
+    // Finishes the file.
+    drop(writer);
 }
 
 fn put_u32(b: &mut Vec<u8>, v: u32) {

@@ -204,8 +204,7 @@ impl Screen for GameScreen {
         if self.next == Next::Finish {
             let a = app();
             a.primary_single = false;
-            // SAFETY: the controller is valid.
-            unsafe { liero_controller_unfocus(controller(a)) };
+            liero_controller_unfocus(controller(a));
             current_host().clear_keys();
             return Tick::close(0);
         }

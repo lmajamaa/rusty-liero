@@ -171,6 +171,11 @@ impl LieroGame {
     }
 
     /// The game's worm `id`.
+    pub(crate) fn worm(&self, id: WormId) -> &LieroWorm {
+        &self.pool[id.0 as usize]
+    }
+
+    /// The game's worm `id`.
     pub(crate) fn worm_mut(&mut self, id: WormId) -> &mut LieroWorm {
         &mut self.pool[id.0 as usize]
     }
@@ -178,6 +183,10 @@ impl LieroGame {
     /// The split-screen viewports.
     pub(crate) fn split_viewports(&self) -> &[Box<LieroViewport>] {
         &self.viewports
+    }
+
+    pub(crate) fn data(&self) -> &LieroGameData {
+        &self.data
     }
 
     pub(crate) fn data_mut(&mut self) -> &mut LieroGameData {
@@ -553,7 +562,7 @@ pub fn liero_worm_ai(w: &mut LieroWorm) -> *mut LieroWormAi {
 }
 
 /// Adds a viewport (`Game::addViewport`, or `addSpectatorViewport` with
-/// `spectator_list`), at a fixed address.
+/// `spectator_list`).
 pub fn liero_game_add_viewport(
     g: &mut LieroGame,
     rect: LieroRect,
@@ -562,20 +571,16 @@ pub fn liero_game_add_viewport(
     level_height: i32,
     kind: i32,
     spectator_list: bool,
-) -> *mut LieroViewport {
+) -> &mut LieroViewport {
     let mut vp = LieroViewport::new(rect, worm_idx, level_width, level_height);
     vp.kind = kind;
-    if spectator_list {
-        let mut b = Box::new(vp);
-        let p: *mut LieroViewport = &mut *b;
-        g.spectators.push(b);
-        p
+    let list = if spectator_list {
+        &mut g.spectators
     } else {
-        let mut b = Box::new(vp);
-        let p: *mut LieroViewport = &mut *b;
-        g.viewports.push(b);
-        p
-    }
+        &mut g.viewports
+    };
+    list.push(Box::new(vp));
+    list.last_mut().expect("just added")
 }
 
 /// `Game::clearViewports`.
@@ -863,7 +868,7 @@ mod tests {
             let old = liero_game_new_worm(to, Some(s[0].clone()));
             liero_game_list_worm(to, Some(old));
             liero_game_add_viewport(to, rect(0, 0, 1, 1), 0, 1, 1, 0, false);
-            let spectator = liero_game_add_viewport(to, rect(0, 0, 1, 1), 0, 1, 1, 0, true);
+            let spectator: *mut LieroViewport = liero_game_add_viewport(to, rect(0, 0, 1, 1), 0, 1, 1, 0, true);
             liero_worm_set_ai(to.worm_mut(old), 1, 0, false);
             let bot = liero_worm_ai(to.worm_mut(old));
             assert!(!bot.is_null());

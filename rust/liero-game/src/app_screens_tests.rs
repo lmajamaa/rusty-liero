@@ -33,7 +33,7 @@ fn replay() -> Box<LieroController> {
     std::fs::create_dir_all(dir).unwrap();
     let path = format!("{dir}/empty.lrp");
     std::fs::write(&path, b"").unwrap();
-    let c = unsafe { crate::controllers::liero_replay_controller_new(&Node::new(path.as_bytes()), tc()) };
+    let c = crate::controllers::liero_replay_controller_new(&Node::new(path.as_bytes()), tc());
     assert!(!c.is_null());
     unsafe { Box::from_raw(c) }
 }
