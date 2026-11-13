@@ -10,7 +10,7 @@
 
 use std::ffi::c_void;
 
-use crate::app::app;
+use crate::app::LieroApp;
 use crate::game_box::LieroGame;
 use crate::gfx::{liero_gfx_draw_rounded_box, liero_palette_fade, liero_palette_rotate_from, LieroBitmap};
 use crate::menu::liero_menu_draw_versus;
@@ -515,14 +515,14 @@ pub fn liero_weapsel_draw_spectator(ws: &mut LieroWeapsel, scr: &LieroBitmap, fo
 }
 
 /// The weapon tables of `game`, with the app's random numbers.
-unsafe fn game_env(game: &LieroGame) -> LieroWeapselEnv {
+unsafe fn game_env(game: &LieroGame, rand: &mut LieroRand) -> LieroWeapselEnv {
     unsafe {
         let tc = &*game.tc_ptr();
         LieroWeapselEnv {
             weap_table: game.settings_box().data.weap_table.as_ptr(),
             weap_order: tc.weap_order.as_ptr(),
             weapon_count: tc.weapons.len() as i32,
-            rand: &mut app().rand,
+            rand,
             tc,
             sound: game.sound(),
         }
@@ -568,7 +568,7 @@ pub(crate) fn level_line(tc: &LieroTcData, game_level_file: &[u8], menu_level_fi
 /// # Safety
 /// The game has its context, and outlives the selection; each viewport's
 /// worm is listed and has settings.
-pub unsafe fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
+pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) -> *mut LieroWeapsel {
     unsafe {
         let g: *mut LieroGame = game;
         let tc = &*game.tc_ptr();
@@ -613,7 +613,7 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
             randomize: LieroStr::of(tc.text(text("Randomize"))),
             done: LieroStr::of(tc.text(text("Done"))),
         };
-        let env = game_env(game);
+        let env = game_env(game, rand);
         let ws = liero_weapsel_new(&spec, &env);
         (*ws).game = g;
         ws
@@ -624,9 +624,9 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame) -> *mut LieroWeapsel {
 ///
 /// # Safety
 /// See `liero_weapsel_start`.
-pub unsafe fn liero_weapsel_process_game(ws: &mut LieroWeapsel) -> bool {
+pub unsafe fn liero_weapsel_process_game(ws: &mut LieroWeapsel, rand: &mut LieroRand) -> bool {
     unsafe {
-        let env = game_env(&*ws.game);
+        let env = game_env(&*ws.game, rand);
         liero_weapsel_process(ws, &env)
     }
 }
@@ -657,11 +657,11 @@ pub fn liero_weapsel_set_focused(ws: &mut LieroWeapsel, focused: bool) {
 }
 
 /// The renderer's palette as the menus show it: cycling and fading.
-unsafe fn menu_palette(r: *mut LieroRenderer) {
+unsafe fn menu_palette(r: *mut LieroRenderer, menu_cycles: u32) {
     unsafe {
         let d = &mut (*r).data;
         d.pal = d.origpal;
-        liero_palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, app().menu_cycles);
+        liero_palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, menu_cycles);
         liero_palette_fade(&mut d.pal, d.fade_value);
     }
 }
@@ -673,17 +673,23 @@ unsafe fn menu_palette(r: *mut LieroRenderer) {
 ///
 /// # Safety
 /// See `liero_weapsel_start`; `r` is valid.
-pub unsafe fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRenderer, state: i32, spectators: bool) {
+pub unsafe fn liero_weapsel_draw_game(
+    ws: &mut LieroWeapsel,
+    a: &mut LieroApp,
+    r: *mut LieroRenderer,
+    state: i32,
+    spectators: bool,
+) {
     unsafe {
         let game = &mut *ws.game;
         let tc = &*game.tc_ptr();
         let font = tc_font(tc);
-        let a = app();
         let g: *const LieroGame = game;
+        let menu_settings = a.shared_settings();
         // The game's settings can be the menus' own, so one at a time.
         let line = || {
             let game_file = (*g).settings_box().level_file.clone();
-            let menu_file = crate::app::menu_settings().level_file.clone();
+            let menu_file = menu_settings.borrow().level_file.clone();
             level_line(tc, &game_file, &menu_file)
         };
         if spectators {
@@ -714,7 +720,7 @@ pub unsafe fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRender
                 return;
             }
             liero_weapsel_draw_spectator(ws, &(*r).bmp.view(), &font);
-            menu_palette(&mut *a.single);
+            menu_palette(&mut *a.single, a.menu_cycles);
         } else {
             if !ws.cached {
                 game.draw(&mut *r, state, false, false);
@@ -735,7 +741,7 @@ pub unsafe fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRender
                 &font,
                 LieroStr::of(tc.text(text("SelWeap"))),
             );
-            menu_palette(&mut *a.play);
+            menu_palette(&mut *a.play, a.menu_cycles);
         }
     }
 }

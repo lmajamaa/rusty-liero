@@ -72,10 +72,10 @@ fn focus_starts_weapon_selection_and_sets_both_palettes() {
     let tc = tc();
     let mut c = local(tc.clone(), ["a", "b"]);
     c.game().unwrap().level_box_mut().data_mut().origpal[200].r = 7;
-    let a = app();
+    let a = &mut LieroApp::new();
     a.play.data.origpal[200].r = 0;
     a.single.data.origpal[200].r = 0;
-    unsafe { c.focus() };
+    unsafe { c.focus(a) };
     assert_eq!(c.data.state, LIERO_STATE_WEAPON_SELECTION);
     assert_eq!((a.play.data.origpal[200].r, a.single.data.origpal[200].r), (7, 7));
     assert_eq!((c.data.fade_value, c.data.going_to_menu), (0, false));
@@ -130,22 +130,23 @@ fn r_rewinds_a_replay_to_its_start() {
         drop(w);
         drop(c);
 
-        crate::app::liero_app_set_settings(app(), Some(menu_settings()));
+        let a = &mut LieroApp::new();
+        crate::app::liero_app_set_settings(a, Some(menu_settings()));
         let mut r = Box::from_raw(liero_replay_controller_new(&node, tc));
-        r.focus();
+        r.focus(a);
         assert_eq!(r.data.state, LIERO_STATE_GAME);
-        assert!(r.process());
+        assert!(r.process(a));
         let pos = |r: &LieroController| match &r.kind {
             Kind::Replay(r) => r.reader.as_ref().unwrap().pos(),
             _ => unreachable!(),
         };
         let (p1, c1) = (pos(&r), r.game().unwrap().data_mut().cycles);
         for _ in 0..5 {
-            assert!(r.process());
+            assert!(r.process(a));
         }
         assert_ne!(pos(&r), p1);
-        app().keys.set(sdl_to_dos(SCANCODE_R), true);
-        assert!(r.process());
+        a.keys.set(sdl_to_dos(SCANCODE_R), true);
+        assert!(r.process(a));
         assert_eq!((pos(&r), r.game().unwrap().data_mut().cycles), (p1, c1));
         // The worms' stats places, which replays don't store.
         let g = r.game().unwrap();
@@ -161,17 +162,18 @@ fn r_rewinds_a_replay_to_its_start() {
 fn the_game_fades_in_to_fully_shown() {
     let tc = tc();
     let mut c = local(tc.clone(), ["a", "b"]);
+    let a = &mut LieroApp::new();
     unsafe {
         for _ in 0..40 {
-            assert!(c.process());
+            assert!(c.process(a));
         }
         assert_eq!(c.data.fade_value, LIERO_FADE_SHOWN);
         // Then out to the menu, which ends it.
         c.data.going_to_menu = true;
         for _ in 0..LIERO_FADE_SHOWN {
-            assert!(c.process());
+            assert!(c.process(a));
         }
-        assert!(!c.process());
+        assert!(!c.process(a));
     }
     drop(c);
 }

@@ -254,7 +254,7 @@ pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Opt
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
 
-        let ws = liero_weapsel_start(&mut game);
+        let ws = liero_weapsel_start(&mut game, &mut a.rand);
         liero_weapsel_finish(&mut *ws);
         liero_weapsel_free(ws);
 

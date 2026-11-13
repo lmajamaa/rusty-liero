@@ -5,12 +5,14 @@
 //! The menus themselves are `menu_screen.rs`.
 
 use crate::app::LieroApp;
+use crate::controllers::LieroController;
 use crate::controllers::{
     liero_controller_draw, liero_controller_focus, liero_controller_is_replay, liero_controller_level,
     liero_controller_run, liero_controller_take_opened, liero_controller_unfocus, liero_local_controller_new,
 };
 use crate::level::LieroLevelBox;
 use crate::menu_screen::liero_menu_screen;
+use crate::renderer::LieroRenderer;
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
 /// What `after_menu` says to do.
@@ -29,6 +31,15 @@ fn controller(a: &mut LieroApp) -> &mut crate::controllers::LieroController {
     a.controller.as_deref_mut().expect("no controller")
 }
 
+/// Runs `f` on the app's controller, which is taken out of the app while
+/// it runs.
+fn with_controller<R>(a: &mut LieroApp, f: impl FnOnce(&mut LieroController, &mut LieroApp) -> R) -> R {
+    let mut c = a.controller.take().expect("no controller");
+    let r = f(&mut c, a);
+    a.controller = Some(c);
+    r
+}
+
 /// A new local controller with the menus' settings and TC.
 fn new_local(a: &mut LieroApp) -> Box<crate::controllers::LieroController> {
     // SAFETY: the app has a host while it runs.
@@ -38,13 +49,9 @@ fn new_local(a: &mut LieroApp) -> Box<crate::controllers::LieroController> {
 /// A level made from the menus' settings with the app's random numbers.
 fn new_level(a: &mut LieroApp) -> Box<LieroLevelBox> {
     let mut level = LieroLevelBox::new();
-    let tc = crate::app::menu_tc_data();
-    level.generate_from_settings(
-        &tc.level_common(),
-        &tc.palette_colors,
-        &crate::app::menu_settings(),
-        &mut a.rand,
-    );
+    let (tc, settings) = (a.menu_tc(), a.shared_settings());
+    let tc = crate::tc::tc_data(&tc);
+    level.generate_from_settings(&tc.level_common(), &tc.palette_colors, &settings.borrow(), &mut a.rand);
     level
 }
 
@@ -75,13 +82,14 @@ fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
     match selection {
         MAIN_NEW_GAME => {
             let mut new = new_local(a);
+            let settings = a.shared_settings();
             // SAFETY: the controller's level is valid while it is.
             let old = a
                 .controller
                 .as_deref_mut()
                 .and_then(|c| unsafe { liero_controller_level(c).as_mut() })
                 .filter(|old| {
-                    let s = crate::app::menu_settings();
+                    let s = settings.borrow();
                     !s.data.regenerate_level
                         && s.data.random_level == old.data().old_random_level
                         && s.level_file == old.old_level_file()
@@ -105,7 +113,7 @@ fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
         }
         MAIN_QUIT => return LIERO_AFTER_MENU_QUIT,
         MAIN_REPLAY => {
-            if crate::app::menu_settings().data.single_screen_replay {
+            if a.settings_mut().data.single_screen_replay {
                 a.primary_single = true;
             }
         }
@@ -122,13 +130,16 @@ fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
 /// `count`.
 fn draw(a: &mut LieroApp, count: bool) {
     a.play.clear();
-    let c = a.controller.as_deref_mut().expect("no controller");
-    // SAFETY: the renderers are the app's.
-    unsafe {
-        liero_controller_draw(c, &mut *a.play, false);
-        a.single.clear();
-        liero_controller_draw(c, &mut *a.single, true);
-    }
+    with_controller(a, |c, a| {
+        // SAFETY: the renderers are the app's.
+        unsafe {
+            let play: *mut LieroRenderer = &mut *a.play;
+            liero_controller_draw(c, a, play, false);
+            a.single.clear();
+            let single: *mut LieroRenderer = &mut *a.single;
+            liero_controller_draw(c, a, single, true);
+        }
+    });
     if count {
         a.menu_cycles = a.menu_cycles.wrapping_add(1);
     }
@@ -169,7 +180,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Focus {
             // SAFETY: the controller is valid.
-            unsafe { liero_controller_focus(controller(app)) };
+            with_controller(app, |c, app| unsafe { liero_controller_focus(c, app) });
             self.next = Next::Process;
             if let Some(s) = Self::opened(app) {
                 return Tick::push(s);
@@ -178,7 +189,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Process {
             // SAFETY: the controller is valid.
-            self.next = if unsafe { liero_controller_run(controller(app)) } {
+            self.next = if with_controller(app, |c, app| unsafe { liero_controller_run(c, app) }) {
                 Next::Draw
             } else {
                 Next::Finish

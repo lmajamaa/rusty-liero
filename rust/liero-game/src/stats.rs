@@ -951,6 +951,7 @@ impl Screen for StatsPresenter {
 /// The stats screen for a copy of `stats`, drawn with `tc` on a screen of
 /// `render_res_x` x `render_res_y`, over what the screen shows now.
 pub(crate) fn liero_stats_presenter_screen(
+    app: &crate::app::LieroApp,
     stats: &LieroStats,
     tc: SharedTc,
     game: StatsGame,
@@ -960,7 +961,7 @@ pub(crate) fn liero_stats_presenter_screen(
     let host = crate::screen::current_host();
     host.clear_keys();
     let mut bg = Vec::new();
-    if let Some(scr) = host.screen(crate::app::app()) {
+    if let Some(scr) = host.screen(app) {
         copy_rows(&scr, &mut bg, true);
     }
     Box::new(StatsPresenter {

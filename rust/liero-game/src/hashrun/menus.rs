@@ -626,7 +626,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
     }
 
     // SAFETY: the selection works on the game, which outlives it.
-    let ws = unsafe { &mut *liero_weapsel_start(&mut game) };
+    let ws = unsafe { &mut *liero_weapsel_start(&mut game, &mut a.rand) };
 
     for step in 0..steps {
         for w in game.listed_worms() {
@@ -654,7 +654,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
         }
 
         // SAFETY: as above.
-        let done = unsafe { liero_weapsel_process_game(ws) };
+        let done = unsafe { liero_weapsel_process_game(ws, &mut a.rand) };
         a.menu_cycles = a.menu_cycles.wrapping_add(1);
 
         let mut f = Fnv::default();
@@ -674,10 +674,12 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
         // SAFETY: the renderers are the app's.
         unsafe {
             a.play.clear();
-            liero_weapsel_draw_game(ws, &mut *a.play, LIERO_STATE_WEAPON_SELECTION, false);
+            let play: *mut _ = &mut *a.play;
+            liero_weapsel_draw_game(ws, a, play, LIERO_STATE_WEAPON_SELECTION, false);
             add_screen(&mut f, &a.play);
             a.single.clear();
-            liero_weapsel_draw_game(ws, &mut *a.single, LIERO_STATE_WEAPON_SELECTION, true);
+            let single: *mut _ = &mut *a.single;
+            liero_weapsel_draw_game(ws, a, single, LIERO_STATE_WEAPON_SELECTION, true);
             add_screen(&mut f, &a.single);
         }
         print(out, name, step, f);
