@@ -20,12 +20,12 @@ use crate::controllers::liero_controller_on_key;
 use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, LieroColor};
 use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, LieroKeyChanges};
 use crate::menu_screen::LIERO_MENU_HIDDEN;
-use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items, LieroMenusHooks};
+use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items};
 use crate::screen::{
     liero_app_frame, liero_app_push, liero_screen_set_host, Host, LieroApp, LieroEvent, LieroTypedKey, Platform,
 };
 use crate::sfx::{LieroMixer, LieroSoundOut};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -100,9 +100,6 @@ struct Shell {
 
 thread_local! {
     static SHELL: RefCell<Shell> = RefCell::new(Shell::default());
-    /// The window's double size (`Gfx::doubleRes`), on as the C++ started.
-    /// The menus hold a pointer to it.
-    static DOUBLE_RES: Cell<bool> = const { Cell::new(true) };
 }
 
 /// `f` on the shell. It must not call into the game, which calls back here.
@@ -410,7 +407,7 @@ fn process(to_controller: bool) {
 
 /// Shows the canvas at the app's size (`Gfx::setVideoMode`).
 fn set_video_mode() {
-    let (w, h) = if DOUBLE_RES.get() { (640, 400) } else { (320, 200) };
+    let (w, h) = if app().double_res { (640, 400) } else { (320, 200) };
     shell(|s| {
         if let Some(c) = &s.canvas {
             c.set_width(w);
@@ -458,19 +455,6 @@ fn on_fullscreen_change() {
         crate::shell::liero_shell_set_fullscreen(a, false);
         // SAFETY: the app's menus live as long as it does.
         liero_menus_update_items(unsafe { &mut *a.menus }, LIERO_MENU_HIDDEN);
-    }
-}
-
-/// `Gfx::setDoubleRes`.
-fn set_double_res(on: bool, update_menu: bool) {
-    if on == DOUBLE_RES.get() {
-        return;
-    }
-    DOUBLE_RES.set(on);
-    set_video_mode();
-    if update_menu {
-        // SAFETY: as above.
-        liero_menus_update_items(unsafe { &mut *app().menus }, LIERO_MENU_HIDDEN);
     }
 }
 
@@ -625,6 +609,15 @@ impl Platform for WebPlatform {
         }
     }
 
+    fn set_double_res(&self, _on: bool) {
+        // The options menu shows the change itself.
+        set_video_mode();
+    }
+
+    fn set_fullscreen(&self, on: bool) {
+        set_fullscreen(on, false);
+    }
+
     fn random_seed(&self) -> u32 {
         (js_sys::Math::random() * 4_294_967_296.0) as u32
     }
@@ -635,25 +628,6 @@ impl Platform for WebPlatform {
 
     // The next step comes with a later animation frame, by which time the
     // event may have come: `idle` does nothing.
-}
-
-// ---- The menus' and app's hooks
-
-unsafe fn menus_menu_cycles() -> u32 {
-    app().menu_cycles
-}
-
-unsafe fn menus_double_res() -> *mut bool {
-    DOUBLE_RES.with(Cell::as_ptr)
-}
-
-// The options menu shows the change itself.
-unsafe fn menus_set_double_res(on: bool) {
-    set_double_res(on, false);
-}
-
-unsafe fn menus_set_fullscreen(on: bool) {
-    set_fullscreen(on, false);
 }
 
 // ---- Sound
@@ -832,12 +806,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     let a = app();
     // TODO from the C++: better seeding.
     a.rand.seed((js_sys::Date::now() / 1000.0) as u32);
-    let menus = liero_menus_new(LieroMenusHooks {
-        menu_cycles: menus_menu_cycles,
-        double_res: menus_double_res,
-        set_double_res: menus_set_double_res,
-        set_fullscreen: menus_set_fullscreen,
-    });
+    let menus = liero_menus_new();
     a.primary_single = false;
     crate::app::liero_app_set_menus(a, menus);
     // SAFETY: just made.

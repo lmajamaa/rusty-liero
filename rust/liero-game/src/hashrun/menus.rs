@@ -17,9 +17,7 @@ use crate::game::LieroRect;
 use crate::game_box::{
     liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_game_set_context,
 };
-use crate::item::{
-    liero_item_enter, liero_item_left_right, liero_item_value_text, LieroItemAction, LieroItemBehavior, LieroItemKind,
-};
+use crate::item::{LieroItemAction, LieroItemBehavior};
 use crate::level::LieroLevelBox;
 use crate::menu::{
     liero_menu_box_add, liero_menu_box_count, liero_menu_box_draw, liero_menu_box_free, liero_menu_box_id,
@@ -27,7 +25,7 @@ use crate::menu::{
     liero_menu_box_new, liero_menu_box_on_key, liero_menu_box_scroll, liero_menu_box_search_text,
     liero_menu_box_set_string, liero_menu_box_set_top, liero_menu_box_set_value, liero_menu_box_set_visibility,
     liero_menu_box_state, liero_menu_draw_info_box, liero_menu_draw_input_box, liero_menu_draw_versus, LieroMenuBox,
-    LieroMenuHooks, LieroMenuItemSpec, LIERO_MENU_VALUE_INTEGER,
+    LieroMenuHooks, LieroMenuItemSpec,
 };
 use crate::menu_screen::{LIERO_MENU_HIDDEN, LIERO_MENU_MAIN, LIERO_MENU_PLAYER, LIERO_MENU_SETTINGS};
 use crate::menus::{
@@ -130,37 +128,31 @@ fn selection_valid(b: &mut LieroMenuBox) -> bool {
 /// Weapon availability, as the weapon options show it: each item is the
 /// weapon's entry in the settings' weapon table, shown by name.
 struct Availability {
-    names: Vec<LieroStr>,
+    names: [&'static [u8]; 3],
     order: Vec<i32>,
 }
 
 impl Availability {
-    fn behavior(&self, b: &LieroMenuBox, item: i32) -> LieroItemBehavior {
-        let mut s = crate::app::menu_settings();
-        LieroItemBehavior {
-            kind: LieroItemKind::Enum,
-            flag: std::ptr::null_mut(),
-            set_flag: None,
-            value: (&mut s.data.weap_table[self.order[liero_menu_box_id(b, item) as usize] as usize] as *mut u32)
-                .cast(),
-            min: 0,
-            max: self.names.len() as i32 - 1,
-            step: 1,
-            scroll_interval: 5,
-            value_kind: LIERO_MENU_VALUE_INTEGER,
-            allow_entry: true,
-            names: self.names.as_ptr(),
-            name_count: self.names.len(),
-        }
+    fn behavior(&self) -> LieroItemBehavior<'_> {
+        LieroItemBehavior::enumeration(0, self.names.len() as i32 - 1, &self.names)
+    }
+
+    /// The table entry `item` edits.
+    fn entry(&self, b: &LieroMenuBox, item: i32) -> usize {
+        self.order[liero_menu_box_id(b, item) as usize] as usize
+    }
+
+    fn value(&self, b: &LieroMenuBox, item: i32) -> i32 {
+        crate::app::menu_settings().data.weap_table[self.entry(b, item)] as i32
+    }
+
+    fn set_value(&self, b: &LieroMenuBox, item: i32, v: i32) {
+        crate::app::menu_settings().data.weap_table[self.entry(b, item)] = v as u32;
     }
 
     fn update(&self, b: &mut LieroMenuBox, item: i32) {
-        let be = self.behavior(b, item);
-        let mut buf = [0u8; 64];
-        // SAFETY: the buffer is as long as said.
-        let len = unsafe { liero_item_value_text(&be, buf.as_mut_ptr(), buf.len()) };
-        // SAFETY: the value is copied.
-        liero_menu_box_set_value(b, item, &buf[..len.min(buf.len())]);
+        let text = self.behavior().value_text(self.value(b, item));
+        liero_menu_box_set_value(b, item, &text);
     }
 
     fn update_items(&self, b: &mut LieroMenuBox) {
@@ -196,9 +188,8 @@ impl Ops {
             Ops::Availability(av) => {
                 if selection_valid(b) {
                     let sel = selection(b);
-                    let be = av.behavior(b, sel);
-                    // SAFETY: the behaviour's setting is the menus' settings'.
-                    let a = unsafe { liero_item_left_right(&be, dir, app().menu_cycles) };
+                    let (v, a) = av.behavior().left_right(av.value(b, sel), dir, app().menu_cycles);
+                    av.set_value(b, sel, v);
                     av.apply(b, sel, a);
                 }
             }
@@ -214,9 +205,8 @@ impl Ops {
             Ops::Availability(av) => {
                 if selection_valid(b) {
                     let sel = selection(b);
-                    let be = av.behavior(b, sel);
-                    // SAFETY: as above.
-                    let a = unsafe { liero_item_enter(&be) };
+                    let (v, a) = av.behavior().enter(av.value(b, sel));
+                    av.set_value(b, sel, v);
                     av.apply(b, sel, a);
                 }
             }
@@ -450,11 +440,8 @@ fn run_menus(out: &mut Out) {
         // SAFETY: the texts are copied.
         unsafe { liero_menu_box_add(weapons, &spec, -1, true) };
     }
-    let states: [&[u8]; 3] = [b"Menu", b"Bonus", b"Banned"];
-    let av = Availability {
-        names: states.iter().map(|s| LieroStr::of(s)).collect(),
-        order,
-    };
+    let states: [&'static [u8]; 3] = [b"Menu", b"Bonus", b"Banned"];
+    let av = Availability { names: states, order };
     run_menu(
         out,
         "menu-weapons",

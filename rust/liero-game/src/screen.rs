@@ -123,6 +123,11 @@ pub trait Platform {
     fn sound(&self) -> crate::sfx::LieroSoundOut {
         crate::sfx::LieroSoundOut::NONE
     }
+    /// The options menu changed the app's double size: show it.
+    fn set_double_res(&self, _on: bool) {}
+    /// The options menu's full screen switch: sets the setting and shows
+    /// it, if there's a window to show it in.
+    fn set_fullscreen(&self, _on: bool) {}
     /// A seed for F8's random TC.
     fn random_seed(&self) -> u32 {
         0
@@ -172,6 +177,12 @@ impl Host {
     }
     pub fn random_seed(&self) -> u32 {
         self.0.random_seed()
+    }
+    pub fn set_double_res(&self, on: bool) {
+        self.0.set_double_res(on)
+    }
+    pub fn set_fullscreen(&self, on: bool) {
+        self.0.set_fullscreen(on)
     }
     pub fn clear_keys(&self) {
         self.0.clear_keys()

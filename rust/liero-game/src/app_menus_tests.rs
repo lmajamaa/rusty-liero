@@ -2,19 +2,8 @@ use super::*;
 use crate::controller::LIERO_STATE_GAME;
 use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::fs::Node;
-use crate::menus::{liero_menus_new, LieroMenusHooks};
+use crate::menus::liero_menus_new;
 use crate::settings::liero_settings_box_new;
-
-unsafe fn zero() -> u32 {
-    0
-}
-unsafe fn double_res() -> *mut bool {
-    thread_local! {
-        static ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    }
-    ON.with(|b| b.as_ptr())
-}
-unsafe fn set(_: bool) {}
 
 /// This thread's app with menus, the bundled TC, its screens sized, and a
 /// match that hasn't started, on a level of colour 7.
@@ -29,13 +18,7 @@ fn set_up() -> &'static mut LieroApp {
         ));
     }
     if a.menus.is_null() {
-        let hooks = LieroMenusHooks {
-            menu_cycles: zero,
-            double_res,
-            set_double_res: set,
-            set_fullscreen: set,
-        };
-        let menus = liero_menus_new(hooks);
+        let menus = liero_menus_new();
         crate::menus::liero_menus_load(unsafe { &mut *menus });
         crate::app::liero_app_set_menus(a, menus);
     }

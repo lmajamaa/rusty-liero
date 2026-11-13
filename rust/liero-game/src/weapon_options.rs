@@ -4,7 +4,7 @@
 
 use crate::boxes::liero_info_box_screen;
 use crate::gfx::liero_gfx_draw_rounded_box;
-use crate::item::{LieroItemBehavior, LieroItemKind};
+use crate::item::LieroItemBehavior;
 use crate::menu::{LieroMenu, OwnedMenu};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::text::LieroStr;
@@ -54,32 +54,30 @@ struct WeaponOptions {
 }
 
 impl WeaponOptions {
-    /// The availability item for menu item `i`, with `names` the states'.
-    fn behavior(&self, i: usize, names: &[LieroStr]) -> LieroItemBehavior {
-        // SAFETY: `order` holds indexes into the 40-entry table.
-        let value = unsafe { self.weap_table.add(self.order[i]) } as *mut i32;
-        let mut b = LieroItemBehavior::integer(value, 0, names.len() as i32 - 1);
-        b.kind = LieroItemKind::Enum;
-        b.names = names.as_ptr();
-        b.name_count = names.len();
-        b
+    /// The availability item, with `names` the states'.
+    fn behavior<'a>(names: &'a [&'a [u8]]) -> LieroItemBehavior<'a> {
+        LieroItemBehavior::enumeration(0, names.len() as i32 - 1, names)
     }
 
-    fn state_names(&self) -> Vec<LieroStr> {
-        self.states
-            .iter()
-            .map(|s| LieroStr {
-                ptr: s.as_ptr(),
-                len: s.len(),
-            })
-            .collect()
+    fn state_names(&self) -> Vec<&[u8]> {
+        self.states.iter().map(|s| &s[..]).collect()
+    }
+
+    /// Menu item `i`'s entry in the weapon table.
+    fn entry(&self, i: usize) -> *mut u32 {
+        // SAFETY: `order` holds indexes into the 40-entry table.
+        unsafe { self.weap_table.add(self.order[i]) }
+    }
+
+    fn value(&self, i: usize) -> i32 {
+        // SAFETY: the table outlives the screen.
+        unsafe { *self.entry(i) as i32 }
     }
 
     /// `Menu::updateItems`: every item's value.
     fn update_items(&mut self) {
-        let names = self.state_names();
         for i in 0..self.order.len() {
-            let text = unsafe { self.behavior(i, &names).value_text() };
+            let text = Self::behavior(&self.state_names()).value_text(self.value(i));
             self.menu.set_value(i, text);
         }
     }
@@ -90,11 +88,16 @@ impl WeaponOptions {
             return;
         };
         let names = self.state_names();
-        let a = unsafe { self.behavior(i, &names).left_right(dir, 0) };
+        let b = Self::behavior(&names);
+        let (v, a) = b.left_right(self.value(i), dir, 0);
+        // SAFETY: as in `value`.
+        unsafe { *self.entry(i) = v as u32 };
+        let text = b.value_text(v);
+        drop(names);
         if a.update_menu {
             self.update_items();
         } else if a.update_item {
-            self.menu.set_value(i, unsafe { self.behavior(i, &names).value_text() });
+            self.menu.set_value(i, text);
         }
     }
 

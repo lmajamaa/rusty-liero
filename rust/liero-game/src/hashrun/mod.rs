@@ -3,10 +3,8 @@
 //! into the lines `tools/hashrun/expected.txt` holds, which were made from
 //! the original C++. `src/bin/liero-hashrun.rs` prints them natively.
 
-use std::cell::Cell;
-
 use crate::app::app;
-use crate::menus::{liero_menus_new, LieroMenusHooks};
+use crate::menus::liero_menus_new;
 
 mod ai;
 mod app;
@@ -96,30 +94,11 @@ fn run_section(name: &str, ticks: i32, interval: i32, out: &mut Out) {
     }
 }
 
-thread_local! {
-    static DOUBLE_RES: Cell<bool> = const { Cell::new(true) };
-}
-
 /// Where `path`, which starts with `/`, is on the disk: in the current
 /// folder, as the game reads it.
 pub(crate) fn on_disk(path: &str) -> String {
     format!(".{path}")
 }
-
-unsafe fn menu_cycles() -> u32 {
-    app().menu_cycles
-}
-
-unsafe fn double_res() -> *mut bool {
-    DOUBLE_RES.with(Cell::as_ptr)
-}
-
-unsafe fn set_double_res(on: bool) {
-    DOUBLE_RES.set(on);
-}
-
-/// The menu has set the setting; there's no window to change.
-unsafe fn set_fullscreen(_: bool) {}
 
 /// Runs the sections in `only`, or all of them, in their order, each after
 /// a line "hash-section name". It runs in a folder of its own, as `/` is in
@@ -136,14 +115,7 @@ pub fn hash_run(ticks: i32, interval: i32, only: &[String], out: &mut dyn FnMut(
     }
     let a = app();
     if a.menus.is_null() {
-        // The window's hooks, without a window: double size starts on, as
-        // in the game.
-        a.menus = liero_menus_new(LieroMenusHooks {
-            menu_cycles,
-            double_res,
-            set_double_res,
-            set_fullscreen,
-        });
+        a.menus = liero_menus_new();
     }
     let mut out = Out(out);
     for name in SECTIONS

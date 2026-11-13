@@ -34,6 +34,8 @@ pub struct LieroApp {
     pub keys: LieroKeys,
     /// Frames the menus have shown, which their colours cycle with.
     pub menu_cycles: u32,
+    /// The window's double size (`Gfx::doubleRes`), on to start with.
+    pub double_res: bool,
     /// The menus' settings (`gfx.settings`), which can be another game's
     /// than the one played. Loading options replaces them.
     pub settings: Option<SharedSettings>,
@@ -114,6 +116,7 @@ impl LieroApp {
             frozen_spectator: LieroBitmapBox::new(),
             keys: LieroKeys::default(),
             menu_cycles: 0,
+            double_res: true,
             settings: None,
             tc: None,
             font: Vec::new(),
