@@ -503,7 +503,7 @@ impl LieroMenus {
                 host.set_double_res(v != 0);
             }
             // The platform sets it, if it has a window to show it in.
-            Setting::Fullscreen => host.set_fullscreen(v != 0),
+            Setting::Fullscreen => host.set_fullscreen(app, v != 0),
         }
     }
 
@@ -1120,7 +1120,6 @@ pub fn liero_menus_draw(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::app;
 
     #[test]
     fn base_names() {
@@ -1137,21 +1136,21 @@ mod tests {
         assert_eq!(atoi(b"99999999999"), i32::MAX);
     }
 
-    /// The menus with their items, on the app's new settings.
-    fn menus() -> LieroMenus {
-        let a = crate::app::app();
+    /// The menus with their items, and an app with new settings.
+    fn menus() -> (LieroMenus, LieroApp) {
+        let mut a = LieroApp::new();
         a.settings = Some(crate::settings::liero_settings_box_new());
         a.files.settings_node = crate::fs::Node::new(b"config/LIERO.CFG");
         a.double_res = false;
         a.menu_cycles = 0;
         let mut m = LieroMenus::new();
         m.load();
-        m
+        (m, a)
     }
 
     /// The player menu's worm's settings.
-    fn worm(m: &LieroMenus) -> crate::settings::SharedWormSettings {
-        app().settings_mut().worms[m.player as usize].clone()
+    fn worm(a: &LieroApp, m: &LieroMenus) -> crate::settings::SharedWormSettings {
+        a.settings_mut().worms[m.player as usize].clone()
     }
 
     fn select(m: &mut LieroMenus, kind: i32, id: i32) -> usize {
@@ -1167,9 +1166,9 @@ mod tests {
 
     #[test]
     fn a_key_only_the_extended_controls_have_leaves_the_original_ones() {
-        let mut m = menus();
+        let (mut m, mut app) = menus();
         select(&mut m, LIERO_MENU_PLAYER, PL_UP + 1);
-        let w = worm(&m);
+        let w = worm(&app, &m);
         w.borrow_mut().data.controls[1] = 30;
         w.borrow_mut().data.controls_ex[1] = 30;
         let keys = || {
@@ -1177,38 +1176,38 @@ mod tests {
             (ws.controls[1], ws.controls_ex[1])
         };
 
-        let (r, opened) = m.enter(app(), &Host::none(), LIERO_MENU_PLAYER);
+        let (r, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
         assert_eq!(r, -1);
         drop(opened.expect("key choice"));
         assert!(is_extended(177));
-        m.then(app(), &Host::none(), 177);
+        m.then(&mut app, &Host::none(), 177);
         assert_eq!(keys(), (30, 177));
 
-        let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_PLAYER);
+        let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
         drop(opened.unwrap());
-        m.then(app(), &Host::none(), 31);
+        m.then(&mut app, &Host::none(), 31);
         assert_eq!(keys(), (31, 31));
 
         // Escape keeps the key.
-        let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_PLAYER);
+        let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
         drop(opened.unwrap());
-        m.then(app(), &Host::none(), LIERO_DK_ESCAPE as i32);
+        m.then(&mut app, &Host::none(), LIERO_DK_ESCAPE as i32);
         assert_eq!(keys(), (31, 31));
     }
 
     #[test]
     fn dig_takes_any_key_into_the_extended_controls_only() {
-        let mut m = menus();
+        let (mut m, mut app) = menus();
         for player in 0..2 {
             m.player = player;
             select(&mut m, LIERO_MENU_PLAYER, PL_DIG);
-            let w = worm(&m);
+            let w = worm(&app, &m);
             let before = w.borrow().data.controls;
-            let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_PLAYER);
+            let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
             drop(opened.expect("key choice"));
             // C, which has a DOS key.
             assert!(!is_extended(46));
-            m.then(app(), &Host::none(), 46);
+            m.then(&mut app, &Host::none(), 46);
             let ws = &w.borrow().data;
             assert_eq!((ws.controls, ws.controls_ex[7]), (before, 46));
         }
@@ -1216,47 +1215,47 @@ mod tests {
 
     #[test]
     fn a_typed_number_is_kept_in_range() {
-        let mut m = menus();
+        let (mut m, mut app) = menus();
         let i = select(&mut m, LIERO_MENU_SETTINGS, SI_LIVES);
         for (typed, lives) in [(&b"5000"[..], 999), (b"0", 1), (b"12", 12)] {
-            let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_SETTINGS);
+            let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_SETTINGS);
             drop(opened.expect("number box"));
             *m.pending.as_mut().unwrap().typed = typed.to_vec();
-            assert_eq!(m.then(app(), &Host::none(), 1), -1);
-            assert_eq!(app().settings_mut().data.lives, lives);
+            assert_eq!(m.then(&mut app, &Host::none(), 1), -1);
+            assert_eq!(app.settings_mut().data.lives, lives);
             assert_eq!(value(&mut m, LIERO_MENU_SETTINGS, i), lives.to_string().into_bytes());
         }
         // Escape keeps the number.
-        let (_, opened) = m.enter(app(), &Host::none(), LIERO_MENU_SETTINGS);
+        let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_SETTINGS);
         drop(opened.unwrap());
         *m.pending.as_mut().unwrap().typed = b"7".to_vec();
-        m.then(app(), &Host::none(), 0);
-        assert_eq!(app().settings_mut().data.lives, 12);
+        m.then(&mut app, &Host::none(), 0);
+        assert_eq!(app.settings_mut().data.lives, 12);
     }
 
     #[test]
     fn held_keys_step_health_every_fourth_frame() {
-        let mut m = menus();
+        let (mut m, mut app) = menus();
         select(&mut m, LIERO_MENU_PLAYER, PL_HEALTH);
-        worm(&m).borrow_mut().data.health = 100;
+        worm(&app, &m).borrow_mut().data.health = 100;
         let start = 100;
         let mut steps = Vec::new();
         for cycle in 1..=12 {
-            crate::app::app().menu_cycles = cycle;
-            assert!(m.left_right(app(), &Host::none(), LIERO_MENU_PLAYER, -1));
-            steps.push(start - worm(&m).borrow().data.health);
+            app.menu_cycles = cycle;
+            assert!(m.left_right(&mut app, &Host::none(), LIERO_MENU_PLAYER, -1));
+            steps.push(start - worm(&app, &m).borrow().data.health);
         }
         assert_eq!(steps, [0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3]);
     }
 
     #[test]
     fn double_size_shows_the_whole_options_menu_again() {
-        let mut m = menus();
+        let (mut m, mut app) = menus();
         let frames = m.index_of(LIERO_MENU_HIDDEN, HM_AI_FRAMES).unwrap();
         select(&mut m, LIERO_MENU_HIDDEN, HM_DOUBLE_RES);
-        app().settings_mut().data.ai_frames = 123;
-        m.left_right(app(), &Host::none(), LIERO_MENU_HIDDEN, 1);
-        assert!(crate::app::app().double_res);
+        app.settings_mut().data.ai_frames = 123;
+        m.left_right(&mut app, &Host::none(), LIERO_MENU_HIDDEN, 1);
+        assert!(app.double_res);
         assert_eq!(value(&mut m, LIERO_MENU_HIDDEN, frames), b"123");
     }
 }

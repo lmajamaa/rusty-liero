@@ -1,13 +1,8 @@
 //! What the app keeps besides the game (C++'s `Gfx`): the two renderers,
 //! the screens frozen behind the menus, the random numbers for things that
 //! don't affect the game, the keys, the menus' frame count, the menus'
-//! settings and TC, and the files (`app_files.rs`). Rust owns it, and
-//! `Gfx`'s fields refer to it.
-//!
-//! There is one app per thread, made when first asked for. The game runs on
-//! one thread; tests running on others each get their own.
-
-use std::cell::Cell;
+//! settings and TC, and the files (`app_files.rs`). The entry point (the
+//! web shell, or the hash run) owns it and lends it to the screens.
 
 use crate::controllers::LieroController;
 use crate::keys::LieroKeys;
@@ -104,24 +99,6 @@ impl LieroApp {
     }
 }
 
-/// The menus' TC's font.
-pub(crate) fn menu_font() -> crate::text::LieroFont<'static> {
-    let a: &'static LieroApp = app();
-    crate::text::LieroFont { chars: &a.font }
-}
-
-/// The menus' settings. Panics if there are none, or if they're borrowed.
-pub fn menu_settings() -> RefMut<'static, LieroSettingsBox> {
-    let a: &'static LieroApp = app();
-    a.settings.as_ref().expect("no menu settings").borrow_mut()
-}
-
-/// The menus' TC's data. Panics if there's no TC.
-pub(crate) fn menu_tc_data() -> Ref<'static, LieroTcData> {
-    let a: &'static LieroApp = app();
-    tc_data(a.tc.as_ref().expect("no TC"))
-}
-
 impl Default for LieroApp {
     fn default() -> Self {
         Self::new()
@@ -152,26 +129,6 @@ impl LieroApp {
             save_settings_on_change: false,
         }
     }
-}
-
-thread_local! {
-    static APP: Cell<*mut LieroApp> = const { Cell::new(std::ptr::null_mut()) };
-}
-
-/// This thread's app.
-pub fn app() -> &'static mut LieroApp {
-    APP.with(|a| {
-        if a.get().is_null() {
-            a.set(Box::into_raw(Box::new(LieroApp::new())));
-        }
-        // SAFETY: the app is never freed, and only this thread has it.
-        unsafe { &mut *a.get() }
-    })
-}
-
-/// The app, at a fixed address.
-pub fn liero_app() -> *mut LieroApp {
-    app()
 }
 
 impl LieroApp {
@@ -234,24 +191,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn each_thread_has_one_app() {
-        let a: *mut LieroApp = app();
-        assert_eq!(a, liero_app());
-        app().menu_cycles = 5;
-        let other = std::thread::spawn(|| (app().menu_cycles, app() as *mut LieroApp as usize))
-            .join()
-            .unwrap();
-        assert_eq!(other.0, 0);
-        assert_ne!(other.1, a as usize);
-        assert_eq!(unsafe { (*a).menu_cycles }, 5);
-    }
-
-    #[test]
-    fn the_app_is_made_once() {
-        let a: *mut LieroApp = app();
-        app().menu_cycles += 1;
-        assert_eq!(liero_app(), a);
-        assert!(std::ptr::eq(liero_app_renderer(app(), true), &*app().single));
-        assert!(std::ptr::eq(liero_app_frozen(app(), false), &*app().frozen));
+    fn the_renderers_are_the_apps() {
+        let mut a = LieroApp::new();
+        assert!(std::ptr::eq(liero_app_renderer(&mut a, true), &*a.single));
+        assert!(std::ptr::eq(liero_app_frozen(&mut a, false), &*a.frozen));
     }
 }

@@ -19,7 +19,7 @@
 use super::game::add_screen;
 use super::games::tc_data;
 use super::{Fnv, Out};
-use crate::app::{app, LieroApp};
+use crate::app::LieroApp;
 use crate::app_screens::liero_main_screen;
 use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
@@ -253,8 +253,7 @@ impl Platform for HashPlatform {
     }
 
     /// A frame shown: the screen's pixels and palette.
-    fn show(&self) {
-        let a = app();
+    fn show(&self, a: &LieroApp) {
         let r = if a.primary_single { &*a.single } else { &*a.play };
         let mut f = Fnv::default();
         add_screen(&mut f, r);
@@ -478,7 +477,7 @@ fn build_script(s: &mut Script) {
     s.wait(60);
 }
 
-pub fn hash_app(out: &mut Out) {
+pub fn hash_app(a: &mut LieroApp, out: &mut Out) {
     // A config folder of its own, with a broken replay to fail on. The game
     // reads "/hashapp" as "./hashapp" (`super::on_disk`).
     let root = "/hashapp";
@@ -495,7 +494,6 @@ pub fn hash_app(out: &mut Out) {
 
     // Fresh menus, as the game starts with: the menu checks before this one
     // leave items hidden and selected.
-    let a = app();
     liero_menus_reset(&mut a.shared_menus().borrow_mut());
     a.settings = Some(LieroSettingsBox::defaults());
     let tc = super::tc::bundled();
@@ -511,7 +509,7 @@ pub fn hash_app(out: &mut Out) {
     a.primary_single = false;
     // As in the browser, where the lines were recorded.
     a.save_settings_on_change = true;
-    crate::app::menu_settings().data.spectator_window = false;
+    a.settings_mut().data.spectator_window = false;
     a.keys.clear();
     liero_menus_load(&mut a.shared_menus().borrow_mut());
 
@@ -531,7 +529,7 @@ pub fn hash_app(out: &mut Out) {
 
     let mut stack = ScreenStack::new();
     liero_app_push(&mut stack, liero_main_screen());
-    while liero_app_step(&mut stack, app(), &host) && driver(|d| d.failed.is_none()) {}
+    while liero_app_step(&mut stack, a, &host) && driver(|d| d.failed.is_none()) {}
     drop(stack);
 
     let d = DRIVER.take();

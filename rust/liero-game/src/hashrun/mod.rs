@@ -3,7 +3,7 @@
 //! into the lines `tools/hashrun/expected.txt` holds, which were made from
 //! the original C++. `src/bin/liero-hashrun.rs` prints them natively.
 
-use crate::app::app;
+use crate::app::LieroApp;
 use crate::menus::liero_menus_new;
 
 mod ai;
@@ -78,14 +78,14 @@ pub const SECTIONS: [&str; 10] = [
 
 /// Runs section `name`, giving its lines to `out`, with the bot games
 /// `ticks` long at most and hashed every `interval`.
-fn run_section(name: &str, ticks: i32, interval: i32, out: &mut Out) {
+fn run_section(name: &str, a: &mut LieroApp, ticks: i32, interval: i32, out: &mut Out) {
     match name {
-        "app" => app::hash_app(out),
-        "games" => games::hash_games(out, ticks, interval),
-        "replays" => replays::hash_replays(out),
-        "ai" => ai::hash_ai_games(out),
-        "input" => input::hash_sound_and_input(out),
-        "menus" => menus::hash_menus(out),
+        "app" => app::hash_app(a, out),
+        "games" => games::hash_games(a, out, ticks, interval),
+        "replays" => replays::hash_replays(a, out),
+        "ai" => ai::hash_ai_games(a, out),
+        "input" => input::hash_sound_and_input(a, out),
+        "menus" => menus::hash_menus(a, out),
         "tc" => tc::hash_tc(out),
         "randomtc" => tc::hash_random_tc(out),
         "levels" => levels::hash_level_files(out),
@@ -113,17 +113,17 @@ pub fn hash_run(ticks: i32, interval: i32, only: &[String], out: &mut dyn FnMut(
             SECTIONS.join(",")
         ));
     }
-    let a = app();
-    if a.menus.is_none() {
-        a.menus = Some(liero_menus_new());
-    }
+    // One app for every section, as in the game: the sections that use it
+    // go on from what the ones before left.
+    let mut app = LieroApp::new();
+    app.menus = Some(liero_menus_new());
     let mut out = Out(out);
     for name in SECTIONS
         .iter()
         .filter(|n| only.is_empty() || only.iter().any(|o| o == *n))
     {
         out.line(&format!("hash-section {name}"));
-        run_section(name, ticks, interval, &mut out);
+        run_section(name, &mut app, ticks, interval, &mut out);
     }
     Ok(())
 }

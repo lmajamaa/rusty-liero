@@ -14,7 +14,7 @@
 //! same physical key on every layout, as SDL does natively; Emscripten's SDL
 //! went by `keyCode` instead, which differs for some keys on other layouts.
 
-use crate::app::{app, LieroApp};
+use crate::app::LieroApp;
 use crate::app_screens::liero_main_screen;
 use crate::controllers::liero_controller_on_key;
 use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, LieroColor};
@@ -94,6 +94,11 @@ struct Shell {
     start_ms: f64,
     /// The page's function that keeps a save: (path, bytes or null).
     persist: Option<js_sys::Function>,
+    /// The menus' sounds since the last frame, played with the app's TC at
+    /// its end.
+    sounds: Vec<i32>,
+    /// The browser left full screen by itself since the last frame.
+    left_fullscreen: bool,
 }
 
 thread_local! {
@@ -370,7 +375,7 @@ fn process_event(a: &mut LieroApp, ev: Ev, to_controller: bool) {
             let dos = a.keys.event(scancode, down);
             send_key(a, to_controller, dos, down);
             if down && scancode == SC_F11 {
-                set_fullscreen(!crate::shell::liero_shell_fullscreen(a), true);
+                set_fullscreen(a, !crate::shell::liero_shell_fullscreen(a), true);
             }
         }
         Ev::Text(_) => {}
@@ -403,9 +408,9 @@ fn process(a: &mut LieroApp, to_controller: bool) {
 
 // ---- The window
 
-/// Shows the canvas at the app's size (`Gfx::setVideoMode`).
-fn set_video_mode() {
-    let (w, h) = if app().double_res { (640, 400) } else { (320, 200) };
+/// Shows the canvas at the app's size, double or not (`Gfx::setVideoMode`).
+fn set_video_mode(double_res: bool) {
+    let (w, h) = if double_res { (640, 400) } else { (320, 200) };
     shell(|s| {
         if let Some(c) = &s.canvas {
             c.set_width(w);
@@ -417,15 +422,13 @@ fn set_video_mode() {
 }
 
 /// `Gfx::setFullscreen`: the setting, and the browser's full screen.
-fn set_fullscreen(on: bool, update_menu: bool) {
-    let a = app();
+fn set_fullscreen(a: &mut LieroApp, on: bool, update_menu: bool) {
     if on == crate::shell::liero_shell_fullscreen(a) {
         return;
     }
     crate::shell::liero_shell_set_fullscreen(a, on);
     show_fullscreen(on);
     if update_menu {
-        // SAFETY: the app's menus live as long as it does.
         a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
     }
 }
@@ -444,22 +447,26 @@ fn show_fullscreen(on: bool) {
 }
 
 /// When the browser leaves full screen by itself (Esc, or it refused the
-/// request), the setting goes off too, so the menu shows it and F11 turns
-/// it back on in one press.
+/// request), the setting goes off too, at the next frame (`left_fullscreen`).
 fn on_fullscreen_change() {
-    let a = app();
     let shown = window().document().is_some_and(|d| d.fullscreen_element().is_some());
-    if !shown && crate::shell::liero_shell_fullscreen(a) {
+    if !shown {
+        shell(|s| s.left_fullscreen = true);
+    }
+}
+
+/// The browser left full screen: the setting goes off, so the menu shows it
+/// and F11 turns it back on in one press.
+fn left_fullscreen(a: &mut LieroApp) {
+    if crate::shell::liero_shell_fullscreen(a) {
         crate::shell::liero_shell_set_fullscreen(a, false);
-        // SAFETY: the app's menus live as long as it does.
         a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
     }
 }
 
 /// `Gfx::draw` and `flip`: the primary renderer's frame on the canvas.
-fn show_frame() {
-    let a = app();
-    let r = if a.primary_single { &mut *a.single } else { &mut *a.play };
+fn show_frame(a: &LieroApp) {
+    let r = if a.primary_single { &*a.single } else { &*a.play };
     let bmp = r.bmp.view();
     let d = &r.data;
     let mut real = [LieroColor::default(); 256];
@@ -543,10 +550,7 @@ impl Platform for WebPlatform {
     }
 
     fn play_sound(&self, id: i32) {
-        // SAFETY: the mixer is the shell's, or null.
-        unsafe {
-            crate::shell::liero_shell_play_sound(app(), mixer(), id);
-        }
+        shell(|s| s.sounds.push(id));
     }
 
     fn text_input(&self, on: bool) {
@@ -595,21 +599,21 @@ impl Platform for WebPlatform {
         }
     }
 
-    fn set_double_res(&self, _on: bool) {
+    fn set_double_res(&self, on: bool) {
         // The options menu shows the change itself.
-        set_video_mode();
+        set_video_mode(on);
     }
 
-    fn set_fullscreen(&self, on: bool) {
-        set_fullscreen(on, false);
+    fn set_fullscreen(&self, app: &mut LieroApp, on: bool) {
+        set_fullscreen(app, on, false);
     }
 
     fn random_seed(&self) -> u32 {
         (js_sys::Math::random() * 4_294_967_296.0) as u32
     }
 
-    fn show(&self) {
-        show_frame();
+    fn show(&self, app: &LieroApp) {
+        show_frame(app);
     }
 
     // The next step comes with a later animation frame, by which time the
@@ -789,7 +793,8 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
         s.start_ms = now_ms();
     });
 
-    let a = app();
+    let mut app = LieroApp::new();
+    let a = &mut app;
     // TODO from the C++: better seeding.
     a.rand.seed((js_sys::Date::now() / 1000.0) as u32);
     let menus = liero_menus_new();
@@ -804,7 +809,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     a.start(CONFIG, TC_ROOT, b"").map_err(|e| JsValue::from_str(&e))?;
     // The page has one canvas, so there is no second window to show.
     crate::shell::liero_shell_set_spectator_window(a, false);
-    set_video_mode();
+    set_video_mode(a.double_res);
     if crate::shell::liero_shell_fullscreen(a) {
         show_fullscreen(true);
     }
@@ -835,17 +840,17 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     let platform: Rc<dyn Platform> = Rc::new(WebPlatform);
     let mut stack = ScreenStack::new();
     liero_app_push(&mut stack, liero_main_screen());
-    run_frames(stack, Host::new(platform));
+    run_frames(stack, Host::new(platform), app);
     Ok(())
 }
 
 /// The function each animation frame calls.
 type FrameFn = Closure<dyn FnMut()>;
 
-/// Runs the screens every animation frame (as the C++ shell's `emscripten_set_main_loop` did),
-/// with the 14 ms steps due, until they close; then saves the settings, as
-/// the game does when it ends.
-fn run_frames(stack: ScreenStack, host: Host) {
+/// Runs the screens on `app` every animation frame (as the C++ shell's
+/// `emscripten_set_main_loop` did), with the 14 ms steps due, until they
+/// close; then saves the settings, as the game does when it ends.
+fn run_frames(stack: ScreenStack, host: Host, mut app: LieroApp) {
     let mut stack = Some(stack);
     let next: Rc<RefCell<Option<FrameFn>>> = Rc::new(RefCell::new(None));
     let again = next.clone();
@@ -853,7 +858,14 @@ fn run_frames(stack: ScreenStack, host: Host) {
         poll_gamepads();
         let ms = ticks_now();
         let Some(s) = stack.as_mut() else { return };
-        let running = liero_app_frame(s, ms, app(), &host);
+        if shell(|s| std::mem::take(&mut s.left_fullscreen)) {
+            left_fullscreen(&mut app);
+        }
+        let running = liero_app_frame(s, ms, &mut app, &host);
+        for id in shell(|s| std::mem::take(&mut s.sounds)) {
+            // SAFETY: the mixer is the shell's, or null.
+            unsafe { crate::shell::liero_shell_play_sound(&app, mixer(), id) };
+        }
         if running {
             persist_changes();
             if let Some(f) = again.borrow().as_ref() {
@@ -862,7 +874,7 @@ fn run_frames(stack: ScreenStack, host: Host) {
             return;
         }
         stack = None;
-        if let Err(e) = app().save_settings_at_end() {
+        if let Err(e) = app.save_settings_at_end() {
             web_sys::console::error_1(&e.into());
         }
         persist_changes();

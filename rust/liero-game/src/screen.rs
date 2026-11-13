@@ -116,15 +116,15 @@ pub trait Platform {
     }
     /// The options menu changed the app's double size: show it.
     fn set_double_res(&self, _on: bool) {}
-    /// The options menu's full screen switch: sets the setting and shows
-    /// it, if there's a window to show it in.
-    fn set_fullscreen(&self, _on: bool) {}
+    /// The options menu's full screen switch: sets `app`'s setting and
+    /// shows it, if there's a window to show it in.
+    fn set_fullscreen(&self, _app: &mut LieroApp, _on: bool) {}
     /// A seed for F8's random TC.
     fn random_seed(&self) -> u32 {
         0
     }
-    /// Shows the frame a tick drew.
-    fn show(&self) {}
+    /// Shows the frame a tick drew on `app`'s screen.
+    fn show(&self, _app: &LieroApp) {}
     /// The top screen is waiting for an event and showed nothing.
     fn idle(&self) {}
 }
@@ -161,8 +161,8 @@ impl Host {
     pub fn set_double_res(&self, on: bool) {
         self.0.set_double_res(on)
     }
-    pub fn set_fullscreen(&self, on: bool) {
-        self.0.set_fullscreen(on)
+    pub fn set_fullscreen(&self, app: &mut LieroApp, on: bool) {
+        self.0.set_fullscreen(app, on)
     }
     pub fn play_sound(&self, id: i32) {
         self.0.play_sound(id)
@@ -225,8 +225,8 @@ impl Host {
     pub fn sound(&self) -> crate::sfx::LieroSoundOut {
         self.0.sound()
     }
-    fn show(&self) {
-        self.0.show()
+    fn show(&self, app: &LieroApp) {
+        self.0.show(app)
     }
     fn idle(&self) {
         self.0.idle()
@@ -299,7 +299,7 @@ impl ScreenStack {
         };
         let t = top.tick(app, host);
         if t.shown {
-            host.show();
+            host.show(app);
         }
         match t.then {
             Transition::Stay => {
@@ -444,7 +444,7 @@ mod tests {
     struct LogPlatform(Rc<RefCell<Vec<String>>>);
 
     impl Platform for LogPlatform {
-        fn show(&self) {
+        fn show(&self, _app: &LieroApp) {
             self.0.borrow_mut().push("show".into());
         }
         fn idle(&self) {

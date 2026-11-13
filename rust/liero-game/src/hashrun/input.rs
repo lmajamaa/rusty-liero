@@ -16,7 +16,7 @@
 use super::game::hash_game;
 use super::games::{bot_tick, set_up_game, tc_data, HOLDAZONE, HOOKS, KILL_EM_ALL, THROWERS};
 use super::{Fnv, Out};
-use crate::app::app;
+use crate::app::LieroApp;
 use crate::controller::liero_controller_process;
 use crate::controllers::{
     liero_controller_data, liero_controller_free, liero_controller_game, liero_controller_on_key,
@@ -113,7 +113,9 @@ fn mixer_script(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn sound_game(
+    a: &mut LieroApp,
     out: &mut Out,
     tc: &SharedTc,
     name: &str,
@@ -122,7 +124,7 @@ fn sound_game(
     weapons: Option<&[&str; 5]>,
     ticks: i32,
 ) {
-    let mut game = set_up_game(tc, seed, game_mode, weapons);
+    let mut game = set_up_game(a, tc, seed, game_mode, weapons);
     let mut mixer = Box::<LieroMixer>::default();
     let m: *mut LieroMixer = &mut *mixer;
     let settings = game.settings();
@@ -165,15 +167,15 @@ fn sound_game(
 
 const LOUD: [&str; 5] = ["BIG NUKE", "MINIGUN", "CHAINGUN", "LASER", "HELLRAIDER"];
 
-fn hash_sound(out: &mut Out, tc: &SharedTc) {
+fn hash_sound(a: &mut LieroApp, out: &mut Out, tc: &SharedTc) {
     hash_samples(out, tc);
     for seed in 1..=4 {
         mixer_script(out, tc, seed, 2000);
     }
-    sound_game(out, tc, "sfx-kill-1", 1, KILL_EM_ALL, None, 3000);
-    sound_game(out, tc, "sfx-throwers-13", 13, KILL_EM_ALL, Some(&THROWERS), 3000);
-    sound_game(out, tc, "sfx-loud-21", 21, KILL_EM_ALL, Some(&LOUD), 3000);
-    sound_game(out, tc, "sfx-zone-6", 6, HOLDAZONE, None, 3000);
+    sound_game(a, out, tc, "sfx-kill-1", 1, KILL_EM_ALL, None, 3000);
+    sound_game(a, out, tc, "sfx-throwers-13", 13, KILL_EM_ALL, Some(&THROWERS), 3000);
+    sound_game(a, out, tc, "sfx-loud-21", 21, KILL_EM_ALL, Some(&LOUD), 3000);
+    sound_game(a, out, tc, "sfx-zone-6", 6, HOLDAZONE, None, 3000);
 }
 
 const SDL_NUM_SCANCODES: i32 = 512;
@@ -294,8 +296,8 @@ fn random_axis(r: &mut LieroRand) -> i16 {
     VALUES[r.below(9) as usize]
 }
 
-fn hash_events(out: &mut Out, seed: u32, steps: i32) {
-    let keys = &mut app().keys;
+fn hash_events(a: &mut LieroApp, out: &mut Out, seed: u32, steps: i32) {
+    let keys = &mut a.keys;
     keys.clear();
     let mut ev = Events {
         key_buf: Vec::new(),
@@ -401,7 +403,7 @@ fn hash_key_names(out: &mut Out) {
     out.hash("keys-names", 0, f);
 }
 
-fn hash_controls(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
+fn hash_controls(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
     let settings = LieroSettingsBox::defaults();
     let mut r = LieroRand::new(seed);
     // A small pool of keys, so the two worms and their controls share some.
@@ -435,7 +437,7 @@ fn hash_controls(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
     // SAFETY: the controller is new; its data and game live as long as it
     // does.
     let (d, game) = unsafe { (liero_controller_data(&mut *lc), &mut *liero_controller_game(&mut *lc)) };
-    let keys = &mut app().keys;
+    let keys = &mut a.keys;
 
     let name = format!("keys-controls-{seed}");
     let mut f = Fnv::default();
@@ -493,19 +495,19 @@ fn hash_controls(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
     unsafe { liero_controller_free(lc) };
 }
 
-fn hash_input(out: &mut Out, tc: &SharedTc) {
+fn hash_input(a: &mut LieroApp, out: &mut Out, tc: &SharedTc) {
     hash_key_map(out);
     for seed in 1..=3 {
-        hash_events(out, seed, 2000);
+        hash_events(a, out, seed, 2000);
     }
     hash_key_names(out);
     for seed in 1..=3 {
-        hash_controls(out, tc, seed, 1000);
+        hash_controls(a, out, tc, seed, 1000);
     }
 }
 
-pub fn hash_sound_and_input(out: &mut Out) {
+pub fn hash_sound_and_input(a: &mut LieroApp, out: &mut Out) {
     let tc = super::tc::bundled();
-    hash_sound(out, &tc);
-    hash_input(out, &tc);
+    hash_sound(a, out, &tc);
+    hash_input(a, out, &tc);
 }

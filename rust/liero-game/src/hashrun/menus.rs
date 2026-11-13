@@ -9,7 +9,7 @@
 use super::game::add_screen;
 use super::games::tc_data;
 use super::{Fnv, Out};
-use crate::app::{app, LieroApp};
+use crate::app::LieroApp;
 use crate::controller::LIERO_STATE_WEAPON_SELECTION;
 use crate::controllers::liero_game_focus;
 use crate::fs::Node;
@@ -33,7 +33,7 @@ use crate::menus::{
     liero_menus_player_settings, liero_menus_update_items, LieroMenus,
 };
 use crate::rand::LieroRand;
-use crate::renderer::{LieroBitmapBox, LieroRenderer};
+use crate::renderer::LieroBitmapBox;
 use crate::screen::Host;
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
@@ -73,8 +73,7 @@ const SC_TAB: u32 = 43;
 const SDLK_TAB: i32 = 9;
 
 /// Runs `f` on the app's menus.
-fn with_menus<R>(f: impl FnOnce(&mut LieroMenus, &mut LieroApp) -> R) -> R {
-    let a = app();
+fn with_menus<R>(a: &mut LieroApp, f: impl FnOnce(&mut LieroMenus, &mut LieroApp) -> R) -> R {
     let menus = a.shared_menus();
     let mut m = menus.borrow_mut();
     f(&mut m, a)
@@ -146,31 +145,31 @@ impl Availability {
         self.order[liero_menu_box_id(b, item) as usize] as usize
     }
 
-    fn value(&self, b: &LieroMenuBox, item: i32) -> i32 {
-        crate::app::menu_settings().data.weap_table[self.entry(b, item)] as i32
+    fn value(&self, a: &LieroApp, b: &LieroMenuBox, item: i32) -> i32 {
+        a.settings_mut().data.weap_table[self.entry(b, item)] as i32
     }
 
-    fn set_value(&self, b: &LieroMenuBox, item: i32, v: i32) {
-        crate::app::menu_settings().data.weap_table[self.entry(b, item)] = v as u32;
+    fn set_value(&self, a: &LieroApp, b: &LieroMenuBox, item: i32, v: i32) {
+        a.settings_mut().data.weap_table[self.entry(b, item)] = v as u32;
     }
 
-    fn update(&self, b: &mut LieroMenuBox, item: i32) {
-        let text = self.behavior().value_text(self.value(b, item));
+    fn update(&self, a: &LieroApp, b: &mut LieroMenuBox, item: i32) {
+        let text = self.behavior().value_text(self.value(a, b, item));
         liero_menu_box_set_value(b, item, &text);
     }
 
-    fn update_items(&self, b: &mut LieroMenuBox) {
+    fn update_items(&self, a: &LieroApp, b: &mut LieroMenuBox) {
         for i in 0..liero_menu_box_count(b) {
-            self.update(b, i);
+            self.update(a, b, i);
         }
     }
 
-    fn apply(&self, b: &mut LieroMenuBox, item: i32, a: LieroItemAction) {
-        if a.update_item {
-            self.update(b, item);
+    fn apply(&self, a: &LieroApp, b: &mut LieroMenuBox, item: i32, act: LieroItemAction) {
+        if act.update_item {
+            self.update(a, b, item);
         }
-        if a.update_menu {
-            self.update_items(b);
+        if act.update_menu {
+            self.update_items(a, b);
         }
     }
 }
@@ -184,57 +183,59 @@ enum Ops {
 }
 
 impl Ops {
-    fn left_right(&self, b: &mut LieroMenuBox, dir: i32) {
+    fn left_right(&self, a: &mut LieroApp, b: &mut LieroMenuBox, dir: i32) {
         match self {
             Ops::Menus(kind) => {
-                with_menus(|m, a| liero_menus_left_right(m, a, &Host::none(), *kind, dir));
+                with_menus(a, |m, a| liero_menus_left_right(m, a, &Host::none(), *kind, dir));
             }
             Ops::Availability(av) => {
                 if selection_valid(b) {
                     let sel = selection(b);
-                    let (v, a) = av.behavior().left_right(av.value(b, sel), dir, app().menu_cycles);
-                    av.set_value(b, sel, v);
-                    av.apply(b, sel, a);
+                    let (v, act) = av.behavior().left_right(av.value(a, b, sel), dir, a.menu_cycles);
+                    av.set_value(a, b, sel, v);
+                    av.apply(a, b, sel, act);
                 }
             }
         }
     }
 
-    fn enter(&self, b: &mut LieroMenuBox) {
+    fn enter(&self, a: &mut LieroApp, b: &mut LieroMenuBox) {
         match self {
             Ops::Menus(kind) => {
-                with_menus(|m, a| liero_menus_enter(m, a, &Host::none(), *kind));
+                with_menus(a, |m, a| liero_menus_enter(m, a, &Host::none(), *kind));
             }
             Ops::Availability(av) => {
                 if selection_valid(b) {
                     let sel = selection(b);
-                    let (v, a) = av.behavior().enter(av.value(b, sel));
-                    av.set_value(b, sel, v);
-                    av.apply(b, sel, a);
+                    let (v, act) = av.behavior().enter(av.value(a, b, sel));
+                    av.set_value(a, b, sel, v);
+                    av.apply(a, b, sel, act);
                 }
             }
         }
     }
 
-    fn update_items(&self, b: &mut LieroMenuBox) {
+    fn update_items(&self, a: &mut LieroApp, b: &mut LieroMenuBox) {
         match self {
-            Ops::Menus(kind) => with_menus(|m, a| liero_menus_update_items(m, a, *kind)),
-            Ops::Availability(av) => av.update_items(b),
+            Ops::Menus(kind) => with_menus(a, |m, a| liero_menus_update_items(m, a, *kind)),
+            Ops::Availability(av) => av.update_items(a, b),
         }
     }
 
-    fn draw(&self, b: &mut LieroMenuBox, r: &LieroRenderer, disabled: bool, x: i32, show: bool) {
-        let font = crate::app::menu_font();
-        let scr = r.bmp.view();
+    /// Draws the menu on the app's play screen.
+    fn draw(&self, a: &mut LieroApp, b: &mut LieroMenuBox, disabled: bool, x: i32, show: bool) {
         match self {
-            Ops::Menus(kind) => with_menus(|m, a| liero_menus_draw(m, a, *kind, &scr, &font, disabled, x, show)),
+            Ops::Menus(kind) => with_menus(a, |m, a| {
+                let (font, scr) = (a.font(), a.play.bmp.view());
+                liero_menus_draw(m, a, *kind, &scr, &font, disabled, x, show)
+            }),
             Ops::Availability(_) => {
                 unsafe fn no_overlay(_: *mut std::ffi::c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
                 let hooks = LieroMenuHooks {
                     ctx: std::ptr::null_mut(),
                     draw_overlay: no_overlay,
                 };
-                liero_menu_box_draw(b, &scr, &font, &hooks, disabled, x, show);
+                liero_menu_box_draw(b, &a.play.bmp.view(), &a.font(), &hooks, disabled, x, show);
             }
         }
     }
@@ -244,6 +245,7 @@ impl Ops {
 /// and `no_left_right` would open a dialog or change the window.
 #[allow(clippy::too_many_arguments)]
 fn run_menu(
+    a: &mut LieroApp,
     out: &mut Out,
     name: &str,
     b: &mut LieroMenuBox,
@@ -254,11 +256,10 @@ fn run_menu(
     seed: u32,
     steps: i32,
 ) {
-    let a = app();
     let mut r = LieroRand::new(seed);
     let mut time: u32 = 0;
 
-    ops.update_items(b);
+    ops.update_items(a, b);
     liero_menu_box_move_to(b, 0);
 
     for step in 0..steps {
@@ -276,12 +277,12 @@ fn run_menu(
             4 => {
                 if !no_left_right.contains(&id) {
                     let dir = if r.below(2) != 0 { 1 } else { -1 };
-                    ops.left_right(b, dir);
+                    ops.left_right(a, b, dir);
                 }
             }
             5 => {
                 if !no_enter.contains(&id) {
-                    ops.enter(b);
+                    ops.enter(a, b);
                 }
             }
             6 => {
@@ -302,7 +303,7 @@ fn run_menu(
                     liero_menu_box_set_visibility(b, i, !visible);
                 }
             }
-            8 => ops.update_items(b),
+            8 => ops.update_items(a, b),
             _ => unreachable!(),
         }
 
@@ -314,18 +315,17 @@ fn run_menu(
         let disabled = r.below(5) == 0;
         let x = if r.below(4) == 0 { r.below(300) as i32 } else { -1 };
         let show = r.below(2) == 1;
-        ops.draw(b, &a.play, disabled, x, show);
+        ops.draw(a, b, disabled, x, show);
         add_screen(&mut f, &a.play);
         print(out, name, step, f);
     }
 }
 
-fn run_menus(out: &mut Out) {
-    let a = app();
+fn run_menus(a: &mut LieroApp, out: &mut Out) {
     a.settings = Some(LieroSettingsBox::defaults());
     // The menus show the name of the loaded setup.
     a.files.settings_node = Node::new(b"config/LIERO.CFG");
-    for (i, ws) in crate::app::menu_settings().worms.iter().enumerate() {
+    for (i, ws) in a.settings_mut().worms.iter().enumerate() {
         let mut ws = ws.borrow_mut();
         ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
@@ -334,17 +334,18 @@ fn run_menus(out: &mut Out) {
         }
     }
 
-    with_menus(|m, _| liero_menus_load(m));
+    with_menus(a, |m, _| liero_menus_load(m));
     // SAFETY: the menus' boxes live as long as they do.
-    let menu = |kind| unsafe { &mut *with_menus(|m, _| liero_menus_box(m, kind)) };
+    let menu = |a: &mut LieroApp, kind| unsafe { &mut *with_menus(a, |m, _| liero_menus_box(m, kind)) };
 
     // As the menu loop sets them up before a game.
-    let main = menu(LIERO_MENU_MAIN);
+    let main = menu(a, LIERO_MENU_MAIN);
     liero_menu_box_set_visibility(main, index_of(main, MA_RESUME_GAME), false);
     // SAFETY: the text is copied.
     liero_menu_box_set_string(main, index_of(main, MA_NEW_GAME), b"NEW GAME (F1)");
 
     run_menu(
+        a,
         out,
         "menu-main",
         main,
@@ -366,10 +367,12 @@ fn run_menus(out: &mut Out) {
         SI_LIVES,
         SI_FLAGS_TO_WIN,
     ];
+    let setup = menu(a, LIERO_MENU_SETTINGS);
     run_menu(
+        a,
         out,
         "menu-setup",
-        menu(LIERO_MENU_SETTINGS),
+        setup,
         &Ops::Menus(LIERO_MENU_SETTINGS),
         &no_enter,
         &[],
@@ -378,12 +381,14 @@ fn run_menus(out: &mut Out) {
         400,
     );
 
-    with_menus(|m, a| liero_menus_player_settings(m, a, 0));
+    with_menus(a, |m, a| liero_menus_player_settings(m, a, 0));
     let player_no_enter: Vec<i32> = (PL_NAME..=PL_LOAD_PROFILE).filter(|&id| id != PL_CONTROLLER).collect();
+    let player = menu(a, LIERO_MENU_PLAYER);
     run_menu(
+        a,
         out,
         "menu-player",
-        menu(LIERO_MENU_PLAYER),
+        player,
         &Ops::Menus(LIERO_MENU_PLAYER),
         &player_no_enter,
         &[],
@@ -392,10 +397,12 @@ fn run_menus(out: &mut Out) {
         400,
     );
 
+    let options = menu(a, LIERO_MENU_HIDDEN);
     run_menu(
+        a,
         out,
         "menu-options",
-        menu(LIERO_MENU_HIDDEN),
+        options,
         &Ops::Menus(LIERO_MENU_HIDDEN),
         &[
             HM_DOUBLE_RES,
@@ -413,7 +420,8 @@ fn run_menus(out: &mut Out) {
 
     // Long enough to scroll, and searched by any part of the name like the
     // file selectors.
-    let tc = crate::app::menu_tc_data();
+    let tc = a.menu_tc();
+    let tc = tc_data(&tc);
     let b = liero_menu_box_new(179, 28, false);
     // SAFETY: the box is new, and freed below.
     let weapons = unsafe { &mut *b };
@@ -441,9 +449,11 @@ fn run_menus(out: &mut Out) {
         // SAFETY: the texts are copied.
         unsafe { liero_menu_box_add(weapons, &spec, -1, true) };
     }
+    drop(tc);
     let states: [&'static [u8]; 3] = [b"Menu", b"Bonus", b"Banned"];
     let av = Availability { names: states, order };
     run_menu(
+        a,
         out,
         "menu-weapons",
         weapons,
@@ -463,6 +473,7 @@ fn run_menus(out: &mut Out) {
 /// from `level_file_for_name`.
 #[allow(clippy::too_many_arguments)]
 fn draw_versus_info(
+    a: &LieroApp,
     bmp: &LieroBitmapBox,
     level_file: &[u8],
     level_file_for_name: &[u8],
@@ -471,12 +482,12 @@ fn draw_versus_info(
     center_x: i32,
     center_y: i32,
 ) {
-    let level = level_line(&crate::app::menu_tc_data(), level_file, level_file_for_name);
+    let level = level_line(&a.tc_data(), level_file, level_file_for_name);
     // SAFETY: the bitmap and font are live.
     unsafe {
         liero_menu_draw_versus(
             &bmp.view(),
-            &crate::app::menu_font(),
+            &a.font(),
             LieroStr::of(&level),
             LieroStr::of(names[0]),
             LieroStr::of(names[1]),
@@ -489,8 +500,7 @@ fn draw_versus_info(
 }
 
 /// The boxes drawn by the menus' dialogs.
-fn run_boxes(out: &mut Out) {
-    let a = app();
+fn run_boxes(a: &mut LieroApp, out: &mut Out) {
     let mut r = LieroRand::new(6);
     let mut frozen = LieroBitmapBox::new();
     frozen.alloc(320, 200, 320);
@@ -523,11 +533,11 @@ fn run_boxes(out: &mut Out) {
 
         a.single.clear();
         let for_name = [b"x/" as &[u8], texts[r.below(6) as usize], b".lev"].concat();
-        draw_versus_info(&a.single.bmp, level_file, &for_name, names, colors, 320, 100);
+        draw_versus_info(a, &a.single.bmp, level_file, &for_name, names, colors, 320, 100);
         add_screen(&mut f, &a.single);
 
         a.play.clear();
-        let font = crate::app::menu_font();
+        let font = a.font();
         let scr = a.play.bmp.view();
         let text = texts[r.below(6) as usize];
         let x = 20 + r.below(280) as i32;
@@ -550,14 +560,21 @@ fn run_boxes(out: &mut Out) {
         defaults.borrow().worms[1].borrow().name.clone(),
     ];
     let names: [&[u8]; 2] = [&names[0], &names[1]];
-    draw_versus_info(&a.single.bmp, b"A", b"x/A.lev", names, default_colors, 320, 100);
+    draw_versus_info(a, &a.single.bmp, b"A", b"x/A.lev", names, default_colors, 320, 100);
     add_screen(&mut f, &a.single);
     print(out, "menu-boxes-short", 0, f);
 }
 
 /// The weapon selection screen with both worms' controls pressed at random.
-fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, select_bot_weapons: u32, steps: i32) {
-    let a = app();
+fn run_weapon_selection(
+    a: &mut LieroApp,
+    out: &mut Out,
+    name: &str,
+    seed: u32,
+    controller1: u32,
+    select_bot_weapons: u32,
+    steps: i32,
+) {
     let settings = LieroSettingsBox::defaults();
     a.settings = Some(settings.clone());
     let mut s = settings.borrow_mut();
@@ -694,8 +711,7 @@ fn run_weapon_selection(out: &mut Out, name: &str, seed: u32, controller1: u32, 
     drop(game);
 }
 
-pub fn hash_menus(out: &mut Out) {
-    let a = app();
+pub fn hash_menus(a: &mut LieroApp, out: &mut Out) {
     let tc = super::tc::bundled();
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
@@ -704,11 +720,11 @@ pub fn hash_menus(out: &mut Out) {
     a.set_tc(Some(tc));
     a.menu_cycles = 0;
 
-    run_menus(out);
-    run_boxes(out);
+    run_menus(a, out);
+    run_boxes(a, out);
 
-    run_weapon_selection(out, "weapsel-1", 1, 0, 0, 300);
-    run_weapon_selection(out, "weapsel-2", 2, 1, 1, 300);
-    run_weapon_selection(out, "weapsel-3", 3, 1, 0, 300);
-    run_weapon_selection(out, "weapsel-4", 4, 0, 2, 300);
+    run_weapon_selection(a, out, "weapsel-1", 1, 0, 0, 300);
+    run_weapon_selection(a, out, "weapsel-2", 2, 1, 1, 300);
+    run_weapon_selection(a, out, "weapsel-3", 3, 1, 0, 300);
+    run_weapon_selection(a, out, "weapsel-4", 4, 0, 2, 300);
 }

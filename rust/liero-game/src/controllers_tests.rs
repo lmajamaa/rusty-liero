@@ -1,7 +1,6 @@
 use super::*;
 use crate::fs::Node;
 use crate::keys::sdl_to_dos;
-use crate::settings::SharedSettings;
 use crate::tc::SharedTc;
 
 /// The bundled TC, with one reference for the test.
@@ -9,13 +8,6 @@ fn tc() -> SharedTc {
     let tc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
     assert!(tc.borrow().data().is_some());
     tc
-}
-
-fn menu_settings() -> SharedSettings {
-    thread_local! {
-        static SETTINGS: SharedSettings = liero_settings_box_new();
-    }
-    SETTINGS.with(|s| s.clone())
 }
 
 /// A local match with the worms named `names`, on a level of its own.
@@ -129,7 +121,7 @@ fn r_rewinds_a_replay_to_its_start() {
         drop(c);
 
         let a = &mut LieroApp::new();
-        crate::app::liero_app_set_settings(a, Some(menu_settings()));
+        crate::app::liero_app_set_settings(a, Some(liero_settings_box_new()));
         let mut r = Box::from_raw(liero_replay_controller_new(&node, tc));
         r.focus(a, &Host::none());
         assert_eq!(r.data.state, LIERO_STATE_GAME);
