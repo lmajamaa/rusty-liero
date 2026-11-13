@@ -72,28 +72,19 @@ pub struct LieroTypedKey {
 /// What the screens need of the platform: events and keys, sound, the
 /// clock, and showing a frame. Each does nothing by default.
 pub trait Platform {
-    /// The next event, if one is due, already read into the key states.
-    fn poll_event(&self) -> Option<LieroEvent> {
+    /// The next event, if one is due, already read into the app's key
+    /// states.
+    fn poll_event(&self, _app: &mut LieroApp) -> Option<LieroEvent> {
         None
     }
-    /// Reads every event due into the key states (`Gfx::process`).
-    fn process(&self) {}
-    /// The same during a game, passing the keys to the controller
+    /// Reads every event due into the app's key states (`Gfx::process`).
+    fn process(&self, _app: &mut LieroApp) {}
+    /// The same during a game, passing the keys to the app's controller
     /// (`Gfx::process(controller)`).
-    fn process_controller(&self) {}
-    fn clear_keys(&self) {}
+    fn process_controller(&self, _app: &mut LieroApp) {}
     fn play_sound(&self, _id: i32) {}
     /// Turns the browser's text input on or off.
     fn text_input(&self, _on: bool) {}
-    /// Whether an SDL key was pressed since it was last asked about, which
-    /// it then forgets (`Gfx::testSDLKeyOnce`).
-    fn test_key_once(&self, _scancode: u32) -> bool {
-        false
-    }
-    /// Whether an SDL key is held (`Gfx::testSDLKey`).
-    fn test_key(&self, _scancode: u32) -> bool {
-        false
-    }
     /// The keys typed this frame.
     fn typed_keys(&self) -> Vec<LieroTypedKey> {
         Vec::new()
@@ -167,14 +158,14 @@ impl Host {
     pub fn none() -> Self {
         Host(Rc::new(NoPlatform))
     }
-    pub fn poll_event(&self) -> Option<LieroEvent> {
-        self.0.poll_event()
+    pub fn poll_event(&self, app: &mut LieroApp) -> Option<LieroEvent> {
+        self.0.poll_event(app)
     }
-    pub fn process(&self) {
-        self.0.process()
+    pub fn process(&self, app: &mut LieroApp) {
+        self.0.process(app)
     }
-    pub fn process_controller(&self) {
-        self.0.process_controller()
+    pub fn process_controller(&self, app: &mut LieroApp) {
+        self.0.process_controller(app)
     }
     pub fn random_seed(&self) -> u32 {
         self.0.random_seed()
@@ -184,9 +175,6 @@ impl Host {
     }
     pub fn set_fullscreen(&self, on: bool) {
         self.0.set_fullscreen(on)
-    }
-    pub fn clear_keys(&self) {
-        self.0.clear_keys()
     }
     pub fn play_sound(&self, id: i32) {
         self.0.play_sound(id)
@@ -217,18 +205,12 @@ impl Host {
     pub fn text_input(&self, on: bool) {
         self.0.text_input(on)
     }
-    pub fn test_key(&self, scancode: u32) -> bool {
-        self.0.test_key(scancode)
-    }
     /// The frozen screen with the main menu over it, greyed out while
     /// another menu is up (`Gfx::drawBasicMenu`).
     pub fn draw_basic_menu(&self, app: &mut LieroApp) {
         if self.0.app_drawing() {
             crate::app_menus::draw_basic_menu(app);
         }
-    }
-    pub fn test_key_once(&self, scancode: u32) -> bool {
-        self.0.test_key_once(scancode)
     }
     pub fn typed_keys(&self) -> Vec<LieroTypedKey> {
         self.0.typed_keys()

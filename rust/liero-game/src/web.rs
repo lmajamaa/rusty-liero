@@ -14,7 +14,7 @@
 //! same physical key on every layout, as SDL does natively; Emscripten's SDL
 //! went by `keyCode` instead, which differs for some keys on other layouts.
 
-use crate::app::app;
+use crate::app::{app, LieroApp};
 use crate::app_screens::liero_main_screen;
 use crate::controllers::liero_controller_on_key;
 use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, LieroColor};
@@ -329,19 +329,19 @@ fn poll_gamepads() {
 // ---- Events, as `Gfx::processEvent`
 
 /// Passes a key to the app's controller, if it has one.
-fn send_key(to_controller: bool, key: u32, down: bool) {
+fn send_key(a: &mut LieroApp, to_controller: bool, key: u32, down: bool) {
     if !to_controller || key == 0 {
         return;
     }
-    if let Some(c) = app().controller.as_deref_mut() {
+    if let Some(c) = a.controller.as_deref_mut() {
         // SAFETY: the app's controller is a live one.
         unsafe { liero_controller_on_key(c, key as i32, down) };
     }
 }
 
-fn send_keys(to_controller: bool, changes: LieroKeyChanges) {
+fn send_keys(a: &mut LieroApp, to_controller: bool, changes: LieroKeyChanges) {
     for i in 0..changes.count as usize {
-        send_key(to_controller, changes.keys[i], changes.states[i]);
+        send_key(a, to_controller, changes.keys[i], changes.states[i]);
     }
 }
 
@@ -356,7 +356,7 @@ fn on_pad(joy: i32, f: impl FnOnce(&mut JoyButtons) -> LieroKeyChanges) -> Optio
     })
 }
 
-fn process_event(ev: Ev, to_controller: bool) {
+fn process_event(a: &mut LieroApp, ev: Ev, to_controller: bool) {
     match ev {
         Ev::Key { down, scancode, sym } => {
             if down {
@@ -369,21 +369,21 @@ fn process_event(ev: Ev, to_controller: bool) {
                     }
                 });
             }
-            let dos = app().keys.event(scancode, down);
-            send_key(to_controller, dos, down);
+            let dos = a.keys.event(scancode, down);
+            send_key(a, to_controller, dos, down);
             if down && scancode == SC_F11 {
-                set_fullscreen(!crate::shell::liero_shell_fullscreen(app()), true);
+                set_fullscreen(!crate::shell::liero_shell_fullscreen(a), true);
             }
         }
         Ev::Text(_) => {}
         Ev::JoyAxis { joy, axis, value } => {
             if let Some(changes) = on_pad(joy, |b| joy_axis(b, joy, axis, value)) {
-                send_keys(to_controller, changes);
+                send_keys(a, to_controller, changes);
             }
         }
         Ev::JoyButton { joy, button, down } => {
             if let Some(changes) = on_pad(joy, |b| joy_button(b, joy, button, down)) {
-                send_keys(to_controller, changes);
+                send_keys(a, to_controller, changes);
             }
         }
     }
@@ -396,10 +396,10 @@ fn next_event() -> Option<Ev> {
 }
 
 /// `Gfx::process`: every event that came, into the key states.
-fn process(to_controller: bool) {
+fn process(a: &mut LieroApp, to_controller: bool) {
     shell(|s| s.key_buf.clear());
     while let Some(ev) = next_event() {
-        process_event(ev, to_controller);
+        process_event(a, ev, to_controller);
     }
 }
 
@@ -508,9 +508,9 @@ fn ticks_now() -> u32 {
 struct WebPlatform;
 
 impl Platform for WebPlatform {
-    fn poll_event(&self) -> Option<LieroEvent> {
+    fn poll_event(&self, app: &mut LieroApp) -> Option<LieroEvent> {
         let ev = next_event()?;
-        process_event(ev, false);
+        process_event(app, ev, false);
         let mut e = LieroEvent::default();
         match ev {
             Ev::Key { down, scancode, .. } => {
@@ -536,16 +536,12 @@ impl Platform for WebPlatform {
         Some(e)
     }
 
-    fn process(&self) {
-        process(false);
+    fn process(&self, app: &mut LieroApp) {
+        process(app, false);
     }
 
-    fn process_controller(&self) {
-        process(true);
-    }
-
-    fn clear_keys(&self) {
-        app().keys.clear();
+    fn process_controller(&self, app: &mut LieroApp) {
+        process(app, true);
     }
 
     fn play_sound(&self, id: i32) {
@@ -557,14 +553,6 @@ impl Platform for WebPlatform {
 
     fn text_input(&self, on: bool) {
         shell(|s| s.text_input = on);
-    }
-
-    fn test_key_once(&self, scancode: u32) -> bool {
-        app().keys.test_sdl_once(scancode as i32)
-    }
-
-    fn test_key(&self, scancode: u32) -> bool {
-        app().keys.test_sdl(scancode as i32)
     }
 
     fn typed_keys(&self) -> Vec<LieroTypedKey> {

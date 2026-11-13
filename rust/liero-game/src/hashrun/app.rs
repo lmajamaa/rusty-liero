@@ -19,7 +19,7 @@
 use super::game::add_screen;
 use super::games::tc_data;
 use super::{Fnv, Out};
-use crate::app::app;
+use crate::app::{app, LieroApp};
 use crate::app_screens::liero_main_screen;
 use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
@@ -124,7 +124,7 @@ fn next_event() -> Option<Ev> {
 
 /// `Gfx::processEvent`, giving the keys to the controller with
 /// `to_controller`. F11, which toggles fullscreen, never comes.
-fn process_event(ev: Ev, to_controller: bool) {
+fn process_event(a: &mut LieroApp, ev: Ev, to_controller: bool) {
     let Ev::Key { down, scancode } = ev else { return };
     if down {
         driver(|d| {
@@ -136,9 +136,9 @@ fn process_event(ev: Ev, to_controller: bool) {
             }
         });
     }
-    let dos = app().keys.event(scancode, down);
+    let dos = a.keys.event(scancode, down);
     if dos != 0 && to_controller {
-        if let Some(c) = app().controller.as_deref_mut() {
+        if let Some(c) = a.controller.as_deref_mut() {
             // SAFETY: the app's controller is a live one.
             unsafe { liero_controller_on_key(c, dos as i32, down) };
         }
@@ -146,10 +146,10 @@ fn process_event(ev: Ev, to_controller: bool) {
 }
 
 /// `Gfx::process`: every event due, into the key states.
-fn process(to_controller: bool) {
+fn process(a: &mut LieroApp, to_controller: bool) {
     driver(|d| d.key_buf.clear());
     while let Some(ev) = next_event() {
-        process_event(ev, to_controller);
+        process_event(a, ev, to_controller);
     }
 }
 
@@ -189,9 +189,9 @@ fn utc_text(t: i64) -> String {
 struct HashPlatform;
 
 impl Platform for HashPlatform {
-    fn poll_event(&self) -> Option<LieroEvent> {
+    fn poll_event(&self, app: &mut LieroApp) -> Option<LieroEvent> {
         let ev = next_event()?;
-        process_event(ev, false);
+        process_event(app, ev, false);
         let mut e = LieroEvent::default();
         match ev {
             Ev::Key { down, scancode } => {
@@ -208,29 +208,17 @@ impl Platform for HashPlatform {
         Some(e)
     }
 
-    fn process(&self) {
-        process(false);
+    fn process(&self, app: &mut LieroApp) {
+        process(app, false);
     }
 
     /// The frame's events, with their keys for the controller.
-    fn process_controller(&self) {
-        process(true);
-    }
-
-    fn clear_keys(&self) {
-        app().keys.clear();
+    fn process_controller(&self, app: &mut LieroApp) {
+        process(app, true);
     }
 
     fn play_sound(&self, id: i32) {
         report_sound(id);
-    }
-
-    fn test_key_once(&self, scancode: u32) -> bool {
-        app().keys.test_sdl_once(scancode as i32)
-    }
-
-    fn test_key(&self, scancode: u32) -> bool {
-        app().keys.test_sdl(scancode as i32)
     }
 
     fn typed_keys(&self) -> Vec<LieroTypedKey> {

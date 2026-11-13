@@ -915,18 +915,18 @@ fn copy_rows(scr: &LieroBitmap, buf: &mut Vec<u8>, save: bool) {
 impl Screen for StatsPresenter {
     fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
-            host.process();
-            if host.test_key(SCANCODE_DOWN) {
+            host.process(app);
+            if app.test_key(SCANCODE_DOWN) {
                 self.dest_offset -= 10.0;
-            } else if host.test_key(SCANCODE_UP) {
+            } else if app.test_key(SCANCODE_UP) {
                 self.dest_offset = (self.dest_offset + 10.0).min(0.0);
-            } else if host.test_key_once(SCANCODE_RIGHT) {
+            } else if app.test_key_once(SCANCODE_RIGHT) {
                 self.dest_pane = (self.dest_pane + 1.0).min(1.0);
-            } else if host.test_key_once(SCANCODE_LEFT) {
+            } else if app.test_key_once(SCANCODE_LEFT) {
                 self.dest_pane = (self.dest_pane - 1.0).max(-1.0);
-            } else if host.test_key(SCANCODE_RETURN) || host.test_key(SCANCODE_ESCAPE) {
+            } else if app.test_key(SCANCODE_RETURN) || app.test_key(SCANCODE_ESCAPE) {
                 host.fill_screen(app, 0);
-                host.clear_keys();
+                app.clear_keys();
                 return Tick::close(0);
             }
 
@@ -951,7 +951,7 @@ impl Screen for StatsPresenter {
 /// The stats screen for a copy of `stats`, drawn with `tc` on a screen of
 /// `render_res_x` x `render_res_y`, over what the screen shows now.
 pub(crate) fn liero_stats_presenter_screen(
-    app: &crate::app::LieroApp,
+    app: &mut crate::app::LieroApp,
     stats: &LieroStats,
     tc: SharedTc,
     game: StatsGame,
@@ -959,7 +959,7 @@ pub(crate) fn liero_stats_presenter_screen(
     render_res_y: i32,
 ) -> BoxedScreen {
     let host = crate::screen::current_host();
-    host.clear_keys();
+    app.clear_keys();
     let mut bg = Vec::new();
     if let Some(scr) = host.screen(app) {
         copy_rows(&scr, &mut bg, true);

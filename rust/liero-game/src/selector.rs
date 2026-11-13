@@ -288,31 +288,31 @@ impl Selector {
     }
 
     /// The keys: false on Escape (`FileSelector::process`).
-    fn process(&mut self, host: &Host) -> bool {
+    fn process(&mut self, app: &mut LieroApp, host: &Host) -> bool {
         let cur = self.current;
-        if host.test_key_once(SCANCODE_UP) {
+        if app.test_key_once(SCANCODE_UP) {
             host.play_sound(SOUND_UP);
             self.menu(cur).movement(-1);
         }
-        if host.test_key_once(SCANCODE_DOWN) {
+        if app.test_key_once(SCANCODE_DOWN) {
             host.play_sound(SOUND_DOWN);
             self.menu(cur).movement(1);
         }
-        if host.test_key_once(SCANCODE_PAGEUP) {
+        if app.test_key_once(SCANCODE_PAGEUP) {
             host.play_sound(SOUND_UP);
             self.menu(cur).movement_page(-1);
         }
-        if host.test_key_once(SCANCODE_PAGEDOWN) {
+        if app.test_key_once(SCANCODE_PAGEDOWN) {
             host.play_sound(SOUND_DOWN);
             self.menu(cur).movement_page(1);
         }
-        if host.test_key_once(SCANCODE_ESCAPE) {
+        if app.test_key_once(SCANCODE_ESCAPE) {
             return false;
         }
-        if host.test_key_once(SCANCODE_LEFT) {
+        if app.test_key_once(SCANCODE_LEFT) {
             self.exit();
         }
-        if host.test_key_once(SCANCODE_RIGHT) {
+        if app.test_key_once(SCANCODE_RIGHT) {
             self.enter();
         }
         let cur = self.current;
@@ -388,17 +388,17 @@ fn restore_frozen(app: &LieroApp, host: &Host) {
 impl Screen for Selector {
     fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
-            host.process();
+            host.process(app);
         }
 
         restore_frozen(app, host);
         self.draw(app, host);
 
-        if !self.process(host) {
+        if !self.process(app, host) {
             return Tick::close(-1);
         }
 
-        if host.test_key_once(SCANCODE_RETURN) || host.test_key_once(SCANCODE_KP_ENTER) {
+        if app.test_key_once(SCANCODE_RETURN) || app.test_key_once(SCANCODE_KP_ENTER) {
             if let Some(result) = self.choose(app, host) {
                 return Tick::close(result);
             }
@@ -622,25 +622,19 @@ mod tests {
         assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), Some(5));
     }
 
-    /// Keys pressed, each read once, and text typed.
+    /// Text typed.
     #[derive(Default)]
     struct KeyPlatform {
-        keys: RefCell<Vec<u32>>,
         typed: RefCell<Vec<crate::screen::LieroTypedKey>>,
     }
 
     impl crate::screen::Platform for KeyPlatform {
-        fn test_key_once(&self, sc: u32) -> bool {
-            let mut k = self.keys.borrow_mut();
-            let found = k.iter().position(|&x| x == sc);
-            found.map(|i| k.remove(i)).is_some()
-        }
         fn typed_keys(&self) -> Vec<crate::screen::LieroTypedKey> {
             std::mem::take(&mut *self.typed.borrow_mut())
         }
     }
 
-    fn key_host(keys: &[u32], typed_text: &[u8]) -> (Host, Rc<KeyPlatform>) {
+    fn key_host(typed_text: &[u8]) -> Host {
         let typed = typed_text
             .iter()
             .map(|&c| crate::screen::LieroTypedKey {
@@ -648,22 +642,21 @@ mod tests {
                 scancode: 0,
             })
             .collect();
-        let p = Rc::new(KeyPlatform {
-            keys: RefCell::new(keys.to_vec()),
+        Host::new(Rc::new(KeyPlatform {
             typed: RefCell::new(typed),
-        });
-        (Host::new(p.clone()), p)
+        }))
     }
 
     #[test]
     fn escape_wins_over_left_and_right() {
         let t = tree(&[("", &[("Replays", true)]), ("Replays", &[("one.lrp", false)])]);
         let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/one.lrp", b"", false), tree_source(&t));
-        let (h, k) = key_host(&[SCANCODE_LEFT, SCANCODE_ESCAPE], b"");
-        assert!(!sel.process(&h));
+        let mut a = LieroApp::new();
+        a.press(&[SCANCODE_LEFT, SCANCODE_ESCAPE]);
+        assert!(!sel.process(&mut a, &key_host(b"")));
         // Left wasn't read, and the folder is still open.
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
-        assert_eq!(k.keys.borrow().clone(), [SCANCODE_LEFT]);
+        assert!(a.test_key(SCANCODE_LEFT) && !a.test_key(SCANCODE_ESCAPE));
     }
 
     #[test]
@@ -671,7 +664,7 @@ mod tests {
         let t = tree(&[("", &[("alpha.lrp", false), ("beta.lrp", false), ("gamma.lrp", false)])]);
         let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), tree_source(&t));
         // "mm" is only inside "gamma".
-        assert!(sel.process(&key_host(&[], b"mm").0));
+        assert!(sel.process(&mut LieroApp::new(), &key_host(b"mm")));
         assert_eq!(
             sel.cur_sel().map(|c| sel.nodes[c].name.clone()),
             Some(b"gamma".to_vec())

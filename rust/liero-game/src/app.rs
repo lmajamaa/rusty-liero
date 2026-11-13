@@ -174,6 +174,28 @@ pub fn liero_app() -> *mut LieroApp {
     app()
 }
 
+impl LieroApp {
+    /// Whether an SDL key was pressed since it was last asked about, which
+    /// it then forgets (`Gfx::testSDLKeyOnce`).
+    pub fn test_key_once(&mut self, scancode: u32) -> bool {
+        self.keys.test_sdl_once(scancode as i32)
+    }
+    /// Whether an SDL key is held (`Gfx::testSDLKey`).
+    pub fn test_key(&self, scancode: u32) -> bool {
+        self.keys.test_sdl(scancode as i32)
+    }
+    pub fn clear_keys(&mut self) {
+        self.keys.clear();
+    }
+    /// Holds down SDL keys, as their events would.
+    #[cfg(test)]
+    pub fn press(&mut self, scancodes: &[u32]) {
+        for &sc in scancodes {
+            self.keys.set(crate::keys::sdl_to_dos(sc as i32), true);
+        }
+    }
+}
+
 /// The play renderer, or with `single`, the single screen one.
 pub fn liero_app_renderer(a: &mut LieroApp, single: bool) -> *mut LieroRenderer {
     if single {

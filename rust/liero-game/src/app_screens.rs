@@ -175,7 +175,7 @@ impl Screen for GameScreen {
         if self.resumed {
             self.resumed = false;
         } else if self.shown {
-            host.process_controller();
+            host.process_controller(app);
         }
 
         if self.next == Next::Focus {
@@ -202,7 +202,7 @@ impl Screen for GameScreen {
         if self.next == Next::Finish {
             app.primary_single = false;
             liero_controller_unfocus(controller(app));
-            host.clear_keys();
+            app.clear_keys();
             return Tick::close(0);
         }
 

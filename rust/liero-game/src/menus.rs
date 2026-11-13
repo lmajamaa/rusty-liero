@@ -879,7 +879,7 @@ impl LieroMenus {
                     let b = self.behavior(app, kind, item as usize);
                     self.update(app, kind, item as usize, &b);
                 }
-                host.clear_keys();
+                app.clear_keys();
             }
             Then::WormName { item } => {
                 if ok {

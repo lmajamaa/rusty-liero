@@ -44,13 +44,13 @@ impl Screen for InfoBox {
         }
 
         if !self.waiting {
-            host.process();
+            host.process(app);
             self.waiting = true;
         }
 
-        while let Some(ev) = host.poll_event() {
+        while let Some(ev) = host.poll_event(app) {
             if ev.key_down {
-                host.clear_keys();
+                app.clear_keys();
                 if self.clear_screen {
                     host.fill_screen(app, BG_COLOR);
                 }
@@ -68,8 +68,8 @@ struct KeyChoice {
 }
 
 impl Screen for KeyChoice {
-    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
-        while let Some(ev) = host.poll_event() {
+    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+        while let Some(ev) = host.poll_event(app) {
             if ev.choice && (self.extended || !is_extended(ev.key)) {
                 return Tick::close(ev.key as i32);
             }
@@ -105,7 +105,7 @@ impl InputBox {
 impl Screen for InputBox {
     fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
-            let Some(ev) = host.poll_event() else {
+            let Some(ev) = host.poll_event(app) else {
                 return Tick::stay(false);
             };
             if ev.key_down {
@@ -118,11 +118,11 @@ impl Screen for InputBox {
                             unsafe { done(self.ctx, &self.buffer) };
                         }
                         host.play_sound(SOUND_CHOICE);
-                        host.clear_keys();
+                        app.clear_keys();
                         return Tick::close(1);
                     }
                     SCANCODE_ESCAPE => {
-                        host.clear_keys();
+                        app.clear_keys();
                         return Tick::close(0);
                     }
                     _ => {}
@@ -220,17 +220,14 @@ mod tests {
     }
 
     impl Platform for TestPlatform {
-        fn poll_event(&self) -> Option<LieroEvent> {
+        fn poll_event(&self, _app: &mut crate::app::LieroApp) -> Option<LieroEvent> {
             self.events.borrow_mut().pop_front()
         }
         fn play_sound(&self, id: i32) {
             self.log(format!("sound {id}"));
         }
-        fn process(&self) {
+        fn process(&self, _app: &mut crate::app::LieroApp) {
             self.log("process".into());
-        }
-        fn clear_keys(&self) {
-            self.log("clear".into());
         }
         fn text_input(&self, on: bool) {
             self.log(format!("text {on}"));
@@ -313,7 +310,7 @@ mod tests {
             ["text true"; 6]
                 .iter()
                 .map(|s| s.to_string())
-                .chain(["sound 27".into(), "clear".into()])
+                .chain(["sound 27".into()])
                 .collect::<Vec<_>>()
         );
     }
@@ -366,6 +363,6 @@ mod tests {
         // The events that came before the box is shown are read once, then
         // a key closes it.
         assert_eq!(run(&mut b, &h), (0, 1));
-        assert_eq!(*p.log.borrow(), ["process", "clear"]);
+        assert_eq!(*p.log.borrow(), ["process"]);
     }
 }

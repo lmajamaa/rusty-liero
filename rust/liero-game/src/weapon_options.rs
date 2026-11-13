@@ -122,8 +122,8 @@ impl Screen for WeaponOptions {
     fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         // Back from the message: it read the events.
         if self.shown && !self.resumed {
-            host.process();
-            if host.test_key_once(SCANCODE_ESCAPE) {
+            host.process(app);
+            if app.test_key_once(SCANCODE_ESCAPE) {
                 if self.any_on() {
                     return Tick::close(0);
                 }
@@ -139,25 +139,25 @@ impl Screen for WeaponOptions {
         host.draw_basic_menu(app);
         self.draw(app, host);
 
-        if host.test_key_once(SCANCODE_UP) {
+        if app.test_key_once(SCANCODE_UP) {
             host.play_sound(SOUND_UP);
             self.menu.movement(-1);
         }
-        if host.test_key_once(SCANCODE_DOWN) {
+        if app.test_key_once(SCANCODE_DOWN) {
             host.play_sound(SOUND_DOWN);
             self.menu.movement(1);
         }
-        if host.test_key_once(SCANCODE_LEFT) {
+        if app.test_key_once(SCANCODE_LEFT) {
             self.left_right(-1);
         }
-        if host.test_key_once(SCANCODE_RIGHT) {
+        if app.test_key_once(SCANCODE_RIGHT) {
             self.left_right(1);
         }
-        if host.test_key_once(SCANCODE_PAGEUP) {
+        if app.test_key_once(SCANCODE_PAGEUP) {
             host.play_sound(SOUND_UP);
             self.menu.movement_page(-1);
         }
-        if host.test_key_once(SCANCODE_PAGEDOWN) {
+        if app.test_key_once(SCANCODE_PAGEDOWN) {
             host.play_sound(SOUND_DOWN);
             self.menu.movement_page(1);
         }
@@ -225,28 +225,7 @@ impl WeaponOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{Platform, Transition};
-    use std::cell::RefCell;
-
-    /// The keys pressed, each read once.
-    #[derive(Default)]
-    struct KeyPlatform {
-        keys: RefCell<Vec<u32>>,
-    }
-
-    impl KeyPlatform {
-        fn press(&self, keys: &[u32]) {
-            *self.keys.borrow_mut() = keys.to_vec();
-        }
-    }
-
-    impl Platform for KeyPlatform {
-        fn test_key_once(&self, sc: u32) -> bool {
-            let mut k = self.keys.borrow_mut();
-            let found = k.iter().position(|&x| x == sc);
-            found.map(|i| k.remove(i)).is_some()
-        }
-    }
+    use crate::screen::Transition;
 
     fn s(b: &'static [u8]) -> LieroStr {
         LieroStr {
@@ -273,11 +252,6 @@ mod tests {
         unsafe { WeaponOptions::new(&spec) }
     }
 
-    fn host() -> (Host, std::rc::Rc<KeyPlatform>) {
-        let p = std::rc::Rc::new(KeyPlatform::default());
-        (Host::new(p.clone()), p)
-    }
-
     #[test]
     fn values_follow_the_table_in_menu_order() {
         let mut table = [0; WEAPON_COUNT];
@@ -293,20 +267,20 @@ mod tests {
     fn escape_needs_a_weapon_on() {
         let mut table = [1; WEAPON_COUNT];
         let mut w = screen(&mut table);
-        let (h, p) = host();
+        let h = Host::none();
         let mut app = crate::app::LieroApp::new();
-        p.press(&[SCANCODE_ESCAPE]);
+        app.press(&[SCANCODE_ESCAPE]);
         assert!(
             matches!(w.tick(&mut app, &h).then, Transition::Stay),
             "keys wait for the first frame"
         );
-        p.press(&[SCANCODE_ESCAPE]);
+        app.press(&[SCANCODE_ESCAPE]);
         let t = w.tick(&mut app, &h);
         assert!(matches!(t.then, Transition::Open(_)), "every weapon off: the message");
 
         // Back from the message, which read the events: no keys this tick.
         w.resume(&mut app, &h, 0);
-        p.press(&[SCANCODE_ESCAPE]);
+        app.press(&[SCANCODE_ESCAPE]);
         assert!(matches!(w.tick(&mut app, &h).then, Transition::Stay));
 
         // The screen reads the table through its pointer, which the
@@ -315,7 +289,7 @@ mod tests {
         {
             table[5] = 0;
         }
-        p.press(&[SCANCODE_ESCAPE]);
+        app.press(&[SCANCODE_ESCAPE]);
         assert_eq!(w.tick(&mut app, &h).closed(), Some(0));
     }
 }

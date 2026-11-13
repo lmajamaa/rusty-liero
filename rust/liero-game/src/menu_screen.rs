@@ -172,23 +172,23 @@ impl MenuScreen {
             }
             crate::app_menus::draw_menus(app);
 
-            if host.test_key_once(SCANCODE_ESCAPE) {
+            if app.test_key_once(SCANCODE_ESCAPE) {
                 if self.cur() == LIERO_MENU_MAIN {
                     self.move_main_to(LIERO_MAIN_QUIT);
                 } else {
                     self.set_cur(LIERO_MENU_MAIN);
                 }
             }
-            if host.test_key_once(SCANCODE_UP) {
+            if app.test_key_once(SCANCODE_UP) {
                 host.play_sound(SOUND_UP);
                 self.menu(self.cur(), |m| m.movement(-1));
             }
-            if host.test_key_once(SCANCODE_DOWN) {
+            if app.test_key_once(SCANCODE_DOWN) {
                 host.play_sound(SOUND_DOWN);
                 self.menu(self.cur(), |m| m.movement(1));
             }
 
-            if host.test_key_once(SCANCODE_RETURN) || host.test_key_once(SCANCODE_KP_ENTER) {
+            if app.test_key_once(SCANCODE_RETURN) || app.test_key_once(SCANCODE_KP_ENTER) {
                 let cur = self.cur();
                 if cur == LIERO_MENU_MAIN {
                     host.play_sound(SOUND_CHOICE);
@@ -221,35 +221,35 @@ impl MenuScreen {
         }
 
         if self.part != Part::AfterF3 {
-            if host.test_key_once(SCANCODE_F1) {
+            if app.test_key_once(SCANCODE_F1) {
                 self.set_cur(LIERO_MENU_MAIN);
                 self.move_main_to(self.start_item);
                 self.selected = self.start_item;
             }
-            if host.test_key_once(SCANCODE_F2) {
+            if app.test_key_once(SCANCODE_F2) {
                 self.move_main_to(LIERO_MAIN_ADVANCED);
                 self.menus().open_hidden(app);
             }
-            if host.test_key_once(SCANCODE_F3) {
+            if app.test_key_once(SCANCODE_F3) {
                 self.set_cur(LIERO_MENU_MAIN);
                 self.move_main_to(LIERO_MAIN_REPLAYS);
                 enter!(LIERO_MENU_MAIN, Use::Select, Part::AfterF3);
             }
         }
 
-        if host.test_key_once(SCANCODE_F5) {
+        if app.test_key_once(SCANCODE_F5) {
             self.move_main_to(LIERO_MAIN_PLAYER1_SETTINGS);
             self.menus().player_settings(app, 0);
         }
-        if host.test_key_once(SCANCODE_F6) {
+        if app.test_key_once(SCANCODE_F6) {
             self.move_main_to(LIERO_MAIN_PLAYER2_SETTINGS);
             self.menus().player_settings(app, 1);
         }
-        if host.test_key_once(SCANCODE_F7) {
+        if app.test_key_once(SCANCODE_F7) {
             self.move_main_to(LIERO_MAIN_SETTINGS);
             self.set_cur(LIERO_MENU_SETTINGS);
         }
-        if host.test_key_once(SCANCODE_F8) {
+        if app.test_key_once(SCANCODE_F8) {
             // F8: the developers' random TC.
             if app.has_tc() {
                 crate::tc::liero_tc_randomize(&app.menu_tc(), host.random_seed());
@@ -258,7 +258,7 @@ impl MenuScreen {
 
         for (key, dir) in [(SCANCODE_LEFT, -1), (SCANCODE_RIGHT, 1)] {
             let cur = self.cur();
-            if host.test_key(key) && !self.menus().left_right(app, cur, dir) {
+            if app.test_key(key) && !self.menus().left_right(app, cur, dir) {
                 // Let go of them, so they act once (`resetLeftRight`).
                 let keys = &mut app.keys;
                 keys.release_sdl(SCANCODE_LEFT as i32);
@@ -266,11 +266,11 @@ impl MenuScreen {
             }
         }
 
-        if host.test_key_once(SCANCODE_PAGEUP) {
+        if app.test_key_once(SCANCODE_PAGEUP) {
             host.play_sound(SOUND_UP);
             self.menu(self.cur(), |m| m.movement_page(-1));
         }
-        if host.test_key_once(SCANCODE_PAGEDOWN) {
+        if app.test_key_once(SCANCODE_PAGEDOWN) {
             host.play_sound(SOUND_DOWN);
             self.menu(self.cur(), |m| m.movement_page(1));
         }
@@ -302,7 +302,7 @@ impl Screen for MenuScreen {
 
         // Each tick reads the events that came with the frame before it.
         if self.phase != Phase::Start {
-            host.process();
+            host.process(app);
         }
 
         match self.phase {
