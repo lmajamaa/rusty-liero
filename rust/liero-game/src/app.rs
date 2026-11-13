@@ -102,10 +102,15 @@ pub(crate) fn menu_tc_data() -> Ref<'static, LieroTcData> {
     tc_data(a.tc.as_ref().expect("no TC"))
 }
 
-impl LieroApp {}
+impl Default for LieroApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl LieroApp {
-    fn new() -> Self {
+    /// An app with no settings, TC, menus or game yet.
+    pub fn new() -> Self {
         let mut rand = LieroRand { x: 0, c: 0 };
         rand.seed(LIERO_RAND_DEFAULT_SEED);
         LieroApp {

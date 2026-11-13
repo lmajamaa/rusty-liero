@@ -22,7 +22,7 @@ use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos
 use crate::menu_screen::LIERO_MENU_HIDDEN;
 use crate::menus::{liero_menus_load, liero_menus_new, liero_menus_update_items};
 use crate::screen::{
-    liero_app_frame, liero_app_push, liero_screen_set_host, Host, LieroApp, LieroEvent, LieroTypedKey, Platform,
+    liero_app_frame, liero_app_push, liero_screen_set_host, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack,
 };
 use crate::sfx::{LieroMixer, LieroSoundOut};
 use std::cell::RefCell;
@@ -849,7 +849,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
 
     let platform: Rc<dyn Platform> = Rc::new(WebPlatform);
     liero_screen_set_host(platform.clone());
-    let mut stack = LieroApp::new();
+    let mut stack = ScreenStack::new();
     liero_app_push(&mut stack, liero_main_screen());
     run_frames(stack, Host::new(platform));
     Ok(())
@@ -861,7 +861,7 @@ type FrameFn = Closure<dyn FnMut()>;
 /// Runs the screens every animation frame (as the C++ shell's `emscripten_set_main_loop` did),
 /// with the 14 ms steps due, until they close; then saves the settings, as
 /// the game does when it ends.
-fn run_frames(stack: LieroApp, host: Host) {
+fn run_frames(stack: ScreenStack, host: Host) {
     let mut stack = Some(stack);
     let next: Rc<RefCell<Option<FrameFn>>> = Rc::new(RefCell::new(None));
     let again = next.clone();
@@ -869,7 +869,7 @@ fn run_frames(stack: LieroApp, host: Host) {
         poll_gamepads();
         let ms = ticks_now();
         let Some(s) = stack.as_mut() else { return };
-        let running = liero_app_frame(s, ms, &host);
+        let running = liero_app_frame(s, ms, app(), &host);
         if running {
             persist_changes();
             if let Some(f) = again.borrow().as_ref() {

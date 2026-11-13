@@ -26,7 +26,7 @@ use crate::fs::Node;
 use crate::keys::sdl_to_dos_keysym;
 use crate::menus::{liero_menus_load, liero_menus_reset};
 use crate::screen::{
-    liero_app_push, liero_app_step, liero_screen_set_host, Host, LieroApp, LieroEvent, LieroTypedKey, Platform,
+    liero_app_push, liero_app_step, liero_screen_set_host, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack,
 };
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
@@ -547,9 +547,9 @@ pub fn hash_app(out: &mut Out) {
     liero_screen_set_host(platform.clone());
     let host = Host::new(platform);
 
-    let mut stack = LieroApp::new();
+    let mut stack = ScreenStack::new();
     liero_app_push(&mut stack, liero_main_screen());
-    while liero_app_step(&mut stack, &host) && driver(|d| d.failed.is_none()) {}
+    while liero_app_step(&mut stack, app(), &host) && driver(|d| d.failed.is_none()) {}
     drop(stack);
 
     let d = DRIVER.take();

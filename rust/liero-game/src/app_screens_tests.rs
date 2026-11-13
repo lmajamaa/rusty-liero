@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::app;
 use crate::controllers::{liero_controller_is_replay, LieroController};
 use crate::fs::Node;
 use crate::settings::{liero_settings_box_new, SharedSettings};
@@ -70,7 +71,7 @@ fn a_finished_game_goes_back_to_the_play_screen() {
         shown: false,
         resumed: true,
     };
-    let t = g.tick(&Host::none());
+    let t = g.tick(a, &Host::none());
     assert_eq!((t.closed(), t.shown), (Some(0), false));
     assert!(!a.primary_single);
     a.controller = None;

@@ -30,7 +30,7 @@ struct InfoBox {
 const BG_COLOR: u8 = 0;
 
 impl Screen for InfoBox {
-    fn tick(&mut self, host: &Host) -> Tick {
+    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if !self.shown {
             if self.clear_screen {
                 host.menu_palette();
@@ -68,7 +68,7 @@ struct KeyChoice {
 }
 
 impl Screen for KeyChoice {
-    fn tick(&mut self, host: &Host) -> Tick {
+    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         while let Some(ev) = host.poll_event() {
             if ev.choice && (self.extended || !is_extended(ev.key)) {
                 return Tick::close(ev.key as i32);
@@ -103,7 +103,7 @@ impl InputBox {
 }
 
 impl Screen for InputBox {
-    fn tick(&mut self, host: &Host) -> Tick {
+    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
             let Some(ev) = host.poll_event() else {
                 return Tick::stay(false);
@@ -284,7 +284,7 @@ mod tests {
     fn run(s: &mut dyn Screen, host: &Host) -> (i32, usize) {
         let mut frames = 0;
         for _ in 0..100 {
-            let t = s.tick(host);
+            let t = s.tick(&mut crate::app::LieroApp::new(), host);
             frames += t.shown as usize;
             if let Some(result) = t.closed() {
                 return (result, frames);

@@ -9,6 +9,7 @@
 //! saving the settings is the app's (`app_files.rs`), and F8's random TC
 //! is seeded by the platform.
 
+use crate::app::LieroApp;
 use crate::menus::LieroMenus;
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
@@ -152,7 +153,7 @@ impl MenuScreen {
     }
 
     /// One pass of the menu's loop (`Gfx::menuStep`).
-    fn step(&mut self, host: &Host) -> Step {
+    fn step(&mut self, app: &mut LieroApp, host: &Host) -> Step {
         if self.part != Part::Top && self.take_result(self.how, self.entered) {
             return Step::Close;
         }
@@ -171,9 +172,8 @@ impl MenuScreen {
         }
 
         if self.part == Part::Top {
-            let a = crate::app::app();
-            if a.save_settings_on_change {
-                a.save_settings_if_changed();
+            if app.save_settings_on_change {
+                app.save_settings_if_changed();
             }
             crate::app_menus::draw_menus();
 
@@ -256,16 +256,15 @@ impl MenuScreen {
         }
         if host.test_key_once(SCANCODE_F8) {
             // F8: the developers' random TC.
-            let a = crate::app::app();
-            if a.has_tc() {
-                crate::tc::liero_tc_randomize(&a.menu_tc(), host.random_seed());
+            if app.has_tc() {
+                crate::tc::liero_tc_randomize(&app.menu_tc(), host.random_seed());
             }
         }
 
         for (key, dir) in [(SCANCODE_LEFT, -1), (SCANCODE_RIGHT, 1)] {
             if host.test_key(key) && !self.menus().left_right(self.cur(), dir) {
                 // Let go of them, so they act once (`resetLeftRight`).
-                let keys = &mut crate::app::app().keys;
+                let keys = &mut app.keys;
                 keys.release_sdl(SCANCODE_LEFT as i32);
                 keys.release_sdl(SCANCODE_RIGHT as i32);
             }
@@ -284,8 +283,8 @@ impl MenuScreen {
         Step::Done
     }
 
-    fn run_step(&mut self, host: &Host) -> Tick {
-        match self.step(host) {
+    fn run_step(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
+        match self.step(app, host) {
             Step::Close => Tick::close(self.selected),
             Step::Opened(screen) => Tick::push(screen),
             Step::Done => {
@@ -297,12 +296,12 @@ impl MenuScreen {
 }
 
 impl Screen for MenuScreen {
-    fn tick(&mut self, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
         // The pass an item stopped goes on; the screen that closed read the
         // events.
         if self.resumed {
             self.resumed = false;
-            return self.run_step(host);
+            return self.run_step(app, host);
         }
 
         // Each tick reads the events that came with the frame before it.
@@ -320,19 +319,19 @@ impl Screen for MenuScreen {
                 self.start_item = crate::app_menus::menu_start();
                 self.selected = -1;
                 self.phase = Phase::Menu;
-                self.run_step(host)
+                self.run_step(app, host)
             }
             Phase::Menu => {
                 if self.selected < 0 {
-                    return self.run_step(host);
+                    return self.run_step(app, host);
                 }
                 self.phase = Phase::FadeOut;
-                crate::app::app().play.data.fade_value = 32;
+                app.play.data.fade_value = 32;
                 crate::app_menus::menu_fade(true);
                 Tick::stay(true)
             }
             Phase::FadeOut => {
-                let v = &mut crate::app::app().play.data.fade_value;
+                let v = &mut app.play.data.fade_value;
                 *v -= 1;
                 if *v > 0 {
                     crate::app_menus::menu_fade(true);
@@ -343,7 +342,7 @@ impl Screen for MenuScreen {
         }
     }
 
-    fn resume(&mut self, _host: &Host, result: i32) {
+    fn resume(&mut self, _app: &mut LieroApp, _host: &Host, result: i32) {
         self.entered = self.menus().then(result);
         self.resumed = true;
     }

@@ -913,7 +913,7 @@ fn copy_rows(scr: &LieroBitmap, buf: &mut Vec<u8>, save: bool) {
 }
 
 impl Screen for StatsPresenter {
-    fn tick(&mut self, host: &Host) -> Tick {
+    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
             host.process();
             if host.test_key(SCANCODE_DOWN) {

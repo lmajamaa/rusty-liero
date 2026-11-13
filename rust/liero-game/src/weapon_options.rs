@@ -119,7 +119,7 @@ impl WeaponOptions {
 }
 
 impl Screen for WeaponOptions {
-    fn tick(&mut self, host: &Host) -> Tick {
+    fn tick(&mut self, _app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         // Back from the message: it read the events.
         if self.shown && !self.resumed {
             host.process();
@@ -168,7 +168,7 @@ impl Screen for WeaponOptions {
         Tick::stay(true)
     }
 
-    fn resume(&mut self, _host: &Host, _result: i32) {
+    fn resume(&mut self, _app: &mut crate::app::LieroApp, _host: &Host, _result: i32) {
         self.resumed = true;
     }
 }
@@ -294,19 +294,20 @@ mod tests {
         let mut table = [1; WEAPON_COUNT];
         let mut w = screen(&mut table);
         let (h, p) = host();
+        let mut app = crate::app::LieroApp::new();
         p.press(&[SCANCODE_ESCAPE]);
         assert!(
-            matches!(w.tick(&h).then, Transition::Stay),
+            matches!(w.tick(&mut app, &h).then, Transition::Stay),
             "keys wait for the first frame"
         );
         p.press(&[SCANCODE_ESCAPE]);
-        let t = w.tick(&h);
+        let t = w.tick(&mut app, &h);
         assert!(matches!(t.then, Transition::Open(_)), "every weapon off: the message");
 
         // Back from the message, which read the events: no keys this tick.
-        w.resume(&h, 0);
+        w.resume(&mut app, &h, 0);
         p.press(&[SCANCODE_ESCAPE]);
-        assert!(matches!(w.tick(&h).then, Transition::Stay));
+        assert!(matches!(w.tick(&mut app, &h).then, Transition::Stay));
 
         // The screen reads the table through its pointer, which the
         // compiler doesn't see.
@@ -315,6 +316,6 @@ mod tests {
             table[5] = 0;
         }
         p.press(&[SCANCODE_ESCAPE]);
-        assert_eq!(w.tick(&h).closed(), Some(0));
+        assert_eq!(w.tick(&mut app, &h).closed(), Some(0));
     }
 }
