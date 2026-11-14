@@ -2,7 +2,7 @@
 //! them (formerly `mixer/mixer.c` and `SfxSample::createSound`).
 //!
 //! The mixer has 8 channels and makes mono signed 16-bit samples. A sound is
-//! added at a frame time with an id (any pointer, only compared) and plays
+//! added at a frame time with an id (a number, only compared) and plays
 //! one sample per frame from that time, at a 4.12 fixed-point volume, until
 //! it ends or is stopped; a looping sound starts over. `Mixer::mix`
 //! fills a buffer and advances the mixer's time; the web shell's audio node
@@ -17,15 +17,16 @@
 //!   keeps finding a stopped sound until its channel is reused. (A looping
 //!   weapon sound that was stopped isn't restarted until then.)
 //! - Ids are looked up by the first channel with that id, active or not,
-//!   so the null id is "playing" whenever any channel has never been used
-//!   or has finished, and stopping the null id stops the first such
+//!   so id 0 (`SoundId::NONE`) is "playing" whenever any channel has never
+//!   been used or has finished, and stopping it stops the first such
 //!   channel.
 //! - A sound added again with an id already playing takes another channel.
 //! - A sound added at a time already past starts from its beginning now.
 //! - Volume is `volume * 4096` truncated and masked to 13 bits, so 2.0 is
 //!   silent.
 
-use std::ffi::c_void;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Number of channels; more sounds than this at once aren't played.
 pub const MIXER_CHANNELS: usize = 8;
@@ -54,13 +55,12 @@ pub fn samples_from_tc(data: &[u8], out: &mut [i16]) {
     out[out.len() - 1] = prev as i16;
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Channel {
     id: usize,
     flags: u32,
-    /// The samples, owned by C++ (`SfxSample`).
-    sound: *const i16,
-    len: usize,
+    /// The samples, shared with the TC.
+    sound: Rc<[i16]>,
     /// Frame time it starts at.
     pos: u32,
     /// Position in the sound, 32.32 fixed point.
@@ -76,8 +76,7 @@ impl Default for Channel {
         Channel {
             id: 0,
             flags: INACTIVE,
-            sound: std::ptr::null(),
-            len: 0,
+            sound: Rc::from([]),
             pos: 0,
             sound_pos: 0,
             stride: 0,
@@ -89,7 +88,8 @@ impl Default for Channel {
 impl Channel {
     /// Adds this channel to `out`, which starts at frame `now`. Returns
     /// false once the sound has ended.
-    fn add_to(&mut self, out: &mut [i16], now: u32, sound: &[i16]) -> bool {
+    fn add_to(&mut self, out: &mut [i16], now: u32) -> bool {
+        let sound = &*self.sound;
         let rel_begin = (self.pos.wrapping_sub(now) as i32).max(0) as usize;
         let len = sound.len() as u32;
         let scaler = (self.volumes & 0x1fff) as i32;
@@ -129,18 +129,13 @@ impl Mixer {
 
     /// Plays `sound` from frame `time` on the first free channel. Returns
     /// false if every channel is busy.
-    ///
-    /// # Safety
-    /// `sound` must point to `len` samples (or be anything with `len` 0)
-    /// that stay alive while the channel plays them.
-    pub unsafe fn add(&mut self, sound: *const i16, len: usize, time: u32, id: usize, looping: bool) -> bool {
+    pub fn add(&mut self, sound: Rc<[i16]>, time: u32, id: usize, looping: bool) -> bool {
         match self.channels.iter().position(|c| c.flags == INACTIVE) {
             Some(i) => {
                 self.channels[i] = Channel {
                     id,
                     flags: if looping { LOOP } else { NORMAL },
                     sound,
-                    len,
                     pos: time,
                     sound_pos: 0,
                     stride: 1 << 32,
@@ -179,13 +174,7 @@ impl Mixer {
             if ch.flags == INACTIVE {
                 continue;
             }
-            // SAFETY: `add` requires the samples to outlive the channel.
-            let sound: &[i16] = if ch.len == 0 {
-                &[]
-            } else {
-                unsafe { std::slice::from_raw_parts(ch.sound, ch.len) }
-            };
-            if !ch.add_to(out, now, sound) {
+            if !ch.add_to(out, now) {
                 ch.flags = INACTIVE;
                 ch.id = 0;
             }
@@ -194,51 +183,70 @@ impl Mixer {
     }
 }
 
+/// Which sounds a sound is, to tell if one is playing or stop it: a
+/// worm's own, a weapon slot's, or `NONE`, which C++ wrote as null.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SoundId(pub usize);
+
+impl SoundId {
+    pub const NONE: SoundId = SoundId(0);
+
+    /// The sounds of the game's worm `id` (in the pool).
+    pub fn worm(id: crate::worm::WormId) -> SoundId {
+        SoundId(1 + id.0 as usize * 8)
+    }
+
+    /// The sounds of slot `slot` of the game's worm `id`.
+    pub fn slot(id: crate::worm::WormId, slot: usize) -> SoundId {
+        assert!(slot < 7, "no weapon slot {slot}");
+        SoundId(2 + id.0 as usize * 8 + slot)
+    }
+}
+
 /// Where a game's sounds go: a mixer, or none (`SoundPlayer`), and a
-/// function told of each sound started (the hash run's app driver).
-#[derive(Clone, Copy, Debug)]
+/// function told of each sound started (the hash run's app driver and
+/// tests).
+#[derive(Clone, Default)]
 pub struct SoundOut {
-    pub mixer: *mut Mixer,
-    pub report: Option<unsafe fn(sound: i32)>,
+    pub mixer: Option<Rc<RefCell<Mixer>>>,
+    pub report: Option<Rc<dyn Fn(i32)>>,
+}
+
+impl std::fmt::Debug for SoundOut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SoundOut")
+            .field("mixer", &self.mixer)
+            .field("report", &self.report.is_some())
+            .finish()
+    }
 }
 
 impl SoundOut {
     pub const NONE: SoundOut = SoundOut {
-        mixer: std::ptr::null_mut(),
+        mixer: None,
         report: None,
     };
 
     /// Plays the TC's `sound` as `id`'s, at the mixer's time, looping when
     /// `loops` isn't 0 (`playOnMixer`).
-    ///
-    /// # Safety
-    /// The mixer, if any, is valid, and `sound` is one of `tc`'s.
-    pub unsafe fn play(&self, tc: &crate::tc::TcData, sound: i32, id: *mut c_void, loops: i32) {
-        unsafe {
-            if let Some(report) = self.report {
-                report(sound);
-            }
-            if let Some(m) = self.mixer.as_mut() {
-                let s = &tc.samples[sound as usize];
-                let now = m.now() as u32;
-                m.add(s.as_ptr(), s.len(), now, id as usize, loops != 0);
-            }
+    pub fn play(&self, tc: &crate::tc::TcData, sound: i32, id: SoundId, loops: i32) {
+        if let Some(report) = &self.report {
+            report(sound);
+        }
+        if let Some(m) = &self.mixer {
+            let mut m = m.borrow_mut();
+            let now = m.now() as u32;
+            m.add(tc.samples[sound as usize].clone(), now, id.0, loops != 0);
         }
     }
 
-    /// # Safety
-    /// The mixer, if any, is valid.
-    pub unsafe fn playing(&self, id: *mut c_void) -> bool {
-        unsafe { self.mixer.as_ref().is_some_and(|m| m.is_playing(id as usize)) }
+    pub fn playing(&self, id: SoundId) -> bool {
+        self.mixer.as_ref().is_some_and(|m| m.borrow().is_playing(id.0))
     }
 
-    /// # Safety
-    /// The mixer, if any, is valid.
-    pub unsafe fn stop(&self, id: *mut c_void) {
-        unsafe {
-            if let Some(m) = self.mixer.as_mut() {
-                m.stop(id as usize);
-            }
+    pub fn stop(&self, id: SoundId) {
+        if let Some(m) = &self.mixer {
+            m.borrow_mut().stop(id.0);
         }
     }
 }
@@ -252,7 +260,7 @@ mod tests {
     }
 
     fn add(m: &mut Mixer, s: &[i16], time: u32, id: usize, looping: bool) -> bool {
-        unsafe { m.add(s.as_ptr(), s.len(), time, id, looping) }
+        m.add(Rc::from(s), time, id, looping)
     }
 
     fn from_tc(data: &[u8]) -> Vec<i16> {
@@ -322,19 +330,17 @@ mod tests {
     #[test]
     fn sound_out_stops_a_loop() {
         let s = sound(&[1, 2, 3]);
-        let mut m = Mixer::default();
-        add(&mut m, &s, 0, 1, true);
+        let m = Rc::new(RefCell::new(Mixer::default()));
+        add(&mut m.borrow_mut(), &s, 0, 1, true);
         let out = SoundOut {
-            mixer: &mut m,
+            mixer: Some(m.clone()),
             report: None,
         };
-        unsafe {
-            assert!(out.playing(std::ptr::dangling_mut::<c_void>()));
-            out.stop(std::ptr::dangling_mut::<c_void>());
-        }
-        assert_eq!(mix(&mut m, 2), vec![0, 0]);
-        unsafe { SoundOut::NONE.stop(std::ptr::dangling_mut::<c_void>()) };
-        assert!(unsafe { !SoundOut::NONE.playing(std::ptr::dangling_mut::<c_void>()) });
+        assert!(out.playing(SoundId(1)));
+        out.stop(SoundId(1));
+        assert_eq!(mix(&mut m.borrow_mut(), 2), vec![0, 0]);
+        SoundOut::NONE.stop(SoundId(1));
+        assert!(!SoundOut::NONE.playing(SoundId(1)));
     }
 
     #[test]
@@ -417,7 +423,7 @@ mod tests {
         // end, and crashed on a TC sound that failed to load.)
         let mut m = Mixer::default();
         add(&mut m, &[], 0, 1, false);
-        assert!(unsafe { m.add(std::ptr::null(), 0, 0, 2, true) });
+        assert!(m.add(Rc::from([]), 0, 2, true));
         assert_eq!(mix(&mut m, 2), vec![0, 0]);
         assert!(!m.is_playing(1));
         // Looping, it keeps its channel.

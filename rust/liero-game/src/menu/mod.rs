@@ -16,8 +16,6 @@ pub mod item;
 pub mod menus;
 pub mod screen;
 
-use std::ffi::c_void;
-
 use crate::gfx::{blit_image_no_key_colour, draw_rounded_box, fill_rect, Bitmap};
 use crate::screen::Host;
 use crate::text::{time_to_string, time_to_string_ex, Font};
@@ -75,12 +73,6 @@ impl MenuItem {
             id: -1,
         }
     }
-}
-
-/// Draws what a menu adds after item `item` (a position in the item list).
-pub struct MenuHooks {
-    pub ctx: *mut c_void,
-    pub draw_overlay: unsafe fn(ctx: *mut c_void, item: i32, x: i32, y: i32, selected: bool, disabled: bool),
 }
 
 /// How typing a key changed the search text: keep its first `keep` bytes,
@@ -327,12 +319,14 @@ impl Menu {
     }
 
     /// The items in view and the scroll bar: `Menu::draw`. `x` < 0 means the
-    /// menu's own position.
+    /// menu's own position. After each item, `overlay` draws what the menu
+    /// adds to it, given the item (a position in the item list), where it
+    /// is, and whether it is selected and the menu disabled.
     pub fn draw_with(
         &self,
         scr: &Bitmap,
         font: &Font,
-        hooks: &MenuHooks,
+        overlay: &dyn Fn(i32, i32, i32, bool, bool),
         disabled: bool,
         x: i32,
         show_disabled_selection: bool,
@@ -349,8 +343,7 @@ impl Menu {
                 items_left -= 1;
                 let selected = c == m.selection && (!disabled || show_disabled_selection);
                 self.draw_item(scr, font, item, x, cur_y, selected, disabled);
-                // SAFETY: the hook's owner made it for its context.
-                unsafe { (hooks.draw_overlay)(hooks.ctx, c, x, cur_y, selected, disabled) };
+                overlay(c, x, cur_y, selected, disabled);
                 cur_y += m.item_height;
             }
             c += 1;
@@ -498,17 +491,11 @@ impl Menu {
 
     /// Draws the menu with nothing after the items.
     pub fn draw(&self, scr: &Bitmap, font: &Font, disabled: bool, x: i32, show_disabled_selection: bool) {
-        let hooks = MenuHooks {
-            ctx: std::ptr::null_mut(),
-            draw_overlay: no_overlay,
-        };
-        self.draw_with(scr, font, &hooks, disabled, x, show_disabled_selection);
+        self.draw_with(scr, font, &|_, _, _, _, _| {}, disabled, x, show_disabled_selection);
     }
 }
 
 const SCANCODE_TAB: u32 = 43;
-
-unsafe fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
 
 /// `toupper` in the C locale.
 fn same_letter(a: u8, b: u8) -> bool {
@@ -798,7 +785,6 @@ mod tests {
         use crate::game::Rect;
         use liero_data::model::FontChar;
 
-        unsafe fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
         let chars = vec![
             FontChar {
                 data: [1; 56],
@@ -807,11 +793,6 @@ mod tests {
             250
         ];
         let font = Font { chars: &chars };
-        let hooks = MenuHooks {
-            ctx: std::ptr::null_mut(),
-            draw_overlay: no_overlay,
-        };
-
         for (centered, first) in [(false, 102), (true, 94)] {
             let mut menu = menu(vec![item(b"AB"), item(b"MINE")], 5);
             let m = &mut menu.m;
@@ -832,7 +813,7 @@ mod tests {
                     y2: 50,
                 },
             };
-            menu.draw_with(&scr, &font, &hooks, false, -1, false);
+            menu.draw(&scr, &font, false, -1, false);
             // "AB" is 16 pixels wide; its text starts 2 pixels in.
             assert_eq!(
                 (px[21 * 200 + first - 1], px[21 * 200 + first]),

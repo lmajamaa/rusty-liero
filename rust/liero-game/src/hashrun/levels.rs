@@ -43,7 +43,7 @@ pub fn hash_level_files(out: &mut Out) {
             let mut lev = LevelBox::new();
             lev.generate_from_settings(&d.level_common(), &d.palette_colors, &s, &mut rand);
 
-            let l = &lev.data().level;
+            let l = lev.data();
             let mut h = Fnv::default();
             h.i32(l.width);
             h.i32(l.height);

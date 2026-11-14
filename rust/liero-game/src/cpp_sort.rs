@@ -473,7 +473,8 @@ mod tests {
     use crate::rand::Rand;
     use crate::test_util::Fnv;
 
-    // From rust/liero-game/reference/reference_values.cpp.
+    // Printed by the original C++ code, run by reference_values.cpp (in git
+    // history up to phase 4, step 12).
     const EXPECTED_SORT: u64 = 0x080bcfd853b625b4;
     const EXPECTED_HEAP_SORT: u64 = 0x8434e9eaacf0bffa;
 

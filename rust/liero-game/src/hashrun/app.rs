@@ -136,8 +136,7 @@ fn process_event(a: &mut App, ev: Ev, to_controller: bool) {
     let dos = a.keys.event(scancode, down);
     if dos != 0 && to_controller {
         if let Some(c) = a.controller.as_deref_mut() {
-            // SAFETY: the app's controller is a live one.
-            unsafe { c.on_key(dos as i32, down) };
+            c.on_key(dos as i32, down);
         }
     }
 }
@@ -246,8 +245,8 @@ impl Platform for HashPlatform {
     fn sound(&self) -> SoundOut {
         // No mixer: the hash run has no sound.
         SoundOut {
-            mixer: std::ptr::null_mut(),
-            report: Some(report_sound),
+            mixer: None,
+            report: Some(std::rc::Rc::new(report_sound)),
         }
     }
 

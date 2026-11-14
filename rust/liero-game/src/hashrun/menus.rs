@@ -18,7 +18,7 @@ use crate::level::LevelBox;
 use crate::menu::item::{ItemAction, ItemBehavior};
 use crate::menu::menus::Menus;
 use crate::menu::screen::MenuKind;
-use crate::menu::{draw_info_box, draw_input_box, draw_versus, Menu, MenuHooks, MenuItem};
+use crate::menu::{draw_info_box, draw_input_box, draw_versus, Menu, MenuItem};
 use crate::rand::Rand;
 use crate::renderer::BitmapBox;
 use crate::screen::Host;
@@ -150,18 +150,27 @@ impl Availability {
 /// What `runMenu` does to a menu: left or right, Enter, showing every
 /// item's value, and drawing.
 enum Ops {
-    /// One of the menus in `menu::menus`.
+    /// One of the menus in `menu::menus`, reached through the app.
     Menus(MenuKind),
-    Availability(Availability),
+    /// The weapon availability menu, which the run owns.
+    Availability(Availability, Menu),
 }
 
 impl Ops {
-    fn left_right(&self, a: &mut App, b: &mut Menu, dir: i32) {
+    /// Runs `f` on the menu.
+    fn with_menu<R>(&mut self, a: &mut App, f: impl FnOnce(&mut Menu) -> R) -> R {
+        match self {
+            Ops::Menus(kind) => with_menus(a, |m, _| f(m.box_of(*kind))),
+            Ops::Availability(_, b) => f(b),
+        }
+    }
+
+    fn left_right(&mut self, a: &mut App, dir: i32) {
         match self {
             Ops::Menus(kind) => {
                 with_menus(a, |m, a| m.left_right(a, &Host::none(), *kind, dir));
             }
-            Ops::Availability(av) => {
+            Ops::Availability(av, b) => {
                 if selection_valid(b) {
                     let sel = selection(b);
                     let (v, act) = av.behavior().left_right(av.value(a, b, sel), dir, a.menu_cycles);
@@ -172,12 +181,12 @@ impl Ops {
         }
     }
 
-    fn enter(&self, a: &mut App, b: &mut Menu) {
+    fn enter(&mut self, a: &mut App) {
         match self {
             Ops::Menus(kind) => {
                 with_menus(a, |m, a| m.enter_dropping(a, &Host::none(), *kind));
             }
-            Ops::Availability(av) => {
+            Ops::Availability(av, b) => {
                 if selection_valid(b) {
                     let sel = selection(b);
                     let (v, act) = av.behavior().enter(av.value(a, b, sel));
@@ -188,28 +197,21 @@ impl Ops {
         }
     }
 
-    fn update_items(&self, a: &mut App, b: &mut Menu) {
+    fn update_items(&mut self, a: &mut App) {
         match self {
             Ops::Menus(kind) => with_menus(a, |m, a| m.update_items(a, *kind)),
-            Ops::Availability(av) => av.update_items(a, b),
+            Ops::Availability(av, b) => av.update_items(a, b),
         }
     }
 
     /// Draws the menu on the app's play screen.
-    fn draw(&self, a: &mut App, b: &mut Menu, disabled: bool, x: i32, show: bool) {
+    fn draw(&mut self, a: &mut App, disabled: bool, x: i32, show: bool) {
         match self {
             Ops::Menus(kind) => with_menus(a, |m, a| {
                 let (font, scr) = (a.font(), a.play.bmp.view());
                 m.draw(a, *kind, &scr, &font, disabled, x, show)
             }),
-            Ops::Availability(_) => {
-                unsafe fn no_overlay(_: *mut std::ffi::c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
-                let hooks = MenuHooks {
-                    ctx: std::ptr::null_mut(),
-                    draw_overlay: no_overlay,
-                };
-                b.draw_with(&a.play.bmp.view(), &a.font(), &hooks, disabled, x, show);
-            }
+            Ops::Availability(_, b) => b.draw(&a.play.bmp.view(), &a.font(), disabled, x, show),
         }
     }
 }
@@ -221,8 +223,7 @@ fn run_menu(
     a: &mut App,
     out: &mut Out,
     name: &str,
-    b: &mut Menu,
-    ops: &Ops,
+    mut ops: Ops,
     no_enter: &[i32],
     no_left_right: &[i32],
     contains: bool,
@@ -232,30 +233,38 @@ fn run_menu(
     let mut r = Rand::new(seed);
     let mut time: u32 = 0;
 
-    ops.update_items(a, b);
-    b.move_to(0);
+    ops.update_items(a);
+    ops.with_menu(a, |b| b.move_to(0));
 
     for step in 0..steps {
-        let id = if selection_valid(b) {
-            let sel = selection(b);
-            b.id(sel)
-        } else {
-            -1
-        };
+        let id = ops.with_menu(a, |b| {
+            if selection_valid(b) {
+                let sel = selection(b);
+                b.id(sel)
+            } else {
+                -1
+            }
+        });
         match r.below(9) {
-            0 => b.movement(-1),
-            1 => b.movement(1),
-            2 => b.movement_page(if r.below(2) != 0 { 1 } else { -1 }),
-            3 => b.scroll(r.below(5) as i32 - 2),
+            0 => ops.with_menu(a, |b| b.movement(-1)),
+            1 => ops.with_menu(a, |b| b.movement(1)),
+            2 => {
+                let dir = if r.below(2) != 0 { 1 } else { -1 };
+                ops.with_menu(a, |b| b.movement_page(dir));
+            }
+            3 => {
+                let n = r.below(5) as i32 - 2;
+                ops.with_menu(a, |b| b.scroll(n));
+            }
             4 => {
                 if !no_left_right.contains(&id) {
                     let dir = if r.below(2) != 0 { 1 } else { -1 };
-                    ops.left_right(a, b, dir);
+                    ops.left_right(a, dir);
                 }
             }
             5 => {
                 if !no_enter.contains(&id) {
-                    ops.enter(a, b);
+                    ops.enter(a);
                 }
             }
             6 => {
@@ -266,29 +275,29 @@ fn run_menu(
                     (i32::from(letters[r.below(24) as usize]), SC_A)
                 };
                 time = time.wrapping_add(if r.below(4) == 0 { 2000 } else { r.below(700) });
-                b.on_key(sym, scancode, contains, time);
+                ops.with_menu(a, |b| b.on_key(sym, scancode, contains, time));
             }
-            7 => {
+            7 => ops.with_menu(a, |b| {
                 let i = r.below(b.count() as u32) as i32;
                 let id = b.id(i);
                 if id >= 0 && index_of(b, id) == i {
                     let visible = b.item_at(i).visible;
                     b.set_visibility(i, !visible);
                 }
-            }
-            8 => ops.update_items(a, b),
+            }),
+            8 => ops.update_items(a),
             _ => unreachable!(),
         }
 
         a.menu_cycles = a.menu_cycles.wrapping_add(1);
 
         let mut f = Fnv::default();
-        hash_menu(&mut f, b);
+        ops.with_menu(a, |b| hash_menu(&mut f, b));
         a.play.clear();
         let disabled = r.below(5) == 0;
         let x = if r.below(4) == 0 { r.below(300) as i32 } else { -1 };
         let show = r.below(2) == 1;
-        ops.draw(a, b, disabled, x, show);
+        ops.draw(a, disabled, x, show);
         add_screen(&mut f, &a.play);
         print(out, name, step, f);
     }
@@ -308,21 +317,18 @@ fn run_menus(a: &mut App, out: &mut Out) {
     }
 
     with_menus(a, |m, _| m.load());
-    // SAFETY: the menus' boxes live as long as they do.
-    let menu = |a: &mut App, kind| unsafe { &mut *with_menus(a, |m, _| m.box_of(kind) as *mut Menu) };
-
     // As the menu loop sets them up before a game.
-    let main = menu(a, MenuKind::Main);
-    main.set_visibility(index_of(main, MA_RESUME_GAME), false);
-    // SAFETY: the text is copied.
-    main.set_name(index_of(main, MA_NEW_GAME), b"NEW GAME (F1)");
+    with_menus(a, |m, _| {
+        let main = m.box_of(MenuKind::Main);
+        main.set_visibility(index_of(main, MA_RESUME_GAME), false);
+        main.set_name(index_of(main, MA_NEW_GAME), b"NEW GAME (F1)");
+    });
 
     run_menu(
         a,
         out,
         "menu-main",
-        main,
-        &Ops::Menus(MenuKind::Main),
+        Ops::Menus(MenuKind::Main),
         &[MA_REPLAYS, MA_TC],
         &[],
         false,
@@ -340,13 +346,11 @@ fn run_menus(a: &mut App, out: &mut Out) {
         SI_LIVES,
         SI_FLAGS_TO_WIN,
     ];
-    let setup = menu(a, MenuKind::Settings);
     run_menu(
         a,
         out,
         "menu-setup",
-        setup,
-        &Ops::Menus(MenuKind::Settings),
+        Ops::Menus(MenuKind::Settings),
         &no_enter,
         &[],
         false,
@@ -356,13 +360,11 @@ fn run_menus(a: &mut App, out: &mut Out) {
 
     with_menus(a, |m, a| m.player_settings(a, 0));
     let player_no_enter: Vec<i32> = (PL_NAME..=PL_LOAD_PROFILE).filter(|&id| id != PL_CONTROLLER).collect();
-    let player = menu(a, MenuKind::Player);
     run_menu(
         a,
         out,
         "menu-player",
-        player,
-        &Ops::Menus(MenuKind::Player),
+        Ops::Menus(MenuKind::Player),
         &player_no_enter,
         &[],
         false,
@@ -370,13 +372,11 @@ fn run_menus(a: &mut App, out: &mut Out) {
         400,
     );
 
-    let options = menu(a, MenuKind::Hidden);
     run_menu(
         a,
         out,
         "menu-options",
-        options,
-        &Ops::Menus(MenuKind::Hidden),
+        Ops::Menus(MenuKind::Hidden),
         &[
             HM_DOUBLE_RES,
             HM_FULLSCREEN,
@@ -395,8 +395,7 @@ fn run_menus(a: &mut App, out: &mut Out) {
     // file selectors.
     let tc = a.menu_tc();
     let tc = tc_data(&tc);
-    let mut menu = Menu::raw(179, 28, false);
-    let weapons = &mut menu;
+    let mut weapons = Menu::raw(179, 28, false);
     weapons.m.height = 14;
     weapons.set_top(weapons.m.top_item);
     weapons.m.value_offset_x = 89;
@@ -413,8 +412,7 @@ fn run_menus(a: &mut App, out: &mut Out) {
         a,
         out,
         "menu-weapons",
-        weapons,
-        &Ops::Availability(av),
+        Ops::Availability(av, weapons),
         &[],
         &[],
         true,
@@ -554,10 +552,8 @@ fn run_weapon_selection(
 
     let tc = a.menu_tc();
     let d = tc_data(&tc);
-    // SAFETY: the game keeps references to the settings and the TC; its
-    // worms and viewports are made as the C++ `Game` view made them.
     let mut game = Game::new();
-    unsafe {
+    {
         game.set_context(Some(settings.clone()), Some(tc.clone()), SoundOut::NONE);
         for (i, ws) in worms.iter().enumerate() {
             let id = game.new_worm(Some(ws.clone()));
@@ -575,14 +571,11 @@ fn run_weapon_selection(
         let mut level = LevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
-        game.focus(&mut *a.play);
-        game.focus(&mut *a.single);
+        game.focus(&mut a.play);
+        game.focus(&mut a.single);
     }
 
-    // SAFETY: the selection works on the game, which outlives it.
-    let selection = Box::into_raw(unsafe { Weapsel::start(&mut game, &mut a.rand) });
-    // SAFETY: it is new, and freed below.
-    let ws = unsafe { &mut *selection };
+    let mut ws = Weapsel::start(&mut game, &mut a.rand);
 
     for step in 0..steps {
         for w in game.listed_worms() {
@@ -609,14 +602,12 @@ fn run_weapon_selection(
             ws.set_focused(true);
         }
 
-        // SAFETY: as above.
-        let done = unsafe { ws.process_game(&mut a.rand) };
+        let done = ws.process_game(&mut game, &mut a.rand);
         a.menu_cycles = a.menu_cycles.wrapping_add(1);
 
         let mut f = Fnv::default();
         for i in 0..ws.menu_count() {
             f.bool(ws.ready(i));
-            // SAFETY: the selection's menus live as long as it does.
             hash_menu(&mut f, ws.menu(i));
         }
         for w in game.listed_worms() {
@@ -627,26 +618,18 @@ fn run_weapon_selection(
             }
         }
 
-        // SAFETY: the renderers are the app's.
-        unsafe {
-            a.play.clear();
-            let play: *mut _ = &mut *a.play;
-            ws.draw_game(a, play, State::WeaponSelection, false);
-            add_screen(&mut f, &a.play);
-            a.single.clear();
-            let single: *mut _ = &mut *a.single;
-            ws.draw_game(a, single, State::WeaponSelection, true);
-            add_screen(&mut f, &a.single);
-        }
+        a.play.clear();
+        ws.draw_game(&mut game, a, State::WeaponSelection, false);
+        add_screen(&mut f, &a.play);
+        a.single.clear();
+        ws.draw_game(&mut game, a, State::WeaponSelection, true);
+        add_screen(&mut f, &a.single);
         print(out, name, step, f);
 
         if done {
             break;
         }
     }
-    // SAFETY: the selection isn't used again, and goes before its game.
-    drop(unsafe { Box::from_raw(selection) });
-    drop(game);
 }
 
 pub fn hash_menus(a: &mut App, out: &mut Out) {

@@ -12,16 +12,12 @@
 //! points the C++ code read them. Only sounds and the stats' clock call
 //! out (`GameHooks`).
 
-use std::ffi::c_void;
-use std::ptr::null_mut;
-
 use crate::game::{BonusState, GameFields, GameHooks, Rect, RuleSettings, Rules};
-use crate::level::slice;
 use crate::math::{cos_sin, ftoi, itof, vector_length, FVec2, Fixed, IVec2};
 use crate::object::BObject;
 use crate::object::{explosion_damage, explosion_push_object, explosion_push_worm, inside, BonusConstants};
 use crate::objects::{Cursor, FiredBy, NObject, WObject};
-use crate::sfx::SoundOut;
+use crate::sfx::{SoundId, SoundOut};
 use crate::stats::Stats;
 use crate::tc::{c, h, TcData};
 use crate::viewport::Viewport;
@@ -101,26 +97,38 @@ pub(crate) struct World<'a> {
 }
 
 impl<'a> World<'a> {
-    /// Borrows what `f` points to.
-    ///
-    /// # Safety
-    /// As `Game::new`; the TC, the viewports and the stats (which may be
-    /// null) are valid for `'a` too, and nothing else uses the viewports
-    /// or the stats meanwhile.
-    pub(crate) unsafe fn new(f: &'a GameFields, s: &'a RuleSettings, h: &'a GameHooks<'a>) -> Self {
-        unsafe {
-            let viewports = |list: *const *mut Viewport, n: i32| -> Vec<&'a mut Viewport> {
-                slice(list, n.max(0) as usize).iter().map(|&v| &mut *v).collect()
-            };
-            World {
-                g: Rules::new(f, s),
-                tc: &*f.tc,
-                viewports: viewports(f.viewports, f.viewport_count),
-                spectators: viewports(f.spectator_viewports, f.spectator_viewport_count),
-                stats: f.stats.as_mut(),
-                sound: f.sound,
-                h,
-            }
+    /// The tick on `f`. Panics without the TC.
+    pub(crate) fn new(f: GameFields<'a>, s: &'a RuleSettings, h: &'a GameHooks<'a>) -> Self {
+        let GameFields {
+            worms,
+            pool,
+            game,
+            level,
+            tc,
+            viewports,
+            spectator_viewports,
+            stats,
+            sound,
+        } = f;
+        let rules = GameFields {
+            worms,
+            pool,
+            game,
+            level,
+            tc: None,
+            viewports: Vec::new(),
+            spectator_viewports: Vec::new(),
+            stats: None,
+            sound: SoundOut::NONE,
+        };
+        World {
+            g: Rules::new(rules, s),
+            tc: tc.expect("a tick without a TC"),
+            viewports,
+            spectators: spectator_viewports,
+            stats,
+            sound,
+            h,
         }
     }
 
@@ -179,16 +187,16 @@ impl<'a> World<'a> {
 
     // Sounds and stats.
 
-    fn play(&self, sound: i32, id: *mut c_void, loops: i32) {
-        unsafe { self.sound.play(self.tc, sound, id, loops) }
+    fn play(&self, sound: i32, id: SoundId, loops: i32) {
+        self.sound.play(self.tc, sound, id, loops);
     }
 
-    fn playing(&self, id: *mut c_void) -> bool {
-        unsafe { self.sound.playing(id) }
+    fn playing(&self, id: SoundId) -> bool {
+        self.sound.playing(id)
     }
 
-    fn stop(&self, id: *mut c_void) {
-        unsafe { self.sound.stop(id) }
+    fn stop(&self, id: SoundId) {
+        self.sound.stop(id);
     }
 
     /// The stats the game records, if any.
@@ -251,8 +259,8 @@ impl<'a> World<'a> {
     }
 
     /// The id worm `i`'s own sounds play with.
-    fn worm_sound_id(&self, i: i32) -> *mut c_void {
-        std::ptr::from_ref(self.worm(i)).cast_mut().cast()
+    fn worm_sound_id(&self, i: i32) -> SoundId {
+        SoundId::worm(self.g.worm_id(i))
     }
 
     /// A worm's hurt sound: one of three, unless one of its own is playing.
@@ -285,7 +293,7 @@ impl<'a> World<'a> {
 
         if t.start_sound >= 0 {
             let snd = self.rand(t.num_sounds as u32) as i32 + t.start_sound;
-            self.play(snd, null_mut(), 0);
+            self.play(snd, SoundId::NONE, 0);
         }
 
         for v in &mut self.viewports {
@@ -603,8 +611,7 @@ impl<'a> World<'a> {
             if frame == 0 {
                 loop {
                     b.weapon = self.rand(s.weapon_count as u32) as i32;
-                    // SAFETY: weap_table has weapon_count entries.
-                    if unsafe { *s.weap_table.add(b.weapon as usize) } != 2 {
+                    if s.weap_table[b.weapon as usize] != 2 {
                         break;
                     }
                 }

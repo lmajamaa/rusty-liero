@@ -4,9 +4,8 @@
 //! The modules call each other as Rust; only the wasm exports keep the
 //! `liero_` names, as the web shell's API.
 
-// Every unsafe operation is in an `unsafe` block, even in an `unsafe fn`,
-// so they can be counted and removed (PLAN.md, phase 4).
-#![deny(unsafe_op_in_unsafe_fn)]
+// The game is safe Rust (PLAN.md, phase 4, step 12).
+#![forbid(unsafe_code)]
 // The pedantic lints that earn their keep: lossless casts are `From`, and
 // pointer casts keep their pointee type in view. The rest of
 // `clippy::pedantic` would fight the casts the game's arithmetic needs.

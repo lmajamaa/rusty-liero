@@ -87,7 +87,7 @@ struct Shell {
     /// The canvas's pixels, as RGBA.
     rgba: Vec<u8>,
     prev_mag: i32,
-    mixer: Option<*mut Mixer>,
+    mixer: Option<Rc<RefCell<Mixer>>>,
     audio: Option<AudioContext>,
     /// When the game started, in `performance.now()` milliseconds.
     start_ms: f64,
@@ -336,8 +336,7 @@ fn send_key(a: &mut App, to_controller: bool, key: u32, down: bool) {
         return;
     }
     if let Some(c) = a.controller.as_deref_mut() {
-        // SAFETY: the app's controller is a live one.
-        unsafe { c.on_key(key as i32, down) };
+        c.on_key(key as i32, down);
     }
 }
 
@@ -500,8 +499,8 @@ fn show_frame(a: &App) {
 
 // ---- What the screens call
 
-fn mixer() -> *mut Mixer {
-    shell(|s| s.mixer).unwrap_or(std::ptr::null_mut())
+fn mixer() -> Option<Rc<RefCell<Mixer>>> {
+    shell(|s| s.mixer.clone())
 }
 
 fn ticks_now() -> u32 {
@@ -622,7 +621,7 @@ impl Platform for WebPlatform {
 // ---- Sound
 
 /// Starts Web Audio pulling the mixer, or None if the browser won't.
-fn start_audio(mixer: *mut Mixer) -> Option<AudioContext> {
+fn start_audio(mixer: Rc<RefCell<Mixer>>) -> Option<AudioContext> {
     let opts = AudioContextOptions::new();
     opts.set_sample_rate(SAMPLE_RATE);
     let ctx = AudioContext::new_with_context_options(&opts).ok()?;
@@ -642,9 +641,7 @@ fn start_audio(mixer: *mut Mixer) -> Option<AudioContext> {
         let n = out.length() as usize;
         samples.resize(n, 0);
         floats.resize(n, 0.0);
-        // SAFETY: the mixer lives as long as the page, and nothing else
-        // uses it during this call.
-        unsafe { (*mixer).mix(&mut samples) };
+        mixer.borrow_mut().mix(&mut samples);
         for (f, &s) in floats.iter_mut().zip(&samples) {
             *f = f32::from(s) / 32768.0;
         }
@@ -811,9 +808,8 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
         show_fullscreen(true);
     }
 
-    // Kept for the page's life.
-    let mixer: *mut Mixer = Box::into_raw(Box::default());
-    match start_audio(mixer) {
+    let mixer = Rc::new(RefCell::new(Mixer::default()));
+    match start_audio(mixer.clone()) {
         Some(audio) => shell(|s| {
             s.mixer = Some(mixer);
             s.audio = Some(audio);
@@ -860,8 +856,7 @@ fn run_frames(stack: ScreenStack, host: Host, mut app: App) {
         }
         let running = s.frame(ms, &mut app, &host);
         for id in shell(|s| std::mem::take(&mut s.sounds)) {
-            // SAFETY: the mixer is the shell's, or null.
-            unsafe { app.play_menu_sound(mixer(), id) };
+            app.play_menu_sound(mixer().as_ref(), id);
         }
         if running {
             persist_changes();

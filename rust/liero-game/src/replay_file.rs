@@ -214,8 +214,8 @@ impl ReplayWriter {
             list: (0..ids.len() as i32).collect(),
             viewports: game.split_viewports().iter().map(|v| replay_viewport_of(v)).collect(),
             level: replay::Level {
-                width: l.level.width as u32,
-                height: l.level.height as u32,
+                width: l.width as u32,
+                height: l.height as u32,
                 pixels: level.pixels().to_vec(),
                 palette,
             },

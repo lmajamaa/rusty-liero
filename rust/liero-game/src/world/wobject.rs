@@ -84,7 +84,7 @@ impl<'a> World<'a> {
         }
 
         if w.explo_sound >= 0 {
-            self.play(w.explo_sound, null_mut(), 0);
+            self.play(w.explo_sound, SoundId::NONE, 0);
         }
 
         for _ in 0..w.splinter_amount.max(0) {

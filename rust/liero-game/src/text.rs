@@ -1,37 +1,8 @@
-//! Text helpers shared by the HUD and menus: strings from C++, the time
+//! Text helpers shared by the HUD and menus: the time
 //! formats from `text.cpp` and drawing with the game font.
 
 use crate::gfx::{draw_char, draw_text, text_dims, Bitmap};
 use liero_data::model::FontChar;
-
-/// Text from C++: `len` bytes from `ptr`.
-#[derive(Clone, Copy, Debug)]
-pub struct Str {
-    pub ptr: *const u8,
-    pub len: usize,
-}
-
-impl Str {
-    /// A view of `b`, valid while it is.
-    pub fn of(b: &[u8]) -> Str {
-        Str {
-            ptr: b.as_ptr(),
-            len: b.len(),
-        }
-    }
-
-    /// # Safety
-    /// `ptr` must point to `len` bytes that live as long as the result is used.
-    pub unsafe fn bytes(&self) -> &[u8] {
-        unsafe {
-            if self.len == 0 || self.ptr.is_null() {
-                &[]
-            } else {
-                std::slice::from_raw_parts(self.ptr, self.len)
-            }
-        }
-    }
-}
 
 fn digit(v: i32) -> u8 {
     i32::from(b'0').wrapping_add(v) as u8

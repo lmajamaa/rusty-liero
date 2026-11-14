@@ -120,21 +120,21 @@ pub fn hash_game(game: &mut Game) -> u64 {
     // Each list in processing order, since the order changes the outcome.
     let g = game.data_mut();
     f.u32(g.bonuses.count as u32);
-    for b in used(&g.bonuses.arr, |b| b.used) {
+    for b in used(&g.bonuses.arr[..], |b| b.used) {
         for v in [b.x, b.y, b.vel_y, b.frame, b.timer, b.weapon] {
             f.i32(v);
         }
     }
 
     f.u32(g.sobjects.count as u32);
-    for s in used(&g.sobjects.arr, |s| s.used) {
+    for s in used(&g.sobjects.arr[..], |s| s.used) {
         for v in [s.x, s.y, s.id, s.cur_frame, s.anim_delay] {
             f.i32(v);
         }
     }
 
     f.u32(g.wobjects.count as u32);
-    for o in used(&g.wobjects.arr, |o| o.used) {
+    for o in used(&g.wobjects.arr[..], |o| o.used) {
         f.vec(o.pos);
         f.vec(o.vel);
         f.i32(o.kind);
@@ -144,7 +144,7 @@ pub fn hash_game(game: &mut Game) -> u64 {
     }
 
     f.u32(g.nobjects.count as u32);
-    for o in used(&g.nobjects.arr, |o| o.used) {
+    for o in used(&g.nobjects.arr[..], |o| o.used) {
         f.vec(o.pos);
         f.vec(o.vel);
         f.i32(o.kind);

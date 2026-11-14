@@ -8,11 +8,13 @@
 
 use super::dumb::{self, DumbAiWorm};
 use super::path::LevelView;
-use super::predictive::{AiGame, AiWeapon, AiWorm, Games};
-use crate::game::{GameData, GameFields, GameHooks, GameWorm, RuleSettings};
-use crate::level::RawLevel;
+use super::predictive::{AiGame, AiWeapon, AiWorm, FollowAi, Games};
+use crate::game::{GameData, GameFields, GameHooks, RuleSettings};
+use crate::level::Level;
 use crate::material::Material;
 use crate::rand::Rand;
+use crate::sfx::SoundOut;
+use crate::tc::TcData;
 use crate::world::World;
 use crate::worm::WormData;
 
@@ -24,22 +26,31 @@ pub struct AiSettings {
     pub traces: bool,
 }
 
-/// A game for the AI: the one it is in (borrowed, owning nothing) or a
-/// copy, which owns its state, level and worms. `fields.worms` points into
-/// `worms`.
-pub struct SimGame {
-    fields: GameFields,
-    settings: RuleSettings,
-    ai: AiSettings,
-    worms: Vec<GameWorm>,
-    _data: Option<Box<GameData>>,
-    _pixels: Vec<u8>,
-    _materials: Vec<Material>,
-    // Boxed so the raw pointers to them stay valid as the list grows.
-    #[allow(clippy::vec_box)]
-    _worm_data: Vec<Box<WormData>>,
-    /// The game's worms by id, with the listed ones the copy's.
-    _pool: Vec<*mut WormData>,
+/// A copy of the game, which owns its state, level and listed worms.
+struct SimCopy {
+    data: GameData,
+    pixels: Vec<u8>,
+    materials: Vec<Material>,
+    width: i32,
+    height: i32,
+    /// The listed worms, in the game's order.
+    worms: Vec<WormData>,
+}
+
+/// One of the AI's games: the one it is in, or a copy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sim {
+    Real,
+    Copy(usize),
+}
+
+/// The games the AI plays out plans on: the one it is in, borrowed, and
+/// the copies it made, by number.
+struct Sims<'r, 'a> {
+    real: &'r mut GameFields<'a>,
+    settings: &'r RuleSettings,
+    ai: &'r AiSettings,
+    copies: Vec<Option<SimCopy>>,
 }
 
 fn no_ticks() -> u64 {
@@ -50,258 +61,227 @@ fn no_ticks() -> u64 {
 /// process.
 const NO_HOOKS: GameHooks<'static> = GameHooks { hires_ticks: &no_ticks };
 
-impl SimGame {
-    /// The game the AI is in.
-    ///
-    /// # Safety
-    /// The pointers in `fields` and `settings` must be valid while it is
-    /// used.
-    unsafe fn borrowed(fields: &GameFields, settings: &RuleSettings, ai: &AiSettings) -> Box<Self> {
-        unsafe {
-            let worms = std::slice::from_raw_parts(fields.worms, fields.worm_count as usize).to_vec();
-            let mut g = Box::new(SimGame {
-                fields: *fields,
-                settings: *settings,
-                ai: *ai,
-                worms,
-                _data: None,
-                _pixels: Vec::new(),
-                _materials: Vec::new(),
-                _worm_data: Vec::new(),
-                _pool: Vec::new(),
-            });
-            g.fields.worms = g.worms.as_ptr();
-            g
+impl Sims<'_, '_> {
+    fn copy(&self, i: usize) -> &SimCopy {
+        self.copies[i].as_ref().expect("a freed game")
+    }
+
+    fn tc(&self) -> &TcData {
+        self.real.tc.expect("the AI needs the TC")
+    }
+
+    fn data(&self, g: Sim) -> &GameData {
+        match g {
+            Sim::Real => self.real.game,
+            Sim::Copy(i) => &self.copy(i).data,
         }
     }
 
-    /// `Game(Game const&)` and `postClone(original)`.
-    ///
-    /// # Safety
-    /// As for `borrowed`.
-    unsafe fn copy(&self) -> Box<Self> {
-        unsafe {
-            let mut data = (*self.fields.game).clone_boxed();
-            data.quick_sim = true;
+    /// The listed worm at `place` in `g`.
+    fn worm_data(&self, g: Sim, place: usize) -> &WormData {
+        match g {
+            Sim::Real => self.real.worm(place),
+            Sim::Copy(i) => &self.copy(i).worms[place],
+        }
+    }
 
-            let level = self.fields.level;
-            let len = (level.width.max(0) * level.height.max(0)) as usize;
-            let mut pixels = std::slice::from_raw_parts(level.data, len).to_vec();
-            let mut materials = std::slice::from_raw_parts(level.materials, len).to_vec();
+    fn worm_data_mut(&mut self, g: Sim, place: usize) -> &mut WormData {
+        match g {
+            Sim::Real => self.real.worm_mut(place),
+            Sim::Copy(i) => &mut self.copies[i].as_mut().expect("a freed game").worms[place],
+        }
+    }
 
-            let mut worm_data: Vec<Box<WormData>> = self.worms.iter().map(|w| Box::new(*w.data)).collect();
-            let worms: Vec<GameWorm> = worm_data
-                .iter_mut()
-                .zip(&self.worms)
-                .map(|(d, w)| GameWorm {
-                    data: &mut **d,
-                    id: w.id,
-                    max_health: w.max_health,
-                    ai: std::ptr::null_mut(),
-                    name: w.name,
-                    color: w.color,
-                })
-                .collect();
-
-            // The copy's ropes are anchored to its own worms.
-            let mut pool = std::slice::from_raw_parts(self.fields.pool, self.fields.pool_count).to_vec();
-            for w in &worms {
-                pool[w.id.0 as usize] = w.data;
+    /// `g`'s pixels and materials, width and height.
+    fn level_data(&self, g: Sim) -> (&[u8], &[Material], i32, i32) {
+        match g {
+            Sim::Real => {
+                let l = &self.real.level;
+                (&*l.data, &*l.materials, l.width, l.height)
             }
-
-            let mut fields = self.fields;
-            fields.game = &mut *data;
-            fields.pool = pool.as_ptr();
-            fields.level = RawLevel {
-                data: pixels.as_mut_ptr(),
-                materials: materials.as_mut_ptr(),
-                width: level.width,
-                height: level.height,
-            };
-            fields.viewports = std::ptr::null();
-            fields.viewport_count = 0;
-            // The spectator viewports stay the real game's: as in C++, the
-            // copies' ticks shake them and move their banners, which shows
-            // in the frames drawn.
-            fields.stats = std::ptr::null_mut();
-            fields.sound = crate::sfx::SoundOut::NONE;
-
-            let mut g = Box::new(SimGame {
-                fields,
-                settings: self.settings,
-                ai: self.ai,
-                worms,
-                _data: Some(data),
-                _pixels: pixels,
-                _materials: materials,
-                _worm_data: worm_data,
-                _pool: pool,
-            });
-            g.fields.worms = g.worms.as_ptr();
-            g
+            Sim::Copy(i) => {
+                let c = self.copy(i);
+                (&c.pixels, &c.materials, c.width, c.height)
+            }
         }
     }
 
-    fn worm(&self, place: i32) -> *mut WormData {
-        self.worms[place as usize].data
+    /// `g` as the tick sees it. A copy has no sounds, stats or viewports,
+    /// but as in C++ it shares two things with the game it came from: the
+    /// worms the game doesn't list, which ropes can be anchored to, and the
+    /// spectator viewports, whose shake and death banners its ticks move,
+    /// which shows in the frames drawn.
+    fn fields(&mut self, g: Sim) -> GameFields<'_> {
+        let Sims { real, copies, .. } = self;
+        let Sim::Copy(i) = g else { return real.reborrow() };
+        let c = copies[i].as_mut().expect("a freed game");
+        let mut pool: Vec<&mut WormData> = real.pool.iter_mut().map(|w| &mut **w).collect();
+        for (w, copy) in real.worms.iter().zip(&mut c.worms) {
+            pool[w.id.0 as usize] = copy;
+        }
+        GameFields {
+            worms: real.worms.clone(),
+            pool,
+            game: &mut c.data,
+            level: Level {
+                data: &mut c.pixels,
+                materials: &mut c.materials,
+                width: c.width,
+                height: c.height,
+            },
+            tc: real.tc,
+            viewports: Vec::new(),
+            spectator_viewports: real.spectator_viewports.iter_mut().map(|v| &mut **v).collect(),
+            stats: None,
+            sound: SoundOut::NONE,
+        }
     }
 }
 
-/// The games, as `*mut SimGame`.
-struct Sims;
+impl Games for Sims<'_, '_> {
+    type G = Sim;
 
-// SAFETY, for each call: the games are the one `process_ais`
-// was given or copies made here, and are valid until freed.
-impl Games for Sims {
-    type G = *mut SimGame;
-
-    fn clone_game(&mut self, g: Self::G) -> Self::G {
-        unsafe { Box::into_raw((*g).copy()) }
-    }
-
-    fn free_game(&mut self, g: Self::G) {
-        unsafe { drop(Box::from_raw(g)) }
-    }
-
-    fn process_frame(&mut self, g: Self::G) {
-        unsafe {
-            let g = &*g;
-            World::new(&g.fields, &g.settings, &NO_HOOKS).process_frame();
-        }
-    }
-
-    fn game(&mut self, g: Self::G) -> AiGame {
-        unsafe {
-            let g = &*g;
-            let d = &*g.fields.game;
-            let z = &d.holdazone;
-            AiGame {
-                game_mode: g.settings.game_mode,
-                holder_idx: z.holder_idx,
-                contender_idx: z.contender_idx,
-                contender_frames: z.contender_frames,
-                zone_center: [(z.rect.x1 + z.rect.x2) / 2, (z.rect.y1 + z.rect.y2) / 2],
-                last_killed_idx: d.last_killed_idx,
-                ai_frames: g.ai.frames,
-                ai_mutations: g.ai.mutations,
-                ai_traces: g.ai.traces,
+    /// `Game(Game const&)` and `postClone(original)`, with `quick_sim` on.
+    fn clone_game(&mut self, g: Sim) -> Sim {
+        let mut data = self.data(g).clone();
+        data.quick_sim = true;
+        let (pixels, materials, width, height) = self.level_data(g);
+        let copy = SimCopy {
+            data,
+            pixels: pixels.to_vec(),
+            materials: materials.to_vec(),
+            width,
+            height,
+            worms: (0..self.real.worms.len()).map(|p| *self.worm_data(g, p)).collect(),
+        };
+        match self.copies.iter().position(Option::is_none) {
+            Some(i) => {
+                self.copies[i] = Some(copy);
+                Sim::Copy(i)
+            }
+            None => {
+                self.copies.push(Some(copy));
+                Sim::Copy(self.copies.len() - 1)
             }
         }
     }
 
-    fn worm(&mut self, g: Self::G, place: i32) -> AiWorm {
-        unsafe {
-            let g = &*g;
-            let tc = &*g.fields.tc;
-            let w = &*g.worm(place);
-            AiWorm {
-                index: w.index,
-                pos: w.pos.raw(),
-                aiming_angle: w.aiming_angle,
-                direction: w.direction,
-                visible: w.visible,
-                ready: w.ready,
-                health: w.health,
-                lives: w.lives,
-                settings_health: g.worms[place as usize].max_health,
-                current_weapon: w.current_weapon,
-                weapons: w.weapons.map(|ww| {
-                    let t = &tc.model.weapons[ww.kind as usize];
-                    AiWeapon {
-                        ammo: ww.ammo,
-                        delay_left: ww.delay_left,
-                        loading_left: ww.loading_left,
-                        loading_time: t.loading_time,
-                        max_ammo: t.ammo,
-                    }
-                }),
-                rope_out: w.ninjarope.out,
-                steerable_count: w.steerable_count,
-                steerable_sum: [w.steerable_sum_x, w.steerable_sum_y],
-                control_states: w.control_states,
-            }
+    fn free_game(&mut self, g: Sim) {
+        if let Sim::Copy(i) = g {
+            self.copies[i] = None;
         }
     }
 
-    fn set_controls(&mut self, g: Self::G, place: i32, controls: u32) {
-        unsafe { (*(*g).worm(place)).control_states = controls }
+    fn process_frame(&mut self, g: Sim) {
+        let settings = self.settings;
+        World::new(self.fields(g), settings, &NO_HOOKS).process_frame();
     }
 
-    fn level(&self, g: Self::G) -> LevelView<'_> {
-        unsafe {
-            let g = &*g;
-            let l = g.fields.level;
-            let len = (l.width.max(0) * l.height.max(0)) as usize;
-            // The level stays as it is while the AI looks at it: only
-            // `process_frame` changes it.
-            LevelView {
-                data: if len == 0 {
-                    &[]
-                } else {
-                    std::slice::from_raw_parts(l.data, len)
-                },
-                width: l.width,
-                height: l.height,
-                materials: std::slice::from_raw_parts((*g.fields.tc).materials.as_ptr().cast(), 256),
-            }
+    fn game(&mut self, g: Sim) -> AiGame {
+        let d = self.data(g);
+        let z = &d.holdazone;
+        AiGame {
+            game_mode: self.settings.game_mode,
+            holder_idx: z.holder_idx,
+            contender_idx: z.contender_idx,
+            contender_frames: z.contender_frames,
+            zone_center: [(z.rect.x1 + z.rect.x2) / 2, (z.rect.y1 + z.rect.y2) / 2],
+            last_killed_idx: d.last_killed_idx,
+            ai_frames: self.ai.frames,
+            ai_mutations: self.ai.mutations,
+            ai_traces: self.ai.traces,
+        }
+    }
+
+    fn worm(&mut self, g: Sim, place: i32) -> AiWorm {
+        let tc = self.tc();
+        let w = self.worm_data(g, place as usize);
+        AiWorm {
+            index: w.index,
+            pos: w.pos.raw(),
+            aiming_angle: w.aiming_angle,
+            direction: w.direction,
+            visible: w.visible,
+            ready: w.ready,
+            health: w.health,
+            lives: w.lives,
+            settings_health: self.real.worms[place as usize].max_health,
+            current_weapon: w.current_weapon,
+            weapons: w.weapons.map(|ww| {
+                let t = &tc.model.weapons[ww.kind as usize];
+                AiWeapon {
+                    ammo: ww.ammo,
+                    delay_left: ww.delay_left,
+                    loading_left: ww.loading_left,
+                    loading_time: t.loading_time,
+                    max_ammo: t.ammo,
+                }
+            }),
+            rope_out: w.ninjarope.out,
+            steerable_count: w.steerable_count,
+            steerable_sum: [w.steerable_sum_x, w.steerable_sum_y],
+            control_states: w.control_states,
+        }
+    }
+
+    fn set_controls(&mut self, g: Sim, place: i32, controls: u32) {
+        self.worm_data_mut(g, place as usize).control_states = controls;
+    }
+
+    fn level(&self, g: Sim) -> LevelView<'_> {
+        let (data, _, width, height) = self.level_data(g);
+        LevelView {
+            data,
+            width,
+            height,
+            materials: &self.tc().materials,
         }
     }
 }
 
 /// One tick of the predictive AI for the worm at `place`.
-///
-/// # Safety
-/// The pointers in `fields` and `settings` must be valid for the call.
-pub unsafe fn process(
-    ai: &mut super::predictive::FollowAi,
-    fields: &GameFields,
+pub fn process(
+    ai: &mut FollowAi,
+    fields: &mut GameFields,
     settings: &RuleSettings,
     ai_settings: &AiSettings,
     place: i32,
 ) -> u32 {
-    unsafe {
-        let game = Box::into_raw(SimGame::borrowed(fields, settings, ai_settings));
-        let controls = ai.process(&mut Sims, game, place);
-        drop(Box::from_raw(game));
-        controls
-    }
+    let mut sims = Sims {
+        real: fields,
+        settings,
+        ai: ai_settings,
+        copies: Vec::new(),
+    };
+    ai.process(&mut sims, Sim::Real, place)
 }
 
 /// One tick of the original bot for the worm at `place`, with its own
 /// generator.
-///
-/// # Safety
-/// The pointers in `fields` must be valid for the call.
-pub unsafe fn process_dumb(rand: &mut Rand, fields: &GameFields, place: i32) -> u32 {
-    unsafe {
-        let worms = std::slice::from_raw_parts(fields.worms, fields.worm_count as usize);
-        let me = &*worms[place as usize].data;
-        let tc = &*fields.tc;
-        let w = &tc.model.weapons[me.weapons[me.current_weapon as usize].kind as usize];
+pub fn process_dumb(rand: &mut Rand, fields: &GameFields, place: usize) -> u32 {
+    let me = fields.worm(place);
+    let tc = fields.tc.expect("the AI needs the TC");
+    let w = &tc.model.weapons[me.weapons[me.current_weapon as usize].kind as usize];
 
-        let worm = DumbAiWorm {
-            pos: me.pos.raw(),
-            visible: me.visible,
-            aiming_angle: me.aiming_angle,
-            direction: me.direction,
-            reacts: me.reacts,
-            rope_out: me.ninjarope.out,
-            rope_attached: me.ninjarope.attached,
-            control_states: me.control_states,
-            time_to_explo: w.time_to_explo,
-            time_to_explo_v: w.time_to_explo_v,
-            speed: w.speed,
-            gravity: w.gravity,
-        };
+    let worm = DumbAiWorm {
+        pos: me.pos.raw(),
+        visible: me.visible,
+        aiming_angle: me.aiming_angle,
+        direction: me.direction,
+        reacts: me.reacts,
+        rope_out: me.ninjarope.out,
+        rope_attached: me.ninjarope.attached,
+        control_states: me.control_states,
+        time_to_explo: w.time_to_explo,
+        time_to_explo_v: w.time_to_explo_v,
+        speed: w.speed,
+        gravity: w.gravity,
+    };
 
-        let others: Vec<[i32; 2]> = worms
-            .iter()
-            .enumerate()
-            .filter(|&(i, _)| i != place as usize)
-            .map(|(_, o)| (*o.data).pos.raw())
-            .collect();
+    let others: Vec<[i32; 2]> = (0..fields.worms.len())
+        .filter(|&i| i != place)
+        .map(|i| fields.worm(i).pos.raw())
+        .collect();
 
-        let k = &(*fields.tc).model.ai_params;
-        dumb::process(rand, &worm, &others, k)
-    }
+    dumb::process(rand, &worm, &others, &tc.model.ai_params)
 }

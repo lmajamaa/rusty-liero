@@ -202,9 +202,7 @@ pub(super) fn set_up_game(
     // level use the app's random numbers, as in the menus.
     a.rand.seed(seed);
 
-    // SAFETY: the game, its worms and viewports are made as the local
-    // controller makes them, with settings and a TC that it keeps.
-    unsafe {
+    {
         let mut game = Game::new();
         game.set_context(Some(settings.clone()), Some(tc.clone()), SoundOut::NONE);
         game.data_mut().rand.seed(seed.wrapping_mul(7919));
@@ -231,7 +229,7 @@ pub(super) fn set_up_game(
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
 
-        Weapsel::start(&mut game, &mut a.rand).finish();
+        Weapsel::start(&mut game, &mut a.rand).finish(&mut game);
 
         let lives = settings.borrow().data.lives;
         for w in game.listed_worms() {
@@ -297,8 +295,7 @@ fn run_game(a: &mut App, out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks
     spectator.set_render_resolution(640, 400);
     for r in [&mut split, &mut spectator] {
         r.load_palette(&d);
-        // SAFETY: the renderer is a live one.
-        unsafe { game.focus(&mut **r) };
+        game.focus(r);
     }
 
     out.line(&format!("{name} 0 {:016x}", hash_game(&mut game)));

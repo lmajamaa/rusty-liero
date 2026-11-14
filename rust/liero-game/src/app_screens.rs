@@ -9,7 +9,6 @@ use crate::controllers::Controller;
 use crate::level::LevelBox;
 use crate::menu::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
 use crate::menu::screen::menu_screen;
-use crate::renderer::Renderer;
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
 /// What `after_menu` says to do.
@@ -58,13 +57,18 @@ fn restart(a: &mut App, host: &Host) {
     a.controller = Some(new_local(a, host));
     let mut level = new_level(a);
     swap_level(controller(a), &mut level);
-    let (play, single): (*mut Renderer, *mut Renderer) = (&mut *a.play, &mut *a.single);
-    let game = controller(a).game().expect("a local controller has its game");
-    // SAFETY: the renderers are the app's own.
-    unsafe {
-        game.focus(play);
-        game.focus(single);
-    }
+    let App {
+        controller,
+        play,
+        single,
+        ..
+    } = a;
+    let game = controller
+        .as_deref_mut()
+        .and_then(|c| c.game())
+        .expect("a local controller has its game");
+    game.focus(play);
+    game.focus(single);
 }
 
 /// Does what the menu chose (`afterMenu`): quits, starts over with a new
@@ -117,14 +121,9 @@ fn after_menu(a: &mut App, host: &Host, selection: i32) -> AfterMenu {
 fn draw(a: &mut App, count: bool) {
     a.play.clear();
     with_controller(a, |c, a| {
-        // SAFETY: the renderers are the app's.
-        unsafe {
-            let play: *mut Renderer = &mut *a.play;
-            c.draw(a, play, false);
-            a.single.clear();
-            let single: *mut Renderer = &mut *a.single;
-            c.draw(a, single, true);
-        }
+        c.draw(a, false);
+        a.single.clear();
+        c.draw(a, true);
     });
     if count {
         a.menu_cycles = a.menu_cycles.wrapping_add(1);
@@ -166,7 +165,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Focus {
             // SAFETY: the controller is valid.
-            with_controller(app, |c, app| unsafe { c.focus(app, host) });
+            with_controller(app, |c, app| c.focus(app, host));
             self.next = Next::Process;
             if let Some(s) = Self::opened(app) {
                 return Tick::push(s);
@@ -175,7 +174,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Process {
             // SAFETY: the controller is valid.
-            self.next = if with_controller(app, |c, app| unsafe { c.process(app, host) }) {
+            self.next = if with_controller(app, |c, app| c.process(app, host)) {
                 Next::Draw
             } else {
                 Next::Finish

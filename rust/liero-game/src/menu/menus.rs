@@ -14,14 +14,13 @@ use crate::gfx::Bitmap;
 use crate::keys::{is_extended, key_name, DK_ESCAPE};
 use crate::menu::item::{ItemAction, ItemBehavior};
 use crate::menu::screen::MenuKind;
-use crate::menu::{closest_name, draw_palette_overlay, draw_rgb_overlay, Menu, MenuHooks, MenuItem, ValueKind};
+use crate::menu::{closest_name, draw_palette_overlay, draw_rgb_overlay, Menu, MenuItem, ValueKind};
 use crate::screen::{BoxedScreen, Host};
 use crate::settings::{GameSettings, WormSettingsBox};
 use crate::tc::{c, s};
-use crate::text::{Font, Str};
+use crate::text::Font;
 use crate::weapon_options::{weapon_options_screen, WeaponOptionsSpec};
 use std::cell::RefCell;
-use std::ffi::c_void;
 use std::rc::Rc;
 
 const SOUND_CHOICE: i32 = 27;
@@ -178,7 +177,7 @@ struct Pending {
     /// What the text box typed, before Enter.
     // Boxed: the text box is given its address.
     #[allow(clippy::box_collection)]
-    typed: Box<Vec<u8>>,
+    typed: Rc<RefCell<Vec<u8>>>,
 }
 
 /// The menus (`Gfx`'s `mainMenu`, `settingsMenu`, `playerMenu`,
@@ -191,17 +190,6 @@ pub struct Menus {
     /// The palette entry the options menu shows (`HiddenMenu::paletteColor`).
     palette_color: i32,
     pending: Option<Pending>,
-}
-
-fn lstr(b: &[u8]) -> Str {
-    Str {
-        ptr: b.as_ptr(),
-        len: b.len(),
-    }
-}
-
-fn names(n: &[&'static [u8]]) -> Vec<Str> {
-    n.iter().map(|s| lstr(s)).collect()
 }
 
 /// `getBasename(getLeaf(path))`: the name without folders or extension.
@@ -697,14 +685,10 @@ impl Menus {
         y: i32,
         digits: bool,
     ) -> BoxedScreen {
-        unsafe fn keep(ctx: *mut c_void, text: &[u8]) {
-            unsafe {
-                *ctx.cast::<Vec<u8>>() = text.to_vec();
-            }
-        }
-        let mut typed = Box::new(text.to_vec());
-        let ctx = (&mut *typed as *mut Vec<u8>).cast();
-        let screen = unsafe { input_box_screen(text, max_len, x, y, digits, Some(keep), ctx) };
+        let typed = Rc::new(RefCell::new(text.to_vec()));
+        let out = typed.clone();
+        let done = Box::new(move |t: &[u8]| *out.borrow_mut() = t.to_vec());
+        let screen = input_box_screen(text, max_len, x, y, digits, Some(done));
         self.pending = Some(Pending { kind, then, typed });
         screen
     }
@@ -713,7 +697,7 @@ impl Menus {
         self.pending = Some(Pending {
             kind,
             then,
-            typed: Box::default(),
+            typed: Rc::default(),
         });
         screen
     }
@@ -823,20 +807,17 @@ impl Menus {
     fn weapon_options(&mut self, app: &mut App) -> BoxedScreen {
         let tc = app.tc_data();
         let order = tc.weapon_order();
-        let weapons: Vec<Str> = order.iter().map(|&w| lstr(tc.weapon_name(w as usize))).collect();
-        let states = names(&WEAPON_STATES);
         let spec = WeaponOptionsSpec {
-            names: weapons.as_ptr(),
-            order: order.as_ptr(),
-            count: weapons.len(),
-            weap_table: app.settings_mut().data.weap_table.as_mut_ptr(),
-            states: states.as_ptr(),
-            state_count: states.len(),
-            weapon_title: lstr(tc.text(s("Weapon"))),
-            availability_title: lstr(tc.text(s("Availability"))),
-            no_weapons: lstr(tc.text(s("NoWeaps"))),
+            names: order.iter().map(|&w| tc.weapon_name(w as usize).to_vec()).collect(),
+            order: order.iter().map(|&w| w as usize).collect(),
+            settings: app.shared_settings(),
+            states: WEAPON_STATES.iter().map(|s| s.to_vec()).collect(),
+            weapon_title: tc.text(s("Weapon")).to_vec(),
+            availability_title: tc.text(s("Availability")).to_vec(),
+            no_weapons: tc.text(s("NoWeaps")).to_vec(),
         };
-        unsafe { weapon_options_screen(&spec) }
+        drop(tc);
+        weapon_options_screen(spec)
     }
 
     /// The screen the last item opened closed with `result`: what the item
@@ -845,7 +826,7 @@ impl Menus {
         let Pending { kind, then, typed } = self.pending.take()?;
         let sound = || host.play_sound(SOUND_CHOICE);
         let ok = result != 0;
-        let typed = *typed;
+        let typed = typed.take();
         match then {
             Then::Key { item, index } => {
                 let k = result as u32;
@@ -989,40 +970,20 @@ impl Menus {
     /// menu's palette entry.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(&mut self, app: &App, kind: MenuKind, scr: &Bitmap, font: &Font, disabled: bool, x: i32, show: bool) {
-        struct Ctx<'a> {
-            ids: Vec<i32>,
-            kind: MenuKind,
-            scr: Bitmap<'a>,
-            player: i32,
-            palette_color: i32,
-            settings: crate::settings::SharedSettings,
-        }
-        unsafe fn overlay(ctx: *mut c_void, item: i32, x: i32, y: i32, selected: bool, _disabled: bool) {
-            unsafe {
-                let c = &*(ctx as *const Ctx);
-                let id = c.ids[item as usize];
-                if c.kind == MenuKind::Player && (PL_RED..=PL_BLUE).contains(&id) {
-                    let ws = c.settings.borrow().data.worms[c.player as usize].clone();
-                    let ws = &ws.borrow().data;
-                    draw_rgb_overlay(&c.scr, x, y, selected, ws.rgb[(id - PL_RED) as usize], ws.color);
-                } else if c.kind == MenuKind::Hidden && id == HM_PALETTE_SELECT {
-                    draw_palette_overlay(&c.scr, x, y, selected, c.palette_color);
-                }
+        let ids: Vec<i32> = self.menu(kind).items.iter().map(|it| it.id).collect();
+        let (player, palette_color) = (self.player, self.palette_color);
+        let settings = app.shared_settings();
+        let overlay = |item: i32, x: i32, y: i32, selected: bool, _disabled: bool| {
+            let id = ids[item as usize];
+            if kind == MenuKind::Player && (PL_RED..=PL_BLUE).contains(&id) {
+                let ws = settings.borrow().data.worms[player as usize].clone();
+                let ws = &ws.borrow().data;
+                draw_rgb_overlay(scr, x, y, selected, ws.rgb[(id - PL_RED) as usize], ws.color);
+            } else if kind == MenuKind::Hidden && id == HM_PALETTE_SELECT {
+                draw_palette_overlay(scr, x, y, selected, palette_color);
             }
-        }
-        let ctx = Ctx {
-            ids: self.menu(kind).items.iter().map(|it| it.id).collect(),
-            kind,
-            scr: *scr,
-            player: self.player,
-            palette_color: self.palette_color,
-            settings: app.shared_settings(),
         };
-        let hooks = MenuHooks {
-            ctx: &ctx as *const Ctx as *mut c_void,
-            draw_overlay: overlay,
-        };
-        self.menu(kind).draw_with(scr, font, &hooks, disabled, x, show);
+        self.menu(kind).draw_with(scr, font, &overlay, disabled, x, show);
     }
 }
 
@@ -1138,7 +1099,7 @@ mod tests {
         for (typed, lives) in [(&b"5000"[..], 999), (b"0", 1), (b"12", 12)] {
             let (_, opened) = m.enter(&mut app, &Host::none(), MenuKind::Settings);
             drop(opened.expect("number box"));
-            *m.pending.as_mut().unwrap().typed = typed.to_vec();
+            *m.pending.as_ref().unwrap().typed.borrow_mut() = typed.to_vec();
             assert_eq!(m.then(&mut app, &Host::none(), 1), None);
             assert_eq!(app.settings_mut().data.lives, lives);
             assert_eq!(value(&mut m, MenuKind::Settings, i), lives.to_string().into_bytes());
@@ -1146,7 +1107,7 @@ mod tests {
         // Escape keeps the number.
         let (_, opened) = m.enter(&mut app, &Host::none(), MenuKind::Settings);
         drop(opened.unwrap());
-        *m.pending.as_mut().unwrap().typed = b"7".to_vec();
+        *m.pending.as_ref().unwrap().typed.borrow_mut() = b"7".to_vec();
         m.then(&mut app, &Host::none(), 0);
         assert_eq!(app.settings_mut().data.lives, 12);
     }

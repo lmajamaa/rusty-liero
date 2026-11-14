@@ -17,9 +17,7 @@ use super::game::hash_game;
 use super::games::{bot_tick, set_up_game, tc_data, HOLDAZONE, HOOKS, KILL_EM_ALL, THROWERS};
 use super::{Fnv, Out};
 use crate::app::App;
-use crate::controller::ControllerData;
 use crate::controllers::Controller;
-use crate::game_box::Game;
 use crate::keys::{
     is_extended, joy_axis, joy_button, joy_hat, joy_key, key_name, sdl_to_dos, sdl_to_dos_keysym, KeyChanges, Keys,
     DK_ESCAPE, MAX_JOY_BUTTONS,
@@ -28,6 +26,8 @@ use crate::rand::Rand;
 use crate::settings::SettingsBox;
 use crate::sfx::{Mixer, SoundOut};
 use crate::tc::SharedTc;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Each of the TC's sounds' samples, or `None` for one the game can't play.
 fn sounds(d: &crate::tc::TcData) -> impl Iterator<Item = Option<&[i16]>> {
@@ -57,14 +57,14 @@ fn hash_buffer(f: &mut Fnv, buf: &[i16]) {
 
 fn mixer_script(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
     let d = tc_data(tc);
-    let mut sounds: Vec<&[i16]> = sounds(&d).flatten().collect();
+    let mut sounds: Vec<Rc<[i16]>> = sounds(&d).flatten().map(Rc::from).collect();
     // A full-scale square wave, which clips as soon as two play at once.
-    let square: Vec<i16> = (0..300)
+    let square: Rc<[i16]> = (0..300)
         .map(|i| if (i / 25) % 2 == 1 { 32767 } else { -32768 })
         .collect();
-    sounds.push(&square);
-    sounds.push(&[-32768]);
-    sounds.push(&[12345, -23456]);
+    sounds.push(square);
+    sounds.push(Rc::from([-32768]));
+    sounds.push(Rc::from([12345, -23456]));
 
     // Ids are only compared, never followed.
     let ids: [usize; 6] = [0, 16, 32, 48, 64, 80];
@@ -78,11 +78,10 @@ fn mixer_script(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
         let id = ids[r.below(ids.len() as u32) as usize];
         let op = r.below(10);
         if op < 4 {
-            let snd = sounds[r.below(sounds.len() as u32) as usize];
+            let snd = sounds[r.below(sounds.len() as u32) as usize].clone();
             let time = mixer.now().wrapping_add(r.below(6000) as i32).wrapping_sub(3000) as u32;
             let looping = r.below(4) == 0;
-            // SAFETY: the samples outlive the mixer.
-            let added = unsafe { mixer.add(snd.as_ptr(), snd.len(), time, id, looping) };
+            let added = mixer.add(snd, time, id, looping);
             // What C's mixer returned, `id` or null if not added, compared
             // with `id` and with null.
             f.bool(added || id == 0);
@@ -119,14 +118,15 @@ fn sound_game(
     ticks: i32,
 ) {
     let mut game = set_up_game(a, tc, seed, game_mode, weapons);
-    let mut mixer = Box::<Mixer>::default();
-    let m: *mut Mixer = &mut *mixer;
+    let mixer = Rc::new(RefCell::new(Mixer::default()));
     let settings = game.settings();
-    // The mixer lives until the game's sound goes back to none.
     game.set_context(
         Some(settings.clone()),
         Some(tc.clone()),
-        SoundOut { mixer: m, report: None },
+        SoundOut {
+            mixer: Some(mixer.clone()),
+            report: None,
+        },
     );
 
     let blood = game.settings_box().data.ext.blood_particle_max;
@@ -138,8 +138,7 @@ fn sound_game(
     for tick in 1..=ticks {
         bot_tick(&mut game);
         game.process_frame(&HOOKS);
-        // SAFETY: the game only uses the mixer during its frame.
-        unsafe { (*m).mix(&mut buf) };
+        mixer.borrow_mut().mix(&mut buf);
         hash_buffer(&mut f, &buf);
 
         let over = game.is_over();
@@ -153,9 +152,7 @@ fn sound_game(
         }
     }
 
-    // The mixer is dropped once the game has no sound.
     game.set_context(Some(settings), Some(tc.clone()), SoundOut::NONE);
-    drop(mixer);
 }
 
 const LOUD: [&str; 5] = ["BIG NUKE", "MINIGUN", "CHAINGUN", "LASER", "HELLRAIDER"];
@@ -421,19 +418,7 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
             .for_each(|c| *c = pool[r.below(12) as usize]);
     }
 
-    // Freed below.
-    let lc = Box::into_raw(Controller::local(
-        &crate::screen::Host::none(),
-        settings.clone(),
-        tc.clone(),
-    ));
-    // SAFETY: the controller is new; its data and game live as long as it
-    // does.
-    let (d, game) = unsafe {
-        let d: *mut ControllerData = (*lc).data();
-        let game: *mut Game = (*lc).game().expect("a local controller has its game");
-        (d, &mut *game)
-    };
+    let mut lc = Controller::local(&crate::screen::Host::none(), settings.clone(), tc.clone());
     let keys = &mut a.keys;
 
     let name = format!("keys-controls-{seed}");
@@ -448,11 +433,9 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
             } else {
                 pool[r.below(12) as usize]
             };
-            // SAFETY: the controller is a live one.
-            unsafe { (*lc).on_key(key as i32, r.below(2) != 0) };
+            lc.on_key(key as i32, r.below(2) != 0);
         } else if op == 7 {
-            // SAFETY: the controller's data lives as long as it does.
-            unsafe { (*d).going_to_menu = false };
+            lc.data().going_to_menu = false;
         } else if op == 8 {
             // The frame skip keys, maybe with ctrl.
             const KEYS: [i32; 8] = [SC_0, SC_1, SC_2, SC_5, SC_9, SC_LCTRL, SC_RCTRL, SC_A];
@@ -460,21 +443,21 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
                 let k = sdl_to_dos(KEYS[r.below(8) as usize]);
                 keys.set(k, r.below(2) != 0);
             }
-            // SAFETY: as above.
-            unsafe { (*d).process(keys) };
+            lc.data().process(keys);
         } else {
             let i = r.below(2) as usize;
+            let game = lc.game().expect("a local controller has its game");
             let w = game.worm_at(i).expect("no worm");
             w.data.control_states = r.below(128);
         }
 
+        let game = lc.game().expect("a local controller has its game");
         for w in game.listed_worms() {
             let w = w.expect("an empty place among the game's worms");
             f.u32(w.data.control_states);
             f.u32(w.data.clean_control_states);
         }
-        // SAFETY: as above.
-        let d = unsafe { &*d };
+        let d = lc.data();
         f.i32(d.fade_value);
         f.bool(d.going_to_menu);
         f.i32(d.frame_skip);
@@ -488,8 +471,6 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
     }
 
     keys.clear();
-    // SAFETY: the controller isn't used again.
-    drop(unsafe { Box::from_raw(lc) });
 }
 
 fn hash_input(a: &mut App, out: &mut Out, tc: &SharedTc) {

@@ -67,7 +67,7 @@ fn new_game(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<Game> {
     game
 }
 
-unsafe fn split_viewports(game: &mut Game, worm0: i32, worm1: i32) {
+fn split_viewports(game: &mut Game, worm0: i32, worm1: i32) {
     let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
     game.add_viewport(r(0, 0, 158, 158), worm0, 504, 350, ViewportKind::Worm, false);
     game.add_viewport(r(160, 0, 158 + 160, 158), worm1, 504, 350, ViewportKind::Worm, false);
@@ -75,7 +75,7 @@ unsafe fn split_viewports(game: &mut Game, worm0: i32, worm1: i32) {
 
 /// The spectator viewport is always full size, +68 on x to align it in the
 /// middle.
-unsafe fn spectator_viewport(game: &mut Game, spectator_list: bool) {
+fn spectator_viewport(game: &mut Game, spectator_list: bool) {
     let r = Rect {
         x1: 0,
         y1: 0,
@@ -87,13 +87,13 @@ unsafe fn spectator_viewport(game: &mut Game, spectator_list: bool) {
 
 /// The renderer `game` shows its new settings on: the play screen, or the
 /// single screen when a replay is shown on it.
-fn primary_renderer(app: &mut App) -> *mut Renderer {
+fn primary_renderer(app: &mut App) -> &mut Renderer {
     app.primary()
 }
 
 /// The name a replay is recorded under: the time, then up to four letters
 /// and digits of each of the first two worms' names.
-unsafe fn replay_name(host: &Host, game: &mut Game) -> Vec<u8> {
+fn replay_name(host: &Host, game: &mut Game) -> Vec<u8> {
     let mut name = host.replay_time(host.time());
     name.push(b' ');
     for i in 0..2 {
@@ -154,34 +154,29 @@ impl Controller {
     }
 
     /// A key went down or up: the worms' controls, or Escape to the menu.
-    ///
-    /// # Safety
-    /// The worms' settings are valid.
-    pub unsafe fn on_key(&mut self, key: i32, state: bool) {
-        unsafe {
-            let escape = match &mut self.kind {
-                Kind::Local(l) => {
-                    let keys: Vec<WormKeys> = l
-                        .game
-                        .listed_worms()
-                        .map(|w| {
-                            let w = w.expect("an empty place among the game's worms");
-                            let controls = w.settings().data.controls_ex.as_ptr();
-                            WormKeys {
-                                controls,
-                                states: &mut w.data.control_states,
-                                clean: &mut w.data.clean_control_states,
-                            }
-                        })
-                        .collect();
-                    local_controller_key(&keys, MAX_CONTROL_EX, key, state)
-                }
-                Kind::Replay(_) => key as u32 == DK_ESCAPE,
-            };
-            if escape && !self.data.going_to_menu {
-                self.data.fade_value = 31;
-                self.data.going_to_menu = true;
+    pub fn on_key(&mut self, key: i32, state: bool) {
+        let escape = match &mut self.kind {
+            Kind::Local(l) => {
+                let mut worms: Vec<_> = l
+                    .game
+                    .listed_worms()
+                    .map(|w| w.expect("an empty place among the game's worms").data_and_settings())
+                    .collect();
+                let mut keys: Vec<WormKeys> = worms
+                    .iter_mut()
+                    .map(|(w, s)| WormKeys {
+                        controls: &s.data.controls_ex,
+                        states: &mut w.control_states,
+                        clean: &mut w.clean_control_states,
+                    })
+                    .collect();
+                local_controller_key(&mut keys, MAX_CONTROL_EX, key, state)
             }
+            Kind::Replay(_) => key as u32 == DK_ESCAPE,
+        };
+        if escape && !self.data.going_to_menu {
+            self.data.fade_value = 31;
+            self.data.going_to_menu = true;
         }
     }
 
@@ -198,319 +193,298 @@ impl Controller {
     }
 
     /// The menu closed to the game.
-    ///
-    /// # Safety
-    /// The app's renderers are valid.
-    pub unsafe fn focus(&mut self, app: &mut App, host: &Host) {
-        unsafe {
-            let d = &mut self.data;
-            if d.state == State::GameEnded {
-                d.going_to_menu = true;
-                d.fade_value = 0;
-                return;
-            }
-            match &mut self.kind {
-                Kind::Local(l) => {
-                    if d.state == State::WeaponSelection {
-                        l.ws.as_mut().expect("no weapon selection").set_focused(true);
-                    }
-                    if let Some(w) = &mut l.replay {
-                        w.focus(&mut l.game);
-                    }
-                    if d.state == State::Initial {
-                        self.change_state(app, host, State::WeaponSelection);
-                    }
-                }
-                Kind::Replay(r) => {
-                    if d.state == State::Initial {
-                        let mut game = new_game(host, new_settings(), r.tc.clone());
-                        let reader = r.reader.as_mut().expect("no replay");
-                        let o = reader.begin(&mut game);
-                        if let Some(e) = caught(&o, true) {
-                            drop(game);
-                            self.info_box(&format!("Error starting replay playback: {e}"));
-                            self.data.going_to_menu = true;
-                            self.data.fade_value = 0;
-                            return;
-                        }
-                        r.game = Some(game);
-                        // Changing state first when game is available
-                        self.change_state(app, host, State::Game);
-                    }
-                }
-            }
-            let game = self.game().expect("no game");
-            game.focus(&mut *app.play);
-            game.focus(&mut *app.single);
-            self.data.going_to_menu = false;
-            self.data.fade_value = 0;
+    pub fn focus(&mut self, app: &mut App, host: &Host) {
+        let d = &mut self.data;
+        if d.state == State::GameEnded {
+            d.going_to_menu = true;
+            d.fade_value = 0;
+            return;
         }
-    }
-
-    /// One frame: false once the controller is done and back to the menu.
-    ///
-    /// # Safety
-    /// The app's renderers are valid.
-    pub unsafe fn process(&mut self, app: &mut App, host: &Host) -> bool {
-        unsafe {
-            match &mut self.kind {
-                Kind::Local(_) => self.process_local(app, host),
-                Kind::Replay(_) => self.process_replay(app, host),
-            }
-        }
-    }
-
-    unsafe fn process_local(&mut self, app: &mut App, host: &Host) -> bool {
-        unsafe {
-            let Kind::Local(l) = &mut self.kind else { unreachable!() };
-            if self.data.state == State::WeaponSelection {
-                if l.ws.as_mut().expect("no weapon selection").process_game(&mut app.rand) {
-                    self.change_state(app, host, State::Game);
+        match &mut self.kind {
+            Kind::Local(l) => {
+                if d.state == State::WeaponSelection {
+                    l.ws.as_mut().expect("no weapon selection").set_focused(true);
                 }
-            } else if self.data.in_game() {
-                let ticks = self.data.ticks();
-                let mut i = 0;
-                while i < ticks && self.data.in_game() {
-                    let Kind::Local(l) = &mut self.kind else { unreachable!() };
-                    l.game.process_ais(Some(&GameHooks {
-                        hires_ticks: &|| host.hires_ticks(),
-                    }));
-                    if let Some(w) = &mut l.replay {
-                        w.frame(&mut l.game);
-                    }
-                    l.game.process_frame(&GameHooks {
-                        hires_ticks: &|| host.hires_ticks(),
-                    });
-                    if l.game.is_over() {
-                        self.change_state(app, host, State::GameEnded);
-                    }
-                    i += 1;
+                if let Some(w) = &mut l.replay {
+                    w.focus(&mut l.game);
+                }
+                if d.state == State::Initial {
+                    self.change_state(app, host, State::WeaponSelection);
                 }
             }
-
-            // The local controller doesn't run CommonController::process.
-            if self.data.going_to_menu {
-                if self.data.fade_value > 0 {
-                    self.data.fade_value -= 1;
-                } else {
-                    if self.data.state == State::GameEnded {
-                        self.end_record();
-                        self.present_stats(app, host);
-                    }
-                    return false;
-                }
-            } else if self.data.fade_value < FADE_SHOWN {
-                self.data.fade_value += 1;
-            }
-            true
-        }
-    }
-
-    unsafe fn process_replay(&mut self, app: &mut App, host: &Host) -> bool {
-        unsafe {
-            if self.data.in_game() {
-                let Kind::Replay(r) = &mut self.kind else {
-                    unreachable!()
-                };
-                let game = r.game.as_mut().expect("no game");
-                if app.keys.test_sdl_once(SCANCODE_R) {
-                    game.assign(r.initial.as_ref().expect("no start to rewind to"));
-                    r.reader.as_mut().expect("no replay").set_pos(r.initial_pos);
-                }
-
-                let ticks = self.data.ticks();
-                let mut i = 0;
-                while i < ticks && self.data.in_game() {
-                    let Kind::Replay(r) = &mut self.kind else {
-                        unreachable!()
-                    };
-                    if let Some(reader) = &mut r.reader {
-                        let o = reader.frame(r.game.as_mut().expect("no game"));
-                        if o.end {
-                            // End of replay
-                            r.reader = None;
-                        } else {
-                            if o.settings_changed {
-                                r.game.as_mut().expect("no game").focus(primary_renderer(app));
-                            }
-                            if let Some(e) = caught(&o, false) {
-                                self.info_box(&format!("Archive error in replay: {e}"));
-                                self.change_state(app, host, State::GameEnded);
-                                let Kind::Replay(r) = &mut self.kind else {
-                                    unreachable!()
-                                };
-                                r.reader = None;
-                            }
-                        }
-                    }
-                    let Kind::Replay(r) = &mut self.kind else {
-                        unreachable!()
-                    };
-                    r.game.as_mut().expect("no game").process_frame(&GameHooks {
-                        hires_ticks: &|| host.hires_ticks(),
-                    });
-
-                    let d = &mut self.data;
-                    if d.going_to_menu {
-                        if d.fade_value > 0 {
-                            d.fade_value -= 1;
-                        } else {
-                            break;
-                        }
-                    } else if d.fade_value < FADE_SHOWN {
-                        d.fade_value += 1;
-                    }
-                    i += 1;
-                }
-
-                if self.game().expect("no game").is_over() {
-                    self.change_state(app, host, State::GameEnded);
-                }
-            }
-
-            // CommonController::process: the frame skip keys, and the frame
-            // counted.
-            self.data.process(&mut app.keys);
-
-            if self.data.going_to_menu && self.data.fade_value <= 0 {
-                if self.data.state == State::GameEnded {
-                    self.present_stats(app, host);
-                }
-                return false;
-            }
-
-            let Kind::Replay(r) = &self.kind else { unreachable!() };
-            if r.reader.is_none() && self.data.state == State::Game {
-                self.present_stats(app, host);
-                return false;
-            }
-            true
-        }
-    }
-
-    /// Draws the game on `renderer`, the split screen or with `spectators`
-    /// the spectator one.
-    ///
-    /// # Safety
-    /// `renderer` is valid.
-    pub unsafe fn draw(&mut self, app: &mut App, renderer: *mut Renderer, spectators: bool) {
-        unsafe {
-            let state = self.data.state;
-            match &mut self.kind {
-                Kind::Local(l) => {
-                    if state == State::WeaponSelection {
-                        l.ws.as_mut()
-                            .expect("no weapon selection")
-                            .draw_game(app, renderer, state, spectators);
-                    } else {
-                        l.game.draw(&mut *renderer, state, spectators, false);
-                    }
-                }
-                Kind::Replay(r) => {
-                    if state == State::Game || state == State::GameEnded {
-                        r.game
-                            .as_mut()
-                            .expect("no game")
-                            .draw(&mut *renderer, state, spectators, true);
-                    }
-                }
-            }
-            (*renderer).data.fade_value = self.data.fade_value;
-        }
-    }
-
-    unsafe fn change_state(&mut self, app: &mut App, host: &Host, new_state: State) {
-        unsafe {
-            if self.data.state == new_state {
-                return;
-            }
-            match &mut self.kind {
-                Kind::Local(_) => self.change_local_state(app, host, new_state),
-                Kind::Replay(_) => self.change_replay_state(app, new_state),
-            }
-        }
-    }
-
-    unsafe fn change_local_state(&mut self, app: &mut App, host: &Host, new_state: State) {
-        unsafe {
-            let Kind::Local(l) = &mut self.kind else { unreachable!() };
-            // The new state is prepared before the old one goes: weapon
-            // selection is dropped only once recording has started.
-            if self.data.state == State::WeaponSelection {
-                l.ws.as_mut().expect("no weapon selection").finish();
-            }
-
-            if new_state == State::WeaponSelection {
-                l.ws = Some(Weapsel::start(&mut l.game, &mut app.rand));
-            } else if new_state == State::Game {
-                // Before the replay recording starts below.
-                let lives = l.game.settings_box().data.lives;
-                for w in l.game.listed_worms() {
-                    w.expect("an empty place among the game's worms").data.lives = lives;
-                }
-
-                let record = l.game.settings_box().data.ext.record_replays;
-                if record {
-                    if let Err(e) = start_recording(app, host, l) {
-                        self.info_box(&format!("Error starting replay recording: {e}"));
+            Kind::Replay(r) => {
+                if d.state == State::Initial {
+                    let mut game = new_game(host, new_settings(), r.tc.clone());
+                    let reader = r.reader.as_mut().expect("no replay");
+                    let o = reader.begin(&mut game);
+                    if let Some(e) = caught(&o, true) {
+                        drop(game);
+                        self.info_box(&format!("Error starting replay playback: {e}"));
                         self.data.going_to_menu = true;
                         self.data.fade_value = 0;
                         return;
                     }
+                    r.game = Some(game);
+                    // Changing state first when game is available
+                    self.change_state(app, host, State::Game);
                 }
-
-                let blood = l.game.settings_box().data.ext.blood_particle_max;
-                l.game.start(blood);
-            } else if new_state == State::GameEnded && !self.data.going_to_menu {
-                self.data.fade_value = 180;
-                self.data.going_to_menu = true;
             }
+        }
+        let game = self.game().expect("no game");
+        game.focus(&mut app.play);
+        game.focus(&mut app.single);
+        self.data.going_to_menu = false;
+        self.data.fade_value = 0;
+    }
 
-            if self.data.state == State::WeaponSelection {
-                self.data.fade_value = FADE_SHOWN;
-                let Kind::Local(l) = &mut self.kind else { unreachable!() };
-                l.ws = None;
-            }
-            self.data.state = new_state;
+    /// One frame: false once the controller is done and back to the menu.
+    pub fn process(&mut self, app: &mut App, host: &Host) -> bool {
+        match &mut self.kind {
+            Kind::Local(_) => self.process_local(app, host),
+            Kind::Replay(_) => self.process_replay(app, host),
         }
     }
 
-    unsafe fn change_replay_state(&mut self, app: &mut App, new_state: State) {
-        unsafe {
+    fn process_local(&mut self, app: &mut App, host: &Host) -> bool {
+        let Kind::Local(l) = &mut self.kind else { unreachable!() };
+        if self.data.state == State::WeaponSelection {
+            if l.ws
+                .as_mut()
+                .expect("no weapon selection")
+                .process_game(&mut l.game, &mut app.rand)
+            {
+                self.change_state(app, host, State::Game);
+            }
+        } else if self.data.in_game() {
+            let ticks = self.data.ticks();
+            let mut i = 0;
+            while i < ticks && self.data.in_game() {
+                let Kind::Local(l) = &mut self.kind else { unreachable!() };
+                l.game.process_ais(Some(&GameHooks {
+                    hires_ticks: &|| host.hires_ticks(),
+                }));
+                if let Some(w) = &mut l.replay {
+                    w.frame(&mut l.game);
+                }
+                l.game.process_frame(&GameHooks {
+                    hires_ticks: &|| host.hires_ticks(),
+                });
+                if l.game.is_over() {
+                    self.change_state(app, host, State::GameEnded);
+                }
+                i += 1;
+            }
+        }
+
+        // The local controller doesn't run CommonController::process.
+        if self.data.going_to_menu {
+            if self.data.fade_value > 0 {
+                self.data.fade_value -= 1;
+            } else {
+                if self.data.state == State::GameEnded {
+                    self.end_record();
+                    self.present_stats(app, host);
+                }
+                return false;
+            }
+        } else if self.data.fade_value < FADE_SHOWN {
+            self.data.fade_value += 1;
+        }
+        true
+    }
+
+    fn process_replay(&mut self, app: &mut App, host: &Host) -> bool {
+        if self.data.in_game() {
             let Kind::Replay(r) = &mut self.kind else {
                 unreachable!()
             };
-            if new_state == State::Game {
-                let game = r.game.as_mut().expect("no game");
-                // The replay's viewports are replaced: they aren't what this
-                // screen shows.
-                game.clear_viewports();
-                // Not stored in replays.
-                for (i, x) in [(0, 0), (1, 218)] {
-                    game.worm_at(i)
-                        .expect("an empty place among the replay's worms")
-                        .data
-                        .stats_x = x;
-                }
-                spectator_viewport(game, true);
-                if app.settings_mut().data.ext.single_screen_replay {
-                    // The spectator viewport on the main screen as well.
-                    spectator_viewport(game, false);
-                } else {
-                    let w0 = game.worm_at(0).expect("no first worm").data.index;
-                    let w1 = game.worm_at(1).expect("no second worm").data.index;
-                    split_viewports(game, w0, w1);
-                }
-                let blood = game.settings_box().data.ext.blood_particle_max;
-                game.start(blood);
-                r.initial = Some(game.copy());
-                r.initial_pos = r.reader.as_ref().expect("no replay").pos();
-            } else if new_state == State::GameEnded && !self.data.going_to_menu {
-                self.data.fade_value = 180;
-                self.data.going_to_menu = true;
+            let game = r.game.as_mut().expect("no game");
+            if app.keys.test_sdl_once(SCANCODE_R) {
+                game.assign(r.initial.as_ref().expect("no start to rewind to"));
+                r.reader.as_mut().expect("no replay").set_pos(r.initial_pos);
             }
-            self.data.state = new_state;
+
+            let ticks = self.data.ticks();
+            let mut i = 0;
+            while i < ticks && self.data.in_game() {
+                let Kind::Replay(r) = &mut self.kind else {
+                    unreachable!()
+                };
+                if let Some(reader) = &mut r.reader {
+                    let o = reader.frame(r.game.as_mut().expect("no game"));
+                    if o.end {
+                        // End of replay
+                        r.reader = None;
+                    } else {
+                        if o.settings_changed {
+                            r.game.as_mut().expect("no game").focus(primary_renderer(app));
+                        }
+                        if let Some(e) = caught(&o, false) {
+                            self.info_box(&format!("Archive error in replay: {e}"));
+                            self.change_state(app, host, State::GameEnded);
+                            let Kind::Replay(r) = &mut self.kind else {
+                                unreachable!()
+                            };
+                            r.reader = None;
+                        }
+                    }
+                }
+                let Kind::Replay(r) = &mut self.kind else {
+                    unreachable!()
+                };
+                r.game.as_mut().expect("no game").process_frame(&GameHooks {
+                    hires_ticks: &|| host.hires_ticks(),
+                });
+
+                let d = &mut self.data;
+                if d.going_to_menu {
+                    if d.fade_value > 0 {
+                        d.fade_value -= 1;
+                    } else {
+                        break;
+                    }
+                } else if d.fade_value < FADE_SHOWN {
+                    d.fade_value += 1;
+                }
+                i += 1;
+            }
+
+            if self.game().expect("no game").is_over() {
+                self.change_state(app, host, State::GameEnded);
+            }
         }
+
+        // CommonController::process: the frame skip keys, and the frame
+        // counted.
+        self.data.process(&mut app.keys);
+
+        if self.data.going_to_menu && self.data.fade_value <= 0 {
+            if self.data.state == State::GameEnded {
+                self.present_stats(app, host);
+            }
+            return false;
+        }
+
+        let Kind::Replay(r) = &self.kind else { unreachable!() };
+        if r.reader.is_none() && self.data.state == State::Game {
+            self.present_stats(app, host);
+            return false;
+        }
+        true
+    }
+
+    /// Draws the game: the split screen on the app's play renderer, or with
+    /// `spectators` the spectator one on its single renderer.
+    pub fn draw(&mut self, app: &mut App, spectators: bool) {
+        let state = self.data.state;
+        match &mut self.kind {
+            Kind::Local(l) => {
+                if state == State::WeaponSelection {
+                    l.ws.as_mut()
+                        .expect("no weapon selection")
+                        .draw_game(&mut l.game, app, state, spectators);
+                } else {
+                    l.game.draw(app.renderer(spectators), state, spectators, false);
+                }
+            }
+            Kind::Replay(r) => {
+                if state == State::Game || state == State::GameEnded {
+                    r.game
+                        .as_mut()
+                        .expect("no game")
+                        .draw(app.renderer(spectators), state, spectators, true);
+                }
+            }
+        }
+        app.renderer(spectators).data.fade_value = self.data.fade_value;
+    }
+
+    fn change_state(&mut self, app: &mut App, host: &Host, new_state: State) {
+        if self.data.state == new_state {
+            return;
+        }
+        match &mut self.kind {
+            Kind::Local(_) => self.change_local_state(app, host, new_state),
+            Kind::Replay(_) => self.change_replay_state(app, new_state),
+        }
+    }
+
+    fn change_local_state(&mut self, app: &mut App, host: &Host, new_state: State) {
+        let Kind::Local(l) = &mut self.kind else { unreachable!() };
+        // The new state is prepared before the old one goes: weapon
+        // selection is dropped only once recording has started.
+        if self.data.state == State::WeaponSelection {
+            l.ws.as_mut().expect("no weapon selection").finish(&mut l.game);
+        }
+
+        if new_state == State::WeaponSelection {
+            l.ws = Some(Weapsel::start(&mut l.game, &mut app.rand));
+        } else if new_state == State::Game {
+            // Before the replay recording starts below.
+            let lives = l.game.settings_box().data.lives;
+            for w in l.game.listed_worms() {
+                w.expect("an empty place among the game's worms").data.lives = lives;
+            }
+
+            let record = l.game.settings_box().data.ext.record_replays;
+            if record {
+                if let Err(e) = start_recording(app, host, l) {
+                    self.info_box(&format!("Error starting replay recording: {e}"));
+                    self.data.going_to_menu = true;
+                    self.data.fade_value = 0;
+                    return;
+                }
+            }
+
+            let blood = l.game.settings_box().data.ext.blood_particle_max;
+            l.game.start(blood);
+        } else if new_state == State::GameEnded && !self.data.going_to_menu {
+            self.data.fade_value = 180;
+            self.data.going_to_menu = true;
+        }
+
+        if self.data.state == State::WeaponSelection {
+            self.data.fade_value = FADE_SHOWN;
+            let Kind::Local(l) = &mut self.kind else { unreachable!() };
+            l.ws = None;
+        }
+        self.data.state = new_state;
+    }
+
+    fn change_replay_state(&mut self, app: &mut App, new_state: State) {
+        let Kind::Replay(r) = &mut self.kind else {
+            unreachable!()
+        };
+        if new_state == State::Game {
+            let game = r.game.as_mut().expect("no game");
+            // The replay's viewports are replaced: they aren't what this
+            // screen shows.
+            game.clear_viewports();
+            // Not stored in replays.
+            for (i, x) in [(0, 0), (1, 218)] {
+                game.worm_at(i)
+                    .expect("an empty place among the replay's worms")
+                    .data
+                    .stats_x = x;
+            }
+            spectator_viewport(game, true);
+            if app.settings_mut().data.ext.single_screen_replay {
+                // The spectator viewport on the main screen as well.
+                spectator_viewport(game, false);
+            } else {
+                let w0 = game.worm_at(0).expect("no first worm").data.index;
+                let w1 = game.worm_at(1).expect("no second worm").data.index;
+                split_viewports(game, w0, w1);
+            }
+            let blood = game.settings_box().data.ext.blood_particle_max;
+            game.start(blood);
+            r.initial = Some(game.copy());
+            r.initial_pos = r.reader.as_ref().expect("no replay").pos();
+        } else if new_state == State::GameEnded && !self.data.going_to_menu {
+            self.data.fade_value = 180;
+            self.data.going_to_menu = true;
+        }
+        self.data.state = new_state;
     }
 
     fn end_record(&mut self) {
@@ -558,20 +532,18 @@ fn caught(o: &ReplayOutcome, read_too: bool) -> Option<String> {
 }
 
 /// Starts recording a replay of `l`'s game in the config folder's Replays.
-unsafe fn start_recording(app: &App, host: &Host, l: &mut Local) -> Result<(), String> {
-    unsafe {
-        let name = replay_name(host, &mut l.game);
-        let node = app.files.config.go(b"Replays").go(&name);
-        let Some(mut w) = ReplayWriter::new(&node) else {
-            return Err(format!("Could not write {}", String::from_utf8_lossy(node.full_path())));
-        };
-        let o = w.begin(&mut l.game);
-        // The writer is kept even when beginning fails, as C++ kept it.
-        l.replay = Some(w);
-        match caught(&o, true) {
-            Some(e) => Err(e),
-            None => Ok(()),
-        }
+fn start_recording(app: &App, host: &Host, l: &mut Local) -> Result<(), String> {
+    let name = replay_name(host, &mut l.game);
+    let node = app.files.config.go(b"Replays").go(&name);
+    let Some(mut w) = ReplayWriter::new(&node) else {
+        return Err(format!("Could not write {}", String::from_utf8_lossy(node.full_path())));
+    };
+    let o = w.begin(&mut l.game);
+    // The writer is kept even when beginning fails, as C++ kept it.
+    l.replay = Some(w);
+    match caught(&o, true) {
+        Some(e) => Err(e),
+        None => Ok(()),
     }
 }
 
@@ -580,29 +552,27 @@ impl Controller {
     /// `host`'s sound and clock.
     pub fn local(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<Controller> {
         // SAFETY: the game is new, and the worms are its own.
-        unsafe {
-            let mut game = new_game(host, settings.clone(), tc);
-            let s = settings.borrow();
-            let mut indexes = [0; 2];
-            for (i, ws) in s.data.worms.iter().enumerate() {
-                let id = game.new_worm(Some(ws.clone()));
-                let ws = ws.borrow();
-                game.list_worm(Some(id));
-                let w = game.worm_mut(id);
-                w.data.health = ws.data.health;
-                w.data.index = i as i32;
-                w.data.stats_x = if i == 0 { 0 } else { 218 };
-                w.set_ai(ws.data.controller, s.data.ext.ai_parallels.max(0) as usize, i == 0);
-                indexes[i] = w.data.index;
-            }
-            split_viewports(&mut game, indexes[0], indexes[1]);
-            spectator_viewport(&mut game, true);
-            Controller::new(Kind::Local(Local {
-                game,
-                ws: None,
-                replay: None,
-            }))
+        let mut game = new_game(host, settings.clone(), tc);
+        let s = settings.borrow();
+        let mut indexes = [0; 2];
+        for (i, ws) in s.data.worms.iter().enumerate() {
+            let id = game.new_worm(Some(ws.clone()));
+            let ws = ws.borrow();
+            game.list_worm(Some(id));
+            let w = game.worm_mut(id);
+            w.data.health = ws.data.health;
+            w.data.index = i as i32;
+            w.data.stats_x = if i == 0 { 0 } else { 218 };
+            w.set_ai(ws.data.controller, s.data.ext.ai_parallels.max(0) as usize, i == 0);
+            indexes[i] = w.data.index;
         }
+        split_viewports(&mut game, indexes[0], indexes[1]);
+        spectator_viewport(&mut game, true);
+        Controller::new(Kind::Local(Local {
+            game,
+            ws: None,
+            replay: None,
+        }))
     }
 
     /// A replay of `node`, played with `tc` (`ReplayController`), or none

@@ -157,8 +157,8 @@ impl Worm<'_, '_> {
     }
 
     /// The id the current weapon slot's looping sounds play with.
-    fn slot_sound_id(&self) -> *mut c_void {
-        std::ptr::from_ref(self.slot()).cast_mut().cast()
+    fn slot_sound_id(&self) -> SoundId {
+        SoundId::slot(self.world.g.worm_id(self.i), self.current_weapon() as usize)
     }
 
     /// The current weapon slot, as the objects it fires record it.
@@ -211,7 +211,7 @@ impl Worm<'_, '_> {
     }
 
     fn play_sound(&self, sound: i32) {
-        self.world.play(sound, null_mut(), 0);
+        self.world.play(sound, SoundId::NONE, 0);
     }
 
     fn create_nobject1(&mut self, kind: i32, vel: FVec2, pos: FVec2) {
@@ -310,7 +310,7 @@ impl Worm<'_, '_> {
                     self.world.play(w.launch_sound, id, -1);
                 }
             } else {
-                self.world.play(w.launch_sound, null_mut(), 0);
+                self.world.play(w.launch_sound, SoundId::NONE, 0);
             }
         }
     }

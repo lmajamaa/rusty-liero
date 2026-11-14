@@ -24,7 +24,7 @@ pub struct TcData {
     /// twice as many as the model's (`SfxSample::createSound`), and none
     /// for a sound the game can't play. The TC's sounds are never changed
     /// after loading, so they stay put while a sound plays.
-    pub samples: Vec<Vec<i16>>,
+    pub samples: Vec<std::rc::Rc<[i16]>>,
     /// The model's palette as the game's `Palette` holds it
     /// (`Common::exepal`).
     pub palette_colors: [Color; 256],
@@ -121,7 +121,7 @@ impl Tc {
                 let data = s.data.as_deref().unwrap_or(&[]);
                 let mut samples = vec![0i16; data.len() * 2];
                 samples_from_tc(data, &mut samples);
-                samples
+                samples.into()
             })
             .collect();
 
@@ -154,18 +154,15 @@ impl TcData {
     /// A TC with no tables and every other field zero, for tests.
     #[cfg(test)]
     pub(crate) fn empty() -> Box<Self> {
-        let mut tc = crate::objects::zeroed_box::<Self>();
-        // SAFETY: all zeros is a valid value of every field but the tables
-        // and sprites, which are written before the box is used.
-        unsafe {
-            let p = tc.as_mut_ptr();
-            std::ptr::addr_of_mut!((*p).model).write(empty_model());
-            std::ptr::addr_of_mut!((*p).samples).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).weap_order).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).worm_sprites).write(Default::default());
-            std::ptr::addr_of_mut!((*p).fire_cone_sprites).write(Default::default());
-            tc.assume_init()
-        }
+        Box::new(TcData {
+            model: empty_model(),
+            samples: Vec::new(),
+            palette_colors: [Color::default(); 256],
+            materials: [crate::material::Material::default(); 256],
+            weap_order: Vec::new(),
+            worm_sprites: SpriteSet::default(),
+            fire_cone_sprites: SpriteSet::default(),
+        })
     }
 
     /// What levels are made with (`Common::levelCommon`).

@@ -1,8 +1,6 @@
 //! The message box, text box and key choice, as screens (they were loops in
 //! `Gfx`).
 
-use std::ffi::c_void;
-
 use crate::keys::is_extended;
 use crate::menu::{draw_info_box, draw_input_box};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
@@ -79,7 +77,7 @@ impl Screen for KeyChoice {
 }
 
 /// Called with the text when Enter closes a text box.
-pub type InputDone = unsafe fn(ctx: *mut c_void, text: &[u8]);
+pub type InputDone = Box<dyn FnMut(&[u8])>;
 
 /// Typing a line into a box over the frozen screen. It shows a frame for
 /// each event. Enter hands the text to `done` and closes with 1, Escape
@@ -91,7 +89,6 @@ struct InputBox {
     y: i32,
     digits_only: bool,
     done: Option<InputDone>,
-    ctx: *mut c_void,
     shown: bool,
     /// The host that turned text input on, to turn it off again.
     host: Option<Host>,
@@ -116,8 +113,8 @@ impl Screen for InputBox {
                         self.buffer.pop();
                     }
                     SCANCODE_RETURN | SCANCODE_KP_ENTER => {
-                        if let Some(done) = self.done {
-                            unsafe { done(self.ctx, &self.buffer) };
+                        if let Some(done) = &mut self.done {
+                            done(&self.buffer);
                         }
                         host.play_sound(SOUND_CHOICE);
                         app.clear_keys();
@@ -177,19 +174,15 @@ pub fn key_choice_screen(extended: bool) -> BoxedScreen {
 }
 
 /// Typing at most `max_len` characters, starting from `text`, in a box
-/// centred on x at height y. Enter calls `done(ctx, typed)` and closes with
-/// 1; Escape closes with 0.
-///
-/// # Safety
-/// `done` is called with `ctx`.
-pub unsafe fn input_box_screen(
+/// centred on x at height y. Enter calls `done` with the text and closes
+/// with 1; Escape closes with 0.
+pub fn input_box_screen(
     text: &[u8],
     max_len: usize,
     x: i32,
     y: i32,
     digits_only: bool,
     done: Option<InputDone>,
-    ctx: *mut c_void,
 ) -> BoxedScreen {
     Box::new(InputBox {
         buffer: text.to_vec(),
@@ -198,7 +191,6 @@ pub unsafe fn input_box_screen(
         y,
         digits_only,
         done,
-        ctx,
         shown: false,
         host: None,
     })
@@ -264,21 +256,15 @@ mod tests {
         }
     }
 
-    unsafe fn keep(ctx: *mut c_void, text: &[u8]) {
-        unsafe {
-            *ctx.cast::<Vec<u8>>() = text.to_vec();
-        }
-    }
-
-    fn input(start: &[u8], max_len: usize, digits_only: bool, out: &mut Vec<u8>) -> InputBox {
+    fn input(start: &[u8], max_len: usize, digits_only: bool, out: &Rc<RefCell<Vec<u8>>>) -> InputBox {
+        let out = out.clone();
         InputBox {
             buffer: start.to_vec(),
             max_len,
             x: 0,
             y: 0,
             digits_only,
-            done: Some(keep),
-            ctx: (out as *mut Vec<u8>).cast(),
+            done: Some(Box::new(move |text| *out.borrow_mut() = text.to_vec())),
             shown: false,
             host: None,
         }
@@ -307,11 +293,11 @@ mod tests {
             typed(b'D'),
             down(SCANCODE_RETURN),
         ]);
-        let mut out = Vec::new();
-        let mut b = input(b"X", 3, false, &mut out);
+        let out = Rc::default();
+        let mut b = input(b"X", 3, false, &out);
         // A frame first, then one per event before Enter.
         assert_eq!(run(&mut b, &h), (1, 6));
-        assert_eq!(out, b"XAC");
+        assert_eq!(*out.borrow(), b"XAC");
         assert_eq!(
             p.log.borrow().clone(),
             ["text true"; 6]
@@ -325,11 +311,11 @@ mod tests {
     #[test]
     fn digits_only_and_escape() {
         let (h, _) = host(&[typed(b'1'), typed(b'x'), typed(b'2'), down(SCANCODE_ESCAPE)]);
-        let mut out = b"unchanged".to_vec();
-        let mut b = input(b"", 10, true, &mut out);
+        let out = Rc::new(RefCell::new(b"unchanged".to_vec()));
+        let mut b = input(b"", 10, true, &out);
         assert_eq!(run(&mut b, &h).0, 0);
         assert_eq!(b.buffer, b"12");
-        assert_eq!(out, b"unchanged");
+        assert_eq!(*out.borrow(), b"unchanged");
     }
 
     #[test]

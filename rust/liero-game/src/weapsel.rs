@@ -3,27 +3,29 @@
 //! drawing the menus. Results have to stay bit-identical to the C++
 //! versions, which `tools/hashrun` checks.
 //!
-//! Rust owns the menus and which worms are ready (`Weapsel`); C++ owns
-//! the worms and their settings. Weapons are numbered as the menus list them,
-//! from 1; `weap_order` turns a number into a weapon. Hooks read and clear the
-//! worms' controls, play sounds and give the worms their weapons.
-
-use std::ffi::c_void;
+//! The selection (`Weapsel`) owns the menus and which worms are ready; the
+//! worms and their settings' weapon numbers are borrowed for each call
+//! (`Chooser`), or taken from the game it was started from. Weapons are
+//! numbered as the menus list them, from 1; `weap_order` turns a number
+//! into a weapon.
 
 use crate::app::App;
 use crate::controller::State;
 use crate::game_box::Game;
 use crate::gfx::{draw_rounded_box, palette_fade, palette_rotate_from, Bitmap};
 use crate::menu::draw_versus;
-use crate::menu::{Menu, MenuHooks, MenuItem};
+use crate::menu::{Menu, MenuItem};
 use crate::rand::Rand;
 use crate::renderer::Renderer;
+use crate::settings::{SharedWormSettings, WormSettingsBox};
 use crate::sfx::SoundOut;
 use crate::tc::s as text;
+use crate::tc::tc_data;
 use crate::tc::TcData;
 use crate::text::Font;
 use crate::weapon::SELECTABLE_WEAPONS;
-use crate::worm::{Control, WormData};
+use crate::worm::{Control, WormData, WormId};
+use std::cell::RefMut;
 
 /// Size of `Settings::weapTable`.
 pub const WEAPON_TABLE_SIZE: usize = 40;
@@ -36,10 +38,8 @@ const DONE_ITEM: i32 = 6;
 struct WeapselMenu {
     /// "Randomize", the five weapons and "Done".
     menu: Menu,
-    /// The worm's chosen weapon numbers (`WormSettings::weapons`).
-    weapons: *mut [u32; SELECTABLE_WEAPONS],
-    /// The worm, whose controls pick and which is given the weapons.
-    worm: *mut WormData,
+    /// The game's worm, for a selection started from a game.
+    id: Option<WormId>,
     /// The worm has chosen.
     ready: bool,
     name: Vec<u8>,
@@ -51,9 +51,6 @@ pub struct Weapsel {
     menus: Vec<WeapselMenu>,
     /// Each weapon's name, by weapon index.
     weapon_names: Vec<Vec<u8>>,
-    /// The game whose worms choose, when started from one
-    /// (`Weapsel::start`).
-    game: *mut Game,
     /// What's behind the menus has been drawn and frozen, on the play and
     /// the spectator screen.
     cached: bool,
@@ -62,12 +59,17 @@ pub struct Weapsel {
     focused: bool,
 }
 
-/// A worm choosing weapons.
+/// A worm choosing weapons, borrowed for a call: the worm in the
+/// viewport, whose controls pick and which is given the weapons, and its
+/// settings' weapon numbers (`WormSettings::weapons`), which the menu
+/// changes.
+pub struct Chooser<'a> {
+    pub worm: &'a mut WormData,
+    pub weapons: &'a mut [u32; SELECTABLE_WEAPONS],
+}
+
+/// A worm's menu, as weapon selection starts it.
 pub struct WeapselWorm {
-    /// The worm in the viewport.
-    pub worm: *mut WormData,
-    /// `WormSettings::weapons`, which the menu changes in place.
-    pub weapons: *mut [u32; SELECTABLE_WEAPONS],
     pub name: Vec<u8>,
     pub color: i32,
     /// The centre of the worm's viewport.
@@ -105,12 +107,9 @@ pub struct WeapselEnv<'a> {
 
 impl WeapselEnv<'_> {
     /// Plays a menu sound (`soundPlayer->play`).
-    ///
-    /// # Safety
-    /// The sound's mixer is valid.
-    unsafe fn play(&self, sound: i32) {
+    fn play(&self, sound: i32) {
         if let Some(tc) = self.tc {
-            unsafe { self.sound.play(tc, sound, std::ptr::null_mut(), 0) };
+            self.sound.play(tc, sound, crate::sfx::SoundId::NONE, 0);
         }
     }
 
@@ -232,30 +231,41 @@ pub fn finalize(worm: &mut WormData, numbers: &[u32; SELECTABLE_WEAPONS], tc: &T
     worm.control_states &= !0x7f;
 }
 
-unsafe fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
-
 fn draw_menu(wm: &mut WeapselMenu, scr: &Bitmap, font: &Font, x: i32) {
-    let hooks = MenuHooks {
-        ctx: std::ptr::null_mut(),
-        draw_overlay: no_overlay,
-    };
-    wm.menu.draw_with(scr, font, &hooks, false, x, false);
+    wm.menu.draw(scr, font, false, x, false);
 }
 
-/// The weapon tables of `game`, with the app's random numbers.
-///
-/// # Safety
-/// The game has its context.
-unsafe fn game_env<'a>(game: &'a Game, rand: &'a mut Rand) -> WeapselEnv<'a> {
-    let tc = unsafe { &*game.tc_ptr() };
-    WeapselEnv {
+/// Runs `f` on `game`'s worms `ids`, with the game's weapon tables and the
+/// app's random numbers. Panics if the game has no TC or settings, or a
+/// worm has no settings.
+fn with_game<R>(
+    game: &mut Game,
+    ids: &[WormId],
+    rand: &mut Rand,
+    f: impl FnOnce(&mut WeapselEnv, &mut [Chooser]) -> R,
+) -> R {
+    let shared_tc = game.tc();
+    let tc = tc_data(&shared_tc);
+    let mut env = WeapselEnv {
         table: game.settings_box().data.weap_table,
         order: &tc.weap_order,
         weapon_count: tc.model.weapons.len() as i32,
         rand,
-        tc: Some(tc),
+        tc: Some(&tc),
         sound: game.sound(),
-    }
+    };
+    let settings: Vec<SharedWormSettings> = ids.iter().map(|&id| game.worm(id).shared_settings()).collect();
+    let mut boxes: Vec<RefMut<WormSettingsBox>> = settings.iter().map(|s| s.borrow_mut()).collect();
+    let mut choosers: Vec<Chooser> = game
+        .worms_data_mut(ids)
+        .into_iter()
+        .zip(&mut boxes)
+        .map(|(worm, b)| Chooser {
+            worm,
+            weapons: &mut b.data.weapons,
+        })
+        .collect();
+    f(&mut env, &mut choosers)
 }
 
 /// The TC's font.
@@ -291,35 +301,30 @@ pub(crate) fn level_line(tc: &TcData, game_level_file: &[u8], menu_level_file: &
 }
 
 /// The renderer's palette as the menus show it: cycling and fading.
-unsafe fn menu_palette(r: *mut Renderer, menu_cycles: u32) {
-    unsafe {
-        let d = &mut (*r).data;
-        d.pal = d.origpal;
-        palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, menu_cycles);
-        palette_fade(&mut d.pal, d.fade_value);
-    }
+fn menu_palette(r: &mut Renderer, menu_cycles: u32) {
+    let d = &mut r.data;
+    d.pal = d.origpal;
+    palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, menu_cycles);
+    palette_fade(&mut d.pal, d.fade_value);
 }
 
 impl Weapsel {
     /// Starts weapon selection (`WeaponSelection::WeaponSelection`): each
     /// worm's menu below its viewport's centre, with its starting weapons,
     /// which the worm is given, empty, with its first weapon current.
-    ///
-    /// # Safety
-    /// `spec`'s worms and their `weapons` are valid and outlive the
-    /// selection, and the sound's mixer is valid.
-    pub unsafe fn new(spec: WeapselSpec, env: &mut WeapselEnv) -> Box<Weapsel> {
+    /// `worms` are `spec`'s worms, in order.
+    pub fn new(spec: WeapselSpec, env: &mut WeapselEnv, worms: &mut [Chooser]) -> Box<Weapsel> {
+        assert_eq!(spec.worms.len(), worms.len(), "a worm without a menu");
         let mut menus = Vec::new();
-        for w in spec.worms {
+        for (w, c) in spec.worms.iter().zip(worms) {
             // Menu(), placed later, with items it doesn't count as visible.
             let mut menu = Menu::raw(0, 0, false);
             menu.add_at(item(spec.randomize, 57), None, false);
             menu.m.x = w.center_x - 31;
             menu.m.y = w.center_y - 51;
 
-            // SAFETY: the worm and its weapons are valid, as the caller says.
-            let (worm, weapons) = unsafe { (&mut *w.worm, &mut *w.weapons) };
-            let chosen = choose(weapons, w.random, env);
+            let worm = &mut *c.worm;
+            let chosen = choose(c.weapons, w.random, env);
             for (j, &weapon) in chosen.iter().enumerate() {
                 let ww = &mut worm.weapons[j];
                 ww.ammo = 0;
@@ -332,8 +337,7 @@ impl Weapsel {
 
             menus.push(WeapselMenu {
                 menu,
-                weapons: w.weapons,
-                worm: w.worm,
+                id: None,
                 ready: w.ready,
                 name: w.name.clone(),
                 color: w.color,
@@ -342,7 +346,6 @@ impl Weapsel {
         Box::new(Weapsel {
             menus,
             weapon_names: spec.weapon_names,
-            game: std::ptr::null_mut(),
             cached: false,
             cached_spectator: false,
             focused: true,
@@ -351,55 +354,39 @@ impl Weapsel {
 
     /// Starts weapon selection for `game`'s split-screen viewports' worms
     /// (`WeaponSelection::WeaponSelection`): bots that don't choose take
-    /// random weapons, or their own, as the settings say.
-    ///
-    /// # Safety
-    /// The game has its context, and outlives the selection; each
-    /// viewport's worm is listed and has settings.
-    pub unsafe fn start(game: &mut Game, rand: &mut Rand) -> Box<Weapsel> {
-        let g: *mut Game = game;
+    /// random weapons, or their own, as the settings say. Panics if the
+    /// game has no context, or a viewport's worm isn't listed or has no
+    /// settings.
+    pub fn start(game: &mut Game, rand: &mut Rand) -> Box<Weapsel> {
         let select = game.settings_box().data.ext.select_bot_weapons;
-        let viewports: Vec<(i32, i32, i32)> = game
-            .split_viewports()
-            .iter()
-            .map(|vp| {
-                (
-                    vp.worm_idx,
-                    (vp.rect.x1 + vp.rect.x2) / 2,
-                    (vp.rect.y1 + vp.rect.y2) / 2,
-                )
-            })
-            .collect();
+        let mut ids = Vec::new();
         let mut worms = Vec::new();
-        for (idx, center_x, center_y) in viewports {
-            let w = game.worm_at(idx as usize).expect("an empty place in a viewport");
-            let worm: *mut WormData = &mut w.data;
-            let mut ws = w.settings_mut();
+        for vp in game.split_viewports() {
+            let id = game.listed_ids()[vp.worm_idx as usize].expect("an empty place in a viewport");
+            let ws = game.worm(id).settings();
             let bot = ws.data.controller != 0;
+            ids.push(id);
             worms.push(WeapselWorm {
-                worm,
-                weapons: &mut ws.data.weapons,
                 name: ws.data.name.clone(),
                 color: ws.data.color,
-                center_x,
-                center_y,
+                center_x: (vp.rect.x1 + vp.rect.x2) / 2,
+                center_y: (vp.rect.y1 + vp.rect.y2) / 2,
                 random: bot && select == 0,
                 ready: bot && select != 1,
             });
         }
-        // SAFETY: the game has its context.
-        let tc = unsafe { &*game.tc_ptr() };
+        let shared_tc = game.tc();
+        let tc = tc_data(&shared_tc);
         let spec = WeapselSpec {
             worms: &worms,
             weapon_names: tc.model.weapons.iter().map(|w| w.name.clone()).collect(),
             randomize: tc.text(text("Randomize")),
             done: tc.text(text("Done")),
         };
-        let mut env = unsafe { game_env(game, rand) };
-        // SAFETY: the worms and their settings are the game's, which
-        // outlives the selection.
-        let mut ws = unsafe { Weapsel::new(spec, &mut env) };
-        ws.game = g;
+        let mut ws = with_game(game, &ids, rand, |env, choosers| Weapsel::new(spec, env, choosers));
+        for (m, id) in ws.menus.iter_mut().zip(ids) {
+            m.id = Some(id);
+        }
         ws
     }
 
@@ -424,16 +411,14 @@ impl Weapsel {
     /// One frame of weapon selection: `WeaponSelection::processFrame`. Each
     /// worm not ready changes the selected weapon with left and right,
     /// moves with up and down, and picks random weapons or finishes with
-    /// fire. Returns whether every worm is ready.
-    ///
-    /// # Safety
-    /// The worms and their weapons are valid, and the sound's mixer.
-    pub unsafe fn process(&mut self, e: &mut WeapselEnv) -> bool {
+    /// fire. Returns whether every worm is ready. `worms` are the menus'
+    /// worms, in order.
+    pub fn process(&mut self, e: &mut WeapselEnv, worms: &mut [Chooser]) -> bool {
+        assert_eq!(self.menus.len(), worms.len(), "a menu without its worm");
         let mut all_ready = true;
 
-        for wm in self.menus.iter_mut() {
-            // SAFETY: as the caller says.
-            let (worm, weapons) = unsafe { (&mut *wm.worm, &mut *wm.weapons) };
+        for (wm, c) in self.menus.iter_mut().zip(worms) {
+            let (worm, weapons) = (&mut *c.worm, &mut *c.weapons);
             // Item names to change, once the menu isn't borrowed.
             let mut renames = Vec::new();
             let ready = &mut wm.ready;
@@ -448,7 +433,7 @@ impl Weapsel {
                     for (control, sound, dir) in [(Control::Left, 25, -1), (Control::Right, 26, 1)] {
                         if worm.pressed(control) {
                             worm.release(control);
-                            unsafe { e.play(sound) };
+                            e.play(sound);
                             let n = &mut weapons[slot as usize];
                             *n = e.step(*n, dir);
                             let w = e.weapon(*n);
@@ -459,11 +444,11 @@ impl Weapsel {
                 }
 
                 if worm.pressed_once(Control::Up) {
-                    unsafe { e.play(26) };
+                    e.play(26);
                     menu.movement(-1);
                 }
                 if worm.pressed_once(Control::Down) {
-                    unsafe { e.play(25) };
+                    e.play(25);
                     menu.movement(1);
                 }
 
@@ -473,7 +458,7 @@ impl Weapsel {
                             renames.push((j as i32, w));
                         }
                     } else if menu.m.selection == DONE_ITEM {
-                        unsafe { e.play(27) };
+                        e.play(27);
                         *ready = true;
                     }
                 }
@@ -488,30 +473,31 @@ impl Weapsel {
         all_ready
     }
 
-    /// `processFrame` for a selection started from a game.
-    ///
-    /// # Safety
-    /// See `start`.
-    pub unsafe fn process_game(&mut self, rand: &mut Rand) -> bool {
-        unsafe {
-            let mut env = game_env(&*self.game, rand);
-            self.process(&mut env)
-        }
+    /// The game's worms the menus are for. Panics for a selection not
+    /// started from a game.
+    fn ids(&self) -> Vec<WormId> {
+        self.menus
+            .iter()
+            .map(|m| m.id.expect("a selection not started from a game"))
+            .collect()
     }
 
-    /// `finalize` for a selection started from a game: gives each of the
-    /// game's worms the weapons its settings chose.
-    ///
-    /// # Safety
-    /// See `start`; every listed worm has settings.
-    pub unsafe fn finish(&mut self) {
-        let game = unsafe { &mut *self.game };
-        let tc = game.tc_ptr();
+    /// `processFrame` for a selection started from `game`.
+    pub fn process_game(&mut self, game: &mut Game, rand: &mut Rand) -> bool {
+        let ids = self.ids();
+        with_game(game, &ids, rand, |env, worms| self.process(env, worms))
+    }
+
+    /// `finalize` for a selection started from `game`: gives each of the
+    /// game's worms the weapons its settings chose. Panics if a listed worm
+    /// has no settings.
+    pub fn finish(&mut self, game: &mut Game) {
+        let shared_tc = game.tc();
+        let tc = tc_data(&shared_tc);
         for w in game.listed_worms() {
             let w = w.expect("an empty place among the game's worms");
             let numbers = w.settings().data.weapons;
-            // SAFETY: the TC isn't the worms'.
-            finalize(&mut w.data, &numbers, unsafe { &*tc });
+            finalize(&mut w.data, &numbers, &tc);
         }
     }
 
@@ -543,71 +529,68 @@ impl Weapsel {
         }
     }
 
-    /// `WeaponSelection::draw` for a selection started from a game: on the
-    /// spectator screen, who plays whom and the level, and on the play screen
-    /// the frozen game, with the menus over it while focused. The palette
-    /// changes are the app's renderers', whichever `r` is.
-    ///
-    /// # Safety
-    /// See `start`; `r` is valid.
-    pub unsafe fn draw_game(&mut self, a: &mut App, r: *mut Renderer, state: State, spectators: bool) {
-        unsafe {
-            let game = &mut *self.game;
-            let tc = &*game.tc_ptr();
-            let font = tc_font(tc);
-            let g: *const Game = game;
-            let menu_settings = a.shared_settings();
-            // The game's settings can be the menus' own, so one at a time.
-            let line = || {
-                let game_file = (*g).settings_box().data.level_file.clone();
-                let menu_file = menu_settings.borrow().data.level_file.clone();
-                level_line(tc, &game_file, &menu_file)
-            };
-            if spectators {
-                let (cx, cy) = ((*r).data.render_res_x / 2, (*r).data.render_res_y / 4);
-                if !self.cached_spectator {
-                    let scr = (*r).bmp.view();
-                    let w = game.settings_box().data.worms.clone();
-                    let w = [w[0].borrow(), w[1].borrow()];
-                    draw_versus(
-                        &scr,
-                        &font,
-                        &line(),
-                        &w[0].data.name,
-                        &w[1].data.name,
-                        w[0].data.color,
-                        w[1].data.color,
-                        cx,
-                        cy,
-                    );
-                    font.centered(&scr, b"WEAPON SELECTION", cx, cy + 48, 7, 2);
-                    game.level_box()
-                        .draw_miniature(&scr, cx - 126, (*r).data.render_res_y - 208, 2);
-                    a.frozen_spectator.copy_from(&(*r).bmp);
-                    self.cached_spectator = true;
-                }
-                (*r).bmp.copy_from(&a.frozen_spectator);
-                if !self.focused {
-                    return;
-                }
-                self.draw_spectator(&(*r).bmp.view(), &font);
-                menu_palette(&mut *a.single, a.menu_cycles);
-            } else {
-                if !self.cached {
-                    game.draw(&mut *r, state, false, false);
-                    font.text(&(*r).bmp.view(), &line(), 0, 162, 50, 1);
-                    a.frozen.copy_from(&(*r).bmp);
-                    self.cached = true;
-                }
-                (*r).bmp.copy_from(&a.frozen);
-                if !self.focused {
-                    return;
-                }
-                // C++ drew the menus on the play screen, whatever `r` was.
-                let menu_scr = a.play.bmp.view();
-                self.draw(&(*r).bmp.view(), &menu_scr, &font, tc.text(text("SelWeap")));
-                menu_palette(&mut *a.play, a.menu_cycles);
+    /// `WeaponSelection::draw` for a selection started from `game`: on the
+    /// spectator screen (the app's single renderer), who plays whom and the
+    /// level, and on the play screen the frozen game, with the menus over
+    /// it while focused.
+    pub fn draw_game(&mut self, game: &mut Game, a: &mut App, state: State, spectators: bool) {
+        let shared_tc = game.tc();
+        let tc = tc_data(&shared_tc);
+        let font = tc_font(&tc);
+        let menu_settings = a.shared_settings();
+        // The game's settings can be the menus' own, so one at a time.
+        let line = |game: &Game| {
+            let game_file = game.settings_box().data.level_file.clone();
+            let menu_file = menu_settings.borrow().data.level_file.clone();
+            level_line(&tc, &game_file, &menu_file)
+        };
+        let menu_cycles = a.menu_cycles;
+        if spectators {
+            let r = &mut *a.single;
+            let (cx, cy) = (r.data.render_res_x / 2, r.data.render_res_y / 4);
+            if !self.cached_spectator {
+                let scr = r.bmp.view();
+                let w = game.settings_box().data.worms.clone();
+                let w = [w[0].borrow(), w[1].borrow()];
+                draw_versus(
+                    &scr,
+                    &font,
+                    &line(game),
+                    &w[0].data.name,
+                    &w[1].data.name,
+                    w[0].data.color,
+                    w[1].data.color,
+                    cx,
+                    cy,
+                );
+                font.centered(&scr, b"WEAPON SELECTION", cx, cy + 48, 7, 2);
+                game.level_box()
+                    .draw_miniature(&scr, cx - 126, r.data.render_res_y - 208, 2);
+                a.frozen_spectator.copy_from(&r.bmp);
+                self.cached_spectator = true;
             }
+            r.bmp.copy_from(&a.frozen_spectator);
+            if !self.focused {
+                return;
+            }
+            self.draw_spectator(&r.bmp.view(), &font);
+            menu_palette(r, menu_cycles);
+        } else {
+            let r = &mut *a.play;
+            if !self.cached {
+                game.draw(r, state, false, false);
+                font.text(&r.bmp.view(), &line(game), 0, 162, 50, 1);
+                a.frozen.copy_from(&r.bmp);
+                self.cached = true;
+            }
+            r.bmp.copy_from(&a.frozen);
+            if !self.focused {
+                return;
+            }
+            // C++ drew the menus on the play screen.
+            let scr = r.bmp.view();
+            self.draw(&scr, &scr, &font, tc.text(text("SelWeap")));
+            menu_palette(r, menu_cycles);
         }
     }
 }
@@ -682,14 +665,6 @@ mod tests {
         assert_eq!(e.step(5, 1), 6);
     }
 
-    thread_local! {
-        static SOUNDS: std::cell::RefCell<Vec<i32>> = const { std::cell::RefCell::new(Vec::new()) };
-    }
-
-    unsafe fn report(sound: i32) {
-        SOUNDS.with(|s| s.borrow_mut().push(sound));
-    }
-
     /// A TC with `n` weapons, each with ammo 10 + its index.
     /// Boxed: it is too big for the wasm tests' stack.
     fn tc(mut weapons: Vec<Weapon>, order: &[i32]) -> Box<TcData> {
@@ -711,16 +686,16 @@ mod tests {
         let mut rand = Rand::new(1);
         let mut raw = env(&table, &order, &mut rand);
         raw.tc = Some(&tc);
+        let sounds = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let played = sounds.clone();
         raw.sound = SoundOut {
-            mixer: std::ptr::null_mut(),
-            report: Some(report),
+            mixer: None,
+            report: Some(std::rc::Rc::new(move |s| played.borrow_mut().push(s))),
         };
 
         let mut worm = WormData::default();
         let mut numbers = [1u32, 2, 3, 4, 5];
         let spec_worm = WeapselWorm {
-            worm: &mut worm,
-            weapons: &mut numbers,
             name: b"W".to_vec(),
             color: 0,
             center_x: 100,
@@ -734,26 +709,27 @@ mod tests {
             randomize: b"W",
             done: b"W",
         };
-        unsafe {
-            let mut ws = Weapsel::new(spec, &mut raw);
-            assert_eq!(worm.weapons[2].kind, 2);
-            assert_eq!(worm.weapons[2].ammo, 0);
-
-            let mut press = |worm: &mut WormData, control: Control| {
-                worm.control_states = control.bit();
-                ws.process(&mut raw);
-            };
-            press(&mut worm, Control::Down);
-            assert_eq!(worm.control_states, 0, "pressed once");
-            press(&mut worm, Control::Right);
-            assert_eq!(worm.control_states, 0, "released");
-            assert_eq!(numbers[0], 2);
-            assert_eq!(worm.weapons[0].kind, 1);
-            press(&mut worm, Control::Up);
-            press(&mut worm, Control::Left);
-            assert_eq!(numbers[0], 2, "left and right only change weapons");
-            SOUNDS.with(|s| assert_eq!(*s.borrow(), vec![25, 26, 26]));
+        fn chooser<'a>(worm: &'a mut WormData, weapons: &'a mut [u32; 5]) -> [Chooser<'a>; 1] {
+            [Chooser { worm, weapons }]
         }
+        let mut ws = Weapsel::new(spec, &mut raw, &mut chooser(&mut worm, &mut numbers));
+        assert_eq!(worm.weapons[2].kind, 2);
+        assert_eq!(worm.weapons[2].ammo, 0);
+
+        let mut press = |worm: &mut WormData, numbers: &mut [u32; 5], control: Control| {
+            worm.control_states = control.bit();
+            ws.process(&mut raw, &mut chooser(worm, numbers));
+        };
+        press(&mut worm, &mut numbers, Control::Down);
+        assert_eq!(worm.control_states, 0, "pressed once");
+        press(&mut worm, &mut numbers, Control::Right);
+        assert_eq!(worm.control_states, 0, "released");
+        assert_eq!(numbers[0], 2);
+        assert_eq!(worm.weapons[0].kind, 1);
+        press(&mut worm, &mut numbers, Control::Up);
+        press(&mut worm, &mut numbers, Control::Left);
+        assert_eq!(numbers[0], 2, "left and right only change weapons");
+        assert_eq!(*sounds.borrow(), vec![25, 26, 26]);
     }
 
     #[test]
