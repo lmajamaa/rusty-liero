@@ -246,8 +246,8 @@ impl Platform for HashPlatform {
     fn sound(&self) -> SoundOut {
         // No mixer: the hash run has no sound.
         SoundOut {
-            mixer: std::ptr::null_mut(),
-            report: Some(report_sound),
+            mixer: None,
+            report: Some(std::rc::Rc::new(report_sound)),
         }
     }
 

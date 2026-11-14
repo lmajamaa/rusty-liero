@@ -5,7 +5,9 @@
 use crate::app::App;
 use crate::fs::Node;
 use crate::settings::{SettingsBox, SharedSettings};
-use crate::sfx::{Mixer, SoundOut};
+use crate::sfx::{Mixer, SoundId, SoundOut};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 impl App {
     /// Starts the app as `main` did: the config folder `config` (empty for
@@ -82,16 +84,13 @@ impl App {
     }
 
     /// Plays the menus' TC's `sound` on `mixer`, if there is one.
-    ///
-    /// # Safety
-    /// `mixer` is valid or null.
-    pub unsafe fn play_menu_sound(&self, mixer: *mut Mixer, sound: i32) {
-        if mixer.is_null() {
-            return;
-        }
-        let tc = self.menu_tc();
-        // SAFETY: the caller's mixer.
-        unsafe { SoundOut { mixer, report: None }.play(&crate::tc::tc_data(&tc), sound, std::ptr::null_mut(), 0) };
+    pub fn play_menu_sound(&self, mixer: Option<&Rc<RefCell<Mixer>>>, sound: i32) {
+        let Some(mixer) = mixer else { return };
+        let out = SoundOut {
+            mixer: Some(mixer.clone()),
+            report: None,
+        };
+        out.play(&crate::tc::tc_data(&self.menu_tc()), sound, SoundId::NONE, 0);
     }
 }
 

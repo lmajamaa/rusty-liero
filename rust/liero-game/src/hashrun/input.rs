@@ -28,6 +28,8 @@ use crate::rand::Rand;
 use crate::settings::SettingsBox;
 use crate::sfx::{Mixer, SoundOut};
 use crate::tc::SharedTc;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Each of the TC's sounds' samples, or `None` for one the game can't play.
 fn sounds(d: &crate::tc::TcData) -> impl Iterator<Item = Option<&[i16]>> {
@@ -57,14 +59,14 @@ fn hash_buffer(f: &mut Fnv, buf: &[i16]) {
 
 fn mixer_script(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
     let d = tc_data(tc);
-    let mut sounds: Vec<&[i16]> = sounds(&d).flatten().collect();
+    let mut sounds: Vec<Rc<[i16]>> = sounds(&d).flatten().map(Rc::from).collect();
     // A full-scale square wave, which clips as soon as two play at once.
-    let square: Vec<i16> = (0..300)
+    let square: Rc<[i16]> = (0..300)
         .map(|i| if (i / 25) % 2 == 1 { 32767 } else { -32768 })
         .collect();
-    sounds.push(&square);
-    sounds.push(&[-32768]);
-    sounds.push(&[12345, -23456]);
+    sounds.push(square);
+    sounds.push(Rc::from([-32768]));
+    sounds.push(Rc::from([12345, -23456]));
 
     // Ids are only compared, never followed.
     let ids: [usize; 6] = [0, 16, 32, 48, 64, 80];
@@ -78,11 +80,10 @@ fn mixer_script(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
         let id = ids[r.below(ids.len() as u32) as usize];
         let op = r.below(10);
         if op < 4 {
-            let snd = sounds[r.below(sounds.len() as u32) as usize];
+            let snd = sounds[r.below(sounds.len() as u32) as usize].clone();
             let time = mixer.now().wrapping_add(r.below(6000) as i32).wrapping_sub(3000) as u32;
             let looping = r.below(4) == 0;
-            // SAFETY: the samples outlive the mixer.
-            let added = unsafe { mixer.add(snd.as_ptr(), snd.len(), time, id, looping) };
+            let added = mixer.add(snd, time, id, looping);
             // What C's mixer returned, `id` or null if not added, compared
             // with `id` and with null.
             f.bool(added || id == 0);
@@ -119,14 +120,15 @@ fn sound_game(
     ticks: i32,
 ) {
     let mut game = set_up_game(a, tc, seed, game_mode, weapons);
-    let mut mixer = Box::<Mixer>::default();
-    let m: *mut Mixer = &mut *mixer;
+    let mixer = Rc::new(RefCell::new(Mixer::default()));
     let settings = game.settings();
-    // The mixer lives until the game's sound goes back to none.
     game.set_context(
         Some(settings.clone()),
         Some(tc.clone()),
-        SoundOut { mixer: m, report: None },
+        SoundOut {
+            mixer: Some(mixer.clone()),
+            report: None,
+        },
     );
 
     let blood = game.settings_box().data.ext.blood_particle_max;
@@ -138,8 +140,7 @@ fn sound_game(
     for tick in 1..=ticks {
         bot_tick(&mut game);
         game.process_frame(&HOOKS);
-        // SAFETY: the game only uses the mixer during its frame.
-        unsafe { (*m).mix(&mut buf) };
+        mixer.borrow_mut().mix(&mut buf);
         hash_buffer(&mut f, &buf);
 
         let over = game.is_over();
@@ -153,9 +154,7 @@ fn sound_game(
         }
     }
 
-    // The mixer is dropped once the game has no sound.
     game.set_context(Some(settings), Some(tc.clone()), SoundOut::NONE);
-    drop(mixer);
 }
 
 const LOUD: [&str; 5] = ["BIG NUKE", "MINIGUN", "CHAINGUN", "LASER", "HELLRAIDER"];

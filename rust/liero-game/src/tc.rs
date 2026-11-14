@@ -24,7 +24,7 @@ pub struct TcData {
     /// twice as many as the model's (`SfxSample::createSound`), and none
     /// for a sound the game can't play. The TC's sounds are never changed
     /// after loading, so they stay put while a sound plays.
-    pub samples: Vec<Vec<i16>>,
+    pub samples: Vec<std::rc::Rc<[i16]>>,
     /// The model's palette as the game's `Palette` holds it
     /// (`Common::exepal`).
     pub palette_colors: [Color; 256],
@@ -121,7 +121,7 @@ impl Tc {
                 let data = s.data.as_deref().unwrap_or(&[]);
                 let mut samples = vec![0i16; data.len() * 2];
                 samples_from_tc(data, &mut samples);
-                samples
+                samples.into()
             })
             .collect();
 

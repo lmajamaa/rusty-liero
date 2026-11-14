@@ -12,15 +12,12 @@
 //! points the C++ code read them. Only sounds and the stats' clock call
 //! out (`GameHooks`).
 
-use std::ffi::c_void;
-use std::ptr::null_mut;
-
 use crate::game::{BonusState, GameFields, GameHooks, Rect, RuleSettings, Rules};
 use crate::math::{cos_sin, ftoi, itof, vector_length, FVec2, Fixed, IVec2};
 use crate::object::BObject;
 use crate::object::{explosion_damage, explosion_push_object, explosion_push_worm, inside, BonusConstants};
 use crate::objects::{Cursor, FiredBy, NObject, WObject};
-use crate::sfx::SoundOut;
+use crate::sfx::{SoundId, SoundOut};
 use crate::stats::Stats;
 use crate::tc::{c, h, TcData};
 use crate::viewport::Viewport;
@@ -122,7 +119,7 @@ impl<'a> World<'a> {
             viewports: Vec::new(),
             spectator_viewports: Vec::new(),
             stats: None,
-            sound,
+            sound: SoundOut::NONE,
         };
         World {
             g: Rules::new(rules, s),
@@ -190,16 +187,16 @@ impl<'a> World<'a> {
 
     // Sounds and stats.
 
-    fn play(&self, sound: i32, id: *mut c_void, loops: i32) {
-        unsafe { self.sound.play(self.tc, sound, id, loops) }
+    fn play(&self, sound: i32, id: SoundId, loops: i32) {
+        self.sound.play(self.tc, sound, id, loops);
     }
 
-    fn playing(&self, id: *mut c_void) -> bool {
-        unsafe { self.sound.playing(id) }
+    fn playing(&self, id: SoundId) -> bool {
+        self.sound.playing(id)
     }
 
-    fn stop(&self, id: *mut c_void) {
-        unsafe { self.sound.stop(id) }
+    fn stop(&self, id: SoundId) {
+        self.sound.stop(id);
     }
 
     /// The stats the game records, if any.
@@ -262,8 +259,8 @@ impl<'a> World<'a> {
     }
 
     /// The id worm `i`'s own sounds play with.
-    fn worm_sound_id(&self, i: i32) -> *mut c_void {
-        std::ptr::from_ref(self.worm(i)).cast_mut().cast()
+    fn worm_sound_id(&self, i: i32) -> SoundId {
+        SoundId::worm(self.g.worm_id(i))
     }
 
     /// A worm's hurt sound: one of three, unless one of its own is playing.
@@ -296,7 +293,7 @@ impl<'a> World<'a> {
 
         if t.start_sound >= 0 {
             let snd = self.rand(t.num_sounds as u32) as i32 + t.start_sound;
-            self.play(snd, null_mut(), 0);
+            self.play(snd, SoundId::NONE, 0);
         }
 
         for v in &mut self.viewports {

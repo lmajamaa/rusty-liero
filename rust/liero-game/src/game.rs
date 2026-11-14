@@ -175,7 +175,7 @@ impl GameFields<'_> {
             viewports: self.viewports.iter_mut().map(|v| &mut **v).collect(),
             spectator_viewports: self.spectator_viewports.iter_mut().map(|v| &mut **v).collect(),
             stats: self.stats.as_deref_mut(),
-            sound: self.sound,
+            sound: self.sound.clone(),
         }
     }
 
@@ -574,8 +574,7 @@ pub fn heal(game: GameFields, settings: &RuleSettings, target: i32, amount: i32)
 /// without the TC.
 pub fn start_game(game: GameFields, settings: &RuleSettings, blood_particle_max: i32) {
     let tc = game.tc.expect("starting a game without a TC");
-    // SAFETY: the sound output's mixer is valid while the game is played.
-    unsafe { game.sound.play(tc, 22, std::ptr::null_mut(), 0) };
+    game.sound.play(tc, 22, crate::sfx::SoundId::NONE, 0);
     let mut g = Rules::new(game, settings);
     g.data.bobjects.resize(blood_particle_max.max(0) as usize);
     if settings.game_mode == Some(GameMode::Holdazone) {
@@ -670,23 +669,20 @@ mod tests {
 
     #[test]
     fn starting_plays_the_sound_and_sizes_the_blood() {
-        use std::sync::atomic::{AtomicI32, Ordering};
-        static PLAYED: AtomicI32 = AtomicI32::new(-1);
-        unsafe fn report(sound: i32) {
-            PLAYED.store(sound, Ordering::SeqCst);
-        }
+        let played = std::rc::Rc::new(std::cell::Cell::new(-1));
         let tc = crate::tc::TcData::empty();
         with_game_tc(&mut [worm(100), worm(100)], Some(&tc), |f| {
+            let played = played.clone();
             f.sound = SoundOut {
-                mixer: std::ptr::null_mut(),
-                report: Some(report),
+                mixer: None,
+                report: Some(std::rc::Rc::new(move |s| played.set(s))),
             };
             start_game(f.reborrow(), &settings(Some(GameMode::KillEmAll)), 300);
             assert_eq!((f.game.bobjects.limit(), f.game.bobjects.count), (300, 0));
             // No zone outside Holdazone.
             assert_eq!(f.game.holdazone.rect.x2, 0);
         });
-        assert_eq!(PLAYED.load(Ordering::SeqCst), 22);
+        assert_eq!(played.get(), 22);
     }
 
     #[test]

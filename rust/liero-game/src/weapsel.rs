@@ -105,12 +105,9 @@ pub struct WeapselEnv<'a> {
 
 impl WeapselEnv<'_> {
     /// Plays a menu sound (`soundPlayer->play`).
-    ///
-    /// # Safety
-    /// The sound's mixer is valid.
-    unsafe fn play(&self, sound: i32) {
+    fn play(&self, sound: i32) {
         if let Some(tc) = self.tc {
-            unsafe { self.sound.play(tc, sound, std::ptr::null_mut(), 0) };
+            self.sound.play(tc, sound, crate::sfx::SoundId::NONE, 0);
         }
     }
 
@@ -448,7 +445,7 @@ impl Weapsel {
                     for (control, sound, dir) in [(Control::Left, 25, -1), (Control::Right, 26, 1)] {
                         if worm.pressed(control) {
                             worm.release(control);
-                            unsafe { e.play(sound) };
+                            e.play(sound);
                             let n = &mut weapons[slot as usize];
                             *n = e.step(*n, dir);
                             let w = e.weapon(*n);
@@ -459,11 +456,11 @@ impl Weapsel {
                 }
 
                 if worm.pressed_once(Control::Up) {
-                    unsafe { e.play(26) };
+                    e.play(26);
                     menu.movement(-1);
                 }
                 if worm.pressed_once(Control::Down) {
-                    unsafe { e.play(25) };
+                    e.play(25);
                     menu.movement(1);
                 }
 
@@ -473,7 +470,7 @@ impl Weapsel {
                             renames.push((j as i32, w));
                         }
                     } else if menu.m.selection == DONE_ITEM {
-                        unsafe { e.play(27) };
+                        e.play(27);
                         *ready = true;
                     }
                 }
@@ -682,14 +679,6 @@ mod tests {
         assert_eq!(e.step(5, 1), 6);
     }
 
-    thread_local! {
-        static SOUNDS: std::cell::RefCell<Vec<i32>> = const { std::cell::RefCell::new(Vec::new()) };
-    }
-
-    unsafe fn report(sound: i32) {
-        SOUNDS.with(|s| s.borrow_mut().push(sound));
-    }
-
     /// A TC with `n` weapons, each with ammo 10 + its index.
     /// Boxed: it is too big for the wasm tests' stack.
     fn tc(mut weapons: Vec<Weapon>, order: &[i32]) -> Box<TcData> {
@@ -711,9 +700,11 @@ mod tests {
         let mut rand = Rand::new(1);
         let mut raw = env(&table, &order, &mut rand);
         raw.tc = Some(&tc);
+        let sounds = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let played = sounds.clone();
         raw.sound = SoundOut {
-            mixer: std::ptr::null_mut(),
-            report: Some(report),
+            mixer: None,
+            report: Some(std::rc::Rc::new(move |s| played.borrow_mut().push(s))),
         };
 
         let mut worm = WormData::default();
@@ -752,7 +743,7 @@ mod tests {
             press(&mut worm, Control::Up);
             press(&mut worm, Control::Left);
             assert_eq!(numbers[0], 2, "left and right only change weapons");
-            SOUNDS.with(|s| assert_eq!(*s.borrow(), vec![25, 26, 26]));
+            assert_eq!(*sounds.borrow(), vec![25, 26, 26]);
         }
     }
 

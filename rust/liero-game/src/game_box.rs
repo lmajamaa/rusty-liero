@@ -134,7 +134,7 @@ impl Game {
     }
 
     pub(crate) fn sound(&self) -> SoundOut {
-        self.sound
+        self.sound.clone()
     }
 
     pub(crate) fn level_box(&self) -> &LevelBox {
@@ -254,7 +254,7 @@ impl Game {
             viewports: viewports.iter_mut().map(|v| &mut **v).collect(),
             spectator_viewports: spectators.iter_mut().map(|v| &mut **v).collect(),
             stats: Some(stats),
-            sound: *sound,
+            sound: sound.clone(),
         };
         f(fields, listed_ais, &settings)
     }
@@ -408,7 +408,7 @@ impl Game {
             },
             settings: self.settings.clone(),
             tc: self.tc.clone(),
-            sound: self.sound,
+            sound: self.sound.clone(),
         })
     }
 }
