@@ -16,7 +16,6 @@ use std::ffi::c_void;
 use std::ptr::null_mut;
 
 use crate::game::{BonusState, GameFields, GameHooks, Rect, RuleSettings, Rules};
-use crate::level::slice;
 use crate::math::{cos_sin, ftoi, itof, vector_length, FVec2, Fixed, IVec2};
 use crate::object::BObject;
 use crate::object::{explosion_damage, explosion_push_object, explosion_push_worm, inside, BonusConstants};
@@ -101,26 +100,38 @@ pub(crate) struct World<'a> {
 }
 
 impl<'a> World<'a> {
-    /// Borrows what `f` points to.
-    ///
-    /// # Safety
-    /// As `Game::new`; the TC, the viewports and the stats (which may be
-    /// null) are valid for `'a` too, and nothing else uses the viewports
-    /// or the stats meanwhile.
-    pub(crate) unsafe fn new(f: &'a GameFields, s: &'a RuleSettings, h: &'a GameHooks<'a>) -> Self {
-        unsafe {
-            let viewports = |list: *const *mut Viewport, n: i32| -> Vec<&'a mut Viewport> {
-                slice(list, n.max(0) as usize).iter().map(|&v| &mut *v).collect()
-            };
-            World {
-                g: Rules::new(f, s),
-                tc: &*f.tc,
-                viewports: viewports(f.viewports, f.viewport_count),
-                spectators: viewports(f.spectator_viewports, f.spectator_viewport_count),
-                stats: f.stats.as_mut(),
-                sound: f.sound,
-                h,
-            }
+    /// The tick on `f`. Panics without the TC.
+    pub(crate) fn new(f: GameFields<'a>, s: &'a RuleSettings, h: &'a GameHooks<'a>) -> Self {
+        let GameFields {
+            worms,
+            pool,
+            game,
+            level,
+            tc,
+            viewports,
+            spectator_viewports,
+            stats,
+            sound,
+        } = f;
+        let rules = GameFields {
+            worms,
+            pool,
+            game,
+            level,
+            tc: None,
+            viewports: Vec::new(),
+            spectator_viewports: Vec::new(),
+            stats: None,
+            sound,
+        };
+        World {
+            g: Rules::new(rules, s),
+            tc: tc.expect("a tick without a TC"),
+            viewports,
+            spectators: spectator_viewports,
+            stats,
+            sound,
+            h,
         }
     }
 
@@ -603,8 +614,7 @@ impl<'a> World<'a> {
             if frame == 0 {
                 loop {
                     b.weapon = self.rand(s.weapon_count as u32) as i32;
-                    // SAFETY: weap_table has weapon_count entries.
-                    if unsafe { *s.weap_table.add(b.weapon as usize) } != 2 {
+                    if s.weap_table[b.weapon as usize] != 2 {
                         break;
                     }
                 }

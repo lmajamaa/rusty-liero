@@ -147,34 +147,30 @@ impl WormAi {
 
 /// One tick of the worms' bots, as `LocalController` ran them: from the
 /// first worm on even cycles and the second on odd ones, each setting its
-/// worm's controls. With `hooks`, each bot's time goes into the game's
-/// stats, if any.
-///
-/// # Safety
-/// The pointers in `game` and `settings` must be valid for the call, and
-/// the worms' bots must come from `WormAi::new`, or be null.
-pub unsafe fn process_ais(
-    game: &GameFields,
+/// worm's controls. `ais` are the listed worms' bots, in the same order.
+/// With `hooks`, each bot's time goes into the game's stats, if any.
+pub fn process_ais(
+    game: &mut GameFields,
+    ais: &mut [Option<&mut WormAi>],
     settings: &RuleSettings,
     ai_settings: &AiSettings,
     hooks: Option<&GameHooks>,
 ) {
-    unsafe {
-        let n = game.worm_count as usize;
-        let phase = ((*game.game).cycles % 2) as usize;
-        for i in 0..n {
-            let place = (i + phase) % n;
-            let w = *game.worms.add(place);
-            let Some(ai) = w.ai.as_mut() else { continue };
-            let start = hooks.map(|h| (h.hires_ticks)());
-            let controls = match ai {
-                WormAi::Dumb(r) => sim::process_dumb(r, game, place as i32),
-                WormAi::Follow(f) => sim::process(f, game, settings, ai_settings, place as i32),
-            };
-            (*w.data).control_states = controls;
-            if let (Some(h), Some(start), Some(stats)) = (hooks, start, game.stats.as_mut()) {
-                stats.ai_process_time((*w.data).index, (h.hires_ticks)().wrapping_sub(start));
-            }
+    let n = game.worms.len();
+    let phase = (game.game.cycles % 2) as usize;
+    for i in 0..n {
+        let place = (i + phase) % n;
+        let Some(ai) = ais[place].as_deref_mut() else { continue };
+        let start = hooks.map(|h| (h.hires_ticks)());
+        let controls = match ai {
+            WormAi::Dumb(r) => sim::process_dumb(r, game, place),
+            WormAi::Follow(f) => sim::process(f, game, settings, ai_settings, place as i32),
+        };
+        let w = game.worm_mut(place);
+        w.control_states = controls;
+        let index = w.index;
+        if let (Some(h), Some(start), Some(stats)) = (hooks, start, game.stats.as_deref_mut()) {
+            stats.ai_process_time(index, (h.hires_ticks)().wrapping_sub(start));
         }
     }
 }

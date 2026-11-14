@@ -8,13 +8,12 @@
 //! each worm's (`WormData`). The rules and the tick (in `world.rs`)
 //! borrow them, through `Game`, for the call.
 
-use crate::level::{slice, Level, RawLevel};
+use crate::level::Level;
 use crate::objects::{zeroed_box, BObjectList, BonusList, NObjectList, SObjectList, WObjectList};
 use crate::rand::Rand;
 use crate::sfx::SoundOut;
 use crate::stats::{Stats, StatsWorm};
 use crate::tc::TcData;
-use crate::text::Str;
 use crate::viewport::Viewport;
 use crate::world::World;
 use crate::worm::{GameMode, WormData, WormId};
@@ -54,19 +53,13 @@ pub struct BonusState {
     pub weapon: i32,
 }
 
-/// A worm, as the game rules see it.
-#[derive(Clone, Copy, Debug)]
+/// A listed worm, as the game rules see it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GameWorm {
-    pub data: *mut WormData,
     /// Its place in the game's pool, which ropes are anchored by.
-    pub id: crate::worm::WormId,
+    pub id: WormId,
     /// The worm's full health (`settings->health`).
     pub max_health: i32,
-    /// The worm's bot, if any (null for a human).
-    pub ai: *mut crate::ai::WormAi,
-    /// The worm's name and colour, from its settings.
-    pub name: Str,
-    pub color: i32,
 }
 
 /// The game's state, besides its worms and level. Rust owns it, and the
@@ -150,29 +143,51 @@ impl GameData {
     }
 }
 
-/// The game state the rules read and change. `worms` has `worm_count`
-/// entries in the order of C++'s `Game::worms`; worm numbers (killers,
-/// holders, 'it') are positions in it.
-#[derive(Clone, Copy)]
-pub struct GameFields {
-    pub worms: *const GameWorm,
-    pub worm_count: i32,
+/// The game state the rules read and change, borrowed. `worms` is in the
+/// order of C++'s `Game::worms`; worm numbers (killers, holders, 'it') are
+/// positions in it.
+pub struct GameFields<'a> {
+    pub worms: Vec<GameWorm>,
     /// Every worm the game has, by `WormId`, listed or not.
-    pub pool: *const *mut WormData,
-    pub pool_count: usize,
-    pub game: *mut GameData,
-    pub level: RawLevel,
-    /// The TC. Only the tick reads it, so the rules may leave it null.
-    pub tc: *const TcData,
+    pub pool: Vec<&'a mut WormData>,
+    pub game: &'a mut GameData,
+    pub level: Level<'a>,
+    /// The TC. Only the tick reads it, so the rules may go without.
+    pub tc: Option<&'a TcData>,
     /// The viewports, whose shake and death banners the tick moves.
-    pub viewports: *const *mut Viewport,
-    pub viewport_count: i32,
-    pub spectator_viewports: *const *mut Viewport,
-    pub spectator_viewport_count: i32,
-    /// The stats the tick records, or null for none.
-    pub stats: *mut Stats,
+    pub viewports: Vec<&'a mut Viewport>,
+    pub spectator_viewports: Vec<&'a mut Viewport>,
+    /// The stats the tick records, if any.
+    pub stats: Option<&'a mut Stats>,
     /// Where its sounds go.
     pub sound: SoundOut,
+}
+
+impl GameFields<'_> {
+    /// The same game, borrowed again for a shorter while.
+    pub fn reborrow(&mut self) -> GameFields<'_> {
+        GameFields {
+            worms: self.worms.clone(),
+            pool: self.pool.iter_mut().map(|w| &mut **w).collect(),
+            game: self.game,
+            level: self.level.reborrow(),
+            tc: self.tc,
+            viewports: self.viewports.iter_mut().map(|v| &mut **v).collect(),
+            spectator_viewports: self.spectator_viewports.iter_mut().map(|v| &mut **v).collect(),
+            stats: self.stats.as_deref_mut(),
+            sound: self.sound,
+        }
+    }
+
+    /// The listed worm at `place`.
+    pub fn worm(&self, place: usize) -> &WormData {
+        self.pool[self.worms[place].id.0 as usize]
+    }
+
+    /// The listed worm at `place`, to change.
+    pub fn worm_mut(&mut self, place: usize) -> &mut WormData {
+        self.pool[self.worms[place].id.0 as usize]
+    }
 }
 
 /// Game settings, and TC constants and hacks, for the rules.
@@ -187,7 +202,7 @@ pub struct RuleSettings {
     pub zone_capture_time: i32,
     /// `Settings::weapTable`, one entry per weapon; 2 means the weapon is
     /// never in bonuses.
-    pub weap_table: *const u32,
+    pub weap_table: [u32; 40],
     pub weapon_count: i32,
     /// `Common::bonusRandTimer`: for each bonus frame, the shortest time
     /// and the random part.
@@ -244,47 +259,27 @@ pub(crate) fn stats_worm(w: &WormData, max_health: i32) -> StatsWorm {
 pub(crate) struct Rules<'a> {
     pub(crate) data: &'a mut GameData,
     pool: Vec<&'a mut WormData>,
-    /// The listed worms, in order: their ids and full health. Worm numbers
-    /// (killers, holders, 'it') are positions in it.
-    list: Vec<(WormId, i32)>,
+    /// The listed worms, in order. Worm numbers (killers, holders, 'it')
+    /// are positions in it.
+    list: Vec<GameWorm>,
     pub(crate) level: Level<'a>,
     pub(crate) s: &'a RuleSettings,
 }
 
 impl<'a> Rules<'a> {
-    /// Borrows what `f` points to.
-    ///
-    /// # Safety
-    /// `f`'s state, worms and level are valid for `'a`, and nothing else
-    /// uses them meanwhile. This checks that the pool's worms are distinct,
-    /// that no worm is listed twice, and that each listed worm's data is
-    /// the pool's worm of its id.
-    pub(crate) unsafe fn new(f: &'a GameFields, s: &'a RuleSettings) -> Self {
-        unsafe {
-            let pool_ptrs = slice(f.pool, f.pool_count);
-            for (i, p) in pool_ptrs.iter().enumerate() {
-                assert!(!pool_ptrs[..i].contains(p), "a worm twice in the pool");
-            }
-            let list: Vec<(WormId, i32)> = slice(f.worms, f.worm_count.max(0) as usize)
-                .iter()
-                .map(|w| {
-                    assert!(
-                        std::ptr::eq(pool_ptrs[w.id.0 as usize], w.data),
-                        "a listed worm not in the pool"
-                    );
-                    (w.id, w.max_health)
-                })
-                .collect();
-            for (i, (id, _)) in list.iter().enumerate() {
-                assert!(!list[..i].iter().any(|(other, _)| other == id), "a worm listed twice");
-            }
-            Rules {
-                data: &mut *f.game,
-                pool: pool_ptrs.iter().map(|&p| &mut *p).collect(),
-                list,
-                level: f.level.get(),
-                s,
-            }
+    /// The rules on `f`'s state, worms and level. Panics if a worm is
+    /// listed twice or isn't in the pool.
+    pub(crate) fn new(f: GameFields<'a>, s: &'a RuleSettings) -> Self {
+        for (i, w) in f.worms.iter().enumerate() {
+            assert!((w.id.0 as usize) < f.pool.len(), "a listed worm not in the pool");
+            assert!(!f.worms[..i].iter().any(|o| o.id == w.id), "a worm listed twice");
+        }
+        Rules {
+            data: f.game,
+            pool: f.pool,
+            list: f.worms,
+            level: f.level,
+            s,
         }
     }
 }
@@ -296,12 +291,12 @@ impl Rules<'_> {
 
     /// The id of worm `i`, a position in the game's worms.
     pub(crate) fn worm_id(&self, i: i32) -> WormId {
-        self.list[i as usize].0
+        self.list[i as usize].id
     }
 
     /// Worm `i`'s full health (`settings->health`).
     pub(crate) fn max_health(&self, i: i32) -> i32 {
-        self.list[i as usize].1
+        self.list[i as usize].max_health
     }
 
     /// Worm `i`, a position in the game's worms.
@@ -557,59 +552,40 @@ impl Rules<'_> {
     }
 }
 
-// The functions C++ calls. In each, the pointers in `game` and `settings`
-// must be valid for the call, and nothing else may use what they point to
-// meanwhile.
-
-/// Runs the game for one tick: C++'s `Game::processFrame`.
-///
-/// # Safety
-/// See above.
-pub unsafe fn process_frame(game: &GameFields, settings: &RuleSettings, hooks: &GameHooks) {
-    unsafe {
-        World::new(game, settings, hooks).process_frame();
-    }
+/// Runs the game for one tick: C++'s `Game::processFrame`. Panics without
+/// the TC.
+pub fn process_frame(game: GameFields, settings: &RuleSettings, hooks: &GameHooks) {
+    World::new(game, settings, hooks).process_frame();
 }
 
 /// Hurts worm `target` (a position in `game.worms`) by `amount`, caused by
 /// worm `by_idx` or -1: `Game::doDamage`.
-///
-/// # Safety
-/// See above.
-pub unsafe fn damage(game: &GameFields, settings: &RuleSettings, target: i32, amount: i32, by_idx: i32) {
-    unsafe { Rules::new(game, settings) }.damage(target, amount, by_idx);
+pub fn damage(game: GameFields, settings: &RuleSettings, target: i32, amount: i32, by_idx: i32) {
+    Rules::new(game, settings).damage(target, amount, by_idx);
 }
 
 /// Heals worm `target` by `amount`: `Game::doHealing`.
-///
-/// # Safety
-/// See above.
-pub unsafe fn heal(game: &GameFields, settings: &RuleSettings, target: i32, amount: i32) {
-    unsafe { Rules::new(game, settings) }.heal(target, amount);
+pub fn heal(game: GameFields, settings: &RuleSettings, target: i32, amount: i32) {
+    Rules::new(game, settings).heal(target, amount);
 }
 
 /// `Game::startGame`: the start sound, the blood list made
-/// `blood_particle_max` long, and in Holdazone the first zone.
-///
-/// # Safety
-/// See above; the TC is valid too.
-pub unsafe fn start_game(game: &GameFields, settings: &RuleSettings, blood_particle_max: i32) {
-    unsafe {
-        game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
-        let mut g = Rules::new(game, settings);
-        g.data.bobjects.resize(blood_particle_max.max(0) as usize);
-        if settings.game_mode == Some(GameMode::Holdazone) {
-            g.spawn_zone();
-        }
+/// `blood_particle_max` long, and in Holdazone the first zone. Panics
+/// without the TC.
+pub fn start_game(game: GameFields, settings: &RuleSettings, blood_particle_max: i32) {
+    let tc = game.tc.expect("starting a game without a TC");
+    // SAFETY: the sound output's mixer is valid while the game is played.
+    unsafe { game.sound.play(tc, 22, std::ptr::null_mut(), 0) };
+    let mut g = Rules::new(game, settings);
+    g.data.bobjects.resize(blood_particle_max.max(0) as usize);
+    if settings.game_mode == Some(GameMode::Holdazone) {
+        g.spawn_zone();
     }
 }
 
 /// Whether the game has ended: `Game::isGameOver`.
-///
-/// # Safety
-/// See above.
-pub unsafe fn is_over(game: &GameFields, settings: &RuleSettings) -> bool {
-    unsafe { Rules::new(game, settings) }.is_over()
+pub fn is_over(game: GameFields, settings: &RuleSettings) -> bool {
+    Rules::new(game, settings).is_over()
 }
 
 #[cfg(test)]
@@ -632,7 +608,7 @@ mod tests {
             time_to_lose: 600,
             zone_timeout: 30,
             zone_capture_time: 70,
-            weap_table: std::ptr::null(),
+            weap_table: [0; 40],
             weapon_count: 0,
             bonus_rand_timer: [[0; 2]; 2],
             bonus_spawn_rect_x: 0,
@@ -652,48 +628,44 @@ mod tests {
     }
 
     /// Runs `f` on a game of `worms`, all with 100 full health.
-    fn with_game(worms: &mut [WormData], f: impl FnOnce(&GameFields)) {
-        let views: Vec<GameWorm> = worms
+    fn with_game(worms: &mut [WormData], f: impl FnOnce(&mut GameFields)) {
+        with_game_tc(worms, None, f);
+    }
+
+    /// As `with_game`, with `tc`.
+    fn with_game_tc(worms: &mut [WormData], tc: Option<&crate::tc::TcData>, f: impl FnOnce(&mut GameFields)) {
+        let list = (0..worms.len())
+            .map(|i| GameWorm {
+                id: WormId(i as u32),
+                max_health: 100,
+            })
+            .collect();
+        let pool = worms
             .iter_mut()
             .enumerate()
             .map(|(i, w)| {
                 w.index = i as i32;
-                GameWorm {
-                    id: crate::worm::WormId(i as u32),
-                    data: w,
-                    max_health: 100,
-                    ai: std::ptr::null_mut(),
-                    name: Str {
-                        ptr: std::ptr::null(),
-                        len: 0,
-                    },
-                    color: 0,
-                }
+                w
             })
             .collect();
-        let pool: Vec<*mut WormData> = views.iter().map(|w| w.data).collect();
         let mut game = GameData::new_boxed();
-        let fields = GameFields {
-            worms: views.as_ptr(),
-            worm_count: views.len() as i32,
-            pool: pool.as_ptr(),
-            pool_count: pool.len(),
-            game: &mut *game,
-            level: RawLevel {
-                data: std::ptr::null_mut(),
-                materials: std::ptr::null_mut(),
+        let mut fields = GameFields {
+            worms: list,
+            pool,
+            game: &mut game,
+            level: Level {
+                data: &mut [],
+                materials: &mut [],
                 width: 0,
                 height: 0,
             },
-            tc: std::ptr::null(),
-            viewports: std::ptr::null(),
-            viewport_count: 0,
-            spectator_viewports: std::ptr::null(),
-            spectator_viewport_count: 0,
-            stats: std::ptr::null_mut(),
+            tc,
+            viewports: Vec::new(),
+            spectator_viewports: Vec::new(),
+            stats: None,
             sound: SoundOut::NONE,
         };
-        f(&fields);
+        f(&mut fields);
     }
 
     #[test]
@@ -704,19 +676,15 @@ mod tests {
             PLAYED.store(sound, Ordering::SeqCst);
         }
         let tc = crate::tc::TcData::empty();
-        with_game(&mut [worm(100), worm(100)], |f| {
-            let mut f = *f;
-            f.tc = &*tc;
+        with_game_tc(&mut [worm(100), worm(100)], Some(&tc), |f| {
             f.sound = SoundOut {
                 mixer: std::ptr::null_mut(),
                 report: Some(report),
             };
-            unsafe {
-                start_game(&f, &settings(Some(GameMode::KillEmAll)), 300);
-                assert_eq!(((*f.game).bobjects.limit(), (*f.game).bobjects.count), (300, 0));
-                // No zone outside Holdazone.
-                assert_eq!((*f.game).holdazone.rect.x2, 0);
-            }
+            start_game(f.reborrow(), &settings(Some(GameMode::KillEmAll)), 300);
+            assert_eq!((f.game.bobjects.limit(), f.game.bobjects.count), (300, 0));
+            // No zone outside Holdazone.
+            assert_eq!(f.game.holdazone.rect.x2, 0);
         });
         assert_eq!(PLAYED.load(Ordering::SeqCst), 22);
     }
@@ -762,10 +730,10 @@ mod tests {
     fn damage_records_the_killer() {
         let mut worms = [worm(10), worm(100)];
         let s = settings(Some(GameMode::KillEmAll));
-        with_game(&mut worms, |g| unsafe {
-            damage(g, &s, 0, 5, 1);
-            damage(g, &s, 0, 0, 1);
-            damage(g, &s, 0, 7, 1);
+        with_game(&mut worms, |g| {
+            damage(g.reborrow(), &s, 0, 5, 1);
+            damage(g.reborrow(), &s, 0, 0, 1);
+            damage(g.reborrow(), &s, 0, 7, 1);
         });
         assert_eq!((worms[0].health, worms[0].last_killed_by_idx), (-2, Some(1)));
         assert_eq!(worms[1].health, 100);
@@ -775,19 +743,19 @@ mod tests {
     fn scales_of_justice_moves_health() {
         let mut worms = [worm(50), worm(90), worm(90)];
         let s = settings(Some(GameMode::ScalesOfJustice));
-        with_game(&mut worms, |g| unsafe {
+        with_game(&mut worms, |g| {
             // Hurt by worm 1: it gets all of it, and an extra life from the
             // overflow.
-            damage(g, &s, 0, 20, 1);
+            damage(g.reborrow(), &s, 0, 20, 1);
         });
         assert_eq!((worms[0].health, worms[1].health, worms[1].lives), (30, 10, 6));
 
-        with_game(&mut worms, |g| unsafe {
+        with_game(&mut worms, |g| {
             // Self-inflicted: split between the others, 6 and then 7,
             // rounding down in turn.
-            damage(g, &s, 0, 13, 0);
+            damage(g.reborrow(), &s, 0, 13, 0);
             // Healing takes from the others in the same way.
-            heal(g, &s, 2, 9);
+            heal(g.reborrow(), &s, 2, 9);
         });
         assert_eq!(worms[0].health, 30 - 13 - 4);
         assert_eq!(worms[1].health, 10 + 6 - 5);
@@ -799,7 +767,7 @@ mod tests {
     fn healing_is_capped_outside_scales_of_justice() {
         let mut worms = [worm(95), worm(100)];
         let s = settings(Some(GameMode::KillEmAll));
-        with_game(&mut worms, |g| unsafe { heal(g, &s, 0, 20) });
+        with_game(&mut worms, |g| heal(g.reborrow(), &s, 0, 20));
         assert_eq!((worms[0].health, worms[0].lives), (100, 5));
     }
 
@@ -815,13 +783,13 @@ mod tests {
             (Some(GameMode::Holdazone), true),
         ] {
             let s = settings(mode);
-            with_game(&mut worms, |g| assert_eq!(unsafe { is_over(g, &s) }, over));
+            with_game(&mut worms, |g| assert_eq!(is_over(g.reborrow(), &s), over));
         }
         worms[1].lives = 1;
         worms[0].timer = 599;
         for mode in 0..4 {
             let s = settings(GameMode::of(mode));
-            with_game(&mut worms, |g| assert!(!unsafe { is_over(g, &s) }));
+            with_game(&mut worms, |g| assert!(!is_over(g.reborrow(), &s)));
         }
     }
 

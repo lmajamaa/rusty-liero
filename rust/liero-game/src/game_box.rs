@@ -21,7 +21,6 @@ use crate::settings::{SettingsBox, SharedSettings, SharedWormSettings, WormSetti
 use crate::sfx::SoundOut;
 use crate::stats::Stats;
 use crate::tc::{tc_data, SharedTc, TcData};
-use crate::text::Str;
 use crate::viewport::Viewport;
 use crate::viewport::ViewportKind;
 use crate::worm::GameMode;
@@ -118,9 +117,8 @@ impl Game {
         tc_data(self.tc.as_ref().expect("the game has no TC"))
     }
 
-    /// Where the game's TC's data is, or null if it has none, for the views
-    /// made of raw pointers. Only F8 on the menu changes it, never while the
-    /// game runs.
+    /// Where the game's TC's data is, or null if it has none, for weapon
+    /// selection. Only F8 on the menu changes it, never while the game runs.
     pub(crate) fn tc_ptr(&self) -> *const TcData {
         self.tc.as_ref().map_or(std::ptr::null(), |t| &*tc_data(t))
     }
@@ -211,16 +209,59 @@ impl Game {
         }
     }
 
-    /// Runs `f` with the game's view (`GameView`).
-    fn with_view<R>(&mut self, f: impl FnOnce(&GameFields, &RuleSettings) -> R) -> R {
-        let v = self.view();
-        f(&v.fields, &v.settings)
+    /// Runs `f` on the game as the tick, the rules and the bots see it: its
+    /// fields, the listed worms' bots in the same order, and the rules'
+    /// settings. Panics on an empty place among the listed worms, or if the
+    /// game has no settings (`set_context`).
+    fn with_view<R>(&mut self, f: impl FnOnce(GameFields<'_>, Vec<Option<&mut WormAi>>, &RuleSettings) -> R) -> R {
+        let tc = self.tc.as_ref().map(|t| tc_data(t));
+        let settings = game_settings(&self.settings_box().data, tc.as_deref());
+        let worms: Vec<GameWorm> = self
+            .list
+            .iter()
+            .map(|&id| {
+                let id = id.expect("an empty place among the game's worms");
+                GameWorm {
+                    id,
+                    max_health: self.pool[id.0 as usize].settings().data.health,
+                }
+            })
+            .collect();
+        let Game {
+            data,
+            pool,
+            viewports,
+            spectators,
+            stats,
+            level,
+            sound,
+            ..
+        } = self;
+        let (pool, mut ais): (Vec<_>, Vec<_>) = pool
+            .iter_mut()
+            .map(|w| {
+                let Worm { data, ai, .. } = &mut **w;
+                (data, ai.as_deref_mut())
+            })
+            .unzip();
+        let listed_ais = worms.iter().map(|w| ais[w.id.0 as usize].take()).collect();
+        let fields = GameFields {
+            worms,
+            pool,
+            game: data,
+            level: level.level(),
+            tc: tc.as_deref(),
+            viewports: viewports.iter_mut().map(|v| &mut **v).collect(),
+            spectator_viewports: spectators.iter_mut().map(|v| &mut **v).collect(),
+            stats: Some(stats),
+            sound: *sound,
+        };
+        f(fields, listed_ais, &settings)
     }
 
     /// `Game::processFrame`: one tick.
     pub(crate) fn process_frame(&mut self, hooks: &crate::game::GameHooks) {
-        // SAFETY: the view is the game's own.
-        self.with_view(|f, s| unsafe { crate::game::process_frame(f, s, hooks) });
+        self.with_view(|f, _, s| crate::game::process_frame(f, s, hooks));
         self.process_viewports();
     }
 
@@ -266,20 +307,17 @@ impl Game {
                 traces: d.ext.ai_traces,
             }
         };
-        // SAFETY: the view is the game's own.
-        self.with_view(|f, s| unsafe { crate::ai::process_ais(f, s, &ai, hooks) });
+        self.with_view(|mut f, mut ais, s| crate::ai::process_ais(&mut f, &mut ais, s, &ai, hooks));
     }
 
     /// `Game::startGame`.
     pub(crate) fn start(&mut self, blood_particle_max: i32) {
-        // SAFETY: the view is the game's own.
-        self.with_view(|f, s| unsafe { crate::game::start_game(f, s, blood_particle_max) });
+        self.with_view(|f, _, s| crate::game::start_game(f, s, blood_particle_max));
     }
 
     /// `Game::isGameOver`.
     pub(crate) fn is_over(&mut self) -> bool {
-        // SAFETY: the view is the game's own.
-        self.with_view(|f, s| unsafe { crate::game::is_over(f, s) })
+        self.with_view(|f, _, s| crate::game::is_over(f, s))
     }
 
     /// `NormalStatsRecorder::finish`.
@@ -504,71 +542,6 @@ impl Game {
             }
         }
     }
-
-    /// The game's fields and settings, valid while the game's worms,
-    /// viewports and settings stay. The game has its settings and TC
-    /// (`set_context`).
-    fn view(&mut self) -> GameView {
-        let settings = game_settings(
-            &self.settings_box().data,
-            self.tc.as_ref().map(|t| tc_data(t)).as_deref(),
-        );
-        let pool: Vec<*mut WormData> = self.pool.iter_mut().map(|w| &mut w.data as *mut WormData).collect();
-        let worms: Vec<GameWorm> = self
-            .list
-            .iter()
-            .map(|&id| {
-                let id = id.expect("an empty place among the game's worms");
-                let w = &mut self.pool[id.0 as usize];
-                // The name stays where it is while the menus don't change it,
-                // which they don't while a view is used.
-                let (max_health, name, color) = {
-                    let s = w.settings();
-                    (
-                        s.data.health,
-                        Str {
-                            ptr: s.data.name.as_ptr(),
-                            len: s.data.name.len(),
-                        },
-                        s.data.color,
-                    )
-                };
-                GameWorm {
-                    data: &mut w.data,
-                    id,
-                    max_health,
-                    ai: w.ai_ptr(),
-                    name,
-                    color,
-                }
-            })
-            .collect();
-        let viewports: Vec<*mut Viewport> = self.viewports.iter_mut().map(|v| &mut **v as *mut Viewport).collect();
-        let spectators: Vec<*mut Viewport> = self.spectators.iter_mut().map(|v| &mut **v as *mut Viewport).collect();
-        let fields = GameFields {
-            worms: worms.as_ptr(),
-            worm_count: worms.len() as i32,
-            pool: pool.as_ptr(),
-            pool_count: pool.len(),
-            game: &mut *self.data,
-            level: self.level.data().level,
-            tc: self.tc_ptr(),
-            viewports: viewports.as_ptr(),
-            viewport_count: viewports.len() as i32,
-            spectator_viewports: spectators.as_ptr(),
-            spectator_viewport_count: spectators.len() as i32,
-            stats: &mut *self.stats,
-            sound: self.sound,
-        };
-        GameView {
-            fields,
-            settings,
-            _worms: worms,
-            _pool: pool,
-            _viewports: viewports,
-            _spectators: spectators,
-        }
-    }
 }
 
 impl Worm {
@@ -576,11 +549,6 @@ impl Worm {
     /// See `WormAi::new`.
     pub fn set_ai(&mut self, controller: u32, candidates: usize, testing: bool) {
         self.ai = WormAi::new(controller, candidates, testing);
-    }
-
-    /// The worm's bot, or null, for the views made of raw pointers.
-    fn ai_ptr(&mut self) -> *mut WormAi {
-        self.ai.as_deref_mut().map_or(std::ptr::null_mut(), |a| a)
     }
 }
 
@@ -611,18 +579,7 @@ fn draw_settings(s: &crate::settings::GameSettings, r: &RendererData, state: Sta
     }
 }
 
-/// The game as the tick, the bots and the viewports see it, with the
-/// lists it points to.
-pub struct GameView {
-    fields: GameFields,
-    settings: RuleSettings,
-    _worms: Vec<GameWorm>,
-    _pool: Vec<*mut WormData>,
-    _viewports: Vec<*mut Viewport>,
-    _spectators: Vec<*mut Viewport>,
-}
-
-/// What the rules take of the settings and the TC (`GameView`). With no
+/// What the rules take of the settings and the TC (`Game::with_view`). With no
 /// TC, as in tests, the TC's parts are zero.
 pub(crate) fn game_settings(s: &crate::settings::GameSettings, tc: Option<&TcData>) -> RuleSettings {
     use crate::tc::{c, h};
@@ -634,7 +591,7 @@ pub(crate) fn game_settings(s: &crate::settings::GameSettings, tc: Option<&TcDat
         time_to_lose: s.time_to_lose,
         zone_timeout: s.ext.zone_timeout,
         zone_capture_time: 70,
-        weap_table: s.weap_table.as_ptr(),
+        weap_table: s.weap_table,
         weapon_count: tc.map_or(0, |tc| tc.model.weapons.len() as i32),
         bonus_rand_timer: tc.map_or([[0; 2]; 2], |tc| tc.model.bonus_rand_timer),
         bonus_spawn_rect_x: constant("BonusSpawnRectX"),
@@ -905,33 +862,38 @@ mod tests {
         set.borrow_mut().data.blood = 37;
         g.set_context(Some(set.clone()), None, SoundOut::NONE);
         g.level_box_mut().resize(5, 4);
-        let v = g.view();
-        let f = &v.fields;
-        assert_eq!((f.level.width, f.level.height), (5, 4));
-        assert_eq!(f.level.data, g.level_box().data().level.data);
-        let gs = &v.settings;
-        assert_eq!(
-            (gs.game_mode, gs.blood, gs.zone_capture_time),
-            (Some(GameMode::Holdazone), 37, 70)
-        );
-        assert_eq!(gs.weap_table, set.borrow().data.weap_table.as_ptr());
-        // No TC, no TC constants.
-        assert_eq!((gs.weapon_count, gs.bonus_drop_chance, gs.bonus_disable), (0, 0, false));
-        assert_eq!(f.worm_count, 2);
-        // SAFETY: the view's worms are the game's, which stay.
-        let w = unsafe { std::slice::from_raw_parts(f.worms, 2) };
-        assert_eq!((w[0].max_health, w[1].max_health), (100, 50));
-        assert_eq!((w[1].color, w[1].name.len), (7, 3));
-        assert!(std::ptr::eq(w[1].data, &g.worm(WormId(1)).data));
-        assert!(std::ptr::eq(w[0].ai, g.worm(WormId(0)).ai().expect("a bot")));
-        assert!(w[1].ai.is_null());
-        assert!(std::ptr::eq(f.game, g.data()));
-        assert!(std::ptr::eq(f.stats, g.stats()));
-        assert_eq!((f.viewport_count, f.spectator_viewport_count), (2, 1));
-        // SAFETY: as above.
-        unsafe {
-            assert!(std::ptr::eq(*f.viewports.add(1), &*g.viewports[1]));
-            assert!(std::ptr::eq(*f.spectator_viewports, &*g.spectators[0]));
-        }
+        let level: *const u8 = g.level_box().pixels().as_ptr();
+        let data: *const GameData = g.data();
+        let stats: *const Stats = g.stats();
+        let worm1: *const WormData = &g.worm(WormId(1)).data;
+        let bot: *const WormAi = g.worm(WormId(0)).ai().expect("a bot");
+        let viewport: *const Viewport = &*g.viewports[1];
+        let spectator: *const Viewport = &*g.spectators[0];
+        let table = set.borrow().data.weap_table;
+        g.with_view(|f, ais, gs| {
+            assert_eq!((f.level.width, f.level.height), (5, 4));
+            assert_eq!(f.level.data.as_ptr(), level);
+            assert_eq!(
+                (gs.game_mode, gs.blood, gs.zone_capture_time),
+                (Some(GameMode::Holdazone), 37, 70)
+            );
+            assert_eq!(gs.weap_table, table);
+            // No TC, no TC constants.
+            assert_eq!((gs.weapon_count, gs.bonus_drop_chance, gs.bonus_disable), (0, 0, false));
+            assert!(f.tc.is_none());
+            let w = &f.worms;
+            assert_eq!((w.len(), w[0].max_health, w[1].max_health), (2, 100, 50));
+            assert_eq!((w[0].id, w[1].id), (WormId(0), WormId(1)));
+            // The pool has every worm, listed or not.
+            assert_eq!(f.pool.len(), 3);
+            assert!(std::ptr::eq(f.worm(1), worm1));
+            assert!(std::ptr::eq(ais[0].as_deref().expect("a bot"), bot));
+            assert!(ais[1].is_none());
+            assert!(std::ptr::eq(&*f.game, data));
+            assert!(std::ptr::eq(f.stats.as_deref().expect("stats"), stats));
+            assert_eq!((f.viewports.len(), f.spectator_viewports.len()), (2, 1));
+            assert!(std::ptr::eq(&*f.viewports[1], viewport));
+            assert!(std::ptr::eq(&*f.spectator_viewports[0], spectator));
+        });
     }
 }

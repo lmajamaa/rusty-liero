@@ -147,6 +147,16 @@ fn clip_image(mut x: i32, mut y: i32, mut width: i32, mut height: i32, clip: Rec
 }
 
 impl Level<'_> {
+    /// The same level, borrowed again for a shorter while.
+    pub fn reborrow(&mut self) -> Level<'_> {
+        Level {
+            data: self.data,
+            materials: self.materials,
+            width: self.width,
+            height: self.height,
+        }
+    }
+
     fn idx(&self, x: i32, y: i32) -> usize {
         (x + y * self.width) as usize
     }
