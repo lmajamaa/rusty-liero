@@ -9,7 +9,9 @@ name: Test
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md']
   pull_request:
+    paths-ignore: ['**.md']
 
 # The jobs only read the repository.
 permissions:

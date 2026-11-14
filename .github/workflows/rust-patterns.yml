@@ -11,6 +11,7 @@ name: Rust patterns
 
 on:
   pull_request:
+    paths-ignore: ['**.md']
 
 permissions: {}
 
