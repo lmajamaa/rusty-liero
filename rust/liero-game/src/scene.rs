@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn lists_follow_the_game() {
         let tc = tc();
-        let mut d = GameData::new_boxed();
+        let mut d = GameData::new();
         for slot in [5, 2] {
             d.wobjects.arr[slot].used = true;
             d.wobjects.arr[slot].kind = 1;

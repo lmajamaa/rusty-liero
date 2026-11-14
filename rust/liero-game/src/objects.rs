@@ -8,8 +8,9 @@
 //! and walked by index. The blood list, C++'s `BObjectList`, is a `Vec` of
 //! particles of which the first `count` are in use.
 //!
-//! The lists are 74 KB in all, more than the web build's 64 KB stack, so
-//! they are only ever made and copied on the heap.
+//! The slots are 74 KB in all, more than the web build's 64 KB stack, so
+//! each list keeps them in `Slots`, which are only made and copied on the
+//! heap.
 
 use crate::math::FVec2;
 use crate::object::BObject;
@@ -21,7 +22,7 @@ pub const MAX_SOBJECTS: usize = 700;
 pub const MAX_NOBJECTS: usize = 600;
 
 /// A bonus, laid out like C++'s `Bonus`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Bonus {
     pub used: bool,
     pub x: i32,
@@ -34,7 +35,7 @@ pub struct Bonus {
 }
 
 /// A special object, laid out like C++'s `SObject`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct SObject {
     pub used: bool,
     pub x: i32,
@@ -47,8 +48,9 @@ pub struct SObject {
 
 /// The weapon slot that fired an object, for the stats: the id of the
 /// worm and the slot, or `NONE`. C++ kept a pointer to the slot; the stats
-/// read the weapon in it when the object hits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// read the weapon in it when the object hits. The default, worm 0's
+/// first slot, is what a slot the C++ never filled held: zeroed memory.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FiredBy {
     /// The worm's `WormId`, or -1.
     pub worm: i32,
@@ -60,7 +62,7 @@ impl FiredBy {
 }
 
 /// A weapon object, laid out like C++'s `WObject`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct WObject {
     pub used: bool,
     pub pos: FVec2,
@@ -76,7 +78,7 @@ pub struct WObject {
 }
 
 /// A non-weapon object, laid out like C++'s `NObject`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct NObject {
     pub used: bool,
     pub pos: FVec2,
@@ -92,9 +94,9 @@ pub struct NObject {
 }
 
 /// `ExactObjectList<Bonus, 99>`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BonusList {
-    pub arr: [Bonus; MAX_BONUSES],
+    pub arr: Slots<Bonus, MAX_BONUSES>,
     pub sentinel: Bonus,
     /// A set bit is a free slot.
     pub free_list: [u32; 4],
@@ -102,43 +104,74 @@ pub struct BonusList {
 }
 
 /// `ExactObjectList<WObject, 600>`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct WObjectList {
-    pub arr: [WObject; MAX_WOBJECTS],
+    pub arr: Slots<WObject, MAX_WOBJECTS>,
     pub sentinel: WObject,
     pub free_list: [u32; 19],
     pub count: usize,
 }
 
 /// `ExactObjectList<SObject, 700>`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SObjectList {
-    pub arr: [SObject; MAX_SOBJECTS],
+    pub arr: Slots<SObject, MAX_SOBJECTS>,
     pub sentinel: SObject,
     pub free_list: [u32; 22],
     pub count: usize,
 }
 
 /// `ExactObjectList<NObject, 600>`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct NObjectList {
-    pub arr: [NObject; MAX_NOBJECTS],
+    pub arr: Slots<NObject, MAX_NOBJECTS>,
     pub sentinel: NObject,
     pub free_list: [u32; 19],
     pub count: usize,
 }
 
-/// A zeroed `T`, made on the heap and never on the stack.
-pub(crate) fn zeroed_box<T>() -> Box<std::mem::MaybeUninit<T>> {
-    let layout = std::alloc::Layout::new::<T>();
-    // SAFETY: the layout isn't zero-sized, as the lists aren't, and the
-    // memory is from the global allocator with T's layout.
-    unsafe {
-        let p = std::alloc::alloc_zeroed(layout);
-        if p.is_null() {
-            std::alloc::handle_alloc_error(layout);
-        }
-        Box::from_raw(p.cast())
+/// A list's `N` slots, on the heap. They are made and copied there, through
+/// a `Vec`, and never pass through the stack.
+pub struct Slots<T, const N: usize>(Box<[T; N]>);
+
+impl<T: Clone + Default, const N: usize> Default for Slots<T, N> {
+    fn default() -> Self {
+        Self::from_vec(vec![T::default(); N])
+    }
+}
+
+impl<T: Clone, const N: usize> Slots<T, N> {
+    fn from_vec(v: Vec<T>) -> Self {
+        Slots(v.into_boxed_slice().try_into().ok().expect("N slots"))
+    }
+}
+
+impl<T: Clone, const N: usize> Clone for Slots<T, N> {
+    fn clone(&self) -> Self {
+        Self::from_vec(self.0.to_vec())
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.0.clone_from_slice(&source.0[..]);
+    }
+}
+
+impl<T: std::fmt::Debug, const N: usize> std::fmt::Debug for Slots<T, N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T, const N: usize> std::ops::Deref for Slots<T, N> {
+    type Target = [T; N];
+    fn deref(&self) -> &[T; N] {
+        &self.0
+    }
+}
+
+impl<T, const N: usize> std::ops::DerefMut for Slots<T, N> {
+    fn deref_mut(&mut self) -> &mut [T; N] {
+        &mut self.0
     }
 }
 
@@ -338,7 +371,7 @@ mod tests {
 
     #[test]
     fn cleared_lists_match_cpp() {
-        let mut l: Box<WObjectList> = unsafe { zeroed_box().assume_init() };
+        let mut l = WObjectList::default();
         l.clear();
         assert_eq!(l.count, 0);
         assert!(l.sentinel.used && l.used() == 0);
@@ -346,7 +379,7 @@ mod tests {
         assert!(l.free_list[..18].iter().all(|&w| w == !0));
         assert_eq!(l.free_list[18], (1 << (600 - 18 * 32)) - 1);
 
-        let mut b: Box<BonusList> = unsafe { zeroed_box().assume_init() };
+        let mut b = BonusList::default();
         b.init();
         assert!(b.arr.iter().all(|b| b.frame == -1 && b.weapon == 0 && !b.used));
         assert_eq!(b.free_list[3], (1 << (99 - 3 * 32)) - 1);
@@ -354,7 +387,7 @@ mod tests {
 
     #[test]
     fn lists_hand_out_the_lowest_free_slot_and_reuse_the_last_when_full() {
-        let mut l: Box<SObjectList> = unsafe { zeroed_box().assume_init() };
+        let mut l = SObjectList::default();
         l.clear();
         let (a, b, c) = (l.new_object(), l.new_object(), l.new_object());
         assert_eq!((a, b, c), (Some(0), Some(1), Some(2)));
@@ -373,7 +406,7 @@ mod tests {
 
     #[test]
     fn cursors_skip_free_slots_and_survive_freeing_the_current_one() {
-        let mut l: Box<BonusList> = unsafe { zeroed_box().assume_init() };
+        let mut l = BonusList::default();
         l.init();
         for _ in 0..5 {
             l.new_object();
@@ -382,7 +415,7 @@ mod tests {
 
         let mut seen = Vec::new();
         let mut r = Cursor::default();
-        while let Some(i) = r.next(&*l) {
+        while let Some(i) = r.next(&l) {
             seen.push(i);
             if i == 2 {
                 l.free(r.last());

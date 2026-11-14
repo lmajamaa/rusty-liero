@@ -9,7 +9,7 @@
 //! borrow them, through `Game`, for the call.
 
 use crate::level::Level;
-use crate::objects::{zeroed_box, BObjectList, BonusList, NObjectList, SObjectList, WObjectList};
+use crate::objects::{BObjectList, BonusList, NObjectList, SObjectList, WObjectList};
 use crate::rand::Rand;
 use crate::sfx::SoundOut;
 use crate::stats::{Stats, StatsWorm};
@@ -63,11 +63,9 @@ pub struct GameWorm {
 }
 
 /// The game's state, besides its worms and level. Rust owns it, and the
-/// fields of C++'s `Game` refer to it (`GameData::new_boxed`).
-///
-/// It is 74 KB, more than the web build's stack, so it is only made and
-/// copied on the heap: `new_boxed`, `clone_boxed` and `assign`.
-#[derive(Debug)]
+/// fields of C++'s `Game` refer to it. Its object lists keep their slots
+/// on the heap, so it can be made and copied anywhere.
+#[derive(Clone, Debug)]
 pub struct GameData {
     pub cycles: i32,
     /// The worm that died last, which is 'it' in Game of Tag, or -1.
@@ -87,59 +85,43 @@ pub struct GameData {
     pub bobjects: BObjectList,
 }
 
+impl Default for GameData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GameData {
     /// What C++'s `Game` constructor set, before it seeds `rand`.
-    pub fn new_boxed() -> Box<Self> {
-        // SAFETY: all zeros is a valid value of every field but `bobjects`,
-        // which is written before the box is used.
-        let mut g: Box<Self> = unsafe {
-            let mut g = zeroed_box::<Self>();
-            std::ptr::addr_of_mut!((*g.as_mut_ptr()).bobjects).write(BObjectList::new(1));
-            g.assume_init()
+    pub fn new() -> Self {
+        let mut g = GameData {
+            cycles: 0,
+            last_killed_idx: None,
+            got_changed: false,
+            screen_flash: 0,
+            paused: true,
+            quick_sim: false,
+            holdazone: Holdazone {
+                rect: Rect::default(),
+                holder_idx: None,
+                contender_idx: None,
+                contender_frames: 0,
+                timeout_left: 0,
+                zone_width: 50,
+                zone_height: 34,
+            },
+            rand: Rand::default(),
+            bonuses: BonusList::default(),
+            wobjects: WObjectList::default(),
+            sobjects: SObjectList::default(),
+            nobjects: NObjectList::default(),
+            bobjects: BObjectList::new(1),
         };
-        g.last_killed_idx = None;
-        g.paused = true;
-        g.holdazone = Holdazone {
-            rect: Rect::default(),
-            holder_idx: None,
-            contender_idx: None,
-            contender_frames: 0,
-            timeout_left: 0,
-            zone_width: 50,
-            zone_height: 34,
-        };
-        g.rand = Rand::default();
         g.bonuses.init();
         g.wobjects.clear();
         g.sobjects.clear();
         g.nobjects.clear();
         g
-    }
-
-    /// A copy, made on the heap.
-    pub fn clone_boxed(&self) -> Box<Self> {
-        // SAFETY: a bitwise copy of every field but `bobjects`, which gets
-        // particles of its own without dropping the shared pointer.
-        unsafe {
-            let mut g = Box::<Self>::new_uninit();
-            std::ptr::copy_nonoverlapping(self, g.as_mut_ptr(), 1);
-            std::ptr::addr_of_mut!((*g.as_mut_ptr()).bobjects).write(self.bobjects.clone());
-            g.assume_init()
-        }
-    }
-
-    /// Makes this a copy of `other`, in place.
-    pub fn assign(&mut self, other: &Self) {
-        if std::ptr::eq(self, other) {
-            return;
-        }
-        // SAFETY: as in `clone_boxed`; the old particles are freed once.
-        unsafe {
-            let old = std::ptr::read(&self.bobjects);
-            std::ptr::copy_nonoverlapping(other, self, 1);
-            std::ptr::addr_of_mut!(self.bobjects).write(other.bobjects.clone());
-            drop(old);
-        }
     }
 }
 
@@ -647,7 +629,7 @@ mod tests {
                 w
             })
             .collect();
-        let mut game = GameData::new_boxed();
+        let mut game = GameData::new();
         let mut fields = GameFields {
             worms: list,
             pool,
@@ -688,7 +670,7 @@ mod tests {
     #[test]
     fn new_game_matches_cpp_and_copies_are_separate() {
         {
-            let mut g = GameData::new_boxed();
+            let mut g = GameData::new();
             // What C++'s Game() set.
             assert_eq!((g.cycles, g.last_killed_idx, g.screen_flash), (0, None, 0));
             assert!(g.paused && !g.got_changed && !g.quick_sim);
@@ -709,7 +691,7 @@ mod tests {
             g.bobjects.resize(3);
             g.bobjects.count = 2;
             (&mut g.bobjects.arr)[1].color = 9;
-            let mut c = g.clone_boxed();
+            let mut c = g.clone();
             // Every field is copied, and the blood is separate.
             assert_eq!(format!("{:?}", c), format!("{:?}", g));
             c.cycles = 1;
@@ -717,7 +699,7 @@ mod tests {
             assert_eq!((g.cycles, (&g.bobjects.arr)[1].color), (7, 9));
 
             // Assigning copies everything back.
-            c.assign(&g);
+            c.clone_from(&g);
             assert_eq!(format!("{:?}", c), format!("{:?}", g));
         }
     }

@@ -28,7 +28,7 @@ pub struct AiSettings {
 
 /// A copy of the game, which owns its state, level and listed worms.
 struct SimCopy {
-    data: Box<GameData>,
+    data: GameData,
     pixels: Vec<u8>,
     materials: Vec<Material>,
     width: i32,
@@ -143,7 +143,7 @@ impl Games for Sims<'_, '_> {
 
     /// `Game(Game const&)` and `postClone(original)`, with `quick_sim` on.
     fn clone_game(&mut self, g: Sim) -> Sim {
-        let mut data = self.data(g).clone_boxed();
+        let mut data = self.data(g).clone();
         data.quick_sim = true;
         let (pixels, materials, width, height) = self.level_data(g);
         let copy = SimCopy {

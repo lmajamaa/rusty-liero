@@ -95,7 +95,7 @@ impl Worm {
 
 /// The game.
 pub struct Game {
-    data: Box<GameData>,
+    data: GameData,
     /// Every worm made for the game, at a fixed address, by `WormId`. A
     /// replay's worms that the game doesn't list stay here, as ropes can be
     /// anchored to them.
@@ -405,7 +405,7 @@ impl Game {
     /// the original's.
     pub fn copy(&self) -> Box<Self> {
         Box::new(Game {
-            data: self.data.clone_boxed(),
+            data: self.data.clone(),
             pool: self.pool.iter().map(|w| w.copy()).collect(),
             list: self.list.clone(),
             viewports: self.viewports.clone(),
@@ -427,7 +427,7 @@ impl Game {
     /// A new game with no worms or viewports (`Game::Game`).
     pub fn new() -> Box<Game> {
         Box::new(Game {
-            data: GameData::new_boxed(),
+            data: GameData::new(),
             pool: Vec::new(),
             list: Vec::new(),
             viewports: Vec::new(),
@@ -444,7 +444,7 @@ impl Game {
     /// spectator viewports and the worms' bots, which it keeps, by worm id.
     pub fn assign(&mut self, from: &Game) {
         let c = from.copy();
-        self.data.assign(&c.data);
+        self.data.clone_from(&c.data);
         let Game {
             mut pool,
             list,

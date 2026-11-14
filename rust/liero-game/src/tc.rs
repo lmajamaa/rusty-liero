@@ -154,18 +154,15 @@ impl TcData {
     /// A TC with no tables and every other field zero, for tests.
     #[cfg(test)]
     pub(crate) fn empty() -> Box<Self> {
-        let mut tc = crate::objects::zeroed_box::<Self>();
-        // SAFETY: all zeros is a valid value of every field but the tables
-        // and sprites, which are written before the box is used.
-        unsafe {
-            let p = tc.as_mut_ptr();
-            std::ptr::addr_of_mut!((*p).model).write(empty_model());
-            std::ptr::addr_of_mut!((*p).samples).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).weap_order).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).worm_sprites).write(Default::default());
-            std::ptr::addr_of_mut!((*p).fire_cone_sprites).write(Default::default());
-            tc.assume_init()
-        }
+        Box::new(TcData {
+            model: empty_model(),
+            samples: Vec::new(),
+            palette_colors: [Color::default(); 256],
+            materials: [crate::material::Material::default(); 256],
+            weap_order: Vec::new(),
+            worm_sprites: SpriteSet::default(),
+            fire_cone_sprites: SpriteSet::default(),
+        })
     }
 
     /// What levels are made with (`Common::levelCommon`).
