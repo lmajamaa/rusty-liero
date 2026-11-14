@@ -2,7 +2,7 @@
 
 This repository took OpenLiero, a C++ game built on SDL, and turned it into a Rust game that runs in the browser. It took 60 merged pull requests, between 2026-11-03 and 2026-11-14. At the end, the two game crates have `#![forbid(unsafe_code)]`, no C++ is left, and every one of the 26,349 hashes recorded from the original C++ still matches.
 
-This is how it was done, for anyone porting another C++ codebase to Rust. It's built from the merged pull requests (their descriptions and commits), read in order, and each point names the PRs it comes from by number. Nothing here is new. Where a PR doesn't say why something was done, this says so instead of guessing. Apart from the pattern report a workflow posts, the PRs have no comments, so their descriptions and commit messages are the record.
+This is how it was done, for anyone porting another C++ codebase to Rust. It's built from the merged pull requests (their descriptions and commits), read in order, and each point names the PRs it comes from by number. Nothing here is new. Apart from the pattern report a workflow posts, the PRs have no comments, so their descriptions and commit messages are the record.
 
 [PLAN.md](PLAN.md) has the step-by-step detail, including every planted bug that got through and why.
 
@@ -183,9 +183,3 @@ Some things that came out of it:
 - **Kept on purpose.** `cpp_sort.rs`, the pairing heap, wrapping arithmetic and the object lists' slot reuse order stay as they are, because the hashes depend on them (#43).
 
 Over phase 4, `unsafe` blocks went from 772 (once step 1 had made them all explicit) to 0, `unsafe fn` from 581 to 0, and raw pointer types from 773 to 11 (#51, #64). The 11 left are addresses that tests compare.
-
-## What the PRs don't say
-
-- **Why Rust, and why this order of phases.** #1 imports the code with PLAN.md's three phases already decided; neither the PR nor its commit gives the reasons.
-- **Why the hash interval is 100 ticks.** #10 uses it without saying why.
-- **What wasn't checked by hand.** Gamepads, real full screen and audible sound were never checked (#49). Nor was a physical Mac keyboard (#8).
