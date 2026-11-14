@@ -15,13 +15,13 @@
 //! went by `keyCode` instead, which differs for some keys on other layouts.
 
 use crate::app::App;
-use crate::app_screens::liero_main_screen;
+use crate::app_screens::main_screen;
 use crate::controllers::liero_controller_on_key;
-use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, Color};
+use crate::gfx::{fit_screen, palette_activate, scale_draw, Color};
 use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, KeyChanges};
 use crate::menu_screen::LIERO_MENU_HIDDEN;
-use crate::menus::{liero_menus_load, liero_menus_new};
-use crate::screen::{liero_app_frame, liero_app_push, Event, Host, Platform, ScreenStack, TypedKey};
+use crate::menus::Menus;
+use crate::screen::{Event, Host, Platform, ScreenStack, TypedKey};
 use crate::sfx::{Mixer, SoundOut};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -375,7 +375,7 @@ fn process_event(a: &mut App, ev: Ev, to_controller: bool) {
             let dos = a.keys.event(scancode, down);
             send_key(a, to_controller, dos, down);
             if down && scancode == SC_F11 {
-                set_fullscreen(a, !crate::shell::liero_shell_fullscreen(a), true);
+                set_fullscreen(a, !a.fullscreen(), true);
             }
         }
         Ev::Text(_) => {}
@@ -423,10 +423,10 @@ fn set_video_mode(double_res: bool) {
 
 /// `Gfx::setFullscreen`: the setting, and the browser's full screen.
 fn set_fullscreen(a: &mut App, on: bool, update_menu: bool) {
-    if on == crate::shell::liero_shell_fullscreen(a) {
+    if on == a.fullscreen() {
         return;
     }
-    crate::shell::liero_shell_set_fullscreen(a, on);
+    a.set_fullscreen(on);
     show_fullscreen(on);
     if update_menu {
         a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
@@ -458,8 +458,8 @@ fn on_fullscreen_change() {
 /// The browser left full screen: the setting goes off, so the menu shows it
 /// and F11 turns it back on in one press.
 fn left_fullscreen(a: &mut App) {
-    if crate::shell::liero_shell_fullscreen(a) {
-        crate::shell::liero_shell_set_fullscreen(a, false);
+    if a.fullscreen() {
+        a.set_fullscreen(false);
         a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
     }
 }
@@ -470,7 +470,7 @@ fn show_frame(a: &App) {
     let bmp = r.bmp.view();
     let d = &r.data;
     let mut real = [Color::default(); 256];
-    liero_palette_activate(&d.pal, &mut real);
+    palette_activate(&d.pal, &mut real);
     // RGBA in memory, as ImageData has it.
     let pal32: [u32; 256] = std::array::from_fn(|i| u32::from_le_bytes([real[i].r, real[i].g, real[i].b, 255]));
     let (res_x, res_y) = (d.render_res_x, d.render_res_y);
@@ -480,7 +480,7 @@ fn show_frame(a: &App) {
         };
         let (w, h) = (canvas.width() as i32, canvas.height() as i32);
         let (mut ox, mut oy) = (0, 0);
-        let mag = liero_gfx_fit_screen(w, h, res_x, res_y, &mut ox, &mut oy);
+        let mag = fit_screen(w, h, res_x, res_y, &mut ox, &mut oy);
         if mag != s.prev_mag {
             // Clear what a bigger magnification left.
             s.rgba.iter_mut().for_each(|b| *b = 0);
@@ -489,9 +489,9 @@ fn show_frame(a: &App) {
         let pitch = w as usize * 4;
         if mag > 0 {
             // The frame is `res_x` x `res_y` of the bitmap, which fits the
-            // canvas `mag` times from the offset (`liero_gfx_fit_screen`).
+            // canvas `mag` times from the offset (`fit_screen`).
             let dest = &mut s.rgba[oy as usize * pitch + ox as usize * 4..];
-            liero_gfx_scale_draw(bmp.pixels, res_x, res_y, bmp.pitch as usize, dest, pitch, mag, &pal32);
+            scale_draw(bmp.pixels, res_x, res_y, bmp.pitch as usize, dest, pitch, mag, &pal32);
         }
         if let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&s.rgba), w as u32, h as u32) {
             let _ = ctx.put_image_data(&img, 0.0, 0.0);
@@ -797,10 +797,10 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     let a = &mut app;
     // TODO from the C++: better seeding.
     a.rand.seed((js_sys::Date::now() / 1000.0) as u32);
-    let menus = liero_menus_new();
-    liero_menus_load(&mut menus.borrow_mut());
+    let menus = Menus::shared();
+    menus.borrow_mut().load();
     a.primary_single = false;
-    crate::app::liero_app_set_menus(a, menus);
+    a.menus = Some(menus);
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
     // The browser can close the tab at any time, so the menu saves liero.cfg
@@ -808,9 +808,9 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     a.save_settings_on_change = true;
     a.start(CONFIG, TC_ROOT, b"").map_err(|e| JsValue::from_str(&e))?;
     // The page has one canvas, so there is no second window to show.
-    crate::shell::liero_shell_set_spectator_window(a, false);
+    a.set_spectator_window(false);
     set_video_mode(a.double_res);
-    if crate::shell::liero_shell_fullscreen(a) {
+    if a.fullscreen() {
         show_fullscreen(true);
     }
 
@@ -839,7 +839,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
 
     let platform: Rc<dyn Platform> = Rc::new(WebPlatform);
     let mut stack = ScreenStack::new();
-    liero_app_push(&mut stack, liero_main_screen());
+    stack.push(main_screen());
     run_frames(stack, Host::new(platform), app);
     Ok(())
 }
@@ -861,10 +861,10 @@ fn run_frames(stack: ScreenStack, host: Host, mut app: App) {
         if shell(|s| std::mem::take(&mut s.left_fullscreen)) {
             left_fullscreen(&mut app);
         }
-        let running = liero_app_frame(s, ms, &mut app, &host);
+        let running = s.frame(ms, &mut app, &host);
         for id in shell(|s| std::mem::take(&mut s.sounds)) {
             // SAFETY: the mixer is the shell's, or null.
-            unsafe { crate::shell::liero_shell_play_sound(&app, mixer(), id) };
+            unsafe { app.play_menu_sound(mixer(), id) };
         }
         if running {
             persist_changes();

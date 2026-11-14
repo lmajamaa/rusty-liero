@@ -20,15 +20,11 @@ use crate::level::slice;
 use crate::math::{cos_sin, ftoi, itof, vector_length, IVec2};
 use crate::object::BObject;
 use crate::object::{
-    add, div, ftoi_vec, inside, liero_explosion_damage, liero_explosion_push_object, liero_explosion_push_worm, sub,
-    BonusConstants,
+    add, div, explosion_damage, explosion_push_object, explosion_push_worm, ftoi_vec, inside, sub, BonusConstants,
 };
 use crate::objects::{Cursor, FiredBy, NObject, WObject};
 use crate::sfx::SoundOut;
-use crate::stats::{
-    liero_stats_after_death, liero_stats_after_spawn, liero_stats_damage_dealt, liero_stats_damage_potential,
-    liero_stats_hit, liero_stats_shot, Stats,
-};
+use crate::stats::Stats;
 use crate::tc::{c, h, TcData};
 use crate::viewport::Viewport;
 use crate::weapon::{WeaponView, WormWeapon};
@@ -224,7 +220,7 @@ impl<'a> World<'a> {
     fn damage_potential(&mut self, by: i32, weapon: FiredBy, hp: i32) {
         if self.stats.is_some() {
             let w = self.weapon_index(weapon);
-            liero_stats_damage_potential(self.stats.as_deref_mut().unwrap(), by, w, hp);
+            self.stats.as_deref_mut().unwrap().damage_potential(by, w, hp);
         }
     }
 
@@ -233,21 +229,21 @@ impl<'a> World<'a> {
             let pos = self.worm(to).pos;
             let w = self.weapon_index(weapon);
             let s = self.stats.as_deref_mut().unwrap();
-            liero_stats_damage_dealt(s, by, w, to, ftoi(pos.x), ftoi(pos.y), hp, has_hit);
+            s.damage_dealt(by, w, to, ftoi(pos.x), ftoi(pos.y), hp, has_hit);
         }
     }
 
     fn shot(&mut self, by: i32, weapon: FiredBy) {
         if self.stats.is_some() {
             let w = self.weapon_index(weapon);
-            liero_stats_shot(self.stats.as_deref_mut().unwrap(), by, w);
+            self.stats.as_deref_mut().unwrap().shot(by, w);
         }
     }
 
     fn hit(&mut self, by: i32, weapon: FiredBy, to: i32) {
         if self.stats.is_some() {
             let w = self.weapon_index(weapon);
-            liero_stats_hit(self.stats.as_deref_mut().unwrap(), by, w, to);
+            self.stats.as_deref_mut().unwrap().hit(by, w, to);
         }
     }
 
@@ -328,8 +324,8 @@ impl<'a> World<'a> {
                 let w = self.g.worm_mut(i);
 
                 let mut power_sum = 0;
-                if liero_explosion_push_worm(w.pos, &mut w.vel, x, y, t.detect_range, t.blow_away, &mut power_sum) {
-                    let z = liero_explosion_damage(t.damage, power_sum, t.detect_range);
+                if explosion_push_worm(w.pos, &mut w.vel, x, y, t.detect_range, t.blow_away, &mut power_sum) {
+                    let z = explosion_damage(t.damage, power_sum, t.detect_range);
 
                     if let Some(from) = from {
                         if !self.g.data.wobjects.arr[from].has_hit {
@@ -366,7 +362,7 @@ impl<'a> World<'a> {
                 let weapon = &self.tc.model.weapons[i.kind as usize];
 
                 if weapon.affect_by_explosions
-                    && liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away)
+                    && explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away)
                     && weapon.chain_explosion
                 {
                     self.blow_up_wobject(n, owner_idx);
@@ -378,7 +374,7 @@ impl<'a> World<'a> {
                 let i = &mut self.g.data.nobjects.arr[n];
                 let nt = &self.tc.model.nobjects[i.kind as usize];
                 if nt.affect_by_explosions {
-                    liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away);
+                    explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away);
                 }
             }
 

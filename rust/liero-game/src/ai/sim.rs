@@ -150,7 +150,7 @@ impl SimGame {
 /// The games, as `*mut SimGame`.
 struct Sims;
 
-// SAFETY, for each call: the games are the one `liero_game_process_ais`
+// SAFETY, for each call: the games are the one `process_ais`
 // was given or copies made here, and are valid until freed.
 impl Games for Sims {
     type G = *mut SimGame;

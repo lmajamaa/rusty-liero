@@ -12,7 +12,7 @@ use std::ffi::c_void;
 
 use crate::app::App;
 use crate::game_box::Game;
-use crate::gfx::{liero_gfx_draw_rounded_box, liero_palette_fade, liero_palette_rotate_from, Bitmap};
+use crate::gfx::{draw_rounded_box, palette_fade, palette_rotate_from, Bitmap};
 use crate::menu::draw_versus;
 use crate::menu::{Menu, MenuHooks, MenuItem};
 use crate::rand::Rand;
@@ -458,13 +458,13 @@ fn draw_menu(wm: &mut WeapselMenu, scr: &Bitmap, font: &Font, x: i32) {
 pub unsafe fn liero_weapsel_draw(ws: &mut Weapsel, scr: &Bitmap, menu_scr: &Bitmap, font: &Font, title: Str) {
     unsafe {
         let title = title.bytes();
-        liero_gfx_draw_rounded_box(scr, 114, 2, 0, 7, font.dims(title).0);
+        draw_rounded_box(scr, 114, 2, 0, 7, font.dims(title).0);
         font.text(scr, title, 116, 3, 50, 1);
 
         for wm in &mut ws.menus {
             let width = font.dims(&wm.name).0;
             let (x, y) = (wm.menu.m.x, wm.menu.m.y);
-            liero_gfx_draw_rounded_box(scr, x + 29 - width / 2, y - 11, 0, 7, width);
+            draw_rounded_box(scr, x + 29 - width / 2, y - 11, 0, 7, width);
             font.text(scr, &wm.name, x + 31 - width / 2, y - 10, wm.color + 1, 1);
             if !wm.ready {
                 draw_menu(wm, menu_scr, font, -1);
@@ -630,8 +630,8 @@ unsafe fn menu_palette(r: *mut Renderer, menu_cycles: u32) {
     unsafe {
         let d = &mut (*r).data;
         d.pal = d.origpal;
-        liero_palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, menu_cycles);
-        liero_palette_fade(&mut d.pal, d.fade_value);
+        palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, menu_cycles);
+        palette_fade(&mut d.pal, d.fade_value);
     }
 }
 

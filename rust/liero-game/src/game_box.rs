@@ -218,7 +218,7 @@ impl Game {
     /// `Game::processFrame`: one tick.
     pub(crate) fn process_frame(&mut self, hooks: &crate::game::GameHooks) {
         // SAFETY: the view is the game's own.
-        self.with_view(|f, s| unsafe { crate::game::liero_game_process_frame(f, s, hooks) });
+        self.with_view(|f, s| unsafe { crate::game::process_frame(f, s, hooks) });
         self.process_viewports();
     }
 
@@ -265,19 +265,19 @@ impl Game {
             }
         };
         // SAFETY: the view is the game's own.
-        self.with_view(|f, s| unsafe { crate::ai::liero_game_process_ais(f, s, &ai, hooks) });
+        self.with_view(|f, s| unsafe { crate::ai::process_ais(f, s, &ai, hooks) });
     }
 
     /// `Game::startGame`.
     pub(crate) fn start(&mut self, blood_particle_max: i32) {
         // SAFETY: the view is the game's own.
-        self.with_view(|f, s| unsafe { crate::game::liero_game_start(f, s, blood_particle_max) });
+        self.with_view(|f, s| unsafe { crate::game::start_game(f, s, blood_particle_max) });
     }
 
     /// `Game::isGameOver`.
     pub(crate) fn is_over(&mut self) -> bool {
         // SAFETY: the view is the game's own.
-        self.with_view(|f, s| unsafe { crate::game::liero_game_is_over(f, s) })
+        self.with_view(|f, s| unsafe { crate::game::is_over(f, s) })
     }
 
     /// `NormalStatsRecorder::finish`.
@@ -334,7 +334,7 @@ impl Game {
         let spectator_list = spectators.then_some(&mut spectator_list[..]);
         crate::scene::draw_viewports(&src, &d, viewports, spectator_list, &scr);
         let rd = &mut r.data;
-        crate::gfx::liero_game_palette(
+        crate::gfx::game_palette(
             &mut rd.pal,
             &rd.origpal,
             &tc.model.color_anim,
@@ -498,7 +498,7 @@ impl Game {
         for w in self.worms().flatten() {
             if (0..2).contains(&w.data.index) {
                 let s = w.settings();
-                crate::gfx::liero_palette_set_worm_colour(origpal, w.data.index, s.data.color, &s.data.rgb);
+                crate::gfx::palette_set_worm_colour(origpal, w.data.index, s.data.color, &s.data.rgb);
             }
         }
     }

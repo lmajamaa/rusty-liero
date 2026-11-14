@@ -153,37 +153,29 @@ impl App {
     }
 }
 
-/// The play renderer, or with `single`, the single screen one.
-pub fn liero_app_renderer(a: &mut App, single: bool) -> *mut Renderer {
-    if single {
-        &mut *a.single
-    } else {
-        &mut *a.play
+impl App {
+    /// The play renderer, or with `single`, the single screen one.
+    pub fn renderer(&mut self, single: bool) -> &mut Renderer {
+        if single {
+            &mut self.single
+        } else {
+            &mut self.play
+        }
     }
-}
 
-/// The frozen play screen, or with `spectator`, the spectator one.
-pub fn liero_app_frozen(a: &mut App, spectator: bool) -> *mut BitmapBox {
-    if spectator {
-        &mut *a.frozen_spectator
-    } else {
-        &mut *a.frozen
+    /// The frozen play screen, or with `spectator`, the spectator one.
+    pub fn frozen(&mut self, spectator: bool) -> &mut BitmapBox {
+        if spectator {
+            &mut self.frozen_spectator
+        } else {
+            &mut self.frozen
+        }
     }
-}
 
-/// Makes `s` (or none) the menus' settings.
-pub fn liero_app_set_settings(a: &mut App, s: Option<SharedSettings>) {
-    a.settings = s;
-}
-
-/// The renderer the screen shows.
-pub fn liero_app_primary(a: &mut App) -> *mut Renderer {
-    liero_app_renderer(a, a.primary_single)
-}
-
-/// The menus the app draws.
-pub fn liero_app_set_menus(a: &mut App, menus: crate::menus::SharedMenus) {
-    a.menus = Some(menus);
+    /// The renderer the screen shows.
+    pub fn primary(&mut self) -> &mut Renderer {
+        self.renderer(self.primary_single)
+    }
 }
 
 #[cfg(test)]
@@ -193,7 +185,7 @@ mod tests {
     #[test]
     fn the_renderers_are_the_apps() {
         let mut a = App::new();
-        assert!(std::ptr::eq(liero_app_renderer(&mut a, true), &*a.single));
-        assert!(std::ptr::eq(liero_app_frozen(&mut a, false), &*a.frozen));
+        assert!(std::ptr::eq(a.renderer(true), &*a.single));
+        assert!(std::ptr::eq(a.frozen(false), &*a.frozen));
     }
 }

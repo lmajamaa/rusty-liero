@@ -158,7 +158,7 @@ impl Drop for InputBox {
 
 /// A message centred on (x, y) until a key is pressed. With `clear_screen`
 /// it's shown alone on the screen, in the TC's palette.
-pub fn liero_info_box_screen(text: &[u8], x: i32, y: i32, clear_screen: bool) -> BoxedScreen {
+pub fn info_box_screen(text: &[u8], x: i32, y: i32, clear_screen: bool) -> BoxedScreen {
     Box::new(InfoBox {
         text: text.to_vec(),
         x,
@@ -172,7 +172,7 @@ pub fn liero_info_box_screen(text: &[u8], x: i32, y: i32, clear_screen: bool) ->
 /// Waits for a key, joystick button or stick move and closes with its DOS
 /// key. Unless `extended`, keys only the extended controls have are passed
 /// over.
-pub fn liero_key_choice_screen(extended: bool) -> BoxedScreen {
+pub fn key_choice_screen(extended: bool) -> BoxedScreen {
     Box::new(KeyChoice { extended })
 }
 
@@ -182,7 +182,7 @@ pub fn liero_key_choice_screen(extended: bool) -> BoxedScreen {
 ///
 /// # Safety
 /// `done` is called with `ctx`.
-pub unsafe fn liero_input_box_screen(
+pub unsafe fn input_box_screen(
     text: &[u8],
     max_len: usize,
     x: i32,

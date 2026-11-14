@@ -5,7 +5,7 @@
 //! the controller for the game screen to push.
 
 use crate::app::App;
-use crate::boxes::liero_info_box_screen;
+use crate::boxes::info_box_screen;
 use crate::controller::{
     ControllerData, LIERO_FADE_SHOWN, LIERO_STATE_GAME, LIERO_STATE_GAME_ENDED, LIERO_STATE_INITIAL,
     LIERO_STATE_WEAPON_SELECTION,
@@ -20,7 +20,7 @@ use crate::replay::ReplayStatus;
 use crate::replay_file::{ReplayOutcome, ReplayReader, ReplayWriter};
 use crate::screen::{BoxedScreen, Host};
 use crate::settings::{liero_settings_box_new, SharedSettings, LIERO_MAX_CONTROL_EX};
-use crate::stats::liero_stats_presenter_screen;
+use crate::stats::stats_presenter_screen;
 use crate::tc::SharedTc;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{
@@ -94,7 +94,7 @@ unsafe fn spectator_viewport(game: &mut Game, spectator_list: bool) {
 /// The renderer `game` shows its new settings on: the play screen, or the
 /// single screen when a replay is shown on it.
 fn primary_renderer(app: &mut App) -> *mut Renderer {
-    crate::app::liero_app_primary(app)
+    app.primary()
 }
 
 /// The name a replay is recorded under: the time, then up to four letters
@@ -137,7 +137,7 @@ impl Controller {
     /// A message over the game (`Gfx::infoBox`).
     fn info_box(&mut self, text: &str) {
         // SAFETY: the text outlives the call, which copies it.
-        let s = liero_info_box_screen(text.as_bytes(), 320 / 2, 200 / 2, true);
+        let s = info_box_screen(text.as_bytes(), 320 / 2, 200 / 2, true);
         self.open(s);
     }
 
@@ -154,7 +154,7 @@ impl Controller {
         game.stats_finish();
         let g = game.stats_game();
         let (x, y) = (app.play.data.render_res_x, app.play.data.render_res_y);
-        let s = liero_stats_presenter_screen(app, host, game.stats(), game.tc(), g, x, y);
+        let s = stats_presenter_screen(app, host, game.stats(), game.tc(), g, x, y);
         self.open(s);
     }
 

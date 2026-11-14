@@ -13,7 +13,7 @@ fn tc() -> SharedTc {
 /// the menu.
 fn set_up() -> App {
     let mut a = App::new();
-    crate::app::liero_app_set_settings(&mut a, Some(liero_settings_box_new()));
+    a.settings = Some(liero_settings_box_new());
     a.set_tc(Some(tc()));
     restart(&mut a, &Host::none());
     a

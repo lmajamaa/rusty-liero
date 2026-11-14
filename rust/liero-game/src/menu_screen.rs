@@ -348,7 +348,7 @@ impl Screen for MenuScreen {
 }
 
 /// The main menu screen.
-pub fn liero_menu_screen(menus: SharedMenus) -> BoxedScreen {
+pub fn menu_screen(menus: SharedMenus) -> BoxedScreen {
     Box::new(MenuScreen {
         menus,
         phase: Phase::Start,

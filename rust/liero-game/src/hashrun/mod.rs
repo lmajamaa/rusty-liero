@@ -4,7 +4,7 @@
 //! the original C++. `src/bin/liero-hashrun.rs` prints them natively.
 
 use crate::app::App;
-use crate::menus::liero_menus_new;
+use crate::menus::Menus;
 
 mod ai;
 mod app;
@@ -116,7 +116,7 @@ pub fn hash_run(ticks: i32, interval: i32, only: &[String], out: &mut dyn FnMut(
     // One app for every section, as in the game: the sections that use it
     // go on from what the ones before left.
     let mut app = App::new();
-    app.menus = Some(liero_menus_new());
+    app.menus = Some(Menus::shared());
     let mut out = Out(out);
     for name in SECTIONS
         .iter()

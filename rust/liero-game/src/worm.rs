@@ -247,7 +247,7 @@ pub struct WormEnv {
 
 /// The sprite frame for a worm aiming at `aiming_angle` (fixed-point) in
 /// `direction`, without the walking animation: `Worm::angleFrame`.
-pub fn liero_worm_angle_frame(aiming_angle: i32, direction: i32) -> i32 {
+pub fn angle_frame(aiming_angle: i32, direction: i32) -> i32 {
     let mut x = ftoi(aiming_angle) - 12;
 
     if direction != 0 {
@@ -302,11 +302,11 @@ mod tests {
         }
         for angle in -10..140 {
             for dir in 0..2 {
-                assert_eq!(liero_worm_angle_frame(itof(angle), dir), cpp(itof(angle), dir));
+                assert_eq!(angle_frame(itof(angle), dir), cpp(itof(angle), dir));
             }
         }
-        assert_eq!(liero_worm_angle_frame(itof(32), 0), 2);
-        assert_eq!(liero_worm_angle_frame(itof(96), 1), 2);
+        assert_eq!(angle_frame(itof(32), 0), 2);
+        assert_eq!(angle_frame(itof(96), 1), 2);
     }
 
     #[test]

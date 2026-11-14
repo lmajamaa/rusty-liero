@@ -2,8 +2,8 @@
 //! bots or off (`WeaponOptionsScreen` in C++). Escape closes it while one
 //! weapon or more is on, and otherwise says so.
 
-use crate::boxes::liero_info_box_screen;
-use crate::gfx::liero_gfx_draw_rounded_box;
+use crate::boxes::info_box_screen;
+use crate::gfx::draw_rounded_box;
 use crate::item::ItemBehavior;
 use crate::menu::{Menu, MenuState};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
@@ -114,7 +114,7 @@ impl WeaponOptions {
             return;
         };
         for (x, title) in [(179, &self.weapon_title), (249, &self.availability_title)] {
-            liero_gfx_draw_rounded_box(&scr, x, 20, 0, 7, font.dims(title).0);
+            draw_rounded_box(&scr, x, 20, 0, 7, font.dims(title).0);
             font.text(&scr, title, x + 2, 21, 50, 1);
         }
         self.menu.draw(&scr, &font, false, -1, false);
@@ -134,7 +134,7 @@ impl Screen for WeaponOptions {
                     ptr: self.no_weapons.as_ptr(),
                     len: self.no_weapons.len(),
                 };
-                return Tick::push(unsafe { liero_info_box_screen(text.bytes(), 223, 68, false) });
+                return Tick::push(unsafe { info_box_screen(text.bytes(), 223, 68, false) });
             }
         }
         self.resumed = false;
@@ -182,13 +182,13 @@ impl Screen for WeaponOptions {
 /// # Safety
 /// `spec`'s pointers are valid for their counts, and `order`'s entries are
 /// below 40.
-pub unsafe fn liero_weapon_options_screen(spec: &WeaponOptionsSpec) -> BoxedScreen {
+pub unsafe fn weapon_options_screen(spec: &WeaponOptionsSpec) -> BoxedScreen {
     unsafe { Box::new(WeaponOptions::new(spec)) }
 }
 
 impl WeaponOptions {
     /// # Safety
-    /// As for `liero_weapon_options_screen`.
+    /// As for `weapon_options_screen`.
     unsafe fn new(spec: &WeaponOptionsSpec) -> Self {
         unsafe {
             let text = |s: Str| s.bytes().to_vec();

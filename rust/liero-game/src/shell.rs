@@ -4,7 +4,7 @@
 
 use crate::app::App;
 use crate::fs::Node;
-use crate::settings::SettingsBox;
+use crate::settings::{SettingsBox, SharedSettings};
 use crate::sfx::{Mixer, SoundOut};
 
 impl App {
@@ -60,57 +60,38 @@ impl App {
     }
 }
 
-pub fn liero_shell_fullscreen(a: &App) -> bool {
-    a.settings
-        .as_ref()
-        .expect("no menu settings")
-        .borrow()
-        .data
-        .ext
-        .fullscreen
-}
+impl App {
+    fn menu_settings(&self) -> &SharedSettings {
+        self.settings.as_ref().expect("no menu settings")
+    }
 
-pub fn liero_shell_set_fullscreen(a: &mut App, on: bool) {
-    a.settings
-        .as_ref()
-        .expect("no menu settings")
-        .borrow_mut()
-        .data
-        .ext
-        .fullscreen = on;
-}
+    pub fn fullscreen(&self) -> bool {
+        self.menu_settings().borrow().data.ext.fullscreen
+    }
 
-pub fn liero_shell_spectator_window(a: &App) -> bool {
-    a.settings
-        .as_ref()
-        .expect("no menu settings")
-        .borrow()
-        .data
-        .ext
-        .spectator_window
-}
+    pub fn set_fullscreen(&mut self, on: bool) {
+        self.menu_settings().borrow_mut().data.ext.fullscreen = on;
+    }
 
-pub fn liero_shell_set_spectator_window(a: &mut App, on: bool) {
-    a.settings
-        .as_ref()
-        .expect("no menu settings")
-        .borrow_mut()
-        .data
-        .ext
-        .spectator_window = on;
-}
+    pub fn spectator_window(&self) -> bool {
+        self.menu_settings().borrow().data.ext.spectator_window
+    }
 
-/// Plays the menus' TC's `sound` on `mixer`, if there is one.
-///
-/// # Safety
-/// `mixer` is valid or null.
-pub unsafe fn liero_shell_play_sound(a: &App, mixer: *mut Mixer, sound: i32) {
-    unsafe {
+    pub fn set_spectator_window(&mut self, on: bool) {
+        self.menu_settings().borrow_mut().data.ext.spectator_window = on;
+    }
+
+    /// Plays the menus' TC's `sound` on `mixer`, if there is one.
+    ///
+    /// # Safety
+    /// `mixer` is valid or null.
+    pub unsafe fn play_menu_sound(&self, mixer: *mut Mixer, sound: i32) {
         if mixer.is_null() {
             return;
         }
-        let tc = a.menu_tc();
-        SoundOut { mixer, report: None }.play(&crate::tc::tc_data(&tc), sound, std::ptr::null_mut(), 0);
+        let tc = self.menu_tc();
+        // SAFETY: the caller's mixer.
+        unsafe { SoundOut { mixer, report: None }.play(&crate::tc::tc_data(&tc), sound, std::ptr::null_mut(), 0) };
     }
 }
 
@@ -229,13 +210,13 @@ mod tests {
     fn window_settings() {
         let a = &mut App::new();
         a.settings = Some(SettingsBox::defaults());
-        liero_shell_set_fullscreen(a, true);
-        liero_shell_set_spectator_window(a, false);
-        assert!(liero_shell_fullscreen(a) && a.settings_mut().data.ext.fullscreen);
-        assert!(!liero_shell_spectator_window(a));
-        liero_shell_set_fullscreen(a, false);
-        liero_shell_set_spectator_window(a, true);
-        assert!(!liero_shell_fullscreen(a));
-        assert!(liero_shell_spectator_window(a) && a.settings_mut().data.ext.spectator_window);
+        a.set_fullscreen(true);
+        a.set_spectator_window(false);
+        assert!(a.fullscreen() && a.settings_mut().data.ext.fullscreen);
+        assert!(!a.spectator_window());
+        a.set_fullscreen(false);
+        a.set_spectator_window(true);
+        assert!(!a.fullscreen());
+        assert!(a.spectator_window() && a.settings_mut().data.ext.spectator_window);
     }
 }

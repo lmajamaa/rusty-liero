@@ -8,8 +8,8 @@ use crate::gfx::Bitmap;
 use crate::level::LevelView;
 use crate::tc::{c, h, s, TcData};
 use crate::viewport::{
-    liero_viewport_draw, liero_viewport_process, Scene, Sprites, ViewBObject, ViewBonus, ViewNObject, ViewSObject,
-    ViewWObject, ViewWeapon, ViewWorm, ViewWormWeapon, Viewport, ViewportBanner,
+    draw_viewport, process_viewport, Scene, Sprites, ViewBObject, ViewBonus, ViewNObject, ViewSObject, ViewWObject,
+    ViewWeapon, ViewWorm, ViewWormWeapon, Viewport, ViewportBanner,
 };
 use crate::worm::{WormData, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE};
 use liero_data::model::SpriteSet;
@@ -91,7 +91,7 @@ pub(crate) fn view_worm<'a>(w: &'a WormData, looks: WormLooks<'a>, ai: Option<&'
 /// (`Game::processViewports`). `worms` are in the game's order.
 pub(crate) fn process_viewports<'v>(worms: &[ViewWorm], viewports: impl Iterator<Item = &'v mut Viewport>) {
     for vp in viewports {
-        liero_viewport_process(vp, vp.kind, worms);
+        process_viewport(vp, vp.kind, worms);
     }
 }
 
@@ -122,12 +122,12 @@ pub(crate) fn draw_viewports(
     match spectators {
         Some(list) => {
             for vp in list {
-                liero_viewport_draw(vp, vp.kind, -1, &scene, scr);
+                draw_viewport(vp, vp.kind, -1, &scene, scr);
             }
         }
         None => {
             for (i, vp) in split.iter_mut().enumerate() {
-                liero_viewport_draw(vp, vp.kind, i as i32, &scene, scr);
+                draw_viewport(vp, vp.kind, i as i32, &scene, scr);
             }
         }
     }

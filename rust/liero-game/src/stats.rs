@@ -10,9 +10,7 @@
 //! undefined.
 
 use crate::cpp_sort;
-use crate::gfx::{
-    liero_gfx_blit_image, liero_gfx_draw_graph, liero_gfx_draw_heatmap, liero_gfx_draw_rounded_box, Bitmap,
-};
+use crate::gfx::{blit_image, draw_graph, draw_heatmap, draw_rounded_box, Bitmap};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::tc::{tc_data, SharedTc, TcData};
 use crate::text::{time_to_string, time_to_string_ex, Font};
@@ -560,7 +558,7 @@ impl Layout<'_> {
 
     fn worm_sprite(&self, i: usize, x: i32, y: i32) {
         let s = self.scene.worm_sprites[i];
-        liero_gfx_blit_image(self.scr, s.mem, x, y, s.width, s.height, s.pitch);
+        blit_image(self.scr, s.mem, x, y, s.width, s.height, s.pitch);
     }
 
     fn name(&self, i: usize) -> &[u8] {
@@ -572,7 +570,7 @@ impl Layout<'_> {
         self.offs_x = n.wrapping_mul(res_x).wrapping_add(left_x);
         if self.offs_x >= -res_x && self.offs_x < res_x {
             self.y = top_y.wrapping_add(10);
-            liero_gfx_draw_rounded_box(self.scr, self.offs_x + PANE_X, self.y, 0, 2000, self.pane_width);
+            draw_rounded_box(self.scr, self.offs_x + PANE_X, self.y, 0, 2000, self.pane_width);
             self.y += 10;
             p(self);
         }
@@ -688,7 +686,7 @@ impl Layout<'_> {
     fn graph(&mut self, data: &[f64], height: i32, color: u8, neg_color: u8, balanced: bool) {
         self.y += 2;
         self.hblock(height, |r| {
-            liero_gfx_draw_graph(r.scr, data, height, 20 + r.offs_x, r.y, color, neg_color, balanced);
+            draw_graph(r.scr, data, height, 20 + r.offs_x, r.y, color, neg_color, balanced);
         });
         self.y += 7;
     }
@@ -697,7 +695,7 @@ impl Layout<'_> {
         self.y += 2;
         self.hblock(hm.height, |r| {
             let x = PANE_X + r.pane_width / 2 - hm.width / 2 + r.offs_x;
-            liero_gfx_draw_heatmap(r.scr, x, r.y, &hm.map, hm.width, hm.height);
+            draw_heatmap(r.scr, x, r.y, &hm.map, hm.width, hm.height);
         });
         self.y += 7;
     }
@@ -782,31 +780,6 @@ impl StatsScreen {
             });
         }
     }
-}
-
-pub fn liero_stats_damage_potential(s: &mut Stats, by: i32, weapon: i32, hp: i32) {
-    s.damage_potential(by, weapon, hp);
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn liero_stats_damage_dealt(s: &mut Stats, by: i32, weapon: i32, to: i32, x: i32, y: i32, hp: i32, has_hit: bool) {
-    s.damage_dealt(by, weapon, to, x, y, hp, has_hit);
-}
-
-pub fn liero_stats_shot(s: &mut Stats, by: i32, weapon: i32) {
-    s.shot(by, weapon);
-}
-
-pub fn liero_stats_hit(s: &mut Stats, by: i32, weapon: i32, to: i32) {
-    s.hit(by, weapon, to);
-}
-
-pub fn liero_stats_after_spawn(s: &mut Stats, worm: i32) {
-    s.after_spawn(worm);
-}
-
-pub fn liero_stats_after_death(s: &mut Stats, worm: i32) {
-    s.after_death(worm);
 }
 
 const SCANCODE_RETURN: u32 = 40;
@@ -939,7 +912,7 @@ impl Screen for StatsPresenter {
 
 /// The stats screen for a copy of `stats`, drawn with `tc` on a screen of
 /// `render_res_x` x `render_res_y`, over what the screen shows now.
-pub(crate) fn liero_stats_presenter_screen(
+pub(crate) fn stats_presenter_screen(
     app: &mut crate::app::App,
     host: &Host,
     stats: &Stats,

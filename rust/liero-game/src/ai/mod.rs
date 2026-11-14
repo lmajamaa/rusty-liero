@@ -151,7 +151,7 @@ pub fn liero_worm_ai_hash(ai: &WormAi) -> u64 {
 /// # Safety
 /// The pointers in `game` and `settings` must be valid for the call, and
 /// the worms' bots must come from `liero_worm_ai_new`, or be null.
-pub unsafe fn liero_game_process_ais(
+pub unsafe fn process_ais(
     game: &GameFields,
     settings: &RuleSettings,
     ai_settings: &AiSettings,

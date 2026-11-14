@@ -746,7 +746,7 @@ pub fn read_checksum<S: Source + ?Sized>(src: &mut S, cycles: i32, actual: u32) 
 
 /// A worm as replays hold it (`wormFields`). Its rope's anchor is the
 /// anchor's place among `ids`, the game's worms written, or -1.
-pub fn liero_replay_worm_of(worm: &WormData, ids: &[WormId]) -> ReplayWorm {
+pub fn replay_worm_of(worm: &WormData, ids: &[WormId]) -> ReplayWorm {
     let anchor = worm.ninjarope.anchor;
     let rope = &worm.ninjarope;
     ReplayWorm {
@@ -802,7 +802,7 @@ pub fn liero_replay_worm_of(worm: &WormData, ids: &[WormId]) -> ReplayWorm {
 
 /// Sets a worm from a replay's (`setWormFields`). Its rope's anchor is one
 /// of `all`, every worm the replay has. Weapons aren't checked, as in C++.
-pub fn liero_replay_worm_set(worm: &mut WormData, f: &ReplayWorm, all: &[WormId]) {
+pub fn replay_worm_set(worm: &mut WormData, f: &ReplayWorm, all: &[WormId]) {
     worm.pos = IVec2 {
         x: f.pos[0],
         y: f.pos[1],
@@ -868,7 +868,7 @@ pub fn liero_replay_worm_set(worm: &mut WormData, f: &ReplayWorm, all: &[WormId]
 }
 
 /// A split-screen viewport as replays hold it (`viewportFields`).
-pub fn liero_replay_viewport_of(vp: &Viewport) -> ReplayViewport {
+pub fn replay_viewport_of(vp: &Viewport) -> ReplayViewport {
     ReplayViewport {
         x: vp.x,
         y: vp.y,
@@ -884,7 +884,7 @@ pub fn liero_replay_viewport_of(vp: &Viewport) -> ReplayViewport {
 }
 
 /// Sets a viewport from a replay's (`setViewportFields`).
-pub fn liero_replay_viewport_set(vp: &mut Viewport, f: &ReplayViewport) {
+pub fn replay_viewport_set(vp: &mut Viewport, f: &ReplayViewport) {
     vp.x = f.x;
     vp.y = f.y;
     vp.shake = f.shake;

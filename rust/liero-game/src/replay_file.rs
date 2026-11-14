@@ -20,9 +20,9 @@ use crate::fs::Node;
 use crate::game::Rect;
 use crate::game_box::{Game, Worm};
 use crate::replay::{
-    self, checksum, liero_replay_viewport_of, liero_replay_viewport_set, liero_replay_worm_of, liero_replay_worm_set,
-    read_checksum, read_frame, read_start, write_end, write_frame, write_start, ReplayError, ReplayFrameWorm,
-    ReplayGameFields, ReplayStatus, LIERO_REPLAY_VERSION,
+    self, checksum, read_checksum, read_frame, read_start, replay_viewport_of, replay_viewport_set, replay_worm_of,
+    replay_worm_set, write_end, write_frame, write_start, ReplayError, ReplayFrameWorm, ReplayGameFields, ReplayStatus,
+    LIERO_REPLAY_VERSION,
 };
 use crate::settings::{new_worm_settings, SettingsBox, WormSettingsBox};
 use crate::tc::tc_data;
@@ -206,17 +206,13 @@ impl ReplayWriter {
                 .map(|&id| {
                     let w = game.worm(id);
                     replay::Worm {
-                        fields: liero_replay_worm_of(&w.data, &ids),
+                        fields: replay_worm_of(&w.data, &ids),
                         settings: w.settings().worm(),
                     }
                 })
                 .collect(),
             list: (0..ids.len() as i32).collect(),
-            viewports: game
-                .split_viewports()
-                .iter()
-                .map(|v| liero_replay_viewport_of(v))
-                .collect(),
+            viewports: game.split_viewports().iter().map(|v| replay_viewport_of(v)).collect(),
             level: replay::Level {
                 width: l.level.width as u32,
                 height: l.level.height as u32,
@@ -399,7 +395,7 @@ impl ReplayReader {
         let all: Vec<_> = g.worms.iter().map(|_| game.new_worm(None)).collect();
         for (&id, rw) in all.iter().zip(&g.worms) {
             let w = game.worm_mut(id);
-            liero_replay_worm_set(&mut w.data, &rw.fields, &all);
+            replay_worm_set(&mut w.data, &rw.fields, &all);
             let ws = new_worm_settings();
             ws.borrow_mut().set_worm(&rw.settings);
             w.set_settings(Some(ws));
@@ -416,7 +412,7 @@ impl ReplayReader {
                 y2: 0,
             };
             let p = game.add_viewport(rect, 0, 0, 0, LIERO_VIEWPORT_WORM, false);
-            liero_replay_viewport_set(p, vp);
+            replay_viewport_set(p, vp);
         }
 
         let tc = game.tc();

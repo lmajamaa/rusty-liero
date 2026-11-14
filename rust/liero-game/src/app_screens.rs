@@ -11,7 +11,7 @@ use crate::controllers::{
     liero_controller_run, liero_controller_take_opened, liero_controller_unfocus, liero_local_controller_new,
 };
 use crate::level::LevelBox;
-use crate::menu_screen::liero_menu_screen;
+use crate::menu_screen::menu_screen;
 use crate::renderer::Renderer;
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
@@ -256,7 +256,7 @@ impl Screen for MainScreen {
         // The level, or the game left off, behind the menu.
         draw(app, false);
         self.open = Open::InMenu;
-        Tick::push(liero_menu_screen(app.shared_menus()))
+        Tick::push(menu_screen(app.shared_menus()))
     }
 
     fn resume(&mut self, _app: &mut App, _host: &Host, result: i32) {
@@ -265,7 +265,7 @@ impl Screen for MainScreen {
 }
 
 /// The app's first screen.
-pub fn liero_main_screen() -> BoxedScreen {
+pub fn main_screen() -> BoxedScreen {
     Box::new(MainScreen {
         open: Open::Nothing,
         selection: -1,

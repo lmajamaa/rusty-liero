@@ -6,7 +6,7 @@
 //! the app's are in `app_files.rs`.
 
 use crate::app::App;
-use crate::gfx::{liero_gfx_draw_rounded_box, Bitmap};
+use crate::gfx::{draw_rounded_box, Bitmap};
 use crate::menu::{Menu, MenuState};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::text::Font;
@@ -322,7 +322,7 @@ impl Selector {
 
     fn framed_text(scr: &Bitmap, font: &Font, text: &[u8], x: i32, y: i32) {
         let width = font.dims(text).0;
-        liero_gfx_draw_rounded_box(scr, x, y, 0, 7, width);
+        draw_rounded_box(scr, x, y, 0, 7, width);
         font.text(scr, text, x + 2, y + 1, TITLE_COLOR, 1);
     }
 

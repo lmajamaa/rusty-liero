@@ -599,7 +599,7 @@ impl Rules<'_> {
 ///
 /// # Safety
 /// See above.
-pub unsafe fn liero_game_process_frame(game: &GameFields, settings: &RuleSettings, hooks: &GameHooks) {
+pub unsafe fn process_frame(game: &GameFields, settings: &RuleSettings, hooks: &GameHooks) {
     unsafe {
         World::new(game, settings, hooks).process_frame();
     }
@@ -610,7 +610,7 @@ pub unsafe fn liero_game_process_frame(game: &GameFields, settings: &RuleSetting
 ///
 /// # Safety
 /// See above.
-pub unsafe fn liero_game_damage(game: &GameFields, settings: &RuleSettings, target: i32, amount: i32, by_idx: i32) {
+pub unsafe fn damage(game: &GameFields, settings: &RuleSettings, target: i32, amount: i32, by_idx: i32) {
     unsafe { Rules::new(game, settings) }.damage(target, amount, by_idx);
 }
 
@@ -618,7 +618,7 @@ pub unsafe fn liero_game_damage(game: &GameFields, settings: &RuleSettings, targ
 ///
 /// # Safety
 /// See above.
-pub unsafe fn liero_game_heal(game: &GameFields, settings: &RuleSettings, target: i32, amount: i32) {
+pub unsafe fn heal(game: &GameFields, settings: &RuleSettings, target: i32, amount: i32) {
     unsafe { Rules::new(game, settings) }.heal(target, amount);
 }
 
@@ -627,7 +627,7 @@ pub unsafe fn liero_game_heal(game: &GameFields, settings: &RuleSettings, target
 ///
 /// # Safety
 /// See above; the TC is valid too.
-pub unsafe fn liero_game_start(game: &GameFields, settings: &RuleSettings, blood_particle_max: i32) {
+pub unsafe fn start_game(game: &GameFields, settings: &RuleSettings, blood_particle_max: i32) {
     unsafe {
         game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
         let mut g = Rules::new(game, settings);
@@ -642,7 +642,7 @@ pub unsafe fn liero_game_start(game: &GameFields, settings: &RuleSettings, blood
 ///
 /// # Safety
 /// See above.
-pub unsafe fn liero_game_is_over(game: &GameFields, settings: &RuleSettings) -> bool {
+pub unsafe fn is_over(game: &GameFields, settings: &RuleSettings) -> bool {
     unsafe { Rules::new(game, settings) }.is_over()
 }
 
@@ -746,7 +746,7 @@ mod tests {
                 report: Some(report),
             };
             unsafe {
-                liero_game_start(&f, &settings(LIERO_GAME_KILL_EM_ALL), 300);
+                start_game(&f, &settings(LIERO_GAME_KILL_EM_ALL), 300);
                 assert_eq!(((*f.game).bobjects.limit(), (*f.game).bobjects.count), (300, 0));
                 // No zone outside Holdazone.
                 assert_eq!((*f.game).holdazone.rect.x2, 0);
@@ -802,9 +802,9 @@ mod tests {
         let mut worms = [worm(10), worm(100)];
         let s = settings(LIERO_GAME_KILL_EM_ALL);
         with_game(&mut worms, |g| unsafe {
-            liero_game_damage(g, &s, 0, 5, 1);
-            liero_game_damage(g, &s, 0, 0, 1);
-            liero_game_damage(g, &s, 0, 7, 1);
+            damage(g, &s, 0, 5, 1);
+            damage(g, &s, 0, 0, 1);
+            damage(g, &s, 0, 7, 1);
         });
         assert_eq!((worms[0].health, worms[0].last_killed_by_idx), (-2, 1));
         assert_eq!(worms[1].health, 100);
@@ -817,16 +817,16 @@ mod tests {
         with_game(&mut worms, |g| unsafe {
             // Hurt by worm 1: it gets all of it, and an extra life from the
             // overflow.
-            liero_game_damage(g, &s, 0, 20, 1);
+            damage(g, &s, 0, 20, 1);
         });
         assert_eq!((worms[0].health, worms[1].health, worms[1].lives), (30, 10, 6));
 
         with_game(&mut worms, |g| unsafe {
             // Self-inflicted: split between the others, 6 and then 7,
             // rounding down in turn.
-            liero_game_damage(g, &s, 0, 13, 0);
+            damage(g, &s, 0, 13, 0);
             // Healing takes from the others in the same way.
-            liero_game_heal(g, &s, 2, 9);
+            heal(g, &s, 2, 9);
         });
         assert_eq!(worms[0].health, 30 - 13 - 4);
         assert_eq!(worms[1].health, 10 + 6 - 5);
@@ -838,7 +838,7 @@ mod tests {
     fn healing_is_capped_outside_scales_of_justice() {
         let mut worms = [worm(95), worm(100)];
         let s = settings(LIERO_GAME_KILL_EM_ALL);
-        with_game(&mut worms, |g| unsafe { liero_game_heal(g, &s, 0, 20) });
+        with_game(&mut worms, |g| unsafe { heal(g, &s, 0, 20) });
         assert_eq!((worms[0].health, worms[0].lives), (100, 5));
     }
 
@@ -854,13 +854,13 @@ mod tests {
             (LIERO_GAME_HOLDAZONE, true),
         ] {
             let s = settings(mode);
-            with_game(&mut worms, |g| assert_eq!(unsafe { liero_game_is_over(g, &s) }, over));
+            with_game(&mut worms, |g| assert_eq!(unsafe { is_over(g, &s) }, over));
         }
         worms[1].lives = 1;
         worms[0].timer = 599;
         for mode in 0..4 {
             let s = settings(mode);
-            with_game(&mut worms, |g| assert!(!unsafe { liero_game_is_over(g, &s) }));
+            with_game(&mut worms, |g| assert!(!unsafe { is_over(g, &s) }));
         }
     }
 

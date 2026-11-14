@@ -5,7 +5,7 @@
 use crate::game::Rect;
 use std::cell::Cell;
 
-use crate::gfx::{liero_gfx_fill, Bitmap, Color};
+use crate::gfx::{fill, Bitmap, Color};
 use crate::tc::TcData;
 
 /// A bitmap that owns its pixels. They are cells, so that views of it can
@@ -109,7 +109,7 @@ impl Renderer {
 
     /// `clear`: the bitmap filled with colour 0.
     pub fn clear(&mut self) {
-        liero_gfx_fill(&self.bmp.view(), 0);
+        fill(&self.bmp.view(), 0);
     }
 
     /// `loadPalette`: both palettes from the TC's.

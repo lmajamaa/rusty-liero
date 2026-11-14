@@ -199,7 +199,7 @@ fn line(from_x: i32, from_y: i32, to_x: i32, to_y: i32, mut f: impl FnMut(i32, i
 }
 
 /// Fills a rectangle, clipped: `fillRect`.
-pub fn liero_gfx_fill_rect(scr: &Bitmap, x: i32, y: i32, w: i32, h: i32, color: u8) {
+pub fn fill_rect(scr: &Bitmap, x: i32, y: i32, w: i32, h: i32, color: u8) {
     let s = scr;
     let x2 = (x + w).min(s.clip.x2);
     let y2 = (y + h).min(s.clip.y2);
@@ -214,12 +214,12 @@ pub fn liero_gfx_fill_rect(scr: &Bitmap, x: i32, y: i32, w: i32, h: i32, color: 
 }
 
 /// Fills the whole buffer: `fill`.
-pub fn liero_gfx_fill(scr: &Bitmap, color: u8) {
+pub fn fill(scr: &Bitmap, color: u8) {
     scr.pixels.iter().for_each(|p| p.set(color));
 }
 
 /// A bar `width` long and `height` high, not clipped: `drawBar`.
-pub fn liero_gfx_draw_bar(scr: &Bitmap, x: i32, y: i32, width: i32, height: i32, color: u8) {
+pub fn draw_bar(scr: &Bitmap, x: i32, y: i32, width: i32, height: i32, color: u8) {
     let s = scr;
     for h in 0..height {
         if width > 0 {
@@ -229,7 +229,7 @@ pub fn liero_gfx_draw_bar(scr: &Bitmap, x: i32, y: i32, width: i32, height: i32,
 }
 
 /// A vertical line from y1 to y2 (excluded), clipped: `vline`.
-pub fn liero_gfx_vline(scr: &Bitmap, x: i32, y1: i32, y2: i32, color: u8) {
+pub fn vline(scr: &Bitmap, x: i32, y1: i32, y2: i32, color: u8) {
     let s = scr;
     if x < s.clip.x1 || x >= s.clip.x2 {
         return;
@@ -240,18 +240,18 @@ pub fn liero_gfx_vline(scr: &Bitmap, x: i32, y1: i32, y2: i32, color: u8) {
 }
 
 /// A filled box with cut corners: `drawRoundedBox`.
-pub fn liero_gfx_draw_rounded_box(scr: &Bitmap, x: i32, y: i32, color: u8, height: i32, width: i32) {
-    liero_gfx_fill_rect(scr, x, y + 1, width + 3, height - 2, color);
-    liero_gfx_fill_rect(scr, x + 1, y, width + 1, 1, color);
-    liero_gfx_fill_rect(scr, x + 1, y + height - 1, width + 1, 1, color);
+pub fn draw_rounded_box(scr: &Bitmap, x: i32, y: i32, color: u8, height: i32, width: i32) {
+    fill_rect(scr, x, y + 1, width + 3, height - 2, color);
+    fill_rect(scr, x + 1, y, width + 1, 1, color);
+    fill_rect(scr, x + 1, y + height - 1, width + 1, 1, color);
 }
 
 /// The outline of a box with cut corners: `drawRoundedLineBox`.
-pub fn liero_gfx_draw_rounded_line_box(scr: &Bitmap, x: i32, y: i32, color: u8, width: i32, height: i32) {
-    liero_gfx_fill_rect(scr, x + 1, y, width - 2, 1, color);
-    liero_gfx_fill_rect(scr, x + 1, y + height - 1, width - 2, 1, color);
-    liero_gfx_fill_rect(scr, x, y + 1, 1, height - 2, color);
-    liero_gfx_fill_rect(scr, x + width - 1, y + 1, 1, height - 2, color);
+pub fn draw_rounded_line_box(scr: &Bitmap, x: i32, y: i32, color: u8, width: i32, height: i32) {
+    fill_rect(scr, x + 1, y, width - 2, 1, color);
+    fill_rect(scr, x + 1, y + height - 1, width - 2, 1, color);
+    fill_rect(scr, x, y + 1, 1, height - 2, color);
+    fill_rect(scr, x + width - 1, y + 1, 1, height - 2, color);
 }
 
 /// A dashed outline, going round anticlockwise from the top-left corner,
@@ -259,7 +259,7 @@ pub fn liero_gfx_draw_rounded_line_box(scr: &Bitmap, x: i32, y: i32, color: u8, 
 /// rest: `drawDashedLineBox`, which shows Holdazone's zone and how far it
 /// is taken.
 #[allow(clippy::too_many_arguments)]
-pub fn liero_gfx_draw_dashed_line_box(
+pub fn draw_dashed_line_box(
     scr: &Bitmap,
     x: i32,
     y: i32,
@@ -298,20 +298,12 @@ pub fn liero_gfx_draw_dashed_line_box(
 }
 
 /// Copies an image, colour 0 included: `blitImageNoKeyColour`.
-pub fn liero_gfx_blit_image_no_key_colour(
-    scr: &Bitmap,
-    mem: &[u8],
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    pitch: i32,
-) {
+pub fn blit_image_no_key_colour(scr: &Bitmap, mem: &[u8], x: i32, y: i32, width: i32, height: i32, pitch: i32) {
     blit(scr, mem, x, y, width, height, pitch, |c, _, _, _| Some(c));
 }
 
 /// Draws a sprite, colour 0 transparent: `blitImage`.
-pub fn liero_gfx_blit_image(scr: &Bitmap, mem: &[u8], x: i32, y: i32, width: i32, height: i32, pitch: i32) {
+pub fn blit_image(scr: &Bitmap, mem: &[u8], x: i32, y: i32, width: i32, height: i32, pitch: i32) {
     blit(scr, mem, x, y, width, height, pitch, |c, _, _, _| (c != 0).then_some(c));
 }
 
@@ -319,16 +311,7 @@ pub fn liero_gfx_blit_image(scr: &Bitmap, mem: &[u8], x: i32, y: i32, width: i32
 /// shifts: `blitImageTrans`, for worms flickering at respawn. The pattern
 /// follows the visible part, as in C++.
 #[allow(clippy::too_many_arguments)]
-pub fn liero_gfx_blit_image_trans(
-    scr: &Bitmap,
-    mem: &[u8],
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    pitch: i32,
-    phase: i32,
-) {
+pub fn blit_image_trans(scr: &Bitmap, mem: &[u8], x: i32, y: i32, width: i32, height: i32, pitch: i32, phase: i32) {
     blit(scr, mem, x, y, width, height, pitch, |c, _, col, row| {
         (c != 0 && (col ^ row ^ phase) & 1 != 0).then_some(c)
     });
@@ -336,7 +319,7 @@ pub fn liero_gfx_blit_image_trans(
 
 /// Draws a sprite only over colours 160 to 167: `blitImageR`, for
 /// bonuses showing through the fog.
-pub fn liero_gfx_blit_image_r(scr: &Bitmap, mem: &[u8], x: i32, y: i32, width: i32, height: i32) {
+pub fn blit_image_r(scr: &Bitmap, mem: &[u8], x: i32, y: i32, width: i32, height: i32) {
     blit(scr, mem, x, y, width, height, width, |c, d, _, _| {
         (c != 0 && d.wrapping_sub(160) < 8).then_some(c)
     });
@@ -344,7 +327,7 @@ pub fn liero_gfx_blit_image_r(scr: &Bitmap, mem: &[u8], x: i32, y: i32, width: i
 
 /// Draws the 16 x 16 fire cone sprite, darker as `fc` counts down:
 /// `blitFireCone`.
-pub fn liero_gfx_blit_fire_cone(scr: &Bitmap, fc: i32, mem: &[u8], x: i32, y: i32) {
+pub fn blit_fire_cone(scr: &Bitmap, fc: i32, mem: &[u8], x: i32, y: i32) {
     blit(scr, mem, x, y, 16, 16, 16, |c, _, _, _| match fc {
         0 => (c > 116).then(|| c - 5),
         1 => (c > 114).then(|| c - 3),
@@ -355,7 +338,7 @@ pub fn liero_gfx_blit_fire_cone(scr: &Bitmap, fc: i32, mem: &[u8], x: i32, y: i3
 
 /// Darkens the screen under a sprite's non-zero pixels where the material
 /// shows shadows: `blitShadowImage`.
-pub fn liero_gfx_blit_shadow_image(
+pub fn blit_shadow_image(
     scr: &Bitmap,
     materials: &[Material; 256],
     mem: &[u8],
@@ -371,7 +354,7 @@ pub fn liero_gfx_blit_shadow_image(
 
 /// The ninja rope, cycling through colours `begin` to `end` (excluded):
 /// `drawNinjarope`.
-pub fn liero_gfx_draw_ninjarope(scr: &Bitmap, begin: i32, end: i32, from_x: i32, from_y: i32, to_x: i32, to_y: i32) {
+pub fn draw_ninjarope(scr: &Bitmap, begin: i32, end: i32, from_x: i32, from_y: i32, to_x: i32, to_y: i32) {
     let s = scr;
     let mut color = begin;
 
@@ -388,7 +371,7 @@ pub fn liero_gfx_draw_ninjarope(scr: &Bitmap, begin: i32, end: i32, from_x: i32,
 
 /// A sparkling laser sight: a fifth of the points, in colour 83 or 84.
 /// `drawLaserSight`.
-pub fn liero_gfx_draw_laser_sight(scr: &Bitmap, rand: &mut Rand, from_x: i32, from_y: i32, to_x: i32, to_y: i32) {
+pub fn draw_laser_sight(scr: &Bitmap, rand: &mut Rand, from_x: i32, from_y: i32, to_x: i32, to_y: i32) {
     let s = scr;
 
     line(from_x, from_y, to_x, to_y, |cx, cy| {
@@ -399,14 +382,7 @@ pub fn liero_gfx_draw_laser_sight(scr: &Bitmap, rand: &mut Rand, from_x: i32, fr
 }
 
 /// The ninja rope's shadow: `drawShadowLine`.
-pub fn liero_gfx_draw_shadow_line(
-    scr: &Bitmap,
-    materials: &[Material; 256],
-    from_x: i32,
-    from_y: i32,
-    to_x: i32,
-    to_y: i32,
-) {
+pub fn draw_shadow_line(scr: &Bitmap, materials: &[Material; 256], from_x: i32, from_y: i32, to_x: i32, to_y: i32) {
     let s = scr;
 
     line(from_x, from_y, to_x, to_y, |cx, cy| {
@@ -420,7 +396,7 @@ pub fn liero_gfx_draw_shadow_line(
 }
 
 /// A line, clipped: `drawLine`.
-pub fn liero_gfx_draw_line(scr: &Bitmap, from_x: i32, from_y: i32, to_x: i32, to_y: i32, color: u8) {
+pub fn draw_line(scr: &Bitmap, from_x: i32, from_y: i32, to_x: i32, to_y: i32, color: u8) {
     let s = scr;
     line(from_x, from_y, to_x, to_y, |cx, cy| {
         if s.clip.contains(cx, cy) {
@@ -432,7 +408,7 @@ pub fn liero_gfx_draw_line(scr: &Bitmap, from_x: i32, from_y: i32, to_x: i32, to
 /// A bar graph of `len` values in a framed box `height` high, from the
 /// bottom or, when `balanced`, from the middle: `drawGraph`.
 #[allow(clippy::too_many_arguments)]
-pub fn liero_gfx_draw_graph(
+pub fn draw_graph(
     scr: &Bitmap,
     data: &[f64],
     height: i32,
@@ -450,15 +426,15 @@ pub fn liero_gfx_draw_graph(
         if y1 > y2 {
             std::mem::swap(&mut y1, &mut y2);
         }
-        liero_gfx_vline(scr, x, y1, y2, if v >= 0.0 { color } else { neg_color });
+        vline(scr, x, y1, y2, if v >= 0.0 { color } else { neg_color });
     }
 
-    liero_gfx_draw_rounded_line_box(scr, start_x, start_y, 7, data.len() as i32, height);
+    draw_rounded_line_box(scr, start_x, start_y, 7, data.len() as i32, height);
 }
 
 /// A heatmap of `width` x `height` counts, in colours 104 to 119 by rank,
 /// so each colour covers about as many pixels: `drawHeatmap`.
-pub fn liero_gfx_draw_heatmap(scr: &Bitmap, x: i32, y: i32, cells: &[i32], width: i32, height: i32) {
+pub fn draw_heatmap(scr: &Bitmap, x: i32, y: i32, cells: &[i32], width: i32, height: i32) {
     let mut counts = BTreeMap::<i32, i64>::new();
     for &v in cells.iter().filter(|&&v| v != 0) {
         *counts.entry(v).or_default() += 1;
@@ -490,7 +466,7 @@ pub fn liero_gfx_draw_heatmap(scr: &Bitmap, x: i32, y: i32, cells: &[i32], width
 /// rows are `dest_pitch` bytes apart: `scaleDraw`. Above 1x, only whole
 /// groups of 4 pixels in a row are drawn, as in C++.
 #[allow(clippy::too_many_arguments)]
-pub fn liero_gfx_scale_draw(
+pub fn scale_draw(
     src: &[Cell<u8>],
     w: i32,
     h: i32,
@@ -528,14 +504,7 @@ pub fn liero_gfx_scale_draw(
 
 /// The largest whole magnification that fits a `scr_w` x `scr_h` screen in
 /// `back_w` x `back_h`, and where to put it to centre it: `fitScreen`.
-pub fn liero_gfx_fit_screen(
-    back_w: i32,
-    back_h: i32,
-    scr_w: i32,
-    scr_h: i32,
-    offset_x: &mut i32,
-    offset_y: &mut i32,
-) -> i32 {
+pub fn fit_screen(back_w: i32, back_h: i32, scr_w: i32, scr_h: i32, offset_x: &mut i32, offset_y: &mut i32) -> i32 {
     let mut mag = 1;
     while scr_w * mag <= back_w && scr_h * mag <= back_h {
         mag += 1;
@@ -551,7 +520,7 @@ pub fn liero_gfx_fit_screen(
 pub type Palette = [Color; 256];
 
 /// The VGA palette (0 to 63) as 8-bit colours: `Palette::activate`.
-pub fn liero_palette_activate(pal: &Palette, real: &mut Palette) {
+pub fn palette_activate(pal: &Palette, real: &mut Palette) {
     for (r, c) in real.iter_mut().zip(pal) {
         r.r = c.r << 2;
         r.g = c.g << 2;
@@ -570,7 +539,7 @@ fn map_components(pal: &mut Palette, f: impl Fn(i32) -> i32) {
 
 /// Darkens the palette to `amount` / 32; 32 and more leave it:
 /// `Palette::fade`.
-pub fn liero_palette_fade(pal: &mut Palette, amount: i32) {
+pub fn palette_fade(pal: &mut Palette, amount: i32) {
     if amount >= 32 {
         return;
     }
@@ -579,14 +548,14 @@ pub fn liero_palette_fade(pal: &mut Palette, amount: i32) {
 
 /// Brightens the palette towards white by `amount` / 32, for the screen
 /// flash: `Palette::lightUp`.
-pub fn liero_palette_light_up(pal: &mut Palette, amount: i32) {
+pub fn palette_light_up(pal: &mut Palette, amount: i32) {
     map_components(pal, |v| ((v * (32 - amount) + amount * 63) >> 5).min(63));
 }
 
 /// Sets entries `from` to `to` of `pal` to those of `source`, rotated by
 /// `dist`: `Palette::rotateFrom`, for animated colours. Panics unless
 /// 0 <= from <= to < 256.
-pub fn liero_palette_rotate_from(pal: &mut Palette, source: &Palette, from: i32, to: i32, dist: u32) {
+pub fn palette_rotate_from(pal: &mut Palette, source: &Palette, from: i32, to: i32, dist: u32) {
     // C++ mixed signed and unsigned here, so it worked in unsigned.
     let count = (to - from + 1) as u32;
     let dist = dist % count;
@@ -599,7 +568,7 @@ pub fn liero_palette_rotate_from(pal: &mut Palette, source: &Palette, from: i32,
 /// The palette a game shows (`Game::draw`): `origpal` with the TC's four
 /// colour animations at `cycles`, faded by `fade` and lit up by the
 /// screen flash.
-pub fn liero_game_palette(
+pub fn game_palette(
     pal: &mut Palette,
     origpal: &Palette,
     color_anim: &[(i32, i32); 4],
@@ -609,11 +578,11 @@ pub fn liero_game_palette(
 ) {
     *pal = *origpal;
     for &(from, to) in color_anim {
-        liero_palette_rotate_from(pal, origpal, from, to, (cycles >> 3) as u32);
+        palette_rotate_from(pal, origpal, from, to, (cycles >> 3) as u32);
     }
-    liero_palette_fade(pal, fade);
+    palette_fade(pal, fade);
     if screen_flash > 0 {
-        liero_palette_light_up(pal, screen_flash);
+        palette_light_up(pal, screen_flash);
     }
 }
 
@@ -621,7 +590,7 @@ pub fn liero_game_palette(
 /// `Palette::setWormColour`. The settings keep `color` from 2 to 253;
 /// entries outside the palette, which C++ wrote past it, are skipped, and
 /// read as black.
-pub fn liero_palette_set_worm_colour(pal: &mut Palette, i: i32, color: i32, rgb: &[i32; 3]) {
+pub fn palette_set_worm_colour(pal: &mut Palette, i: i32, color: i32, rgb: &[i32; 3]) {
     const WORM_COLOUR_INDEXES: [i32; 2] = [0x58, 0x78];
 
     let mut scale_add = |dest: i32, scale: i32, add: i32| {
@@ -660,7 +629,7 @@ pub fn liero_palette_set_worm_colour(pal: &mut Palette, i: i32, color: i32, rgb:
 /// Draws character `c` in `color`, `size` times as big: `Font::drawChar`.
 /// Clipping is for the unscaled size, as in C++.
 #[allow(clippy::too_many_arguments)]
-pub fn liero_font_draw_char(scr: &Bitmap, chars: &[FontChar], c: u8, x: i32, y: i32, color: u8, size: i32) {
+pub fn draw_char(scr: &Bitmap, chars: &[FontChar], c: u8, x: i32, y: i32, color: u8, size: i32) {
     // C++ checks the character after drawText subtracted 2. Keep that.
     if !(2..252).contains(&c) || c as usize >= chars.len() {
         return;
@@ -690,15 +659,7 @@ pub fn liero_font_draw_char(scr: &Bitmap, chars: &[FontChar], c: u8, x: i32, y: 
 
 /// Draws `text`: `Font::drawText`.
 #[allow(clippy::too_many_arguments)]
-pub fn liero_font_draw_text(
-    scr: &Bitmap,
-    chars: &[FontChar],
-    text: &[u8],
-    mut x: i32,
-    mut y: i32,
-    color: u8,
-    size: i32,
-) {
+pub fn draw_text(scr: &Bitmap, chars: &[FontChar], text: &[u8], mut x: i32, mut y: i32, color: u8, size: i32) {
     let org_x = x;
     for &c in text {
         if c == 0 {
@@ -706,7 +667,7 @@ pub fn liero_font_draw_text(
             y += 8 * size;
         } else if (2..252).contains(&c) {
             let c = c - 2;
-            liero_font_draw_char(scr, chars, c, x, y, color, size);
+            draw_char(scr, chars, c, x, y, color, size);
             x += chars[c as usize].width as i32 * size;
         }
     }
@@ -714,7 +675,7 @@ pub fn liero_font_draw_text(
 
 /// The width of `text`, its widest line if there are several, and its
 /// height: `Font::getDims`.
-pub fn liero_font_get_dims(chars: &[FontChar], text: &[u8]) -> (i32, i32) {
+pub fn text_dims(chars: &[FontChar], text: &[u8]) -> (i32, i32) {
     let (mut width, mut max_width, mut max_height) = (0, 0, 8);
     for &c in text {
         if (2..252).contains(&c) {
@@ -746,14 +707,14 @@ mod tests {
         let anims = [(10, 12), (20, 21), (0, 0), (0, 0)];
         let mut pal = [Color::default(); 256];
         // Tick 8 rotates each range by one.
-        liero_game_palette(&mut pal, &orig, &anims, 8, 32, 0);
+        game_palette(&mut pal, &orig, &anims, 8, 32, 0);
         assert_eq!(
             [pal[10].r, pal[11].r, pal[12].r, pal[20].r, pal[21].r, pal[30].r],
             [12, 10, 11, 21, 20, 30]
         );
-        liero_game_palette(&mut pal, &orig, &anims, 0, 16, 0);
+        game_palette(&mut pal, &orig, &anims, 0, 16, 0);
         assert_eq!((pal[30].r, pal[30].g), (15, 16));
-        liero_game_palette(&mut pal, &orig, &anims, 0, 32, 16);
+        game_palette(&mut pal, &orig, &anims, 0, 32, 16);
         assert_eq!((pal[30].r, pal[30].g), (46, 47));
     }
 
@@ -805,7 +766,7 @@ mod tests {
             x2: 4,
             y2: 3,
         };
-        liero_gfx_fill_rect(&b.view(), -2, 0, 10, 10, 7);
+        fill_rect(&b.view(), -2, 0, 10, 10, 7);
         assert_eq!(rows(&b), [".....", ".777.", ".777.", "....."]);
     }
 
@@ -813,24 +774,24 @@ mod tests {
     fn blit_image_skips_colour_0_and_clips() {
         let mut b = bmp(4, 3);
         let sprite = [1, 0, 2, 3, 4, 0];
-        liero_gfx_blit_image(&b.view(), &sprite, -1, 1, 3, 2, 3);
+        blit_image(&b.view(), &sprite, -1, 1, 3, 2, 3);
         assert_eq!(rows(&b), ["....", ".2..", "4..."]);
         b.px.fill(0);
-        liero_gfx_blit_image(&b.view(), &sprite, 2, 0, 3, 2, 3);
+        blit_image(&b.view(), &sprite, 2, 0, 3, 2, 3);
         assert_eq!(rows(&b), ["..1.", "..34", "...."]);
     }
 
     #[test]
     fn lines_skip_the_start_point() {
         let mut b = bmp(5, 3);
-        liero_gfx_draw_line(&b.view(), 0, 0, 4, 2, 5);
+        draw_line(&b.view(), 0, 0, 4, 2, 5);
         assert_eq!(rows(&b), [".5...", "..55.", "....5"]);
     }
 
     #[test]
     fn dashed_box_goes_round() {
         let mut b = bmp(4, 3);
-        liero_gfx_draw_dashed_line_box(&b.view(), 0, 0, 1, 2, 1, 2, 4, 3, 0);
+        draw_dashed_line_box(&b.view(), 0, 0, 1, 2, 1, 2, 4, 3, 0);
         // Perimeter 2 * (4 + 3) - 2 = 12; the first 6 points use colour 2.
         // Dashes: points 0, 1, 4, 5, 8, 9 are drawn.
         assert_eq!(rows(&b), ["211.", "2...", "..22"]);
@@ -839,7 +800,7 @@ mod tests {
     #[test]
     fn fit_screen_centres() {
         let (mut x, mut y) = (0, 0);
-        assert_eq!(liero_gfx_fit_screen(1000, 700, 320, 200, &mut x, &mut y), 3);
+        assert_eq!(fit_screen(1000, 700, 320, 200, &mut x, &mut y), 3);
         assert_eq!((x, y), (500 - 480, 350 - 300));
     }
 
@@ -851,9 +812,9 @@ mod tests {
             b: 0,
             unused: 0,
         }; 256];
-        liero_palette_fade(&mut pal, 16);
+        palette_fade(&mut pal, 16);
         assert_eq!((pal[0].r, pal[0].g, pal[0].b), (31, 16, 0));
-        liero_palette_light_up(&mut pal, 16);
+        palette_light_up(&mut pal, 16);
         assert_eq!((pal[0].r, pal[0].g, pal[0].b), (47, 39, 31));
 
         let mut src = [Color::default(); 256];
@@ -861,7 +822,7 @@ mod tests {
             c.r = i as u8;
         }
         let mut dst = src;
-        liero_palette_rotate_from(&mut dst, &src, 10, 13, 5);
+        palette_rotate_from(&mut dst, &src, 10, 13, 5);
         assert_eq!(
             dst[9..15].iter().map(|c| c.r).collect::<Vec<_>>(),
             [9, 13, 10, 11, 12, 14]
@@ -881,24 +842,24 @@ mod tests {
         chars[3].width = 2;
         let text = [5u8, 5, 0, 5];
         let mut b = bmp(8, 10);
-        liero_font_draw_text(&b.view(), &chars, &text, 1, 0, 9, 1);
+        draw_text(&b.view(), &chars, &text, 1, 0, 9, 1);
         assert_eq!(&rows(&b)[0], ".9.9....");
         assert_eq!(&rows(&b)[8], ".9......");
-        assert_eq!(liero_font_get_dims(&chars, &text), (4, 16));
+        assert_eq!(text_dims(&chars, &text), (4, 16));
     }
 
     #[test]
     fn vline_and_boxes() {
         let mut b = bmp(3, 3);
-        liero_gfx_vline(&b.view(), 1, -1, 2, 6);
+        vline(&b.view(), 1, -1, 2, 6);
         assert_eq!(rows(&b), [".6.", ".6.", "..."]);
 
         let mut b = bmp(5, 3);
-        liero_gfx_draw_rounded_box(&b.view(), 0, 0, 3, 3, 1);
+        draw_rounded_box(&b.view(), 0, 0, 3, 3, 1);
         assert_eq!(rows(&b), [".33..", "3333.", ".33.."]);
 
         let mut b = bmp(4, 3);
-        liero_gfx_draw_rounded_line_box(&b.view(), 0, 0, 4, 4, 3);
+        draw_rounded_line_box(&b.view(), 0, 0, 4, 4, 3);
         assert_eq!(rows(&b), [".44.", "4..4", ".44."]);
     }
 
@@ -906,7 +867,7 @@ mod tests {
     fn trans_blit_is_a_checkerboard() {
         let mut b = bmp(2, 2);
         let sprite = [5u8; 4];
-        liero_gfx_blit_image_trans(&b.view(), &sprite, 0, 0, 2, 2, 2, 0);
+        blit_image_trans(&b.view(), &sprite, 0, 0, 2, 2, 2, 0);
         assert_eq!(rows(&b), [".5", "5."]);
     }
 
@@ -914,7 +875,7 @@ mod tests {
     fn graph_draws_bars_and_frame() {
         let mut b = bmp(6, 9);
         let data = [2.4, -1.6, 0.0];
-        liero_gfx_draw_graph(&b.view(), &data, 6, 1, 1, 1, 2, false);
+        draw_graph(&b.view(), &data, 6, 1, 1, 1, 2, false);
         let px = |x: usize, y: usize| b.px[y * 6 + x];
         // Bars from the base line at y 7: up 2 for 2.4, down 2 for -1.6.
         assert_eq!((px(1, 6), px(1, 5)), (1, 7)); // the frame covers y 5
@@ -928,7 +889,7 @@ mod tests {
     fn heatmap_ranks_counts() {
         let mut b = bmp(4, 2);
         let map = [0, 5, 5, 9];
-        liero_gfx_draw_heatmap(&b.view(), 1, 0, &map, 2, 2);
+        draw_heatmap(&b.view(), 1, 0, &map, 2, 2);
         // 5 covers 2 of 3 cells, so 9 starts 2/3 of the way up 16 colours.
         assert_eq!(b.px, [0, 0, 104, 0, 0, 104, 114, 0]);
     }
@@ -941,12 +902,12 @@ mod tests {
         let words = |b: &[u8]| -> Vec<u32> { b.chunks(4).map(|c| u32::from_ne_bytes(c.try_into().unwrap())).collect() };
 
         let mut dest = vec![0u8; 16];
-        liero_gfx_scale_draw(src, 4, 1, 4, &mut dest, 16, 1, &pal);
+        scale_draw(src, 4, 1, 4, &mut dest, 16, 1, &pal);
         let dest = words(&dest);
         assert_eq!(dest, [0x010101, 0x020202, 0x030303, 0x040404]);
 
         let mut dest = vec![0u8; 64];
-        liero_gfx_scale_draw(src, 4, 1, 4, &mut dest, 32, 2, &pal);
+        scale_draw(src, 4, 1, 4, &mut dest, 32, 2, &pal);
         let dest = words(&dest);
         let row: Vec<u32> = [1, 1, 2, 2, 3, 3, 4, 4].iter().map(|&i| i * 0x010101).collect();
         assert_eq!(&dest[..8], &row[..]);
@@ -963,7 +924,7 @@ mod tests {
             unused: 0,
         };
         let mut real = [Color::default(); 256];
-        liero_palette_activate(&pal, &mut real);
+        palette_activate(&pal, &mut real);
         assert_eq!((real[7].r, real[7].g, real[7].b), (252, 4, 0));
     }
 }

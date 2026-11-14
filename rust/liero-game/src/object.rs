@@ -155,7 +155,7 @@ fn in_blast(px: i32, py: i32, x: i32, y: i32, range: i32) -> bool {
 /// `SObjectType::create` does. A worm already moving at 2 pixels per tick or
 /// more on an axis isn't pushed on that axis. Returns false when the worm is
 /// out of range; otherwise sets `power_sum`, which sets the damage.
-pub fn liero_explosion_push_worm(
+pub fn explosion_push_worm(
     pos: IVec2,
     vel: &mut IVec2,
     x: i32,
@@ -201,7 +201,7 @@ pub fn liero_explosion_push_worm(
 }
 
 /// The damage an explosion does to a worm, from `power_sum`.
-pub fn liero_explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
+pub fn explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
     let z = damage.wrapping_mul(power_sum);
     if range != 0 {
         z / range
@@ -212,7 +212,7 @@ pub fn liero_explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
 
 /// Pushes an object that explosions affect away from an explosion at
 /// (x, y). Returns whether it was in range (for chain explosions).
-pub fn liero_explosion_push_object(pos: IVec2, vel: &mut IVec2, x: i32, y: i32, range: i32, blow_away: i32) -> bool {
+pub fn explosion_push_object(pos: IVec2, vel: &mut IVec2, x: i32, y: i32, range: i32, blow_away: i32) -> bool {
     let ipos = ftoi_vec(pos);
     if !in_blast(ipos.x, ipos.y, x, y, range) {
         return false;
@@ -276,17 +276,17 @@ mod tests {
             x: itof(13),
             y: itof(8),
         };
-        assert!(liero_explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
+        assert!(explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
         // power 3 on x, 4 on y; y pushed up since the worm is above.
         assert_eq!(vel, IVec2 { x: 300, y: -400 });
         assert_eq!(sum, 3);
-        assert_eq!(liero_explosion_damage(10, sum, 6), 5);
+        assert_eq!(explosion_damage(10, sum, 6), 5);
 
         let far = IVec2 {
             x: itof(16),
             y: itof(10),
         };
-        assert!(!liero_explosion_push_worm(far, &mut vel, 10, 10, 6, 100, &mut sum));
+        assert!(!explosion_push_worm(far, &mut vel, 10, 10, 6, 100, &mut sum));
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
             x: itof(9),
             y: itof(12),
         };
-        assert!(liero_explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
+        assert!(explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
         assert_eq!(
             vel,
             IVec2 {
@@ -317,7 +317,7 @@ mod tests {
             x: itof(10),
             y: itof(12),
         };
-        assert!(liero_explosion_push_object(pos, &mut vel, 10, 10, 6, 30));
+        assert!(explosion_push_object(pos, &mut vel, 10, 10, 6, 30));
         assert_eq!(vel, IVec2 { x: 0, y: 30 * 4 });
     }
 }

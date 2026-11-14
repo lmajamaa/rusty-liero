@@ -9,7 +9,7 @@
 //! window's double size and full screen are shown by the platform.
 
 use crate::app::App;
-use crate::boxes::{liero_input_box_screen, liero_key_choice_screen};
+use crate::boxes::{input_box_screen, key_choice_screen};
 use crate::gfx::Bitmap;
 use crate::item::{ItemAction, ItemBehavior};
 use crate::keys::{is_extended, key_name, LIERO_DK_ESCAPE};
@@ -22,7 +22,7 @@ use crate::screen::{BoxedScreen, Host};
 use crate::settings::{GameSettings, WormSettingsBox};
 use crate::tc::{c, s};
 use crate::text::{Font, Str};
-use crate::weapon_options::{liero_weapon_options_screen, WeaponOptionsSpec};
+use crate::weapon_options::{weapon_options_screen, WeaponOptionsSpec};
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::rc::Rc;
@@ -277,7 +277,8 @@ impl Menus {
     }
 
     /// `Gfx::loadMenus`: the items, added to what the menus have.
-    fn load(&mut self) {
+    /// Adds the menus' items (`Gfx::loadMenus`).
+    pub fn load(&mut self) {
         fn add(m: &mut Menu, color: u8, dis_colour: u8, name: &[u8], id: i32, selectable: bool) {
             let mut item = MenuItem::new(name, color, dis_colour);
             item.selectable = selectable;
@@ -706,7 +707,7 @@ impl Menus {
         }
         let mut typed = Box::new(text.to_vec());
         let ctx = (&mut *typed as *mut Vec<u8>).cast();
-        let screen = unsafe { liero_input_box_screen(text, max_len, x, y, digits, Some(keep), ctx) };
+        let screen = unsafe { input_box_screen(text, max_len, x, y, digits, Some(keep), ctx) };
         self.pending = Some(Pending { kind, then, typed });
         screen
     }
@@ -749,7 +750,7 @@ impl Menus {
             }
             Behavior::Key { index, extended } => {
                 sound();
-                let screen = liero_key_choice_screen(extended);
+                let screen = key_choice_screen(extended);
                 Some(self.open(kind, Then::Key { item: i as i32, index }, screen))
             }
             Behavior::WormName => {
@@ -837,7 +838,7 @@ impl Menus {
             availability_title: lstr(tc.text(s("Availability"))),
             no_weapons: lstr(tc.text(s("NoWeaps"))),
         };
-        unsafe { liero_weapon_options_screen(&spec) }
+        unsafe { weapon_options_screen(&spec) }
     }
 
     /// The screen the last item opened closed with `result`: what the item
@@ -963,6 +964,26 @@ impl Menus {
         self.cur = kind;
     }
 
+    /// The menus, empty (`Menu(x, y)` for each).
+    pub fn shared() -> SharedMenus {
+        Rc::new(RefCell::new(Menus::new()))
+    }
+
+    /// Empties the menus, as they were made.
+    pub fn reset(&mut self) {
+        *self = Menus::new();
+    }
+
+    /// Enter on `kind`'s selected item. A screen it opened is dropped: the
+    /// menu checks only press items that open none.
+    pub fn enter_dropping(&mut self, app: &mut App, host: &Host, kind: i32) -> i32 {
+        let (r, opened) = self.enter(app, host, kind);
+        if opened.is_some() {
+            self.pending = None;
+        }
+        r
+    }
+
     pub fn box_of(&mut self, kind: i32) -> &mut Menu {
         &mut self.menus[kind as usize]
     }
@@ -970,7 +991,7 @@ impl Menus {
     /// Draws `kind`, with the player menu's colour bars and the options
     /// menu's palette entry.
     #[allow(clippy::too_many_arguments)]
-    fn draw(&mut self, app: &App, kind: i32, scr: &Bitmap, font: &Font, disabled: bool, x: i32, show: bool) {
+    pub fn draw(&mut self, app: &App, kind: i32, scr: &Bitmap, font: &Font, disabled: bool, x: i32, show: bool) {
         struct Ctx<'a> {
             ids: Vec<i32>,
             kind: i32,
@@ -1015,77 +1036,6 @@ fn atoi(s: &[u8]) -> i32 {
         v = (v * 10 + i64::from(b - b'0')).min(i64::from(i32::MAX));
     }
     v as i32
-}
-
-/// The menus, empty (`Menu(x, y)` for each).
-pub fn liero_menus_new() -> SharedMenus {
-    Rc::new(RefCell::new(Menus::new()))
-}
-
-/// Empties the menus, as they were made, keeping their addresses.
-pub fn liero_menus_reset(m: &mut Menus) {
-    let fresh = Menus::new();
-    for (dst, src) in m.menus.iter_mut().zip(fresh.menus) {
-        dst.clone_from(&src);
-    }
-    m.cur = LIERO_MENU_MAIN;
-    m.player = 0;
-    m.palette_color = 0;
-    m.pending = None;
-}
-
-/// Adds the menus' items (`Gfx::loadMenus`).
-pub fn liero_menus_load(m: &mut Menus) {
-    m.load();
-}
-
-pub fn liero_menus_box(m: &mut Menus, kind: i32) -> *mut Menu {
-    m.box_of(kind)
-}
-
-pub fn liero_menus_cur(m: &Menus) -> i32 {
-    m.cur
-}
-
-pub fn liero_menus_set_cur(m: &mut Menus, kind: i32) {
-    m.cur = kind;
-}
-
-pub fn liero_menus_player_settings(m: &mut Menus, app: &mut App, player: i32) {
-    m.player_settings(app, player);
-}
-
-pub fn liero_menus_update_items(m: &mut Menus, app: &mut App, kind: i32) {
-    m.update_items(app, kind);
-}
-
-pub fn liero_menus_left_right(m: &mut Menus, app: &mut App, host: &Host, kind: i32, dir: i32) -> bool {
-    m.left_right(app, host, kind, dir)
-}
-
-/// Enter on `kind`'s selected item. A screen it opened is dropped: the menu
-/// checks only press items that open none.
-pub fn liero_menus_enter(m: &mut Menus, app: &mut App, host: &Host, kind: i32) -> i32 {
-    let (r, opened) = m.enter(app, host, kind);
-    if let Some(s) = opened {
-        drop(s);
-        m.pending = None;
-    }
-    r
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn liero_menus_draw(
-    m: &mut Menus,
-    app: &App,
-    kind: i32,
-    scr: &Bitmap,
-    font: &Font,
-    disabled: bool,
-    x: i32,
-    show_disabled_selection: bool,
-) {
-    m.draw(app, kind, scr, font, disabled, x, show_disabled_selection);
 }
 
 #[cfg(test)]

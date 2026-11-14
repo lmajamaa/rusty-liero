@@ -8,7 +8,7 @@
 
 use std::ffi::c_void;
 
-use crate::gfx::{liero_gfx_blit_image_no_key_colour, liero_gfx_draw_rounded_box, liero_gfx_fill_rect, Bitmap};
+use crate::gfx::{blit_image_no_key_colour, draw_rounded_box, fill_rect, Bitmap};
 use crate::screen::Host;
 use crate::text::{time_to_string, time_to_string_ex, Font};
 
@@ -292,9 +292,9 @@ impl Menu {
         let value_x = x + self.m.value_offset_x - (value_wid >> 1);
 
         if selected {
-            liero_gfx_draw_rounded_box(scr, x, y, 0, 7, wid);
+            draw_rounded_box(scr, x, y, 0, 7, wid);
             if item.has_value {
-                liero_gfx_draw_rounded_box(scr, value_x, y, 0, 7, value_wid);
+                draw_rounded_box(scr, value_x, y, 0, 7, value_wid);
             }
         } else {
             font.text(scr, string, x + 3, y + 2, 0, 1);
@@ -356,8 +356,8 @@ impl Menu {
             let bar_height = menu_height - 17;
             let tab_height = (m.height * bar_height / m.visible_item_count).min(bar_height).max(0);
             let tab_y = m.y + m.top_item * bar_height / m.visible_item_count;
-            liero_gfx_fill_rect(scr, x - 7, tab_y + 9, 7, tab_height, 0);
-            liero_gfx_fill_rect(scr, x - 8, tab_y + 8, 7, tab_height, 7);
+            fill_rect(scr, x - 7, tab_y + 9, 7, tab_height, 0);
+            fill_rect(scr, x - 8, tab_y + 8, 7, tab_height, 7);
         }
     }
     /// `Menu(x, y, centered)`: no items, nothing set up.
@@ -604,16 +604,16 @@ pub fn closest_name<'n>(names: impl IntoIterator<Item = &'n [u8]>, search: &[u8]
 
 /// A colour component's bar in the player menu: `PlayerMenu::drawItemOverlay`.
 pub fn draw_rgb_overlay(scr: &Bitmap, x: i32, y: i32, selected: bool, value: i32, color: i32) {
-    liero_gfx_draw_rounded_box(scr, x + 24, y, if selected { 168 } else { 0 }, 7, value - 1);
-    liero_gfx_fill_rect(scr, x + 25, y + 1, value, 5, color as u8);
+    draw_rounded_box(scr, x + 24, y, if selected { 168 } else { 0 }, 7, value - 1);
+    fill_rect(scr, x + 25, y + 1, value, 5, color as u8);
 }
 
 /// The palette entry shown in the options menu: `HiddenMenu::drawItemOverlay`.
 pub fn draw_palette_overlay(scr: &Bitmap, x: i32, y: i32, selected: bool, color: i32) {
     let w = 30;
     let offs_x = 44;
-    liero_gfx_draw_rounded_box(scr, x + offs_x, y, if selected { 168 } else { 0 }, 7, w);
-    liero_gfx_fill_rect(scr, x + offs_x + 1, y + 1, w + 1, 5, color as u8);
+    draw_rounded_box(scr, x + offs_x, y, if selected { 168 } else { 0 }, 7, w);
+    fill_rect(scr, x + offs_x + 1, y + 1, w + 1, 5, color as u8);
 }
 
 /// The level, "A vs B" and the worms' colours, twice as big, as the spectator
@@ -638,10 +638,10 @@ pub fn draw_versus(
     // Room for the colour boxes even without names.
     let size = (font.dims(&vs).0 * 2).max(48);
     font.centered(scr, &vs, center_x, center_y, 7, 2);
-    liero_gfx_fill_rect(scr, center_x - size / 2 - 1, center_y + 22, 16, 16, 7);
-    liero_gfx_fill_rect(scr, center_x - size / 2, center_y + 23, 14, 14, color0 as u8);
-    liero_gfx_fill_rect(scr, center_x + size / 2 - 17, center_y + 22, 16, 16, 7);
-    liero_gfx_fill_rect(scr, center_x + size / 2 - 16, center_y + 23, 14, 14, color1 as u8);
+    fill_rect(scr, center_x - size / 2 - 1, center_y + 22, 16, 16, 7);
+    fill_rect(scr, center_x - size / 2, center_y + 23, 14, 14, color0 as u8);
+    fill_rect(scr, center_x + size / 2 - 17, center_y + 22, 16, 16, 7);
+    fill_rect(scr, center_x + size / 2 - 16, center_y + 23, 14, 14, color1 as u8);
 }
 
 /// A message in a box centred on (x, y): `drawInfoBox`.
@@ -649,7 +649,7 @@ pub fn draw_info_box(scr: &Bitmap, font: &Font, text: &[u8], x: i32, y: i32) {
     let (width, height) = font.dims(text);
     let cx = x - width / 2 - 2;
     let cy = y - height / 2 - 2;
-    liero_gfx_draw_rounded_box(scr, cx, cy, 0, height + 1, width + 1);
+    draw_rounded_box(scr, cx, cy, 0, height + 1, width + 1);
     font.text(scr, text, cx + 2, cy + 2, 6, 1);
 }
 
@@ -671,10 +671,10 @@ pub fn draw_input_box(scr: &Bitmap, frozen: &Bitmap, font: &Font, text: &[u8], x
             .iter()
             .map(|p| p.get())
             .collect();
-        liero_gfx_blit_image_no_key_colour(scr, &mem, clr_x, y, copy_w, 8, frozen.pitch);
+        blit_image_no_key_colour(scr, &mem, clr_x, y, copy_w, 8, frozen.pitch);
     }
 
-    liero_gfx_draw_rounded_box(scr, x - 2 - adjust, y, 0, 7, width);
+    draw_rounded_box(scr, x - 2 - adjust, y, 0, 7, width);
     font.text(scr, text, x - adjust, y + 1, 50, 1);
 }
 

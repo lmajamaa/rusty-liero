@@ -946,7 +946,7 @@ impl Worm<'_, '_> {
         }
 
         if let Some(s) = self.world.stats() {
-            liero_stats_after_death(s, self.i);
+            s.after_death(self.i);
         }
 
         self.release(LIERO_CONTROL_FIRE);
@@ -987,9 +987,7 @@ impl Worm<'_, '_> {
         } else {
             0
         };
-        self.set_current_frame(
-            liero_worm_angle_frame(self.aiming_angle(), self.direction()) + self.env.anim_tab[anim_frame],
-        );
+        self.set_current_frame(angle_frame(self.aiming_angle(), self.direction()) + self.env.anim_tab[anim_frame]);
     }
 
     /// `checkRespawnPosition`: whether (x, y) is far enough from where the
@@ -1125,7 +1123,7 @@ impl Worm<'_, '_> {
         }
 
         if let Some(s) = self.world.stats() {
-            liero_stats_after_spawn(s, self.i);
+            s.after_spawn(self.i);
         }
     }
 

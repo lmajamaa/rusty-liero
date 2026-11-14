@@ -2,7 +2,7 @@ use super::*;
 use crate::controller::LIERO_STATE_GAME;
 use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::fs::Node;
-use crate::menus::liero_menus_new;
+use crate::menus::Menus;
 use crate::settings::liero_settings_box_new;
 
 /// An app with menus, the bundled TC, its screens sized, and a match that
@@ -14,9 +14,9 @@ fn set_up() -> App {
     a.set_tc(Some(
         crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
     ));
-    let menus = liero_menus_new();
-    crate::menus::liero_menus_load(&mut menus.borrow_mut());
-    crate::app::liero_app_set_menus(a, menus);
+    let menus = Menus::shared();
+    menus.borrow_mut().load();
+    a.menus = Some(menus);
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
     let mut c = liero_local_controller_new(&crate::screen::Host::none(), a.shared_settings(), a.menu_tc());

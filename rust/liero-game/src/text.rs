@@ -1,7 +1,7 @@
 //! Text helpers shared by the HUD and menus: strings from C++, the time
 //! formats from `text.cpp` and drawing with the game font.
 
-use crate::gfx::{liero_font_draw_char, liero_font_draw_text, liero_font_get_dims, Bitmap};
+use crate::gfx::{draw_char, draw_text, text_dims, Bitmap};
 use liero_data::model::FontChar;
 
 /// Text from C++: `len` bytes from `ptr`.
@@ -82,17 +82,17 @@ pub struct Font<'a> {
 impl Font<'_> {
     /// `Font::drawText`.
     pub(crate) fn text(&self, scr: &Bitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
-        liero_font_draw_text(scr, self.chars, text, x, y, color as u8, size);
+        draw_text(scr, self.chars, text, x, y, color as u8, size);
     }
 
     /// `Font::drawChar`.
     pub(crate) fn char(&self, scr: &Bitmap, c: u8, x: i32, y: i32, color: i32) {
-        liero_font_draw_char(scr, self.chars, c, x, y, color as u8, 1);
+        draw_char(scr, self.chars, c, x, y, color as u8, 1);
     }
 
     /// `Font::getDims`: the width, and the height.
     pub(crate) fn dims(&self, text: &[u8]) -> (i32, i32) {
-        liero_font_get_dims(self.chars, text)
+        text_dims(self.chars, text)
     }
 
     /// `Font::drawCenteredText`.

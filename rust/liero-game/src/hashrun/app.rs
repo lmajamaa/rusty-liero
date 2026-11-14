@@ -20,12 +20,12 @@ use super::game::add_screen;
 use super::games::tc_data;
 use super::{Fnv, Out};
 use crate::app::App;
-use crate::app_screens::liero_main_screen;
+use crate::app_screens::main_screen;
 use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
 use crate::keys::sdl_to_dos_keysym;
-use crate::menus::{liero_menus_load, liero_menus_reset};
-use crate::screen::{liero_app_push, liero_app_step, Event, Host, Platform, ScreenStack, TypedKey};
+
+use crate::screen::{Event, Host, Platform, ScreenStack, TypedKey};
 use crate::settings::SettingsBox;
 use crate::sfx::SoundOut;
 use std::cell::RefCell;
@@ -494,7 +494,7 @@ pub fn hash_app(a: &mut App, out: &mut Out) {
 
     // Fresh menus, as the game starts with: the menu checks before this one
     // leave items hidden and selected.
-    liero_menus_reset(&mut a.shared_menus().borrow_mut());
+    a.shared_menus().borrow_mut().reset();
     a.settings = Some(SettingsBox::defaults());
     let tc = super::tc::bundled();
     a.play.set_render_resolution(320, 200);
@@ -511,7 +511,7 @@ pub fn hash_app(a: &mut App, out: &mut Out) {
     a.save_settings_on_change = true;
     a.settings_mut().data.ext.spectator_window = false;
     a.keys.clear();
-    liero_menus_load(&mut a.shared_menus().borrow_mut());
+    a.shared_menus().borrow_mut().load();
 
     let mut script = Script {
         steps: VecDeque::new(),
@@ -528,8 +528,8 @@ pub fn hash_app(a: &mut App, out: &mut Out) {
     let host = Host::new(platform);
 
     let mut stack = ScreenStack::new();
-    liero_app_push(&mut stack, liero_main_screen());
-    while liero_app_step(&mut stack, a, &host) && driver(|d| d.failed.is_none()) {}
+    stack.push(main_screen());
+    while stack.step(a, &host) && driver(|d| d.failed.is_none()) {}
     drop(stack);
 
     let d = DRIVER.take();

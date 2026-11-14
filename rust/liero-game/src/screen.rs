@@ -180,7 +180,7 @@ impl Host {
     }
     pub fn fill_screen(&self, app: &App, color: u8) {
         if self.0.app_drawing() {
-            crate::gfx::liero_gfx_fill(&app.play.bmp.view(), color);
+            crate::gfx::fill(&app.play.bmp.view(), color);
         }
     }
     /// Shows the screen with the TC's own palette.
@@ -293,7 +293,31 @@ impl ScreenStack {
     }
 
     /// One step of the top screen. False once no screen is left.
-    fn step(&mut self, app: &mut App, host: &Host) -> bool {
+    /// Puts `screen` on top; the stack owns it from now on.
+    pub fn push(&mut self, screen: BoxedScreen) {
+        self.screens.push(screen);
+    }
+
+    /// How many screens are open.
+    pub fn depth(&self) -> usize {
+        self.screens.len()
+    }
+
+    /// Runs the steps due at `now_ms` on the caller's clock: one on the
+    /// first call, then one per 14 ms passed, at most four. Returns false
+    /// once no screen is left.
+    pub fn frame(&mut self, now_ms: u32, app: &mut App, host: &Host) -> bool {
+        for _ in 0..self.due(now_ms) {
+            if !self.step(app, host) {
+                return false;
+            }
+        }
+        !self.screens.is_empty()
+    }
+
+    /// Runs one step of the top screen on `app` with `host`. Returns false
+    /// once no screen is left.
+    pub fn step(&mut self, app: &mut App, host: &Host) -> bool {
         let Some(top) = self.screens.last_mut() else {
             return false;
         };
@@ -352,34 +376,6 @@ impl Drop for ScreenStack {
     fn drop(&mut self) {
         while self.screens.pop().is_some() {}
     }
-}
-
-/// Puts `screen` on top; the stack owns it from now on.
-pub fn liero_app_push(stack: &mut ScreenStack, screen: BoxedScreen) {
-    stack.screens.push(screen);
-}
-
-/// How many screens are open.
-pub fn liero_app_depth(stack: &ScreenStack) -> usize {
-    stack.screens.len()
-}
-
-/// Runs one step of the top screen on `app` with `host`. Returns false once
-/// no screen is left.
-pub fn liero_app_step(stack: &mut ScreenStack, app: &mut App, host: &Host) -> bool {
-    stack.step(app, host)
-}
-
-/// Runs the steps due at `now_ms` on the caller's clock: one on the first
-/// call, then one per 14 ms passed, at most four. Returns false once no
-/// screen is left.
-pub fn liero_app_frame(stack: &mut ScreenStack, now_ms: u32, app: &mut App, host: &Host) -> bool {
-    for _ in 0..stack.due(now_ms) {
-        if !stack.step(app, host) {
-            return false;
-        }
-    }
-    !stack.screens.is_empty()
 }
 
 #[cfg(test)]
@@ -477,8 +473,8 @@ mod tests {
         let a = fake("a", 0, Then::Open, Some(b), &log);
         let mut stack = ScreenStack::new();
         let mut app = App::new();
-        liero_app_push(&mut stack, a);
-        while liero_app_step(&mut stack, &mut app, &host) {}
+        stack.push(a);
+        while stack.step(&mut app, &host) {}
         drop(stack);
         let log = log.borrow().clone();
         // a opens b; b waits once (no frame, so idle), then shows and is
@@ -513,10 +509,10 @@ mod tests {
         let a = fake("a", 0, Then::Open, Some(b), &log);
         let mut stack = ScreenStack::new();
         let mut app = App::new();
-        liero_app_push(&mut stack, a);
-        assert!(liero_app_step(&mut stack, &mut app, &host));
-        assert!(!liero_app_step(&mut stack, &mut app, &host));
-        assert_eq!(liero_app_depth(&stack), 0);
+        stack.push(a);
+        assert!(stack.step(&mut app, &host));
+        assert!(!stack.step(&mut app, &host));
+        assert_eq!(stack.depth(), 0);
         assert_eq!(*log.borrow(), ["tick a", "tick b", "free b", "free a"]);
     }
 

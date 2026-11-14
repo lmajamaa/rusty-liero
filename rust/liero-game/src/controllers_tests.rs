@@ -121,7 +121,7 @@ fn r_rewinds_a_replay_to_its_start() {
         drop(c);
 
         let a = &mut App::new();
-        crate::app::liero_app_set_settings(a, Some(liero_settings_box_new()));
+        a.settings = Some(liero_settings_box_new());
         let mut r = Box::from_raw(liero_replay_controller_new(&node, tc));
         r.focus(a, &Host::none());
         assert_eq!(r.data.state, LIERO_STATE_GAME);

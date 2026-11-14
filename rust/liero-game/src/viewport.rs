@@ -12,10 +12,8 @@
 use crate::ai::predictive::AiTrace;
 use crate::game::{Holdazone, Rect};
 use crate::gfx::{
-    liero_font_draw_text, liero_gfx_blit_fire_cone, liero_gfx_blit_image, liero_gfx_blit_image_no_key_colour,
-    liero_gfx_blit_image_r, liero_gfx_blit_image_trans, liero_gfx_blit_shadow_image, liero_gfx_draw_bar,
-    liero_gfx_draw_dashed_line_box, liero_gfx_draw_laser_sight, liero_gfx_draw_line, liero_gfx_draw_ninjarope,
-    liero_gfx_draw_shadow_line, liero_gfx_fill_rect, Bitmap,
+    blit_fire_cone, blit_image, blit_image_no_key_colour, blit_image_r, blit_image_trans, blit_shadow_image, draw_bar,
+    draw_dashed_line_box, draw_laser_sight, draw_line, draw_ninjarope, draw_shadow_line, draw_text, fill_rect, Bitmap,
 };
 use crate::level::LevelView;
 use crate::material::Material;
@@ -23,8 +21,7 @@ use crate::math::{cos_sin, ftoi, IVec2};
 use crate::rand::Rand;
 use crate::text::{time_to_string, time_to_string_ex};
 use crate::worm::{
-    liero_worm_angle_frame, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL,
-    LIERO_GAME_SCALES_OF_JUSTICE,
+    angle_frame, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE,
 };
 use liero_data::model::FontChar;
 
@@ -301,7 +298,7 @@ impl<'a> Painter<'a> {
     }
 
     fn text(&self, scr: &Bitmap, text: &[u8], x: i32, y: i32, color: i32) {
-        liero_font_draw_text(scr, self.s.font, text, x, y, color as u8, 1);
+        draw_text(scr, self.s.font, text, x, y, color as u8, 1);
     }
 
     /// The text with a black shadow, as banners are drawn.
@@ -317,7 +314,7 @@ impl<'a> Painter<'a> {
             let c = ch.wrapping_sub(b'A');
             if c < 26 {
                 if let Some(mem) = set.sprite(c as i32) {
-                    liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
+                    blit_image(scr, mem, x, y, set.width, set.height, set.width);
                 }
             }
             x += 4;
@@ -335,7 +332,7 @@ impl<'a> Painter<'a> {
 
     fn blit(&self, scr: &Bitmap, set: &Sprites, frame: i32, x: i32, y: i32) {
         if let Some(mem) = set.sprite(frame) {
-            liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
+            blit_image(scr, mem, x, y, set.width, set.height, set.width);
         }
     }
 
@@ -343,7 +340,7 @@ impl<'a> Painter<'a> {
     #[allow(clippy::too_many_arguments)]
     fn shadow(&self, scr: &Bitmap, set: &Sprites, frame: i32, x: i32, y: i32, w: i32, h: i32) {
         if let Some(mem) = set.sprite(frame) {
-            liero_gfx_blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);
+            blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);
         }
     }
 
@@ -375,12 +372,12 @@ impl<'a> Painter<'a> {
         let res_y = self.s.render_res_y;
         if worm.visible {
             let width = div(worm.health.wrapping_mul(100), worm.max_health);
-            liero_gfx_draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
+            draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
         } else {
             let width = 100 - (worm.killed_timer * 25) / 37;
             if width > 0 {
                 let width = width.min(100);
-                liero_gfx_draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
+                draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
             }
         }
 
@@ -390,7 +387,7 @@ impl<'a> Painter<'a> {
             if ww.ammo > 0 {
                 let width = div(ww.ammo.wrapping_mul(100), weapon.map_or(0, |w| w.ammo));
                 if width > 0 {
-                    liero_gfx_draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
+                    draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
                 }
             }
         } else {
@@ -399,7 +396,7 @@ impl<'a> Painter<'a> {
                 _ => 100 - ww.loading_left.wrapping_mul(100),
             };
             if width > 0 {
-                liero_gfx_draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
+                draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
             }
             if self.s.cycles % 20 > 10 && worm.visible {
                 self.text(scr, self.s.reloading, x, reloading_y, 50);
@@ -416,8 +413,8 @@ impl<'a> Painter<'a> {
     fn draw_name_and_time(&self, scr: &Bitmap, worm: &ViewWorm, x: i32, box_x: i32, color_x: i32, time_x: i32) {
         let res_y = self.s.render_res_y;
         self.text(scr, worm.name, x, res_y - 15, 7);
-        liero_gfx_fill_rect(scr, box_x, res_y - 8, 8, 8, 7);
-        liero_gfx_fill_rect(scr, color_x, res_y - 7, 6, 6, worm.color as u8);
+        fill_rect(scr, box_x, res_y - 8, 8, 8, 7);
+        fill_rect(scr, color_x, res_y - 7, 6, 6, worm.color as u8);
         let time = time_to_string_ex(self.s.cycles.wrapping_mul(14), false, true);
         self.text(scr, &time, time_x, res_y - 15, 7);
     }
@@ -474,7 +471,7 @@ impl<'a> Painter<'a> {
             Some(c) => WORM_COLOUR_INDEXES[c.index as usize & 1] + 5,
             None => color,
         };
-        liero_gfx_draw_dashed_line_box(
+        draw_dashed_line_box(
             scr,
             z.rect.x1 + offs.x,
             z.rect.y1 + offs.y,
@@ -497,7 +494,7 @@ impl<'a> Painter<'a> {
             if let Some(mem) = set.sprite(frame) {
                 let x = ftoi(worm.pos.x) - 7 + offs.x;
                 let y = ftoi(worm.pos.y) - 5 + offs.y;
-                liero_gfx_blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
+                blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
             }
         }
     }
@@ -524,9 +521,9 @@ impl<'a> Painter<'a> {
         for o in s.sobjects {
             let frame = o.cur_frame + o.start_frame;
             if let Some(mem) = large.sprite(frame) {
-                liero_gfx_blit_image_r(scr, mem, o.x + offs.x, o.y + offs.y, 16, 16);
+                blit_image_r(scr, mem, o.x + offs.x, o.y + offs.y, 16, 16);
                 if s.shadow {
-                    liero_gfx_blit_shadow_image(scr, s.materials, mem, o.x + offs.x - 3, o.y + offs.y + 3, 16, 16);
+                    blit_shadow_image(scr, s.materials, mem, o.x + offs.x - 3, o.y + offs.y + 3, 16, 16);
                 }
             }
         }
@@ -601,7 +598,7 @@ impl<'a> Painter<'a> {
             if w.visible {
                 let x = ftoi(w.pos.x) - 7 + offs.x;
                 let y = ftoi(w.pos.y) - 5 + offs.y;
-                let angle_frame = liero_worm_angle_frame(w.aiming_angle, w.direction);
+                let angle_frame = angle_frame(w.aiming_angle, w.direction);
                 let ww = &w.weapons[w.current_weapon as usize % 5];
                 let weapon = self.weapon(ww.weapon);
 
@@ -610,10 +607,10 @@ impl<'a> Painter<'a> {
                         let hx = w.hotspot_x + offs.x;
                         let hy = w.hotspot_y + offs.y;
                         if weapon.laser_sight {
-                            liero_gfx_draw_laser_sight(scr, rand, hx, hy, x + 7, y + 4);
+                            draw_laser_sight(scr, rand, hx, hy, x + 7, y + 4);
                         }
                         if ww.weapon == s.laser_weapon - 1 && w.pressed_fire {
-                            liero_gfx_draw_line(scr, hx, hy, x + 7, y + 4, weapon.color_bullets as u8);
+                            draw_line(scr, hx, hy, x + 7, y + 4, weapon.color_bullets as u8);
                         }
                     }
                 }
@@ -621,10 +618,10 @@ impl<'a> Painter<'a> {
                 if w.rope_out {
                     let rx = ftoi(w.rope_pos.x) + offs.x;
                     let ry = ftoi(w.rope_pos.y) + offs.y;
-                    liero_gfx_draw_ninjarope(scr, s.nr_colour_begin, s.nr_colour_end, rx, ry, x + 7, y + 4);
+                    draw_ninjarope(scr, s.nr_colour_begin, s.nr_colour_end, rx, ry, x + 7, y + 4);
                     self.blit(scr, &s.large_sprites, 84, rx - 1, ry - 1);
                     if s.shadow {
-                        liero_gfx_draw_shadow_line(scr, s.materials, rx - 3, ry + 3, x + 7 - 3, y + 4 + 3);
+                        draw_shadow_line(scr, s.materials, rx - 3, ry + 3, x + 7 - 3, y + 4 + 3);
                         self.shadow(scr, &s.large_sprites, 84, rx - 4, ry + 2, 16, 16);
                     }
                 }
@@ -634,7 +631,7 @@ impl<'a> Painter<'a> {
                     let af = angle_frame.clamp(0, 6) as usize;
                     if let Some(mem) = s.fire_cone_sprites.sprite(angle_frame + w.direction * 7) {
                         let [ox, oy] = FIRE_CONE_OFFSET[dir][af];
-                        liero_gfx_blit_fire_cone(scr, w.fire_cone / 2, mem, ox + x, oy + y);
+                        blit_fire_cone(scr, w.fire_cone / 2, mem, ox + x, oy + y);
                     }
                 }
 
@@ -689,7 +686,7 @@ impl<'a> Painter<'a> {
 
     fn draw_level(&self, scr: &Bitmap, offs: IVec2) {
         let l = self.s.level;
-        liero_gfx_blit_image_no_key_colour(scr, l.data, offs.x, offs.y, l.width, l.height, l.width);
+        blit_image_no_key_colour(scr, l.data, offs.x, offs.y, l.width, l.height, l.width);
     }
 
     /// The split-screen viewport: `Viewport::draw`.
@@ -820,7 +817,7 @@ impl<'a> Painter<'a> {
                     if ww.ammo > 0 {
                         let width = div(ww.ammo.wrapping_mul(60), weapon.map_or(0, |w| w.ammo));
                         if width > 0 {
-                            liero_gfx_draw_bar(scr, list_x, y, width, 5, (width / 6 + 245) as u8);
+                            draw_bar(scr, list_x, y, width, 5, (width / 6 + 245) as u8);
                         }
                     }
                     let color = if worm.current_weapon == j as i32 { 187 } else { 185 };
@@ -926,7 +923,7 @@ impl Viewport {
 /// Moves the camera one tick: `Viewport::process` for `LIERO_VIEWPORT_WORM`,
 /// `SpectatorViewport::process` for `LIERO_VIEWPORT_SPECTATOR`. `worms` are
 /// in the order of `Game::worms`.
-pub fn liero_viewport_process(vp: &mut Viewport, kind: i32, worms: &[ViewWorm]) {
+pub fn process_viewport(vp: &mut Viewport, kind: i32, worms: &[ViewWorm]) {
     let worm = |i: i32| usize::try_from(i).ok().and_then(|i| worms.get(i));
 
     if kind == LIERO_VIEWPORT_SPECTATOR {
@@ -974,7 +971,7 @@ fn draw_traces(scr: &Bitmap, traces: &[AiTrace], offs: IVec2) {
 /// Draws a viewport on `scr`: `Viewport::draw` for `LIERO_VIEWPORT_WORM`,
 /// `SpectatorViewport::draw` for `LIERO_VIEWPORT_SPECTATOR`. `self_index` is
 /// a split-screen viewport's position in `scene.viewports`.
-pub fn liero_viewport_draw(vp: &mut Viewport, kind: i32, self_index: i32, scene: &Scene, scr: &Bitmap) {
+pub fn draw_viewport(vp: &mut Viewport, kind: i32, self_index: i32, scene: &Scene, scr: &Bitmap) {
     let scene = Painter::new(scene);
     if kind == LIERO_VIEWPORT_SPECTATOR {
         scene.draw_spectator_view(vp, scr);
@@ -1077,7 +1074,7 @@ mod tests {
     }
 
     fn process(vp: &mut Viewport, kind: i32, worms: &[ViewWorm]) {
-        liero_viewport_process(vp, kind, worms)
+        process_viewport(vp, kind, worms)
     }
 
     #[test]
@@ -1293,7 +1290,7 @@ mod tests {
                     y2: 200,
                 },
             };
-            liero_viewport_draw(&mut vp, kind, 0, &scene, &scr);
+            draw_viewport(&mut vp, kind, 0, &scene, &scr);
         }
 
         fn px(&self, x: i32, y: i32) -> u8 {
