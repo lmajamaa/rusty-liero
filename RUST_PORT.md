@@ -8,14 +8,49 @@ This is how it was done, for anyone porting another C++ codebase to Rust. It's b
 
 ## The shape of it
 
-| Phase | What | PRs |
-| --- | --- | --- |
-| 1 | The C++ game builds with Emscripten and runs in the browser, unchanged | #3, #7, #8, #23 |
-| 2 | Module by module (with the last of phase 1 and the tctool alongside), the game's code moves into a Rust library linked into the Emscripten build, behind a C boundary | #4–#25 |
-| 3 | The main loop becomes a stack of screens, then everything left (data, screens, files, the hash run itself, the shell) moves to Rust, and Emscripten goes | #26–#49 |
-| 4 | The C boundary and the `unsafe` are removed, then the code is made idiomatic | #51–#64 |
+| Phase | What | PRs | Merged |
+| --- | --- | --- | --- |
+| 1 | The C++ game builds with Emscripten and runs in the browser, unchanged | #3, #7, #8, #23 | Nov 3–6 |
+| 2 | Module by module (with the last of phase 1 and the tctool alongside), the game's code moves into a Rust library linked into the Emscripten build, behind a C boundary | #4–#25 | Nov 3–6 |
+| 3 | The main loop becomes a stack of screens, then everything left (data, screens, files, the hash run itself, the shell) moves to Rust, and Emscripten goes | #26–#49 | Nov 6–12 |
+| 4 | The C boundary and the `unsafe` are removed, then the code is made idiomatic | #51–#64 | Nov 12–14 |
 
 All the way through, there was a running game at every merge, and the same check: the hash run.
+
+## Progress, day by day
+
+Each value is taken at the last pull request merged that day. Nothing was merged on November 9 or 10. Lines and `unsafe` are counted by `tools/rust-patterns/report.ts`, the tool behind the pattern report on each PR, which skips comments and strings and counts non-blank lines.
+
+**C++ and Rust.** The falling line is C++ in `src/`, and the rising one is Rust. On November 4, C++ halves when #5 removes the files nothing built. It reaches 0 on November 12, when Emscripten goes (#49). Rust peaks the same day, then shrinks as phase 4 deletes the boundary code.
+
+```mermaid
+xychart-beta
+    title "Lines of code"
+    x-axis ["Nov 3", "Nov 4", "Nov 5", "Nov 6", "Nov 7", "Nov 8", "Nov 9", "Nov 10", "Nov 11", "Nov 12", "Nov 13", "Nov 14"]
+    y-axis "Lines" 0 --> 62000
+    line [60310, 30918, 29309, 27232, 27828, 15774, 15774, 15774, 9845, 0, 0, 0]
+    line [1326, 2978, 12141, 16248, 18464, 20629, 20629, 20629, 28286, 35251, 34346, 31334]
+```
+
+**`unsafe` blocks and functions.** Each module crossed the C boundary through `unsafe` code, so the count grows with the port. It peaks on November 12, the day the last C++ went (#49), and reaches 0 two days later (#64).
+
+```mermaid
+xychart-beta
+    title "unsafe blocks and unsafe fn"
+    x-axis ["Nov 3", "Nov 4", "Nov 5", "Nov 6", "Nov 7", "Nov 8", "Nov 9", "Nov 10", "Nov 11", "Nov 12", "Nov 13", "Nov 14"]
+    y-axis "Count" 0 --> 1200
+    line [1, 44, 386, 427, 571, 701, 701, 701, 999, 1174, 812, 0]
+```
+
+**Lines in the hash run.** Most of the check was in place by November 6, before the work that changed the game's structure began.
+
+```mermaid
+xychart-beta
+    title "Hash lines checked against the original C++"
+    x-axis ["Nov 3", "Nov 4", "Nov 5", "Nov 6", "Nov 7", "Nov 8", "Nov 9", "Nov 10", "Nov 11", "Nov 12", "Nov 13", "Nov 14"]
+    y-axis "Lines" 0 --> 27000
+    line [0, 2408, 19194, 25906, 25912, 26295, 26295, 26295, 26349, 26349, 26349, 26349]
+```
 
 ## Start from a build of the original that you can trust
 
@@ -43,21 +78,22 @@ Unit tests against reference values cover small functions. For everything else, 
 
 **It grew with each port, and the baseline for a new part was always recorded from the C++ first.** Each port that the existing hashes didn't cover began with a commit recording new hash lines from the original code, followed by the port itself:
 
-| PR | Added to the hash run | Lines |
-| --- | --- | --- |
-| #10 | 8 bot games, whole game state | 2,408 |
-| #11 | random weapons that actually were random (the bots had kept their default bazookas), and loadouts covering all 40 weapons | 4,153 |
-| #12, #13 | game modes the earlier games never reached | 5,056 |
-| #14 | the drawn frames, both views, every 100 ticks | 10,112 |
-| #16 | menus and weapon selection driven by random keys | 12,768 |
-| #18 | everything loaded from the TC | 12,880 |
-| #19 | every settings format, including truncated and corrupted inputs | 13,713 |
-| #20 | the stats recorder and the stats screen | 19,194 |
-| #21 | replays recorded, played back and broken | 20,104 |
-| #22 | games between the predictive bots, with each bot's whole state | 20,864 |
-| #25 | the sound mixer and key handling | 21,314 |
-| #26 | the whole app, driven by a fixed script of key presses through every loop | 25,906 |
-| #38, #39, #40 | a replay rewind, one-letter names, menu paths that planted bugs had got past, level files | 26,349 |
+| PR | Merged | Added to the hash run | Lines |
+| --- | --- | --- | --- |
+| #10 | Nov 4 | 8 bot games, whole game state | 2,408 |
+| #11 | Nov 5 | random weapons that actually were random (the bots had kept their default bazookas), and loadouts covering all 40 weapons | 4,153 |
+| #12, #13 | Nov 5 | game modes the earlier games never reached | 5,056 |
+| #14 | Nov 5 | the drawn frames, both views, every 100 ticks | 10,112 |
+| #16 | Nov 5 | menus and weapon selection driven by random keys | 12,768 |
+| #18 | Nov 5 | everything loaded from the TC | 12,880 |
+| #19 | Nov 5 | every settings format, including truncated and corrupted inputs | 13,713 |
+| #20 | Nov 5 | the stats recorder and the stats screen | 19,194 |
+| #21 | Nov 6 | replays recorded, played back and broken | 20,104 |
+| #22 | Nov 6 | games between the predictive bots, with each bot's whole state | 20,864 |
+| #25 | Nov 6 | the sound mixer and key handling | 21,314 |
+| #26 | Nov 6 | the whole app, driven by a fixed script of key presses through every loop | 25,906 |
+| #38, #39, #40 | Nov 7–8 | a replay rewind, one-letter names, menu paths that planted bugs had got past, level files | 26,295 |
+| #41 | Nov 11 | F8's random TC: its weapons and special objects | 26,349 |
 
 **Record the whole app before changing its structure.** Before the nested loops were turned into screens, #26 ran the whole app with a scripted driver in place of the window. It hashed every frame shown, fed in key presses from a timeline fixed in advance, and controlled the clock. Every later change to the loops (#27–#33) matched those 4,592 frames without re-recording.
 
@@ -160,18 +196,18 @@ All hashes matched natively, with the files in memory, and on the build that shi
 
 The steps, in the order they were done:
 
-| Step | What | PRs |
-| --- | --- | --- |
-| 1 | Guardrails: clippy and rustfmt in CI, `forbid(unsafe_code)` on the data crates | #47, #51 |
-| 2–4 | Delete the C boundary; leaf modules; views become borrows | #51 |
-| 5 | Worms by id instead of pointer | #52 |
-| 6 | The game tick by index, with no hook tables | #52, #53 |
-| 7 | Ownership: borrows, `Rc<RefCell>` for what C++ shared | #55, #57 |
-| 8 | Viewports, the scene, stats and replays | #58 |
-| 9 | Screens as trait objects, the platform as a trait, no globals | #59 |
-| 10 | One data model, shared with the data crate | #61 |
-| 11 | Idioms: names, methods, enums, `Option`, fixed-point newtype | #62 |
-| 12 | The last `unsafe`, then `forbid(unsafe_code)` | #64 |
+| Step | What | PRs | Merged |
+| --- | --- | --- | --- |
+| 1 | Guardrails: clippy and rustfmt in CI, `forbid(unsafe_code)` on the data crates | #47, #51 | Nov 12 |
+| 2–4 | Delete the C boundary; leaf modules; views become borrows | #51 | Nov 12 |
+| 5 | Worms by id instead of pointer | #52 | Nov 12 |
+| 6 | The game tick by index, with no hook tables | #52, #53 | Nov 12–13 |
+| 7 | Ownership: borrows, `Rc<RefCell>` for what C++ shared | #55, #57 | Nov 13–14 |
+| 8 | Viewports, the scene, stats and replays | #58 | Nov 14 |
+| 9 | Screens as trait objects, the platform as a trait, no globals | #59 | Nov 14 |
+| 10 | One data model, shared with the data crate | #61 | Nov 14 |
+| 11 | Idioms: names, methods, enums, `Option`, fixed-point newtype | #62 | Nov 14 |
+| 12 | The last `unsafe`, then `forbid(unsafe_code)` | #64 | Nov 14 |
 
 Some things that came out of it:
 
