@@ -9,6 +9,7 @@
 //! borrow them, through `Game`, for the call.
 
 use crate::level::Level;
+use crate::material::Material;
 use crate::objects::{BObjectList, BonusList, NObjectList, SObjectList, WObjectList};
 use crate::rand::Rand;
 use crate::sfx::SoundOut;
@@ -125,6 +126,54 @@ impl GameData {
     }
 }
 
+/// What a tick changes besides the viewports: the game's state, the
+/// level's pixels and materials, and the listed worms, in the game's order.
+/// The AI plays its plans out on copies of it (`ai::sim`), and rollback
+/// saves the game in it (`game_box::Snapshot`).
+#[derive(Clone, Debug, Default)]
+pub struct GameState {
+    pub data: GameData,
+    pub pixels: Vec<u8>,
+    pub materials: Vec<Material>,
+    pub width: i32,
+    pub height: i32,
+    pub worms: Vec<WormData>,
+}
+
+impl GameState {
+    /// Makes this a copy of `data`, the level (pixels, materials, width,
+    /// height) and the listed `worms`, reusing its own memory.
+    pub fn copy_from<'w>(
+        &mut self,
+        data: &GameData,
+        (pixels, materials, width, height): (&[u8], &[Material], i32, i32),
+        worms: impl Iterator<Item = &'w WormData>,
+    ) {
+        self.data.clone_from(data);
+        self.pixels.clear();
+        self.pixels.extend_from_slice(pixels);
+        self.materials.clear();
+        self.materials.extend_from_slice(materials);
+        (self.width, self.height) = (width, height);
+        self.worms.clear();
+        self.worms.extend(worms.copied());
+    }
+
+    /// The bytes it holds, on the heap and in place.
+    pub fn bytes(&self) -> usize {
+        let d = &self.data;
+        std::mem::size_of::<Self>()
+            + std::mem::size_of_val(&*d.bonuses.arr)
+            + std::mem::size_of_val(&*d.wobjects.arr)
+            + std::mem::size_of_val(&*d.sobjects.arr)
+            + std::mem::size_of_val(&*d.nobjects.arr)
+            + std::mem::size_of_val(&d.bobjects.arr[..])
+            + self.pixels.len()
+            + std::mem::size_of_val(&self.materials[..])
+            + std::mem::size_of_val(&self.worms[..])
+    }
+}
+
 /// The game state the rules read and change, borrowed. `worms` is in the
 /// order of C++'s `Game::worms`; worm numbers (killers, holders, 'it') are
 /// positions in it.
@@ -212,6 +261,15 @@ pub struct RuleSettings {
 pub struct GameHooks<'a> {
     /// The clock the stats time ticks with (`appHiresTicks`).
     pub hires_ticks: &'a dyn Fn() -> u64,
+}
+
+fn no_ticks() -> u64 {
+    0
+}
+
+impl GameHooks<'static> {
+    /// A clock that stays at 0, for ticks that record no stats.
+    pub const NONE: GameHooks<'static> = GameHooks { hires_ticks: &no_ticks };
 }
 
 /// A worm as the stats read it (`statsWorm` in C++).
