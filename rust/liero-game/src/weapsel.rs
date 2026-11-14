@@ -572,7 +572,7 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) ->
     unsafe {
         let g: *mut LieroGame = game;
         let tc = &*game.tc_ptr();
-        let select = game.settings_box().data.select_bot_weapons;
+        let select = game.settings_box().data.ext.select_bot_weapons;
         let viewports: Vec<(i32, i32, i32)> = game
             .split_viewports()
             .iter()
@@ -688,15 +688,15 @@ pub unsafe fn liero_weapsel_draw_game(
         let menu_settings = a.shared_settings();
         // The game's settings can be the menus' own, so one at a time.
         let line = || {
-            let game_file = (*g).settings_box().level_file.clone();
-            let menu_file = menu_settings.borrow().level_file.clone();
+            let game_file = (*g).settings_box().data.level_file.clone();
+            let menu_file = menu_settings.borrow().data.level_file.clone();
             level_line(tc, &game_file, &menu_file)
         };
         if spectators {
             let (cx, cy) = ((*r).data.render_res_x / 2, (*r).data.render_res_y / 4);
             if !ws.cached_spectator {
                 let scr = (*r).bmp.view();
-                let w = game.settings_box().worms.clone();
+                let w = game.settings_box().data.worms.clone();
                 let w = [w[0].borrow(), w[1].borrow()];
                 liero_menu_draw_versus(
                     &scr,

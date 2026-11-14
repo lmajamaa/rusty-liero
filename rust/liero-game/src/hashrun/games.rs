@@ -187,7 +187,7 @@ pub(super) fn set_up_game(
     let settings = LieroSettingsBox::defaults();
     let mut s = settings.borrow_mut();
     s.data.game_mode = game_mode;
-    for ws in &s.worms {
+    for ws in &s.data.worms {
         let mut ws = ws.borrow_mut();
         // The original bot
         ws.data.controller = 1;
@@ -197,8 +197,8 @@ pub(super) fn set_up_game(
     }
     // 0 gives bots random weapons; 2 keeps the ones set above. (The
     // default, 1, would keep the menu's default weapons: all bazookas.)
-    s.data.select_bot_weapons = if weapons.is_some() { 2 } else { 0 };
-    let worms = s.worms.clone();
+    s.data.ext.select_bot_weapons = if weapons.is_some() { 2 } else { 0 };
+    let worms = s.data.worms.clone();
     drop(s);
 
     // Everything random comes from these seeds. Weapon selection and the
@@ -317,7 +317,7 @@ fn run_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, config: &RunConfig, 
         "the replay didn't begin"
     );
 
-    let blood = game.settings_box().data.blood_particle_max;
+    let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
 
     // Drawing doesn't change the game, so the game hashes don't depend on it.

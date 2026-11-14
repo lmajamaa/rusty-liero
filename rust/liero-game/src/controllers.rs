@@ -453,7 +453,7 @@ impl LieroController {
                     w.expect("an empty place among the game's worms").data.lives = lives;
                 }
 
-                let record = l.game.settings_box().data.record_replays;
+                let record = l.game.settings_box().data.ext.record_replays;
                 if record {
                     if let Err(e) = start_recording(app, host, l) {
                         self.info_box(&format!("Error starting replay recording: {e}"));
@@ -463,7 +463,7 @@ impl LieroController {
                     }
                 }
 
-                let blood = l.game.settings_box().data.blood_particle_max;
+                let blood = l.game.settings_box().data.ext.blood_particle_max;
                 l.game.start(blood);
             } else if new_state == LIERO_STATE_GAME_ENDED && !self.data.going_to_menu {
                 self.data.fade_value = 180;
@@ -497,7 +497,7 @@ impl LieroController {
                         .stats_x = x;
                 }
                 spectator_viewport(game, true);
-                if app.settings_mut().data.single_screen_replay {
+                if app.settings_mut().data.ext.single_screen_replay {
                     // The spectator viewport on the main screen as well.
                     spectator_viewport(game, false);
                 } else {
@@ -505,7 +505,7 @@ impl LieroController {
                     let w1 = game.worm_at(1).expect("no second worm").data.index;
                     split_viewports(game, w0, w1);
                 }
-                let blood = game.settings_box().data.blood_particle_max;
+                let blood = game.settings_box().data.ext.blood_particle_max;
                 game.start(blood);
                 r.initial = Some(Box::from_raw(liero_game_clone(game)));
                 r.initial_pos = r.reader.as_ref().expect("no replay").pos();
@@ -586,7 +586,7 @@ pub fn liero_local_controller_new(host: &Host, settings: SharedSettings, tc: Sha
         let mut game = new_game(host, settings.clone(), tc);
         let s = settings.borrow();
         let mut indexes = [0; 2];
-        for (i, ws) in s.worms.iter().enumerate() {
+        for (i, ws) in s.data.worms.iter().enumerate() {
             let id = liero_game_new_worm(&mut game, Some(ws.clone()));
             let ws = ws.borrow();
             liero_game_list_worm(&mut game, Some(id));
@@ -594,7 +594,7 @@ pub fn liero_local_controller_new(host: &Host, settings: SharedSettings, tc: Sha
             w.data.health = ws.data.health;
             w.data.index = i as i32;
             w.data.stats_x = if i == 0 { 0 } else { 218 };
-            liero_worm_set_ai(w, ws.data.controller, s.data.ai_parallels.max(0) as usize, i == 0);
+            liero_worm_set_ai(w, ws.data.controller, s.data.ext.ai_parallels.max(0) as usize, i == 0);
             indexes[i] = w.data.index;
         }
         split_viewports(&mut game, indexes[0], indexes[1]);

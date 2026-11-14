@@ -274,9 +274,9 @@ impl LieroGame {
         let ai = {
             let d = &self.settings_box().data;
             crate::ai::sim::LieroAiSettings {
-                frames: d.ai_frames,
-                mutations: d.ai_mutations,
-                traces: d.ai_traces,
+                frames: d.ext.ai_frames,
+                mutations: d.ext.ai_mutations,
+                traces: d.ext.ai_traces,
             }
         };
         // SAFETY: the view is the game's own.
@@ -463,14 +463,14 @@ fn view_worms<'a>(ws: &'a [(&'a LieroWorm, Ref<'a, LieroWormSettingsBox>)]) -> V
 
 /// What drawing a viewport takes of the settings and the renderer.
 fn draw_settings(
-    s: &crate::settings::LieroSettingsData,
+    s: &crate::settings::GameSettings,
     r: &LieroRendererData,
     state: i32,
     is_replay: bool,
 ) -> LieroDrawSettings {
     LieroDrawSettings {
         names_on_bonuses: s.names_on_bonuses,
-        allow_viewing_spawn_point: s.allow_viewing_spawn_point,
+        allow_viewing_spawn_point: s.ext.allow_viewing_spawn_point,
         map: s.map,
         render_res_x: r.render_res_x,
         render_res_y: r.render_res_y,
@@ -704,7 +704,7 @@ pub fn liero_game_view_settings(v: &LieroGameView) -> *const LieroGameSettings {
 
 /// What the rules take of the settings and the TC (`GameView`). With no
 /// TC, as in tests, the TC's parts are zero.
-pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&LieroTcData>) -> LieroGameSettings {
+pub(crate) fn game_settings(s: &crate::settings::GameSettings, tc: Option<&LieroTcData>) -> LieroGameSettings {
     use crate::tc::{c, h};
     let constant = |name| tc.map_or(0, |tc| tc.constant(c(name)));
     let hack = |name| tc.is_some_and(|tc| tc.hack(h(name)));
@@ -712,7 +712,7 @@ pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&
         game_mode: s.game_mode as i32,
         max_bonuses: s.max_bonuses,
         time_to_lose: s.time_to_lose,
-        zone_timeout: s.zone_timeout,
+        zone_timeout: s.ext.zone_timeout,
         zone_capture_time: 70,
         weap_table: s.weap_table.as_ptr(),
         weapon_count: tc.map_or(0, |tc| tc.model.weapons.len() as i32),
@@ -1004,7 +1004,7 @@ mod tests {
                 (d.render_res_x, d.render_res_y, d.state_game, d.is_replay),
                 (640, 400, true, true)
             );
-            (s.names_on_bonuses, s.allow_viewing_spawn_point, s.map) = (false, true, true);
+            (s.names_on_bonuses, s.ext.allow_viewing_spawn_point, s.map) = (false, true, true);
             let d = draw_settings(s, &r.data, LIERO_STATE_GAME_ENDED, false);
             assert_eq!(
                 (d.names_on_bonuses, d.allow_viewing_spawn_point, d.map),

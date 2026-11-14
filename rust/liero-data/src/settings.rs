@@ -113,8 +113,10 @@ impl WormSettings {
     }
 }
 
+/// The game's settings, with each player's worm settings as `W`: the
+/// formats read and write them whole, and the game shares them.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Settings {
+pub struct Settings<W = WormSettings> {
     pub ext: Extensions,
     pub weap_table: [u32; 40],
     pub max_bonuses: i32,
@@ -132,7 +134,34 @@ pub struct Settings {
     pub level_file: Vec<u8>,
     pub map: bool,
     pub screen_sync: bool,
-    pub worms: [WormSettings; 2],
+    pub worms: [W; 2],
+}
+
+impl<W> Settings<W> {
+    /// The same settings with `worms` for the worms', and the worms' they had.
+    pub fn with_worms<V>(self, worms: [V; 2]) -> (Settings<V>, [W; 2]) {
+        let s = Settings {
+            ext: self.ext,
+            weap_table: self.weap_table,
+            max_bonuses: self.max_bonuses,
+            blood: self.blood,
+            time_to_lose: self.time_to_lose,
+            flags_to_win: self.flags_to_win,
+            game_mode: self.game_mode,
+            shadow: self.shadow,
+            load_change: self.load_change,
+            names_on_bonuses: self.names_on_bonuses,
+            regenerate_level: self.regenerate_level,
+            lives: self.lives,
+            loading_time: self.loading_time,
+            random_level: self.random_level,
+            level_file: self.level_file,
+            map: self.map,
+            screen_sync: self.screen_sync,
+            worms,
+        };
+        (s, self.worms)
+    }
 }
 
 impl Default for Settings {

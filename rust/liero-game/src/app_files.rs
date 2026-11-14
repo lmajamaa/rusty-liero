@@ -123,7 +123,7 @@ fn preview_level(a: &LieroApp, node: &Node) {
     let Some(bytes) = node.read() else { return };
     let tc = a.tc_data();
     let mut level = LieroLevelBox::new();
-    let powerlevel = a.settings_mut().data.load_powerlevel_palette;
+    let powerlevel = a.settings_mut().data.ext.load_powerlevel_palette;
     if !level.load(&tc.level_common(), &tc.palette_colors, powerlevel, &bytes) {
         return;
     }
@@ -154,7 +154,7 @@ impl FileSource for AppFiles {
             Choice::Level => {
                 let mut s = a.settings_mut();
                 s.data.random_level = random;
-                s.level_file = if random { Vec::new() } else { full_path.to_vec() };
+                s.data.level_file = if random { Vec::new() } else { full_path.to_vec() };
             }
             Choice::Profile(ws) => {
                 let mut status = LieroSettingsStatus::Ok;
@@ -187,7 +187,7 @@ impl FileSource for AppFiles {
             }
             Choice::Tc => match crate::tc::load_checked(&node) {
                 Ok(tc) => {
-                    a.settings_mut().tc = name.to_vec();
+                    a.settings_mut().data.ext.tc = name.to_vec();
                     a.files.chosen_tc = Some(tc);
                 }
                 Err(e) => panic!("{e}"),
@@ -218,7 +218,7 @@ fn selector_spec(a: &LieroApp, kind: i32, player: i32) -> (Spec, Node, Choice) {
             let tc = a.tc_data();
             let spec = Spec {
                 random_name: tc.text(text("Random")).to_vec(),
-                select: a.settings_mut().level_file.clone(),
+                select: a.settings_mut().data.level_file.clone(),
                 has_select: true,
                 enter_sound: true,
                 ..spec(b"LEV", tc.text(text("SelLevel")))
@@ -231,7 +231,7 @@ fn selector_spec(a: &LieroApp, kind: i32, player: i32) -> (Spec, Node, Choice) {
                 has_select: true,
                 ..spec(b"LPF", b"Select profile:")
             };
-            let ws = a.settings_mut().worms[player as usize].clone();
+            let ws = a.settings_mut().data.worms[player as usize].clone();
             (spec, config, Choice::Profile(ws))
         }
         LIERO_SELECTOR_REPLAY => {
@@ -289,7 +289,7 @@ pub(crate) fn save_profile_as(a: &LieroApp, player: i32, name: &[u8]) {
     let mut file = name.to_vec();
     file.extend_from_slice(b".lpf");
     let node = a.files.config.go(b"Profiles").go(&file);
-    let ws = a.settings_mut().worms[player as usize].clone();
+    let ws = a.settings_mut().data.worms[player as usize].clone();
     let mut ws = ws.borrow_mut();
     if !liero_worm_settings_box_save_profile(&mut ws, Some(&node.clone())) {
         panic!("Could not write {}", path(&node));

@@ -385,7 +385,7 @@ mod tests {
         let mut worms = two_worms();
         worms[1].control_states = 1 << LIERO_CONTROL_FIRE;
         worms[0].weapons[2].kind = 2;
-        let data = crate::settings::LieroSettingsBox::defaults().borrow().data;
+        let data = crate::settings::LieroSettingsBox::defaults().borrow().data.clone();
         let mut settings = crate::game_box::game_settings(&data, None);
         settings.loading_time = 50;
         let src = SceneSource {

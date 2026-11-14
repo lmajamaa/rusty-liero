@@ -834,19 +834,19 @@ impl LieroLevelBox {
         let s = &settings.data;
         let mut loaded = false;
         if !s.random_level {
-            let mut path = settings.level_file.clone();
+            let mut path = settings.data.level_file.clone();
             if !path.contains(&b'.') {
                 path.extend_from_slice(b".LEV");
             }
             if let Some(bytes) = crate::fs::Node::new(&path).read() {
-                loaded = self.load(common, exepal, s.load_powerlevel_palette, &bytes);
+                loaded = self.load(common, exepal, s.ext.load_powerlevel_palette, &bytes);
             }
         }
         if !loaded {
             self.generate_random(common, exepal, rand);
         }
         self.data.old_random_level = s.random_level;
-        self.old_level_file.clone_from(&settings.level_file);
+        self.old_level_file.clone_from(&settings.data.level_file);
         if s.shadow {
             self.level().make_shadow(common);
         }

@@ -37,15 +37,15 @@ fn loading_options_makes_new_settings_and_shows_their_file() {
     let (a, dir) = &mut set_up("load");
     let file = Node::new(format!("{dir}/setup.cfg").as_bytes());
     a.settings_mut().data.lives = 7;
-    a.settings_mut().worms[0].borrow_mut().data.name = b"NEW".to_vec();
+    a.settings_mut().data.worms[0].borrow_mut().data.name = b"NEW".to_vec();
     assert!(a.save_settings(&file));
 
     a.files.settings_node = Node::default();
     a.settings_mut().data.lives = 3;
-    a.settings_mut().worms[0].borrow_mut().data.name = b"OLD".to_vec();
+    a.settings_mut().data.worms[0].borrow_mut().data.name = b"OLD".to_vec();
     // A game's worms keep the settings they had.
     let old_box = a.settings.clone().unwrap();
-    let old_worm = a.settings_mut().worms[0].clone();
+    let old_worm = a.settings_mut().data.worms[0].clone();
 
     // The selector loads from a folder below its root.
     std::fs::create_dir_all(format!("{dir}/sub")).unwrap();
@@ -96,29 +96,29 @@ fn choosing_a_level_sets_its_full_path_or_random() {
     a.settings_mut().data.random_level = true;
     assert_eq!(s.choose(a, b"sub/A.LEV", b"/cfg/sub/A.LEV", b"A", false), -1);
     assert!(!a.settings_mut().data.random_level);
-    assert_eq!(a.settings_mut().level_file, b"/cfg/sub/A.LEV");
+    assert_eq!(a.settings_mut().data.level_file, b"/cfg/sub/A.LEV");
     s.choose(a, b"", b"", b"Random", true);
     assert!(a.settings_mut().data.random_level);
-    assert!(a.settings_mut().level_file.is_empty());
+    assert!(a.settings_mut().data.level_file.is_empty());
 }
 
 #[test]
 fn a_profile_saved_as_a_name_loads_back() {
     let (a, dir) = &mut set_up("profile");
-    a.settings_mut().worms[1].borrow_mut().data.name = b"SAVED".to_vec();
-    a.settings_mut().worms[1].borrow_mut().data.health = 77;
+    a.settings_mut().data.worms[1].borrow_mut().data.name = b"SAVED".to_vec();
+    a.settings_mut().data.worms[1].borrow_mut().data.health = 77;
     save_profile_as(a, 1, b"mine");
     assert!(std::fs::metadata(format!("{dir}/Profiles/mine.lpf")).is_ok());
 
-    a.settings_mut().worms[1].borrow_mut().data.name = b"OTHER".to_vec();
-    a.settings_mut().worms[1].borrow_mut().data.health = 5;
-    let ws = a.settings_mut().worms[1].clone();
+    a.settings_mut().data.worms[1].borrow_mut().data.name = b"OTHER".to_vec();
+    a.settings_mut().data.worms[1].borrow_mut().data.health = 5;
+    let ws = a.settings_mut().data.worms[1].clone();
     let mut s = source(dir, Choice::Profile(ws));
     s.choose(a, b"Profiles/mine.lpf", b"", b"mine", false);
-    assert_eq!(a.settings_mut().worms[1].borrow_mut().data.name, b"SAVED");
-    assert_eq!(a.settings_mut().worms[1].borrow_mut().data.health, 77);
+    assert_eq!(a.settings_mut().data.worms[1].borrow_mut().data.name, b"SAVED");
+    assert_eq!(a.settings_mut().data.worms[1].borrow_mut().data.health, 77);
     // Player 0's are left alone.
-    assert_ne!(a.settings_mut().worms[0].borrow_mut().data.name, b"SAVED");
+    assert_ne!(a.settings_mut().data.worms[0].borrow_mut().data.name, b"SAVED");
 }
 
 #[test]
@@ -136,7 +136,7 @@ fn saving_options_writes_a_cfg_in_the_config_folder() {
 #[test]
 fn the_selectors_start_where_the_game_left_off() {
     let (a, _) = &mut set_up("specs");
-    a.settings_mut().level_file = b"some/LEVEL.LEV".to_vec();
+    a.settings_mut().data.level_file = b"some/LEVEL.LEV".to_vec();
     with_tc(a);
 
     let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_LEVEL, 0);
@@ -151,7 +151,7 @@ fn the_selectors_start_where_the_game_left_off() {
     let Choice::Profile(ws) = choice else {
         panic!("not a profile")
     };
-    assert!(std::rc::Rc::ptr_eq(&ws, &a.settings_mut().worms[1]));
+    assert!(std::rc::Rc::ptr_eq(&ws, &a.settings_mut().data.worms[1]));
     assert_eq!((spec.select, spec.has_select), (in_config(a, "Profiles"), true));
 
     let (spec, _, _) = selector_spec(a, LIERO_SELECTOR_REPLAY, 0);
@@ -179,13 +179,13 @@ fn a_chosen_tc_is_switched_to_once() {
     let (a, _) = &mut set_up("tc");
     with_tc(a);
     let before = a.menu_tc();
-    a.settings_mut().tc = b"other".to_vec();
+    a.settings_mut().data.ext.tc = b"other".to_vec();
     let mut s = source("../../TC", Choice::Tc);
     assert_eq!(
         s.choose(a, b"openliero", b"../../TC/openliero", b"openliero", false),
         -1
     );
-    assert_eq!(a.settings_mut().tc, b"openliero");
+    assert_eq!(a.settings_mut().data.ext.tc, b"openliero");
     assert!(std::rc::Rc::ptr_eq(&a.menu_tc(), &before));
     assert!(take_chosen_tc(a));
     assert!(!std::rc::Rc::ptr_eq(&a.menu_tc(), &before));

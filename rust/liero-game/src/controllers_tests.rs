@@ -13,7 +13,7 @@ fn tc() -> SharedTc {
 /// A local match with the worms named `names`, on a level of its own.
 fn local(tc: SharedTc, names: [&str; 2]) -> Box<LieroController> {
     let settings = liero_settings_box_new();
-    for (w, name) in settings.borrow().worms.iter().zip(names) {
+    for (w, name) in settings.borrow().data.worms.iter().zip(names) {
         w.borrow_mut().data.name = name.as_bytes().to_vec();
     }
     let mut c = liero_local_controller_new(&Host::none(), settings, tc);
@@ -108,7 +108,7 @@ fn r_rewinds_a_replay_to_its_start() {
                 ww.kind = i as i32;
             }
         }
-        let blood = game.settings_box().data.blood_particle_max;
+        let blood = game.settings_box().data.ext.blood_particle_max;
         game.start(blood);
         let mut w = crate::replay_file::LieroReplayWriter::new(&node).unwrap();
         assert_eq!(w.begin(game).status, LieroReplayStatus::Ok);

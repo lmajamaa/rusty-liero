@@ -137,7 +137,7 @@ fn sound_game(
         LieroSoundOut { mixer: m, report: None },
     );
 
-    let blood = game.settings_box().data.blood_particle_max;
+    let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
 
     let game_name = format!("{name}-game");
@@ -416,7 +416,7 @@ fn hash_controls(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, seed: u32, step
             2 + r.below(100)
         }
     });
-    for ws in &settings.borrow().worms {
+    for ws in &settings.borrow().data.worms {
         let mut ws = ws.borrow_mut();
         ws.data.controller = 0;
         ws.data

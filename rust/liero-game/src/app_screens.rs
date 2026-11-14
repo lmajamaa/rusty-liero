@@ -91,7 +91,7 @@ fn after_menu(a: &mut LieroApp, host: &Host, selection: i32) -> i32 {
                     let s = settings.borrow();
                     !s.data.regenerate_level
                         && s.data.random_level == old.data().old_random_level
-                        && s.level_file == old.old_level_file()
+                        && s.data.level_file == old.old_level_file()
                 });
             match old {
                 Some(old) => {
@@ -112,7 +112,7 @@ fn after_menu(a: &mut LieroApp, host: &Host, selection: i32) -> i32 {
         }
         MAIN_QUIT => return LIERO_AFTER_MENU_QUIT,
         MAIN_REPLAY => {
-            if a.settings_mut().data.single_screen_replay {
+            if a.settings_mut().data.ext.single_screen_replay {
                 a.primary_single = true;
             }
         }
