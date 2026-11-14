@@ -698,15 +698,15 @@ mod tests {
         let d = g.copy();
         assert!(Rc::ptr_eq(&d.settings(), &shared));
         assert!(!std::ptr::eq(d.level_box(), g.level_box()));
-        assert_eq!(d.level_box().data().level.width, 3);
+        assert_eq!(d.level_box().data().width, 3);
         g.level_box_mut().resize(1, 1);
-        assert_eq!(d.level_box().data().level.width, 3);
+        assert_eq!(d.level_box().data().width, 3);
         // Assigning copies them too, keeping the level's address.
         let l: *const LevelBox = c.level_box();
         c.assign(&d);
         assert!(Rc::ptr_eq(&c.settings(), &shared));
         assert!(std::ptr::eq(c.level_box(), l));
-        assert_eq!(c.level_box().data().level.width, 3);
+        assert_eq!(c.level_box().data().width, 3);
         drop(d);
 
         drop(c);

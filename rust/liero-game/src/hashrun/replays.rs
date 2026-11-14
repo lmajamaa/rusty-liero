@@ -119,20 +119,15 @@ fn hash_loaded(f: &mut Fnv, game: &mut Game) {
     }
 
     let level = game.level_box().data();
-    let l = &level.level;
-    f.i32(l.width);
-    f.i32(l.height);
+    f.i32(level.width);
+    f.i32(level.height);
     for c in &level.origpal {
         for v in [c.r, c.g, c.b] {
             f.u32(u32::from(v));
         }
     }
-    let n = l.width.max(0) as usize * l.height.max(0) as usize;
-    if n > 0 {
-        // SAFETY: the level has a material for each pixel.
-        for m in unsafe { std::slice::from_raw_parts(l.materials, n) } {
-            f.u32(u32::from(m.flags));
-        }
+    for m in game.level_box().materials() {
+        f.u32(u32::from(m.flags));
     }
 }
 

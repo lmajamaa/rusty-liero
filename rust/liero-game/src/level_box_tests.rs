@@ -66,10 +66,7 @@ fn a_level_file_has_its_pixels_and_materials() {
     let mut l = LevelBox::new();
     l.data_mut().origpal[3].r = 9;
     assert!(l.load(&t.common(), &exepal(), true, &lev(&[])));
-    assert_eq!(
-        (l.data().level.width, l.data().level.height),
-        (LEVEL_WIDTH, LEVEL_HEIGHT)
-    );
+    assert_eq!((l.data().width, l.data().height), (LEVEL_WIDTH, LEVEL_HEIGHT));
     assert!(l.pixels().iter().all(|&p| p == 5));
     assert!(l.materials.iter().all(|m| m.flags == MATERIAL_DIRT));
     assert_eq!(l.data().origpal, exepal());

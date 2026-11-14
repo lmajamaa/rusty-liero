@@ -17,9 +17,7 @@ use super::game::hash_game;
 use super::games::{bot_tick, set_up_game, tc_data, HOLDAZONE, HOOKS, KILL_EM_ALL, THROWERS};
 use super::{Fnv, Out};
 use crate::app::App;
-use crate::controller::ControllerData;
 use crate::controllers::Controller;
-use crate::game_box::Game;
 use crate::keys::{
     is_extended, joy_axis, joy_button, joy_hat, joy_key, key_name, sdl_to_dos, sdl_to_dos_keysym, KeyChanges, Keys,
     DK_ESCAPE, MAX_JOY_BUTTONS,
@@ -420,19 +418,7 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
             .for_each(|c| *c = pool[r.below(12) as usize]);
     }
 
-    // Freed below.
-    let lc = Box::into_raw(Controller::local(
-        &crate::screen::Host::none(),
-        settings.clone(),
-        tc.clone(),
-    ));
-    // SAFETY: the controller is new; its data and game live as long as it
-    // does.
-    let (d, game) = unsafe {
-        let d: *mut ControllerData = (*lc).data();
-        let game: *mut Game = (*lc).game().expect("a local controller has its game");
-        (d, &mut *game)
-    };
+    let mut lc = Controller::local(&crate::screen::Host::none(), settings.clone(), tc.clone());
     let keys = &mut a.keys;
 
     let name = format!("keys-controls-{seed}");
@@ -447,11 +433,9 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
             } else {
                 pool[r.below(12) as usize]
             };
-            // SAFETY: the controller is a live one.
-            unsafe { (*lc).on_key(key as i32, r.below(2) != 0) };
+            lc.on_key(key as i32, r.below(2) != 0);
         } else if op == 7 {
-            // SAFETY: the controller's data lives as long as it does.
-            unsafe { (*d).going_to_menu = false };
+            lc.data().going_to_menu = false;
         } else if op == 8 {
             // The frame skip keys, maybe with ctrl.
             const KEYS: [i32; 8] = [SC_0, SC_1, SC_2, SC_5, SC_9, SC_LCTRL, SC_RCTRL, SC_A];
@@ -459,21 +443,21 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
                 let k = sdl_to_dos(KEYS[r.below(8) as usize]);
                 keys.set(k, r.below(2) != 0);
             }
-            // SAFETY: as above.
-            unsafe { (*d).process(keys) };
+            lc.data().process(keys);
         } else {
             let i = r.below(2) as usize;
+            let game = lc.game().expect("a local controller has its game");
             let w = game.worm_at(i).expect("no worm");
             w.data.control_states = r.below(128);
         }
 
+        let game = lc.game().expect("a local controller has its game");
         for w in game.listed_worms() {
             let w = w.expect("an empty place among the game's worms");
             f.u32(w.data.control_states);
             f.u32(w.data.clean_control_states);
         }
-        // SAFETY: as above.
-        let d = unsafe { &*d };
+        let d = lc.data();
         f.i32(d.fade_value);
         f.bool(d.going_to_menu);
         f.i32(d.frame_skip);
@@ -487,8 +471,6 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
     }
 
     keys.clear();
-    // SAFETY: the controller isn't used again.
-    drop(unsafe { Box::from_raw(lc) });
 }
 
 fn hash_input(a: &mut App, out: &mut Out, tc: &SharedTc) {

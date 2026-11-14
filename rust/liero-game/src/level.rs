@@ -5,9 +5,8 @@
 //! bit-identical to the C++ versions: the same seed must give the same
 //! level, and replays depend on every pixel.
 //!
-//! Rust owns the level (`LevelBox`): its pixels and materials, palette
-//! and where it came from. C++'s `Level` refers to its fields, and hands
-//! Rust the [`RawLevel`] view of the pixels for each call.
+//! A level (`LevelBox`) owns its pixels and materials, palette and where it
+//! came from, and lends them out as a [`Level`] to work on.
 
 use crate::gfx::{Bitmap, Color};
 use crate::material::Material;
@@ -28,17 +27,6 @@ const SPRITE_PIXELS: usize = (LARGE_SPRITE_SIZE * LARGE_SPRITE_SIZE) as usize;
 /// Large sprites making up the three big stones, as top-left, top-right,
 /// bottom-left and bottom-right quarters. Was `stoneTab` in `common.cpp`.
 const STONE_TAB: [[i32; 4]; 3] = [[98, 60, 61, 62], [63, 75, 85, 86], [89, 90, 97, 96]];
-
-/// View of a C++ `Level`'s pixels: `data` holds the palette index of each
-/// pixel and `materials` its material, both `width * height` long, row by
-/// row.
-#[derive(Clone, Copy, Debug)]
-pub struct RawLevel {
-    pub data: *mut u8,
-    pub materials: *mut Material,
-    pub width: i32,
-    pub height: i32,
-}
 
 /// The level as Rust works on it.
 pub struct Level<'a> {
@@ -594,58 +582,6 @@ impl Level<'_> {
     }
 }
 
-/// Makes a slice from a C++ pointer, which may be null when `len` is 0.
-pub(crate) unsafe fn slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
-    unsafe {
-        if len == 0 {
-            &[]
-        } else {
-            std::slice::from_raw_parts(ptr, len)
-        }
-    }
-}
-
-unsafe fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] {
-    unsafe {
-        if len == 0 {
-            &mut []
-        } else {
-            std::slice::from_raw_parts_mut(ptr, len)
-        }
-    }
-}
-
-impl RawLevel {
-    /// # Safety
-    /// `data` and `materials` must each point to `width * height` elements
-    /// that nothing else uses during the call.
-    pub unsafe fn get(&self) -> Level<'_> {
-        unsafe {
-            let len = (self.width.max(0) as usize) * (self.height.max(0) as usize);
-            Level {
-                data: slice_mut(self.data, len),
-                materials: slice_mut(self.materials, len),
-                width: self.width,
-                height: self.height,
-            }
-        }
-    }
-
-    /// The pixels, to draw.
-    ///
-    /// # Safety
-    /// `data` points to `width * height` pixels that nothing changes while
-    /// the view is used.
-    pub unsafe fn view(&self) -> LevelView<'_> {
-        let len = (self.width.max(0) as usize) * (self.height.max(0) as usize);
-        LevelView {
-            data: unsafe { slice(self.data, len) },
-            width: self.width,
-            height: self.height,
-        }
-    }
-}
-
 /// See `Level::draw_miniature`.
 fn draw_miniature(data: &[u8], width: i32, height: i32, scr: &Bitmap, map_x: i32, map_y: i32, step: i32) {
     let mut my = step / 2;
@@ -664,11 +600,11 @@ fn draw_miniature(data: &[u8], width: i32, height: i32, scr: &Bitmap, map_x: i32
     }
 }
 
-/// A level's fields that C++'s `Level` refers to.
+/// A level's size, palette and where it came from.
 #[derive(Clone, Copy, Debug)]
 pub struct LevelData {
-    /// The pixels and materials, which the box owns.
-    pub level: RawLevel,
+    pub width: i32,
+    pub height: i32,
     /// What the level was made from: `Settings::randomLevel`, and the level
     /// file in the box.
     pub old_random_level: bool,
@@ -676,7 +612,7 @@ pub struct LevelData {
     pub origpal: [Color; 256],
 }
 
-/// A level. C++ holds a pointer to it, and its fields refer to `data`.
+/// A level: `data`, and `width * height` pixels and materials, row by row.
 pub struct LevelBox {
     data: LevelData,
     pixels: Vec<u8>,
@@ -687,29 +623,17 @@ pub struct LevelBox {
 impl LevelBox {
     /// An empty level: C++'s `Level` constructor.
     pub fn new() -> Box<Self> {
-        let mut b = Box::new(LevelBox {
+        Box::new(LevelBox {
             data: LevelData {
-                level: RawLevel {
-                    data: std::ptr::null_mut(),
-                    materials: std::ptr::null_mut(),
-                    width: 0,
-                    height: 0,
-                },
+                width: 0,
+                height: 0,
                 old_random_level: false,
                 origpal: [Color::default(); 256],
             },
             pixels: Vec::new(),
             materials: Vec::new(),
             old_level_file: Vec::new(),
-        });
-        b.update_view();
-        b
-    }
-
-    /// Points the view at the pixels and materials, after they move.
-    fn update_view(&mut self) {
-        self.data.level.data = self.pixels.as_mut_ptr();
-        self.data.level.materials = self.materials.as_mut_ptr();
+        })
     }
 
     /// `Level::resize`: keeps the first pixels, and new ones are zero.
@@ -717,9 +641,8 @@ impl LevelBox {
         let n = (width.max(0) as usize) * (height.max(0) as usize);
         self.pixels.resize(n, 0);
         self.materials.resize(n, Material::default());
-        self.data.level.width = width;
-        self.data.level.height = height;
-        self.update_view();
+        self.data.width = width;
+        self.data.height = height;
     }
 
     /// The pixels and materials, to work on.
@@ -727,8 +650,8 @@ impl LevelBox {
         Level {
             data: &mut self.pixels,
             materials: &mut self.materials,
-            width: self.data.level.width,
-            height: self.data.level.height,
+            width: self.data.width,
+            height: self.data.height,
         }
     }
 
@@ -741,8 +664,8 @@ impl LevelBox {
     pub fn view(&self) -> LevelView<'_> {
         LevelView {
             data: &self.pixels,
-            width: self.data.level.width,
-            height: self.data.level.height,
+            width: self.data.width,
+            height: self.data.height,
         }
     }
 
@@ -763,6 +686,10 @@ impl LevelBox {
         &self.pixels
     }
 
+    pub(crate) fn materials(&self) -> &[Material] {
+        &self.materials
+    }
+
     /// Sets every pixel, with its material (`Level::setPixel`).
     pub(crate) fn set_pixels(&mut self, pixels: &[u8], material: impl Fn(u8) -> Material) {
         for ((p, m), &new) in self.pixels.iter_mut().zip(&mut self.materials).zip(pixels) {
@@ -771,14 +698,12 @@ impl LevelBox {
         }
     }
 
-    /// Makes this a copy of `other`, in place, so that C++'s references
-    /// into `data` stay valid.
+    /// Makes this a copy of `other`, in place, reusing its buffers.
     pub fn assign(&mut self, other: &Self) {
         self.data = other.data;
         self.pixels.clone_from(&other.pixels);
         self.materials.clone_from(&other.materials);
         self.old_level_file.clone_from(&other.old_level_file);
-        self.update_view();
     }
 
     /// `Level::generateRandom`: the TC's palette, then a random level.
@@ -890,7 +815,7 @@ mod tests {
         // A copy has pixels of its own.
         let mut c = LevelBox::new();
         c.assign(&a);
-        assert_ne!(c.data.level.data, a.data.level.data);
+        assert_ne!(c.pixels.as_ptr(), a.pixels.as_ptr());
         assert_eq!(
             (c.level().width, c.level().data[5], c.level().materials[5].flags),
             (3, 7, 2)
@@ -908,11 +833,10 @@ mod tests {
         std::mem::swap(&mut *a, &mut *c);
         assert_eq!((a.level().width, a.level().data[5]), (3, 1));
         assert_eq!((c.level().width, c.level().data[5]), (4, 7));
-        assert_eq!(a.data.level.data, a.pixels.as_mut_ptr());
 
         a.assign(&c);
         assert_eq!((a.level().width, a.level().data[5]), (4, 7));
-        assert_ne!(a.data.level.data, c.data.level.data);
+        assert_ne!(a.pixels.as_ptr(), c.pixels.as_ptr());
     }
     use crate::material::MATERIAL_ROCK;
     use crate::test_util::Fnv;
