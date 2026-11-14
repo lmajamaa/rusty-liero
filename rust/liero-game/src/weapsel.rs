@@ -9,14 +9,12 @@
 //! numbered as the menus list them, from 1; `weap_order` turns a number
 //! into a weapon.
 
-use std::ffi::c_void;
-
 use crate::app::App;
 use crate::controller::State;
 use crate::game_box::Game;
 use crate::gfx::{draw_rounded_box, palette_fade, palette_rotate_from, Bitmap};
 use crate::menu::draw_versus;
-use crate::menu::{Menu, MenuHooks, MenuItem};
+use crate::menu::{Menu, MenuItem};
 use crate::rand::Rand;
 use crate::renderer::Renderer;
 use crate::settings::{SharedWormSettings, WormSettingsBox};
@@ -233,14 +231,8 @@ pub fn finalize(worm: &mut WormData, numbers: &[u32; SELECTABLE_WEAPONS], tc: &T
     worm.control_states &= !0x7f;
 }
 
-unsafe fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
-
 fn draw_menu(wm: &mut WeapselMenu, scr: &Bitmap, font: &Font, x: i32) {
-    let hooks = MenuHooks {
-        ctx: std::ptr::null_mut(),
-        draw_overlay: no_overlay,
-    };
-    wm.menu.draw_with(scr, font, &hooks, false, x, false);
+    wm.menu.draw(scr, font, false, x, false);
 }
 
 /// Runs `f` on `game`'s worms `ids`, with the game's weapon tables and the

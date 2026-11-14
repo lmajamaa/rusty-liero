@@ -7,7 +7,7 @@ use crate::gfx::draw_rounded_box;
 use crate::menu::item::ItemBehavior;
 use crate::menu::{Menu, MenuState};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
-use crate::text::Str;
+use crate::settings::SharedSettings;
 
 const SCANCODE_ESCAPE: u32 = 41;
 const SCANCODE_RIGHT: u32 = 79;
@@ -21,30 +21,30 @@ const SOUND_UP: i32 = 26;
 const SOUND_DOWN: i32 = 25;
 
 /// The weapons in a settings table.
+#[cfg(test)]
 const WEAPON_COUNT: usize = 40;
 
 /// What the weapon options screen shows and edits.
 pub struct WeaponOptionsSpec {
-    /// The weapons' names in menu order, and each one's index in
-    /// `weap_table`.
-    pub names: *const Str,
-    pub order: *const i32,
-    pub count: usize,
-    /// The settings' weapon table (40 entries): 0 on, 1 bots only, 2 off.
-    pub weap_table: *mut u32,
+    /// The weapons' names in menu order, and each one's index in the
+    /// settings' weapon table.
+    pub names: Vec<Vec<u8>>,
+    pub order: Vec<usize>,
+    /// The settings whose weapon table (40 entries: 0 on, 1 bots only,
+    /// 2 off) the screen edits.
+    pub settings: SharedSettings,
     /// The names of those states.
-    pub states: *const Str,
-    pub state_count: usize,
+    pub states: Vec<Vec<u8>>,
     /// The column titles, and the message when every weapon is off.
-    pub weapon_title: Str,
-    pub availability_title: Str,
-    pub no_weapons: Str,
+    pub weapon_title: Vec<u8>,
+    pub availability_title: Vec<u8>,
+    pub no_weapons: Vec<u8>,
 }
 
 struct WeaponOptions {
     menu: Menu,
     order: Vec<usize>,
-    weap_table: *mut u32,
+    settings: SharedSettings,
     states: Vec<Vec<u8>>,
     weapon_title: Vec<u8>,
     availability_title: Vec<u8>,
@@ -64,14 +64,8 @@ impl WeaponOptions {
     }
 
     /// Menu item `i`'s entry in the weapon table.
-    fn entry(&self, i: usize) -> *mut u32 {
-        // SAFETY: `order` holds indexes into the 40-entry table.
-        unsafe { self.weap_table.add(self.order[i]) }
-    }
-
     fn value(&self, i: usize) -> i32 {
-        // SAFETY: the table outlives the screen.
-        unsafe { *self.entry(i) as i32 }
+        self.settings.borrow().data.weap_table[self.order[i]] as i32
     }
 
     /// `Menu::updateItems`: every item's value.
@@ -93,8 +87,7 @@ impl WeaponOptions {
             host.play_sound(s);
         }
         let (v, a) = b.left_right(self.value(i), dir, 0);
-        // SAFETY: as in `value`.
-        unsafe { *self.entry(i) = v as u32 };
+        self.settings.borrow_mut().data.weap_table[self.order[i]] = v as u32;
         let text = b.value_text(v);
         drop(names);
         if a.update_menu {
@@ -105,8 +98,7 @@ impl WeaponOptions {
     }
 
     fn any_on(&self) -> bool {
-        // SAFETY: the table has 40 entries.
-        (0..WEAPON_COUNT).any(|i| unsafe { *self.weap_table.add(i) } == 0)
+        self.settings.borrow().data.weap_table.contains(&0)
     }
 
     fn draw(&mut self, app: &crate::app::App, host: &Host) {
@@ -130,11 +122,7 @@ impl Screen for WeaponOptions {
                 if self.any_on() {
                     return Tick::close(0);
                 }
-                let text = Str {
-                    ptr: self.no_weapons.as_ptr(),
-                    len: self.no_weapons.len(),
-                };
-                return Tick::push(unsafe { info_box_screen(text.bytes(), 223, 68, false) });
+                return Tick::push(info_box_screen(&self.no_weapons, 223, 68, false));
             }
         }
         self.resumed = false;
@@ -176,52 +164,40 @@ impl Screen for WeaponOptions {
     }
 }
 
-/// The weapon options screen. It edits `spec.weap_table` in place, which
-/// must outlive it; the rest of `spec` is copied.
-///
-/// # Safety
-/// `spec`'s pointers are valid for their counts, and `order`'s entries are
-/// below 40.
-pub unsafe fn weapon_options_screen(spec: &WeaponOptionsSpec) -> BoxedScreen {
-    unsafe { Box::new(WeaponOptions::new(spec)) }
+/// The weapon options screen, editing the weapon table of `spec`'s
+/// settings.
+pub fn weapon_options_screen(spec: WeaponOptionsSpec) -> BoxedScreen {
+    Box::new(WeaponOptions::new(spec))
 }
 
 impl WeaponOptions {
-    /// # Safety
-    /// As for `weapon_options_screen`.
-    unsafe fn new(spec: &WeaponOptionsSpec) -> Self {
-        unsafe {
-            let text = |s: Str| s.bytes().to_vec();
-            // Menu(179, 28) with setHeight(14), before any items.
-            let mut menu = Menu::new(MenuState {
-                x: 179,
-                y: 28,
-                height: 14,
-                item_height: 8,
-                ..Default::default()
-            });
-            menu.m.value_offset_x = 89;
-            let mut order = Vec::with_capacity(spec.count);
-            for i in 0..spec.count {
-                menu.add(text(*spec.names.add(i)), 48);
-                order.push(*spec.order.add(i) as usize);
-            }
-            let states = (0..spec.state_count).map(|i| text(*spec.states.add(i))).collect();
-            let mut screen = WeaponOptions {
-                menu,
-                order,
-                weap_table: spec.weap_table,
-                states,
-                weapon_title: text(spec.weapon_title),
-                availability_title: text(spec.availability_title),
-                no_weapons: text(spec.no_weapons),
-                shown: false,
-                resumed: false,
-            };
-            screen.menu.move_to(0);
-            screen.update_items();
-            screen
+    fn new(spec: WeaponOptionsSpec) -> Self {
+        // Menu(179, 28) with setHeight(14), before any items.
+        let mut menu = Menu::new(MenuState {
+            x: 179,
+            y: 28,
+            height: 14,
+            item_height: 8,
+            ..Default::default()
+        });
+        menu.m.value_offset_x = 89;
+        for name in spec.names {
+            menu.add(name, 48);
         }
+        let mut screen = WeaponOptions {
+            menu,
+            order: spec.order,
+            settings: spec.settings,
+            states: spec.states,
+            weapon_title: spec.weapon_title,
+            availability_title: spec.availability_title,
+            no_weapons: spec.no_weapons,
+            shown: false,
+            resumed: false,
+        };
+        screen.menu.move_to(0);
+        screen.update_items();
+        screen
     }
 }
 
@@ -230,47 +206,37 @@ mod tests {
     use super::*;
     use crate::screen::Transition;
 
-    fn s(b: &'static [u8]) -> Str {
-        Str {
-            ptr: b.as_ptr(),
-            len: b.len(),
-        }
-    }
-
-    fn screen(table: &mut [u32; WEAPON_COUNT]) -> WeaponOptions {
-        let names = [s(b"BAZOOKA"), s(b"ZIMM")];
-        let order = [1, 0];
-        let states = [s(b"MENU"), s(b"BONUS"), s(b"BANNED")];
+    fn screen(table: [u32; WEAPON_COUNT]) -> (WeaponOptions, SharedSettings) {
+        let settings = crate::settings::new_settings();
+        settings.borrow_mut().data.weap_table = table;
+        let v = |b: &[u8]| b.to_vec();
         let spec = WeaponOptionsSpec {
-            names: names.as_ptr(),
-            order: order.as_ptr(),
-            count: 2,
-            weap_table: table.as_mut_ptr(),
-            states: states.as_ptr(),
-            state_count: 3,
-            weapon_title: s(b"WEAPON"),
-            availability_title: s(b"AVAILABILITY"),
-            no_weapons: s(b"NONE"),
+            names: vec![v(b"BAZOOKA"), v(b"ZIMM")],
+            order: vec![1, 0],
+            settings: settings.clone(),
+            states: vec![v(b"MENU"), v(b"BONUS"), v(b"BANNED")],
+            weapon_title: v(b"WEAPON"),
+            availability_title: v(b"AVAILABILITY"),
+            no_weapons: v(b"NONE"),
         };
-        unsafe { WeaponOptions::new(&spec) }
+        (WeaponOptions::new(spec), settings)
     }
 
     #[test]
     fn values_follow_the_table_in_menu_order() {
         let mut table = [0; WEAPON_COUNT];
         table[1] = 2;
-        let mut w = screen(&mut table);
+        let (mut w, settings) = screen(table);
         let values: Vec<_> = w.menu.items.iter().map(|it| it.value.clone()).collect();
         assert_eq!(values, [b"BANNED".to_vec(), b"MENU".to_vec()]);
         w.left_right(&Host::none(), 1);
-        assert_eq!(table[1], 0, "wraps round");
+        assert_eq!(settings.borrow().data.weap_table[1], 0, "wraps round");
         assert_eq!(w.menu.items[0].value, b"MENU".to_vec());
     }
 
     #[test]
     fn escape_needs_a_weapon_on() {
-        let mut table = [1; WEAPON_COUNT];
-        let mut w = screen(&mut table);
+        let (mut w, settings) = screen([1; WEAPON_COUNT]);
         let h = Host::none();
         let mut app = crate::app::App::new();
         app.press(&[SCANCODE_ESCAPE]);
@@ -287,12 +253,7 @@ mod tests {
         app.press(&[SCANCODE_ESCAPE]);
         assert!(matches!(w.tick(&mut app, &h).then, Transition::Stay));
 
-        // The screen reads the table through its pointer, which the
-        // compiler doesn't see.
-        #[allow(unused_assignments)]
-        {
-            table[5] = 0;
-        }
+        settings.borrow_mut().data.weap_table[5] = 0;
         app.press(&[SCANCODE_ESCAPE]);
         assert_eq!(w.tick(&mut app, &h).closed(), Some(0));
     }
