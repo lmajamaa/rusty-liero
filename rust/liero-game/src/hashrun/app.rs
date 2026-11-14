@@ -136,8 +136,7 @@ fn process_event(a: &mut App, ev: Ev, to_controller: bool) {
     let dos = a.keys.event(scancode, down);
     if dos != 0 && to_controller {
         if let Some(c) = a.controller.as_deref_mut() {
-            // SAFETY: the app's controller is a live one.
-            unsafe { c.on_key(dos as i32, down) };
+            c.on_key(dos as i32, down);
         }
     }
 }

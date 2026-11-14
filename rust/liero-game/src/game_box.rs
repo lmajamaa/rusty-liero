@@ -70,6 +70,18 @@ impl Worm {
         self.settings = s;
     }
 
+    /// The worm's settings, to share. Panics if it has none.
+    pub(crate) fn shared_settings(&self) -> SharedWormSettings {
+        self.settings.clone().expect("a worm without settings")
+    }
+
+    /// The worm's state, to change, and its settings. Panics if it has no
+    /// settings.
+    pub(crate) fn data_and_settings(&mut self) -> (&mut WormData, Ref<'_, WormSettingsBox>) {
+        let Worm { data, settings, .. } = self;
+        (data, settings.as_ref().expect("a worm without settings").borrow())
+    }
+
     /// The worm's settings. Panics if it has none.
     pub(crate) fn settings(&self) -> Ref<'_, WormSettingsBox> {
         self.settings.as_ref().expect("a worm without settings").borrow()
@@ -117,12 +129,6 @@ impl Game {
         tc_data(self.tc.as_ref().expect("the game has no TC"))
     }
 
-    /// Where the game's TC's data is, or null if it has none, for weapon
-    /// selection. Only F8 on the menu changes it, never while the game runs.
-    pub(crate) fn tc_ptr(&self) -> *const TcData {
-        self.tc.as_ref().map_or(std::ptr::null(), |t| &*tc_data(t))
-    }
-
     /// The game's settings, to share. Panics if it has none.
     pub(crate) fn settings(&self) -> SharedSettings {
         self.settings.clone().expect("the game has no settings")
@@ -166,6 +172,15 @@ impl Game {
     }
 
     /// The game's worm `id`.
+    /// The states of the game's worms `ids`, in order. Panics if one is
+    /// twice in `ids`.
+    pub(crate) fn worms_data_mut(&mut self, ids: &[WormId]) -> Vec<&mut WormData> {
+        let mut pool: Vec<Option<&mut WormData>> = self.pool.iter_mut().map(|w| Some(&mut w.data)).collect();
+        ids.iter()
+            .map(|id| pool[id.0 as usize].take().expect("a worm twice"))
+            .collect()
+    }
+
     pub(crate) fn worm_mut(&mut self, id: WormId) -> &mut Worm {
         &mut self.pool[id.0 as usize]
     }
@@ -333,14 +348,9 @@ impl Game {
 
     /// `Game::focus`: the renderer's palette from the level's and the
     /// worms' colours.
-    ///
-    /// # Safety
-    /// `r` is valid.
-    pub unsafe fn focus(&mut self, r: *mut Renderer) {
-        unsafe {
-            let level_pal = self.level.data().origpal;
-            self.origpal(&mut (*r).data.origpal, &level_pal);
-        }
+    pub fn focus(&mut self, r: &mut Renderer) {
+        let level_pal = self.level.data().origpal;
+        self.origpal(&mut r.data.origpal, &level_pal);
     }
 
     /// `Game::draw`: the split-screen viewports, or with `spectators` the

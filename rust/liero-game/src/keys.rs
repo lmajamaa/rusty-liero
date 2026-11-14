@@ -416,15 +416,15 @@ pub fn joy_hat_key(joy: i32, value: u8) -> u32 {
 }
 
 /// One worm's controls and states for `local_controller_key`.
-#[derive(Clone, Copy, Debug)]
-pub struct WormKeys {
+#[derive(Debug)]
+pub struct WormKeys<'a> {
     /// The key for each control: up, down, left, right, fire, change,
     /// jump and dig.
-    pub controls: *const u32,
+    pub controls: &'a [u32],
     /// The worm's control states (`Worm::controlStates`), one bit each.
-    pub states: *mut u32,
+    pub states: &'a mut u32,
     /// The keys' real states, dig included (`cleanControlStates`).
-    pub clean: *mut u32,
+    pub clean: &'a mut u32,
 }
 
 const LEFT: u32 = 2;
@@ -679,22 +679,15 @@ pub fn key_name(key: u32) -> Vec<u8> {
 
 /// A key going down or up in a local game (`LocalController::onKey`): sets
 /// the control of the first worm with that key, and returns true for
-/// Escape, which leaves the game.
-///
-/// # Safety
-/// Each worm's `controls` points to `control_count` controls, and its
-/// `states` and `clean` are valid.
-pub unsafe fn local_controller_key(worms: &[WormKeys], control_count: usize, key: i32, key_state: bool) -> bool {
-    unsafe {
-        let controls: Vec<&[u32]> = worms
-            .iter()
-            .map(|w| std::slice::from_raw_parts(w.controls, control_count))
-            .collect();
-        if let Some((w, c)) = control_for_key(&controls, key as u32) {
-            apply_control(&mut *worms[w].states, &mut *worms[w].clean, c, key_state);
-        }
-        key as u32 == DK_ESCAPE
+/// Escape, which leaves the game. Each worm's first `control_count`
+/// controls count.
+pub fn local_controller_key(worms: &mut [WormKeys], control_count: usize, key: i32, key_state: bool) -> bool {
+    let controls: Vec<&[u32]> = worms.iter().map(|w| &w.controls[..control_count]).collect();
+    if let Some((w, c)) = control_for_key(&controls, key as u32) {
+        let w = &mut worms[w];
+        apply_control(w.states, w.clean, c, key_state);
     }
+    key as u32 == DK_ESCAPE
 }
 
 #[cfg(test)]
@@ -862,20 +855,22 @@ mod tests {
         let w1 = [20u32, 21, 22, 23, 24, 25, 16, 27];
         let mut states = [0u32; 2];
         let mut clean = [0u32; 2];
-        let key = |k: u32, s: bool, states: &mut [u32; 2], clean: &mut [u32; 2]| unsafe {
-            let worms = [
+        let key = |k: u32, s: bool, states: &mut [u32; 2], clean: &mut [u32; 2]| {
+            let [s0, s1] = states;
+            let [c0, c1] = clean;
+            let mut worms = [
                 WormKeys {
-                    controls: w0.as_ptr(),
-                    states: &mut states[0],
-                    clean: &mut clean[0],
+                    controls: &w0,
+                    states: s0,
+                    clean: c0,
                 },
                 WormKeys {
-                    controls: w1.as_ptr(),
-                    states: &mut states[1],
-                    clean: &mut clean[1],
+                    controls: &w1,
+                    states: s1,
+                    clean: c1,
                 },
             ];
-            local_controller_key(&worms, 8, k as i32, s)
+            local_controller_key(&mut worms, 8, k as i32, s)
         };
         // A key two worms share goes to the first.
         key(16, true, &mut states, &mut clean);

@@ -157,7 +157,7 @@ fn playback_frame(reader: &mut ReplayReader, game: &mut Game, renderer: &mut Ren
     }
     if o.settings_changed {
         // SAFETY: the renderer is a live one.
-        unsafe { game.focus(renderer) };
+        game.focus(renderer);
     }
     thrown(&o).map_or(Ok(true), Err)
 }
@@ -195,7 +195,7 @@ fn play_back(
     let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
     // SAFETY: the renderer is a live one.
-    unsafe { game.focus(renderer) };
+    game.focus(renderer);
 
     // What R rewinds to in the replay controller.
     let mut initial = (rewind_at > 0).then(|| {

@@ -106,8 +106,7 @@ fn run_ai_game(a: &mut App, out: &mut Out, tc: &SharedTc, c: &AiConfig, interval
     spectator.set_render_resolution(640, 400);
     for r in [&mut split, &mut spectator] {
         r.load_palette(&tc_data(tc));
-        // SAFETY: the renderer is a live one.
-        unsafe { game.focus(&mut **r) };
+        game.focus(r);
     }
 
     // The controls every tick, which the game hashes only sample.

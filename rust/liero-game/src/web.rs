@@ -336,8 +336,7 @@ fn send_key(a: &mut App, to_controller: bool, key: u32, down: bool) {
         return;
     }
     if let Some(c) = a.controller.as_deref_mut() {
-        // SAFETY: the app's controller is a live one.
-        unsafe { c.on_key(key as i32, down) };
+        c.on_key(key as i32, down);
     }
 }
 

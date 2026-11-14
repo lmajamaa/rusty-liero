@@ -554,10 +554,8 @@ fn run_weapon_selection(
 
     let tc = a.menu_tc();
     let d = tc_data(&tc);
-    // SAFETY: the game keeps references to the settings and the TC; its
-    // worms and viewports are made as the C++ `Game` view made them.
     let mut game = Game::new();
-    unsafe {
+    {
         game.set_context(Some(settings.clone()), Some(tc.clone()), SoundOut::NONE);
         for (i, ws) in worms.iter().enumerate() {
             let id = game.new_worm(Some(ws.clone()));
@@ -575,14 +573,11 @@ fn run_weapon_selection(
         let mut level = LevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
-        game.focus(&mut *a.play);
-        game.focus(&mut *a.single);
+        game.focus(&mut a.play);
+        game.focus(&mut a.single);
     }
 
-    // SAFETY: the selection works on the game, which outlives it.
-    let selection = Box::into_raw(unsafe { Weapsel::start(&mut game, &mut a.rand) });
-    // SAFETY: it is new, and freed below.
-    let ws = unsafe { &mut *selection };
+    let mut ws = Weapsel::start(&mut game, &mut a.rand);
 
     for step in 0..steps {
         for w in game.listed_worms() {
@@ -609,14 +604,12 @@ fn run_weapon_selection(
             ws.set_focused(true);
         }
 
-        // SAFETY: as above.
-        let done = unsafe { ws.process_game(&mut a.rand) };
+        let done = ws.process_game(&mut game, &mut a.rand);
         a.menu_cycles = a.menu_cycles.wrapping_add(1);
 
         let mut f = Fnv::default();
         for i in 0..ws.menu_count() {
             f.bool(ws.ready(i));
-            // SAFETY: the selection's menus live as long as it does.
             hash_menu(&mut f, ws.menu(i));
         }
         for w in game.listed_worms() {
@@ -627,26 +620,18 @@ fn run_weapon_selection(
             }
         }
 
-        // SAFETY: the renderers are the app's.
-        unsafe {
-            a.play.clear();
-            let play: *mut _ = &mut *a.play;
-            ws.draw_game(a, play, State::WeaponSelection, false);
-            add_screen(&mut f, &a.play);
-            a.single.clear();
-            let single: *mut _ = &mut *a.single;
-            ws.draw_game(a, single, State::WeaponSelection, true);
-            add_screen(&mut f, &a.single);
-        }
+        a.play.clear();
+        ws.draw_game(&mut game, a, State::WeaponSelection, false);
+        add_screen(&mut f, &a.play);
+        a.single.clear();
+        ws.draw_game(&mut game, a, State::WeaponSelection, true);
+        add_screen(&mut f, &a.single);
         print(out, name, step, f);
 
         if done {
             break;
         }
     }
-    // SAFETY: the selection isn't used again, and goes before its game.
-    drop(unsafe { Box::from_raw(selection) });
-    drop(game);
 }
 
 pub fn hash_menus(a: &mut App, out: &mut Out) {
