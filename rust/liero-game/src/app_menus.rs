@@ -6,15 +6,11 @@
 use crate::app::App;
 use crate::controllers::{liero_controller_level, liero_controller_running};
 use crate::gfx::{liero_gfx_fill_rect, liero_palette_fade, liero_palette_rotate_from, liero_palette_set_worm_colour};
-use crate::menu::{
-    liero_menu_box_count, liero_menu_box_id, liero_menu_box_move_to, liero_menu_box_set_string,
-    liero_menu_box_set_visibility, liero_menu_draw_versus, MenuBox,
-};
+use crate::menu::{draw_versus, Menu};
 use crate::menu_screen::{LIERO_MENU_MAIN, LIERO_MENU_SETTINGS};
 use crate::menus::liero_menus_draw;
 use crate::renderer::Renderer;
 use crate::tc::s as text;
-use crate::text::Str;
 use crate::weapsel::level_line;
 
 /// The main menu's items `menu_start` changes (`MainMenu`).
@@ -31,14 +27,12 @@ impl App {
 }
 
 /// The index of the item with `id`, or -1.
-fn index_of(b: &MenuBox, id: i32) -> i32 {
-    (0..liero_menu_box_count(b))
-        .find(|&i| liero_menu_box_id(b, i) == id)
-        .unwrap_or(-1)
+fn index_of(b: &Menu, id: i32) -> i32 {
+    (0..b.count()).find(|&i| b.id(i) == id).unwrap_or(-1)
 }
 
-fn set_string(b: &mut MenuBox, id: i32, s: &str) {
-    liero_menu_box_set_string(b, index_of(b, id), s.as_bytes());
+fn set_string(b: &mut Menu, id: i32, s: &str) {
+    b.set_name(index_of(b, id), s.as_bytes());
 }
 
 /// Sets the menus up for the main menu screen (`Gfx::menuStart`): the
@@ -56,18 +50,18 @@ pub(crate) fn menu_start(a: &mut App) -> i32 {
     let mut menus = menus.borrow_mut();
     let main = menus.box_of(LIERO_MENU_MAIN);
     let start = if a.running() {
-        liero_menu_box_set_visibility(main, index_of(main, MAIN_RESUME_GAME), true);
+        main.set_visibility(index_of(main, MAIN_RESUME_GAME), true);
         set_string(main, MAIN_RESUME_GAME, "RESUME GAME (F1)");
         set_string(main, MAIN_NEW_GAME, "NEW GAME");
         MAIN_RESUME_GAME
     } else {
-        liero_menu_box_set_visibility(main, index_of(main, MAIN_RESUME_GAME), false);
+        main.set_visibility(index_of(main, MAIN_RESUME_GAME), false);
         set_string(main, MAIN_NEW_GAME, "NEW GAME (F1)");
         MAIN_NEW_GAME
     };
 
-    liero_menu_box_move_to(menus.box_of(LIERO_MENU_MAIN), 0);
-    liero_menu_box_move_to(menus.box_of(LIERO_MENU_SETTINGS), 0);
+    menus.box_of(LIERO_MENU_MAIN).move_to(0);
+    menus.box_of(LIERO_MENU_SETTINGS).move_to(0);
     menus.update_items(a, LIERO_MENU_SETTINGS);
 
     a.play.data.fade_value = 0;
@@ -118,20 +112,17 @@ pub(crate) fn draw_spectator_info(a: &mut App) {
     let scr = a.single.bmp.view();
     let font = a.font();
     let w = [s.data.worms[0].borrow(), s.data.worms[1].borrow()];
-    // SAFETY: the bitmap, font and texts are valid.
-    unsafe {
-        liero_menu_draw_versus(
-            &scr,
-            &font,
-            Str::of(&line),
-            Str::of(&w[0].data.name),
-            Str::of(&w[1].data.name),
-            w[0].data.color,
-            w[1].data.color,
-            cx,
-            cy,
-        );
-    }
+    draw_versus(
+        &scr,
+        &font,
+        &line,
+        &w[0].data.name,
+        &w[1].data.name,
+        w[0].data.color,
+        w[1].data.color,
+        cx,
+        cy,
+    );
     let state: &[u8] = if a.running() { b"PAUSED" } else { b"SETUP" };
     font.centered(&scr, state, cx, cy + 48, 7, 2);
 }

@@ -7,7 +7,7 @@
 
 use crate::app::App;
 use crate::gfx::{liero_gfx_draw_rounded_box, Bitmap};
-use crate::menu::{MenuState, OwnedMenu};
+use crate::menu::{Menu, MenuState};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::text::Font;
 
@@ -116,8 +116,8 @@ fn join_path(root: &[u8], leaf: &[u8]) -> Vec<u8> {
 }
 
 /// `Menu(178, 28)` with `setHeight(14)`, as a file list is.
-fn file_list() -> OwnedMenu {
-    OwnedMenu::new(MenuState {
+fn file_list() -> Menu {
+    Menu::new(MenuState {
         x: LIST_X,
         y: 28,
         height: 14,
@@ -136,7 +136,7 @@ struct Node {
     parent: Option<usize>,
     children: Vec<usize>,
     filled: bool,
-    menu: OwnedMenu,
+    menu: Menu,
 }
 
 struct Selector {
@@ -212,7 +212,7 @@ impl Selector {
     }
 
     /// The node's list, made the first time it's needed (`getMenu`).
-    fn menu(&mut self, n: usize) -> &mut OwnedMenu {
+    fn menu(&mut self, n: usize) -> &mut Menu {
         self.ensure_filled(n);
         if self.nodes[n].menu.is_empty() {
             let items: Vec<(Vec<u8>, u8)> = self.nodes[n]
@@ -549,9 +549,9 @@ mod tests {
 
     fn names(sel: &mut Selector, n: usize) -> Vec<String> {
         sel.menu(n)
-            .names
+            .items
             .iter()
-            .map(|b| String::from_utf8(b.clone()).unwrap())
+            .map(|it| String::from_utf8(it.name.clone()).unwrap())
             .collect()
     }
 

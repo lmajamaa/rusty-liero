@@ -5,7 +5,7 @@
 use crate::boxes::liero_info_box_screen;
 use crate::gfx::liero_gfx_draw_rounded_box;
 use crate::item::ItemBehavior;
-use crate::menu::{MenuState, OwnedMenu};
+use crate::menu::{Menu, MenuState};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::text::Str;
 
@@ -42,7 +42,7 @@ pub struct WeaponOptionsSpec {
 }
 
 struct WeaponOptions {
-    menu: OwnedMenu,
+    menu: Menu,
     order: Vec<usize>,
     weap_table: *mut u32,
     states: Vec<Vec<u8>>,
@@ -193,7 +193,7 @@ impl WeaponOptions {
         unsafe {
             let text = |s: Str| s.bytes().to_vec();
             // Menu(179, 28) with setHeight(14), before any items.
-            let mut menu = OwnedMenu::new(MenuState {
+            let mut menu = Menu::new(MenuState {
                 x: 179,
                 y: 28,
                 height: 14,
@@ -260,10 +260,11 @@ mod tests {
         let mut table = [0; WEAPON_COUNT];
         table[1] = 2;
         let mut w = screen(&mut table);
-        assert_eq!(w.menu.values, [b"BANNED".to_vec(), b"MENU".to_vec()]);
+        let values: Vec<_> = w.menu.items.iter().map(|it| it.value.clone()).collect();
+        assert_eq!(values, [b"BANNED".to_vec(), b"MENU".to_vec()]);
         w.left_right(&Host::none(), 1);
         assert_eq!(table[1], 0, "wraps round");
-        assert_eq!(w.menu.values[0], b"MENU".to_vec());
+        assert_eq!(w.menu.items[0].value, b"MENU".to_vec());
     }
 
     #[test]

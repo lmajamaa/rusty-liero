@@ -4,15 +4,13 @@
 //! boxes the menus' dialogs draw (`gfx.cpp`). Results have to stay
 //! bit-identical to the C++ versions, which `tools/hashrun` checks.
 //!
-//! C++ still owns the menus and their items, and decides what each item
-//! edits. A menu's state is copied in and out as a `MenuState`, and its items
-//! as `MenuItem`s; only their `visible` flags are written back.
+//! A `Menu` owns its items; what each item edits is up to the menu's owner.
 
 use std::ffi::c_void;
 
 use crate::gfx::{liero_gfx_blit_image_no_key_colour, liero_gfx_draw_rounded_box, liero_gfx_fill_rect, Bitmap};
 use crate::screen::Host;
-use crate::text::{time_to_string, time_to_string_ex, Font, Str};
+use crate::text::{time_to_string, time_to_string_ex, Font};
 
 /// A menu's state, the fields of C++'s `Menu`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -36,17 +34,37 @@ pub struct MenuState {
     pub centered: bool,
 }
 
-/// A menu item, laid out for Rust.
-#[derive(Clone, Copy, Debug)]
+/// A menu item (`MenuItem`).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuItem {
-    pub string: Str,
-    pub value: Str,
+    pub name: Vec<u8>,
+    /// The value shown after the name when `has_value`.
+    pub value: Vec<u8>,
     pub color: u8,
     /// The colour when the menu is disabled.
     pub dis_colour: u8,
     pub has_value: bool,
     pub visible: bool,
     pub selectable: bool,
+    /// The item's id, or -1.
+    pub id: i32,
+}
+
+impl MenuItem {
+    /// `MenuItem(color, dis_colour, name)`: visible and selectable, with no
+    /// value or id.
+    pub fn new(name: &[u8], color: u8, dis_colour: u8) -> Self {
+        MenuItem {
+            name: name.to_vec(),
+            value: Vec::new(),
+            color,
+            dis_colour,
+            has_value: false,
+            visible: true,
+            selectable: true,
+            id: -1,
+        }
+    }
 }
 
 /// Draws what a menu adds after item `item` (a position in the item list).
@@ -63,15 +81,23 @@ pub struct MenuSearch {
     pub add: bool,
 }
 
-/// A menu with its items, as Rust works on it.
-pub(crate) struct Menu<'a> {
-    pub m: &'a mut MenuState,
-    pub items: &'a mut [MenuItem],
+/// A menu and its items: C++'s `Menu`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Menu {
+    pub m: MenuState,
+    pub items: Vec<MenuItem>,
+    /// What has been typed to search (`Menu::searchPrefix`).
+    pub search: Vec<u8>,
 }
 
-impl Menu<'_> {
-    fn len(&self) -> i32 {
+impl Menu {
+    /// The item count, as C++'s int.
+    pub fn count(&self) -> i32 {
         self.items.len() as i32
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
     }
 
     fn item(&self, i: i32) -> Option<&MenuItem> {
@@ -86,9 +112,11 @@ impl Menu<'_> {
     pub fn first_visible_from(&self, item: i32) -> i32 {
         if item < 0 {
             // C++ counted from a huge unsigned number.
-            return self.len();
+            return self.count();
         }
-        (item..self.len()).find(|&i| self.can_select(i)).unwrap_or(self.len())
+        (item..self.count())
+            .find(|&i| self.can_select(i))
+            .unwrap_or(self.count())
     }
 
     /// How many visible items are before `item`.
@@ -111,7 +139,7 @@ impl Menu<'_> {
             }
             idx -= 1;
         }
-        self.len()
+        self.count()
     }
 
     pub fn set_top(&mut self, top: i32) {
@@ -142,7 +170,7 @@ impl Menu<'_> {
     }
 
     pub fn move_to(&mut self, item: i32) {
-        let item = item.max(0).min(self.len() - 1);
+        let item = item.max(0).min(self.count() - 1);
         self.m.selection = self.first_visible_from(item);
         self.ensure_in_view(self.m.selection);
     }
@@ -153,10 +181,10 @@ impl Menu<'_> {
         let found = if direction < 0 {
             (0..sel)
                 .rev()
-                .chain((sel + 1..self.len()).rev())
+                .chain((sel + 1..self.count()).rev())
                 .find(|&i| self.can_select(i))
         } else if direction > 0 {
-            (sel + 1..self.len()).chain(0..sel).find(|&i| self.can_select(i))
+            (sel + 1..self.count()).chain(0..sel).find(|&i| self.can_select(i))
         } else {
             None
         };
@@ -179,10 +207,12 @@ impl Menu<'_> {
     }
 
     pub fn set_visibility(&mut self, item: i32, state: bool) {
-        let Some(&it) = self.item(item) else { return };
-        if it.visible && !state {
+        let Some(visible) = self.item(item).map(|it| it.visible) else {
+            return;
+        };
+        if visible && !state {
             self.m.visible_item_count -= 1;
-        } else if !it.visible && state {
+        } else if !visible && state {
             self.m.visible_item_count += 1;
         }
         let real_top = self.item_from_visible_index(self.m.top_item);
@@ -204,39 +234,37 @@ impl Menu<'_> {
     /// Tab), whose name starts with or, if `contains`, contains the search
     /// text plus `key` (None for Tab), ignoring case: one key of
     /// `Menu::onKeys`. `prefix` is the search text so far.
-    pub unsafe fn search(&mut self, prefix: &[u8], key: Option<u8>, contains: bool, time: u32) -> MenuSearch {
-        unsafe {
-            let mut keep = prefix.len();
-            if key.is_some() && time.wrapping_sub(self.m.search_time) > 1500 {
-                keep = 0;
+    pub fn search_step(&mut self, prefix: &[u8], key: Option<u8>, contains: bool, time: u32) -> MenuSearch {
+        let mut keep = prefix.len();
+        if key.is_some() && time.wrapping_sub(self.m.search_time) > 1500 {
+            keep = 0;
+        }
+
+        loop {
+            let was_empty = keep == 0;
+            let mut text = prefix[..keep].to_vec();
+            text.extend(key);
+            self.m.search_time = time;
+
+            let skip = if key.is_none() { 1 } else { 0 };
+            let len = self.count();
+            let found = (skip..len).map(|offs| (self.m.selection + offs) % len).find(|&i| {
+                let it = &self.items[i as usize];
+                let name = &it.name[..];
+                it.visible && name.len() >= text.len() && matches(name, &text, contains)
+            });
+
+            if let Some(i) = found {
+                self.move_to(i);
+                return MenuSearch {
+                    keep,
+                    add: key.is_some(),
+                };
             }
 
-            loop {
-                let was_empty = keep == 0;
-                let mut text = prefix[..keep].to_vec();
-                text.extend(key);
-                self.m.search_time = time;
-
-                let skip = if key.is_none() { 1 } else { 0 };
-                let len = self.len();
-                let found = (skip..len).map(|offs| (self.m.selection + offs) % len).find(|&i| {
-                    let it = &self.items[i as usize];
-                    let name = it.string.bytes();
-                    it.visible && name.len() >= text.len() && matches(name, &text, contains)
-                });
-
-                if let Some(i) = found {
-                    self.move_to(i);
-                    return MenuSearch {
-                        keep,
-                        add: key.is_some(),
-                    };
-                }
-
-                keep = 0;
-                if was_empty {
-                    return MenuSearch { keep: 0, add: false };
-                }
+            keep = 0;
+            if was_empty {
+                return MenuSearch { keep: 0, add: false };
             }
         }
     }
@@ -244,7 +272,7 @@ impl Menu<'_> {
     /// One item: `MenuItem::draw`.
     // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
     #[allow(clippy::too_many_arguments)]
-    unsafe fn draw_item(
+    fn draw_item(
         &self,
         scr: &Bitmap,
         font: &Font,
@@ -254,45 +282,43 @@ impl Menu<'_> {
         selected: bool,
         disabled: bool,
     ) {
-        unsafe {
-            let string = item.string.bytes();
-            let value = item.value.bytes();
-            let wid = font.dims(string).0;
-            let value_wid = font.dims(value).0;
-            if self.m.centered {
-                x -= wid >> 1;
-            }
-            let value_x = x + self.m.value_offset_x - (value_wid >> 1);
+        let string = &item.name[..];
+        let value = &item.value[..];
+        let wid = font.dims(string).0;
+        let value_wid = font.dims(value).0;
+        if self.m.centered {
+            x -= wid >> 1;
+        }
+        let value_x = x + self.m.value_offset_x - (value_wid >> 1);
 
-            if selected {
-                liero_gfx_draw_rounded_box(scr, x, y, 0, 7, wid);
-                if item.has_value {
-                    liero_gfx_draw_rounded_box(scr, value_x, y, 0, 7, value_wid);
-                }
-            } else {
-                font.text(scr, string, x + 3, y + 2, 0, 1);
-                if item.has_value {
-                    font.text(scr, value, value_x + 3, y + 2, 0, 1);
-                }
-            }
-
-            let c = if disabled {
-                item.dis_colour
-            } else if selected {
-                168
-            } else {
-                item.color
-            };
-            font.text(scr, string, x + 2, y + 1, c as i32, 1);
+        if selected {
+            liero_gfx_draw_rounded_box(scr, x, y, 0, 7, wid);
             if item.has_value {
-                font.text(scr, value, value_x + 2, y + 1, c as i32, 1);
+                liero_gfx_draw_rounded_box(scr, value_x, y, 0, 7, value_wid);
             }
+        } else {
+            font.text(scr, string, x + 3, y + 2, 0, 1);
+            if item.has_value {
+                font.text(scr, value, value_x + 3, y + 2, 0, 1);
+            }
+        }
+
+        let c = if disabled {
+            item.dis_colour
+        } else if selected {
+            168
+        } else {
+            item.color
+        };
+        font.text(scr, string, x + 2, y + 1, c as i32, 1);
+        if item.has_value {
+            font.text(scr, value, value_x + 2, y + 1, c as i32, 1);
         }
     }
 
     /// The items in view and the scroll bar: `Menu::draw`. `x` < 0 means the
     /// menu's own position.
-    pub unsafe fn draw(
+    pub fn draw_with(
         &self,
         scr: &Bitmap,
         font: &Font,
@@ -301,41 +327,178 @@ impl Menu<'_> {
         x: i32,
         show_disabled_selection: bool,
     ) {
-        unsafe {
-            let m = &*self.m;
-            let x = if x < 0 { m.x } else { x };
-            let mut items_left = m.height;
-            let mut cur_y = m.y;
+        let m = &self.m;
+        let x = if x < 0 { m.x } else { x };
+        let mut items_left = m.height;
+        let mut cur_y = m.y;
 
-            let mut c = self.item_from_visible_index(m.top_item);
-            while items_left > 0 && c < self.len() {
-                let item = &self.items[c as usize];
-                if item.visible {
-                    items_left -= 1;
-                    let selected = c == m.selection && (!disabled || show_disabled_selection);
-                    self.draw_item(scr, font, item, x, cur_y, selected, disabled);
-                    (hooks.draw_overlay)(hooks.ctx, c, x, cur_y, selected, disabled);
-                    cur_y += m.item_height;
-                }
-                c += 1;
+        let mut c = self.item_from_visible_index(m.top_item);
+        while items_left > 0 && c < self.count() {
+            let item = &self.items[c as usize];
+            if item.visible {
+                items_left -= 1;
+                let selected = c == m.selection && (!disabled || show_disabled_selection);
+                self.draw_item(scr, font, item, x, cur_y, selected, disabled);
+                // SAFETY: the hook's owner made it for its context.
+                unsafe { (hooks.draw_overlay)(hooks.ctx, c, x, cur_y, selected, disabled) };
+                cur_y += m.item_height;
             }
+            c += 1;
+        }
 
-            if m.visible_item_count > m.height {
-                let menu_height = m.height * m.item_height + 1;
-                font.char(scr, 22, x - 6, m.y + 2, 0);
-                font.char(scr, 22, x - 7, m.y + 1, 50);
-                font.char(scr, 23, x - 6, m.y + menu_height - 7, 0);
-                font.char(scr, 23, x - 7, m.y + menu_height - 8, 50);
+        if m.visible_item_count > m.height {
+            let menu_height = m.height * m.item_height + 1;
+            font.char(scr, 22, x - 6, m.y + 2, 0);
+            font.char(scr, 22, x - 7, m.y + 1, 50);
+            font.char(scr, 23, x - 6, m.y + menu_height - 7, 0);
+            font.char(scr, 23, x - 7, m.y + menu_height - 8, 50);
 
-                let bar_height = menu_height - 17;
-                let tab_height = (m.height * bar_height / m.visible_item_count).min(bar_height).max(0);
-                let tab_y = m.y + m.top_item * bar_height / m.visible_item_count;
-                liero_gfx_fill_rect(scr, x - 7, tab_y + 9, 7, tab_height, 0);
-                liero_gfx_fill_rect(scr, x - 8, tab_y + 8, 7, tab_height, 7);
-            }
+            let bar_height = menu_height - 17;
+            let tab_height = (m.height * bar_height / m.visible_item_count).min(bar_height).max(0);
+            let tab_y = m.y + m.top_item * bar_height / m.visible_item_count;
+            liero_gfx_fill_rect(scr, x - 7, tab_y + 9, 7, tab_height, 0);
+            liero_gfx_fill_rect(scr, x - 8, tab_y + 8, 7, tab_height, 7);
         }
     }
+    /// `Menu(x, y, centered)`: no items, nothing set up.
+    pub fn raw(x: i32, y: i32, centered: bool) -> Self {
+        Menu {
+            m: MenuState {
+                x,
+                y,
+                height: 15,
+                item_height: 8,
+                centered,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// A menu with no items, its view starting at the top (`Menu::setTop`).
+    pub fn new(m: MenuState) -> Self {
+        let mut menu = Menu {
+            m,
+            ..Default::default()
+        };
+        menu.set_top(menu.m.top_item);
+        menu
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    /// Puts `it` at `pos`, or at the end when `pos` is None or past it, and
+    /// counts it as visible when it is and `count`. Returns how many items
+    /// there were before (`Menu::addItem`'s result).
+    pub fn add_at(&mut self, it: MenuItem, pos: Option<usize>, count: bool) -> i32 {
+        let n = self.items.len();
+        let pos = pos.map_or(n, |p| p.min(n));
+        if count && it.visible {
+            self.m.visible_item_count += 1;
+        }
+        self.items.insert(pos, it);
+        n as i32
+    }
+
+    /// `Menu::addItem` with `MenuItem(color, dis_colour, name)`.
+    pub fn add_item(&mut self, name: Vec<u8>, color: u8, dis_colour: u8) {
+        self.add_at(MenuItem::new(&name, color, dis_colour), None, true);
+    }
+
+    /// `Menu::addItem` with `MenuItem(color, 7, name)`.
+    pub fn add(&mut self, name: Vec<u8>, color: u8) {
+        self.add_item(name, color, 7);
+    }
+
+    /// Item `i`. Panics if there isn't one.
+    pub fn item_at(&self, i: i32) -> &MenuItem {
+        let n = self.items.len();
+        usize::try_from(i)
+            .ok()
+            .and_then(|i| self.items.get(i))
+            .unwrap_or_else(|| panic!("menu item {i} of {n}"))
+    }
+
+    fn item_at_mut(&mut self, i: i32) -> &mut MenuItem {
+        let n = self.items.len();
+        usize::try_from(i)
+            .ok()
+            .and_then(|i| self.items.get_mut(i))
+            .unwrap_or_else(|| panic!("menu item {i} of {n}"))
+    }
+
+    /// Item `i`'s id.
+    pub fn id(&self, i: i32) -> i32 {
+        self.item_at(i).id
+    }
+
+    /// The first item with `id`.
+    pub fn index_of(&self, id: i32) -> Option<usize> {
+        self.items.iter().position(|it| it.id == id)
+    }
+
+    pub fn set_name(&mut self, i: i32, s: &[u8]) {
+        self.item_at_mut(i).name = s.to_vec();
+    }
+
+    /// Sets item `i`'s value to `s` and shows it.
+    pub fn set_value_text(&mut self, i: i32, s: &[u8]) {
+        let it = self.item_at_mut(i);
+        it.value = s.to_vec();
+        it.has_value = true;
+    }
+
+    /// Sets item `i`'s value and shows it.
+    pub fn set_value(&mut self, i: usize, value: Vec<u8>) {
+        self.items[i].value = value;
+        self.items[i].has_value = true;
+    }
+
+    /// The selected item, if there is one.
+    pub fn selected(&self) -> Option<usize> {
+        usize::try_from(self.m.selection).ok().filter(|&i| i < self.items.len())
+    }
+
+    /// One key typed to search (`Menu::onKeys`): `sym` is SDL's key code.
+    pub fn on_key(&mut self, sym: i32, scancode: u32, contains: bool, time: u32) {
+        let tab = scancode == SCANCODE_TAB;
+        if !((32..=127).contains(&sym) || tab) {
+            return;
+        }
+        let ch = sym as u8;
+        let key = (!tab).then_some(ch);
+        let search = std::mem::take(&mut self.search);
+        let r = self.search_step(&search, key, contains, time);
+        self.search = search;
+        self.search.truncate(r.keep);
+        if r.add {
+            self.search.push(ch);
+        }
+    }
+
+    /// Typing searches the items (`Menu::onKeys`), by start or, with
+    /// `contains`, anywhere in a name.
+    pub fn on_keys(&mut self, host: &Host, contains: bool) {
+        for k in host.typed_keys() {
+            self.on_key(k.sym, k.scancode, contains, host.ticks());
+        }
+    }
+
+    /// Draws the menu with nothing after the items.
+    pub fn draw(&self, scr: &Bitmap, font: &Font, disabled: bool, x: i32, show_disabled_selection: bool) {
+        let hooks = MenuHooks {
+            ctx: std::ptr::null_mut(),
+            draw_overlay: no_overlay,
+        };
+        self.draw_with(scr, font, &hooks, disabled, x, show_disabled_selection);
+    }
 }
+
+const SCANCODE_TAB: u32 = 43;
+
+unsafe fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
 
 /// `toupper` in the C locale.
 fn same_letter(a: u8, b: u8) -> bool {
@@ -353,151 +516,9 @@ fn matches(name: &[u8], text: &[u8], contains: bool) -> bool {
     }
 }
 
-unsafe fn menu<'a>(m: &'a mut MenuState, items: *mut MenuItem, count: i32) -> Menu<'a> {
-    unsafe {
-        let items = if count <= 0 || items.is_null() {
-            &mut [][..]
-        } else {
-            std::slice::from_raw_parts_mut(items, count as usize)
-        };
-        Menu { m, items }
-    }
-}
-
-/// The C functions below take a menu's state and its `count` items.
-///
-/// # Safety
-/// `items` has `count` items, valid for the call.
-pub unsafe fn liero_menu_move_to(m: &mut MenuState, items: *mut MenuItem, count: i32, item: i32) {
-    unsafe {
-        menu(m, items, count).move_to(item);
-    }
-}
-
-/// Selects the next selectable item up (`direction` < 0) or down.
-///
-/// # Safety
-/// See `liero_menu_move_to`.
-pub unsafe fn liero_menu_movement(m: &mut MenuState, items: *mut MenuItem, count: i32, direction: i32) {
-    unsafe {
-        menu(m, items, count).movement(direction);
-    }
-}
-
-/// Moves half a page up or down.
-///
-/// # Safety
-/// See `liero_menu_move_to`.
-pub unsafe fn liero_menu_movement_page(m: &mut MenuState, items: *mut MenuItem, count: i32, direction: i32) {
-    unsafe {
-        menu(m, items, count).movement_page(direction);
-    }
-}
-
-/// Scrolls so the visible item `top` is first.
-///
-/// # Safety
-/// See `liero_menu_move_to`.
-pub unsafe fn liero_menu_set_top(m: &mut MenuState, items: *mut MenuItem, count: i32, top: i32) {
-    unsafe {
-        menu(m, items, count).set_top(top);
-    }
-}
-
-/// Scrolls by `amount` items.
-///
-/// # Safety
-/// See `liero_menu_move_to`.
-pub unsafe fn liero_menu_scroll(m: &mut MenuState, items: *mut MenuItem, count: i32, amount: i32) {
-    unsafe {
-        menu(m, items, count).scroll(amount);
-    }
-}
-
-/// Shows or hides `item`.
-///
-/// # Safety
-/// See `liero_menu_move_to`.
-pub unsafe fn liero_menu_set_visibility(m: &mut MenuState, items: *mut MenuItem, count: i32, item: i32, state: bool) {
-    unsafe {
-        menu(m, items, count).set_visibility(item, state);
-    }
-}
-
-/// Where `item` is drawn into `x` and `y`, or false if it is out of view.
-///
-/// # Safety
-/// See `liero_menu_move_to`.
-pub unsafe fn liero_menu_item_position(
-    m: &mut MenuState,
-    items: *mut MenuItem,
-    count: i32,
-    item: i32,
-    x: &mut i32,
-    y: &mut i32,
-) -> bool {
-    unsafe {
-        match menu(m, items, count).item_position(item) {
-            Some((px, py)) => {
-                (*x, *y) = (px, py);
-                true
-            }
-            None => false,
-        }
-    }
-}
-
-/// One key typed to search the menu: `key` is the character, or -1 for Tab.
-/// `prefix` is the search text so far, `prefix_len` bytes.
-///
-/// # Safety
-/// See `liero_menu_move_to`; `prefix` holds `prefix_len` bytes.
-#[allow(clippy::too_many_arguments)]
-pub unsafe fn liero_menu_search(
-    m: &mut MenuState,
-    items: *mut MenuItem,
-    count: i32,
-    prefix: *const u8,
-    prefix_len: usize,
-    key: i32,
-    contains: bool,
-    time: u32,
-) -> MenuSearch {
-    unsafe {
-        let prefix = Str {
-            ptr: prefix,
-            len: prefix_len,
-        };
-        let key = (key >= 0).then_some(key as u8);
-        menu(m, items, count).search(prefix.bytes(), key, contains, time)
-    }
-}
-
-/// Draws the menu: `Menu::draw`.
-///
-/// # Safety
-/// See `liero_menu_move_to` and `Bitmap`; the items' strings must be
-/// valid.
-#[allow(clippy::too_many_arguments)]
-pub unsafe fn liero_menu_draw(
-    m: &mut MenuState,
-    items: *mut MenuItem,
-    count: i32,
-    scr: &Bitmap,
-    font: &Font,
-    hooks: &MenuHooks,
-    disabled: bool,
-    x: i32,
-    show_disabled_selection: bool,
-) {
-    unsafe {
-        menu(m, items, count).draw(scr, font, hooks, disabled, x, show_disabled_selection);
-    }
-}
-
 /// A number item's value after pressing left or right: `IntegerBehavior`.
 /// Held keys repeat every `scroll_interval` menu frames.
-pub fn liero_menu_integer_left_right(
+pub fn integer_left_right(
     v: i32,
     min: i32,
     max: i32,
@@ -518,7 +539,7 @@ pub fn liero_menu_integer_left_right(
 
 /// A choice item's value after moving `dir` choices, wrapping around from
 /// `max` to `min`: `EnumBehavior::change`.
-pub fn liero_menu_enum_change(v: u32, min: u32, max: u32, dir: i32) -> u32 {
+pub fn enum_change(v: u32, min: u32, max: u32, dir: i32) -> u32 {
     let range = max.wrapping_sub(min).wrapping_add(1);
     if range == 0 {
         return v;
@@ -526,7 +547,7 @@ pub fn liero_menu_enum_change(v: u32, min: u32, max: u32, dir: i32) -> u32 {
     (v.wrapping_add(dir as u32).wrapping_add(range).wrapping_sub(min) % range).wrapping_add(min)
 }
 
-/// Kinds of value text for `liero_menu_value_text`.
+/// Kinds of value text for `value_text`.
 pub const LIERO_MENU_VALUE_INTEGER: i32 = 0;
 pub const LIERO_MENU_VALUE_PERCENTAGE: i32 = 1;
 /// Seconds as "MM:SS".
@@ -535,7 +556,7 @@ pub const LIERO_MENU_VALUE_TIME: i32 = 2;
 pub const LIERO_MENU_VALUE_FRAMES: i32 = 3;
 
 /// How a number item shows `v`.
-pub fn liero_menu_value_text(v: i32, kind: i32) -> Vec<u8> {
+pub fn value_text(v: i32, kind: i32) -> Vec<u8> {
     match kind {
         LIERO_MENU_VALUE_PERCENTAGE => format!("{v}%").into_bytes(),
         LIERO_MENU_VALUE_TIME => time_to_string(v).to_vec(),
@@ -566,44 +587,29 @@ pub fn levenshtein(a: &[u8], b: &[u8]) -> u32 {
 }
 
 /// The name closest to `search` for typing a weapon's name, relative to the
-/// name's length; the first of equally close ones. Returns -1 if none
-/// compares (C++ left the result unset then).
-///
-/// # Safety
-/// `names` holds `count` valid strings, and `search` `search_len` bytes.
-pub unsafe fn liero_menu_closest_name(names: *const Str, count: i32, search: *const u8, search_len: usize) -> i32 {
-    unsafe {
-        let search = Str {
-            ptr: search,
-            len: search_len,
-        };
-        let names = if count <= 0 {
-            &[][..]
-        } else {
-            std::slice::from_raw_parts(names, count as usize)
-        };
-        let mut best = -1;
-        let mut minimum = f64::MAX;
-        for (i, name) in names.iter().enumerate() {
-            let name = name.bytes();
-            let dist = levenshtein(name, search.bytes()) as f64 / name.len() as f64;
-            if dist < minimum {
-                best = i as i32;
-                minimum = dist;
-            }
+/// name's length; the first of equally close ones. None if none compares
+/// (C++ left the result unset then).
+pub fn closest_name<'n>(names: impl IntoIterator<Item = &'n [u8]>, search: &[u8]) -> Option<usize> {
+    let mut best = None;
+    let mut minimum = f64::MAX;
+    for (i, name) in names.into_iter().enumerate() {
+        let dist = levenshtein(name, search) as f64 / name.len() as f64;
+        if dist < minimum {
+            best = Some(i);
+            minimum = dist;
         }
-        best
     }
+    best
 }
 
 /// A colour component's bar in the player menu: `PlayerMenu::drawItemOverlay`.
-pub fn liero_menu_draw_rgb_overlay(scr: &Bitmap, x: i32, y: i32, selected: bool, value: i32, color: i32) {
+pub fn draw_rgb_overlay(scr: &Bitmap, x: i32, y: i32, selected: bool, value: i32, color: i32) {
     liero_gfx_draw_rounded_box(scr, x + 24, y, if selected { 168 } else { 0 }, 7, value - 1);
     liero_gfx_fill_rect(scr, x + 25, y + 1, value, 5, color as u8);
 }
 
 /// The palette entry shown in the options menu: `HiddenMenu::drawItemOverlay`.
-pub fn liero_menu_draw_palette_overlay(scr: &Bitmap, x: i32, y: i32, selected: bool, color: i32) {
+pub fn draw_palette_overlay(scr: &Bitmap, x: i32, y: i32, selected: bool, color: i32) {
     let w = 30;
     let offs_x = 44;
     liero_gfx_draw_rounded_box(scr, x + offs_x, y, if selected { 168 } else { 0 }, 7, w);
@@ -612,39 +618,34 @@ pub fn liero_menu_draw_palette_overlay(scr: &Bitmap, x: i32, y: i32, selected: b
 
 /// The level, "A vs B" and the worms' colours, twice as big, as the spectator
 /// window shows them: `drawVersusInfo`. `level` is the level's line of text.
-///
-/// # Safety
-/// See `Bitmap`; the strings must be valid.
 #[allow(clippy::too_many_arguments)]
-pub unsafe fn liero_menu_draw_versus(
+pub fn draw_versus(
     scr: &Bitmap,
     font: &Font,
-    level: Str,
-    name0: Str,
-    name1: Str,
+    level: &[u8],
+    name0: &[u8],
+    name1: &[u8],
     color0: i32,
     color1: i32,
     center_x: i32,
     center_y: i32,
 ) {
-    unsafe {
-        font.centered(scr, level.bytes(), center_x, center_y - 32, 7, 2);
+    font.centered(scr, level, center_x, center_y - 32, 7, 2);
 
-        let mut vs = name0.bytes().to_vec();
-        vs.extend_from_slice(b" vs ");
-        vs.extend_from_slice(name1.bytes());
-        // Room for the colour boxes even without names.
-        let size = (font.dims(&vs).0 * 2).max(48);
-        font.centered(scr, &vs, center_x, center_y, 7, 2);
-        liero_gfx_fill_rect(scr, center_x - size / 2 - 1, center_y + 22, 16, 16, 7);
-        liero_gfx_fill_rect(scr, center_x - size / 2, center_y + 23, 14, 14, color0 as u8);
-        liero_gfx_fill_rect(scr, center_x + size / 2 - 17, center_y + 22, 16, 16, 7);
-        liero_gfx_fill_rect(scr, center_x + size / 2 - 16, center_y + 23, 14, 14, color1 as u8);
-    }
+    let mut vs = name0.to_vec();
+    vs.extend_from_slice(b" vs ");
+    vs.extend_from_slice(name1);
+    // Room for the colour boxes even without names.
+    let size = (font.dims(&vs).0 * 2).max(48);
+    font.centered(scr, &vs, center_x, center_y, 7, 2);
+    liero_gfx_fill_rect(scr, center_x - size / 2 - 1, center_y + 22, 16, 16, 7);
+    liero_gfx_fill_rect(scr, center_x - size / 2, center_y + 23, 14, 14, color0 as u8);
+    liero_gfx_fill_rect(scr, center_x + size / 2 - 17, center_y + 22, 16, 16, 7);
+    liero_gfx_fill_rect(scr, center_x + size / 2 - 16, center_y + 23, 14, 14, color1 as u8);
 }
 
 /// A message in a box centred on (x, y): `drawInfoBox`.
-pub fn liero_menu_draw_info_box(scr: &Bitmap, font: &Font, text: &[u8], x: i32, y: i32) {
+pub fn draw_info_box(scr: &Bitmap, font: &Font, text: &[u8], x: i32, y: i32) {
     let (width, height) = font.dims(text);
     let cx = x - width / 2 - 2;
     let cy = y - height / 2 - 2;
@@ -654,15 +655,7 @@ pub fn liero_menu_draw_info_box(scr: &Bitmap, font: &Font, text: &[u8], x: i32, 
 
 /// Text being typed in a box at (x, y), over a strip of `frozen`, the screen
 /// before the box: `drawInputBox`.
-pub fn liero_menu_draw_input_box(
-    scr: &Bitmap,
-    frozen: &Bitmap,
-    font: &Font,
-    text: &[u8],
-    x: i32,
-    y: i32,
-    centered: bool,
-) {
+pub fn draw_input_box(scr: &Bitmap, frozen: &Bitmap, font: &Font, text: &[u8], x: i32, y: i32, centered: bool) {
     let width = font.dims(text).0;
     let adjust = if centered { width / 2 } else { 0 };
     let clr_x = x - 10 - adjust;
@@ -685,429 +678,44 @@ pub fn liero_menu_draw_input_box(
     font.text(scr, text, x - adjust, y + 1, 50, 1);
 }
 
-const SCANCODE_TAB: u32 = 43;
-
-fn lstr(b: &[u8]) -> Str {
-    Str {
-        ptr: b.as_ptr(),
-        len: b.len(),
-    }
-}
-
-unsafe fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
-
-/// A menu whose items Rust owns: C++'s `Menu` and its `MenuItem`s.
-#[derive(Clone, Debug, Default)]
-pub struct OwnedMenu {
-    pub m: MenuState,
-    pub names: Vec<Vec<u8>>,
-    /// The value shown after the name when `has_value`.
-    pub values: Vec<Vec<u8>>,
-    pub has_value: Vec<bool>,
-    pub colors: Vec<u8>,
-    pub dis_colours: Vec<u8>,
-    pub visible: Vec<bool>,
-    pub selectable: Vec<bool>,
-    /// The item's id, or -1.
-    pub ids: Vec<i32>,
-    /// What has been typed to search (`Menu::searchPrefix`).
-    pub search: Vec<u8>,
-}
-
-/// A new item (`MenuItem`).
-#[derive(Clone, Copy, Debug)]
-pub struct MenuItemSpec {
-    pub string: Str,
-    pub value: Str,
-    pub color: u8,
-    pub dis_colour: u8,
-    pub has_value: bool,
-    pub visible: bool,
-    pub selectable: bool,
-    pub id: i32,
-}
-
-impl OwnedMenu {
-    /// `Menu(x, y, centered)`: no items, nothing set up.
-    pub fn raw(x: i32, y: i32, centered: bool) -> Self {
-        OwnedMenu {
-            m: MenuState {
-                x,
-                y,
-                height: 15,
-                item_height: 8,
-                centered,
-                ..Default::default()
-            },
-            ..Default::default()
-        }
-    }
-
-    /// A menu with no items, its view starting at the top (`Menu::setTop`).
-    pub fn new(m: MenuState) -> Self {
-        let mut menu = OwnedMenu {
-            m,
-            ..Default::default()
-        };
-        let top = menu.m.top_item;
-        menu.with(|m, items, n| unsafe { liero_menu_set_top(m, items, n, top) });
-        menu
-    }
-
-    pub fn len(&self) -> usize {
-        self.names.len()
-    }
-
-    /// Item `i` as the Rust menu code takes it; its texts point into `self`.
-    pub fn view(&self, i: usize) -> MenuItem {
-        MenuItem {
-            string: lstr(&self.names[i]),
-            value: lstr(&self.values[i]),
-            color: self.colors[i],
-            dis_colour: self.dis_colours[i],
-            has_value: self.has_value[i],
-            visible: self.visible[i],
-            selectable: self.selectable[i],
-        }
-    }
-
-    /// Runs `f` on the menu as the Rust menu code takes it, and keeps the
-    /// items' visibility it sets.
-    pub fn with<R>(&mut self, f: impl FnOnce(&mut MenuState, *mut MenuItem, i32) -> R) -> R {
-        let mut items: Vec<MenuItem> = (0..self.len()).map(|i| self.view(i)).collect();
-        let r = f(&mut self.m, items.as_mut_ptr(), items.len() as i32);
-        for (v, it) in self.visible.iter_mut().zip(&items) {
-            *v = it.visible;
-        }
-        r
-    }
-
-    /// Puts an item at `pos` without counting it as visible
-    /// (`items.insert`).
-    pub fn insert(&mut self, pos: usize, it: &MenuItemSpec) {
-        let text = |s: Str| unsafe { s.bytes() }.to_vec();
-        self.names.insert(pos, text(it.string));
-        self.values.insert(pos, text(it.value));
-        self.has_value.insert(pos, it.has_value);
-        self.colors.insert(pos, it.color);
-        self.dis_colours.insert(pos, it.dis_colour);
-        self.visible.insert(pos, it.visible);
-        self.selectable.insert(pos, it.selectable);
-        self.ids.insert(pos, it.id);
-    }
-
-    /// `Menu::addItem` with `MenuItem(color, dis_colour, name)`.
-    pub fn add_item(&mut self, name: Vec<u8>, color: u8, dis_colour: u8) {
-        let spec = MenuItemSpec {
-            string: lstr(&name),
-            value: lstr(&[]),
-            color,
-            dis_colour,
-            has_value: false,
-            visible: true,
-            selectable: true,
-            id: -1,
-        };
-        self.insert(self.len(), &spec);
-        self.m.visible_item_count += 1;
-    }
-
-    /// `Menu::addItem` with `MenuItem(color, 7, name)`.
-    pub fn add(&mut self, name: Vec<u8>, color: u8) {
-        self.add_item(name, color, 7);
-    }
-
-    pub fn set_value(&mut self, i: usize, value: Vec<u8>) {
-        self.values[i] = value;
-        self.has_value[i] = true;
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.names.is_empty()
-    }
-
-    /// Where item `i` is drawn, if it's in view (`Menu::itemPosition`).
-    pub fn item_position(&mut self, i: i32) -> Option<(i32, i32)> {
-        let (mut x, mut y) = (0, 0);
-        self.with(|m, items, n| unsafe { liero_menu_item_position(m, items, n, i, &mut x, &mut y) })
-            .then_some((x, y))
-    }
-
-    pub fn move_to(&mut self, i: i32) {
-        self.with(|m, items, n| unsafe { liero_menu_move_to(m, items, n, i) });
-    }
-
-    pub fn movement(&mut self, dir: i32) {
-        self.with(|m, items, n| unsafe { liero_menu_movement(m, items, n, dir) });
-    }
-
-    pub fn movement_page(&mut self, dir: i32) {
-        self.with(|m, items, n| unsafe { liero_menu_movement_page(m, items, n, dir) });
-    }
-
-    /// The selected item, if there is one.
-    pub fn selected(&self) -> Option<usize> {
-        usize::try_from(self.m.selection).ok().filter(|&i| i < self.names.len())
-    }
-
-    /// One key typed to search (`Menu::onKeys`): `sym` is SDL's key code.
-    pub fn on_key(&mut self, sym: i32, scancode: u32, contains: bool, time: u32) {
-        let tab = scancode == SCANCODE_TAB;
-        if !((32..=127).contains(&sym) || tab) {
-            return;
-        }
-        let ch = sym as u8;
-        let key = if tab { -1 } else { i32::from(ch) };
-        let search = std::mem::take(&mut self.search);
-        let r = self.with(|m, items, n| unsafe {
-            liero_menu_search(m, items, n, search.as_ptr(), search.len(), key, contains, time)
-        });
-        self.search = search;
-        self.search.truncate(r.keep);
-        if r.add {
-            self.search.push(ch);
-        }
-    }
-
-    /// Typing searches the items (`Menu::onKeys`), by start or, with
-    /// `contains`, anywhere in a name.
-    pub fn on_keys(&mut self, host: &Host, contains: bool) {
-        for k in host.typed_keys() {
-            self.on_key(k.sym, k.scancode, contains, host.ticks());
-        }
-    }
-
-    pub fn draw(&mut self, scr: &Bitmap, font: &Font, disabled: bool, x: i32, show_disabled_selection: bool) {
-        let hooks = MenuHooks {
-            ctx: std::ptr::null_mut(),
-            draw_overlay: no_overlay,
-        };
-        self.draw_with(scr, font, &hooks, disabled, x, show_disabled_selection);
-    }
-
-    pub fn draw_with(
-        &mut self,
-        scr: &Bitmap,
-        font: &Font,
-        hooks: &MenuHooks,
-        disabled: bool,
-        x: i32,
-        show_disabled_selection: bool,
-    ) {
-        self.with(|m, items, n| unsafe {
-            liero_menu_draw(m, items, n, scr, font, hooks, disabled, x, show_disabled_selection)
-        });
-    }
-}
-
-/// A menu Rust owns for C++ (`Menu`).
-pub struct MenuBox(pub(crate) OwnedMenu);
-
-/// `Menu(x, y, centered)`.
-pub fn liero_menu_box_new(x: i32, y: i32, centered: bool) -> *mut MenuBox {
-    Box::into_raw(Box::new(MenuBox(OwnedMenu::raw(x, y, centered))))
-}
-
-/// Copies `src` into `dst`, which keeps its address.
-pub fn liero_menu_box_assign(dst: &mut MenuBox, src: &MenuBox) {
-    dst.0 = src.0.clone();
-}
-
-/// # Safety
-/// `b` came from `liero_menu_box_new` or `_clone` and isn't used after.
-pub unsafe fn liero_menu_box_free(b: *mut MenuBox) {
-    unsafe {
-        if !b.is_null() {
-            drop(Box::from_raw(b));
-        }
-    }
-}
-
-/// The menu's state, which stays at this address while the box lives.
-pub fn liero_menu_box_state(b: &mut MenuBox) -> *mut MenuState {
-    &mut b.0.m
-}
-
-/// Puts `it` at `pos`, or at the end when `pos` is negative, and counts it
-/// as visible when it is and `count`. Returns how many items there were
-/// before (`Menu::addItem`'s result).
-///
-/// # Safety
-/// `it`'s texts are valid.
-pub unsafe fn liero_menu_box_add(b: &mut MenuBox, it: &MenuItemSpec, pos: i32, count: bool) -> i32 {
-    let n = b.0.len();
-    let pos = usize::try_from(pos).map_or(n, |p| p.min(n));
-    b.0.insert(pos, it);
-    if count && it.visible {
-        b.0.m.visible_item_count += 1;
-    }
-    n as i32
-}
-
-pub fn liero_menu_box_count(b: &MenuBox) -> i32 {
-    b.0.len() as i32
-}
-
-fn index(b: &MenuBox, i: i32) -> usize {
-    let i = usize::try_from(i).expect("negative menu item");
-    assert!(i < b.0.len(), "menu item {i} of {}", b.0.len());
-    i
-}
-
-/// Item `i`; its texts stay valid until the item changes.
-pub fn liero_menu_box_item(b: &MenuBox, i: i32) -> MenuItem {
-    b.0.view(index(b, i))
-}
-
-pub fn liero_menu_box_id(b: &MenuBox, i: i32) -> i32 {
-    b.0.ids[index(b, i)]
-}
-
-/// # Safety
-/// `s` is valid.
-pub fn liero_menu_box_set_string(b: &mut MenuBox, i: i32, s: &[u8]) {
-    let i = index(b, i);
-    b.0.names[i] = s.to_vec();
-}
-
-/// Sets the value and shows it.
-///
-/// # Safety
-/// `s` is valid.
-pub fn liero_menu_box_set_value(b: &mut MenuBox, i: i32, s: &[u8]) {
-    let i = index(b, i);
-    b.0.set_value(i, s.to_vec());
-}
-
-/// The search text typed so far.
-pub fn liero_menu_box_search_text(b: &MenuBox) -> &[u8] {
-    &b.0.search
-}
-
-/// One key typed: see `OwnedMenu::on_key`.
-pub fn liero_menu_box_on_key(b: &mut MenuBox, sym: i32, scancode: u32, contains: bool, time: u32) {
-    b.0.on_key(sym, scancode, contains, time);
-}
-
-pub fn liero_menu_box_move_to(b: &mut MenuBox, item: i32) {
-    b.0.move_to(item);
-}
-
-pub fn liero_menu_box_movement(b: &mut MenuBox, direction: i32) {
-    b.0.movement(direction);
-}
-
-pub fn liero_menu_box_movement_page(b: &mut MenuBox, direction: i32) {
-    b.0.movement_page(direction);
-}
-
-pub fn liero_menu_box_set_top(b: &mut MenuBox, top: i32) {
-    b.0.with(|m, items, n| unsafe { liero_menu_set_top(m, items, n, top) });
-}
-
-pub fn liero_menu_box_scroll(b: &mut MenuBox, amount: i32) {
-    b.0.with(|m, items, n| unsafe { liero_menu_scroll(m, items, n, amount) });
-}
-
-pub fn liero_menu_box_set_visibility(b: &mut MenuBox, item: i32, state: bool) {
-    b.0.with(|m, items, n| unsafe { liero_menu_set_visibility(m, items, n, item, state) });
-}
-
-pub fn liero_menu_box_draw(
-    b: &mut MenuBox,
-    scr: &Bitmap,
-    font: &Font,
-    hooks: &MenuHooks,
-    disabled: bool,
-    x: i32,
-    show_disabled_selection: bool,
-) {
-    b.0.draw_with(scr, font, hooks, disabled, x, show_disabled_selection);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn menu_box_copies_whole() {
-        let name = b"LIVES";
-        let spec = MenuItemSpec {
-            string: Str {
-                ptr: name.as_ptr(),
-                len: name.len(),
-            },
-            value: Str {
-                ptr: name.as_ptr(),
-                len: 0,
-            },
-            color: 48,
-            dis_colour: 7,
-            has_value: false,
-            visible: true,
-            selectable: true,
-            id: 4,
-        };
-        let a = liero_menu_box_new(10, 20, false);
-        let b = liero_menu_box_new(0, 0, true);
-        unsafe {
-            assert_eq!(liero_menu_box_add(&mut *a, &spec, -1, true), 0);
-            assert_eq!(liero_menu_box_add(&mut *a, &spec, 0, false), 1);
-            assert_eq!((*a).0.m.visible_item_count, 1, "only counted when asked");
-            liero_menu_box_on_key(&mut *a, i32::from(b'L'), 0, false, 0);
-            let v = b"3";
-            liero_menu_box_set_value(
-                &mut *a,
-                1,
-                Str {
-                    ptr: v.as_ptr(),
-                    len: 1,
-                }
-                .bytes(),
-            );
-            liero_menu_box_assign(&mut *b, &*a);
-            let it = liero_menu_box_item(&*b, 1);
-            assert!(it.has_value);
-            assert_eq!(it.value.bytes(), b"3");
-            assert_eq!(liero_menu_box_id(&*b, 1), 4);
-            assert_eq!(liero_menu_box_search_text(&*b), b"L");
-            assert_eq!(*liero_menu_box_state(&mut *b), (*a).0.m);
-            liero_menu_box_free(a);
-            liero_menu_box_free(b);
-        }
-    }
-
-    fn s(text: &'static [u8]) -> Str {
-        Str {
-            ptr: text.as_ptr(),
-            len: text.len(),
-        }
+    fn adding_counts_only_when_asked() {
+        let mut item = MenuItem::new(b"LIVES", 48, 7);
+        item.id = 4;
+        let mut a = Menu::raw(10, 20, false);
+        assert_eq!(a.add_at(item.clone(), None, true), 0);
+        assert_eq!(a.add_at(item, Some(0), false), 1);
+        assert_eq!(a.m.visible_item_count, 1, "only counted when asked");
+        a.on_key(i32::from(b'L'), 0, false, 0);
+        a.set_value(1, b"3".to_vec());
+        let b = a.clone();
+        assert!(b.items[1].has_value);
+        assert_eq!(b.items[1].value, b"3");
+        assert_eq!(b.items[1].id, 4);
+        assert_eq!(b.search, b"L");
+        assert_eq!(b.m, a.m);
     }
 
     fn item(name: &'static [u8]) -> MenuItem {
-        MenuItem {
-            string: s(name),
-            value: s(b""),
-            color: 48,
-            dis_colour: 7,
-            has_value: false,
-            visible: true,
-            selectable: true,
-        }
+        MenuItem::new(name, 48, 7)
     }
 
-    fn state(items: &[MenuItem], height: i32) -> MenuState {
-        let mut m = MenuState {
-            height,
-            item_height: 8,
-            ..Default::default()
+    fn menu(items: Vec<MenuItem>, height: i32) -> Menu {
+        let mut m = Menu {
+            m: MenuState {
+                height,
+                item_height: 8,
+                ..Default::default()
+            },
+            items,
+            search: Vec::new(),
         };
-        m.visible_item_count = items.iter().filter(|i| i.visible).count() as i32;
-        let mut menu = Menu {
-            m: &mut m,
-            items: &mut items.to_vec(),
-        };
-        menu.set_top(0);
+        m.m.visible_item_count = m.items.iter().filter(|i| i.visible).count() as i32;
+        m.set_top(0);
         m
     }
 
@@ -1118,12 +726,8 @@ mod tests {
         let mut items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
         items[1].selectable = false;
         items[4].visible = false;
-        let mut m = state(&items, 3);
-        m.visible_item_count = 5;
-        let mut menu = Menu {
-            m: &mut m,
-            items: &mut items,
-        };
+        let mut menu = menu(items, 3);
+        menu.m.visible_item_count = 5;
 
         menu.move_to(0);
         menu.movement(1);
@@ -1141,12 +745,8 @@ mod tests {
 
     #[test]
     fn visibility_keeps_the_view() {
-        let mut items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
-        let mut m = state(&items, 3);
-        let mut menu = Menu {
-            m: &mut m,
-            items: &mut items,
-        };
+        let items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
+        let mut menu = menu(items, 3);
         menu.move_to(5);
         assert_eq!(menu.m.top_item, 3);
         menu.set_visibility(0, false);
@@ -1158,31 +758,25 @@ mod tests {
 
     #[test]
     fn typing_searches_names() {
-        let mut items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
-        let mut m = state(&items, 6);
-        let mut menu = Menu {
-            m: &mut m,
-            items: &mut items,
-        };
+        let items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
+        let mut menu = menu(items, 6);
         menu.move_to(0);
-        unsafe {
-            let r = menu.search(b"", Some(b'm'), false, 100);
-            assert_eq!((menu.m.selection, r), (1, MenuSearch { keep: 0, add: true }));
-            let r = menu.search(b"m", Some(b'i'), false, 200);
-            assert_eq!((menu.m.selection, r), (1, MenuSearch { keep: 1, add: true }));
-            // Tab finds the next match.
-            let r = menu.search(b"mi", None, false, 300);
-            assert_eq!((menu.m.selection, r), (2, MenuSearch { keep: 2, add: false }));
-            // No name starts with "MIX", so the search starts over from "X".
-            let r = menu.search(b"mi", Some(b'x'), false, 400);
-            assert_eq!((menu.m.selection, r), (2, MenuSearch { keep: 0, add: false }));
-            // After 1.5 seconds the old text is dropped.
-            let r = menu.search(b"la", Some(b'z'), false, 2000);
-            assert_eq!((menu.m.selection, r), (5, MenuSearch { keep: 0, add: true }));
-            // File selectors match anywhere in the name.
-            let r = menu.search(b"", Some(b'k'), true, 2100);
-            assert_eq!((menu.m.selection, r), (0, MenuSearch { keep: 0, add: true }));
-        }
+        let r = menu.search_step(b"", Some(b'm'), false, 100);
+        assert_eq!((menu.m.selection, r), (1, MenuSearch { keep: 0, add: true }));
+        let r = menu.search_step(b"m", Some(b'i'), false, 200);
+        assert_eq!((menu.m.selection, r), (1, MenuSearch { keep: 1, add: true }));
+        // Tab finds the next match.
+        let r = menu.search_step(b"mi", None, false, 300);
+        assert_eq!((menu.m.selection, r), (2, MenuSearch { keep: 2, add: false }));
+        // No name starts with "MIX", so the search starts over from "X".
+        let r = menu.search_step(b"mi", Some(b'x'), false, 400);
+        assert_eq!((menu.m.selection, r), (2, MenuSearch { keep: 0, add: false }));
+        // After 1.5 seconds the old text is dropped.
+        let r = menu.search_step(b"la", Some(b'z'), false, 2000);
+        assert_eq!((menu.m.selection, r), (5, MenuSearch { keep: 0, add: true }));
+        // File selectors match anywhere in the name.
+        let r = menu.search_step(b"", Some(b'k'), true, 2100);
+        assert_eq!((menu.m.selection, r), (0, MenuSearch { keep: 0, add: true }));
     }
 
     #[test]
@@ -1205,8 +799,8 @@ mod tests {
         };
 
         for (centered, first) in [(false, 102), (true, 94)] {
-            let mut items = vec![item(b"AB"), item(b"MINE")];
-            let mut m = state(&items, 5);
+            let mut menu = menu(vec![item(b"AB"), item(b"MINE")], 5);
+            let m = &mut menu.m;
             m.x = 100;
             m.y = 20;
             m.selection = 1;
@@ -1224,13 +818,7 @@ mod tests {
                     y2: 50,
                 },
             };
-            unsafe {
-                Menu {
-                    m: &mut m,
-                    items: &mut items,
-                }
-                .draw(&scr, &font, &hooks, false, -1, false)
-            };
+            menu.draw_with(&scr, &font, &hooks, false, -1, false);
             // "AB" is 16 pixels wide; its text starts 2 pixels in.
             assert_eq!(
                 (px[21 * 200 + first - 1], px[21 * 200 + first]),
@@ -1242,61 +830,46 @@ mod tests {
 
     #[test]
     fn negative_positions_select_nothing() {
-        let mut items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
-        let mut m = state(&items, 6);
-        let menu = Menu {
-            m: &mut m,
-            items: &mut items,
-        };
+        let items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
+        let menu = menu(items, 6);
         assert_eq!(menu.first_visible_from(-1), 6);
-        let mut none: Vec<MenuItem> = Vec::new();
-        let mut m = state(&none, 6);
-        let mut empty = Menu {
-            m: &mut m,
-            items: &mut none,
-        };
+        let mut empty = super::Menu::new(MenuState {
+            height: 6,
+            item_height: 8,
+            ..Default::default()
+        });
         empty.move_to(3);
         assert_eq!(empty.m.selection, 0, "the item count, as in C++");
     }
 
     #[test]
     fn search_text_lasts_one_and_a_half_seconds() {
-        let mut items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
-        let mut m = state(&items, 6);
-        let mut menu = Menu {
-            m: &mut m,
-            items: &mut items,
-        };
-        unsafe {
-            menu.search(b"", Some(b'l'), false, 1000);
-            let r = menu.search(b"l", Some(b'a'), false, 2500);
-            assert_eq!(r, MenuSearch { keep: 1, add: true }, "1500 ms later the text is kept");
-            assert_eq!(menu.m.selection, 3);
-            let r = menu.search(b"la", Some(b'z'), false, 4001);
-            assert_eq!(r, MenuSearch { keep: 0, add: true }, "1501 ms later it starts over");
-            assert_eq!(menu.m.selection, 5);
-        }
+        let items: Vec<_> = NAMES.iter().map(|n| item(n)).collect();
+        let mut menu = menu(items, 6);
+        menu.search_step(b"", Some(b'l'), false, 1000);
+        let r = menu.search_step(b"l", Some(b'a'), false, 2500);
+        assert_eq!(r, MenuSearch { keep: 1, add: true }, "1500 ms later the text is kept");
+        assert_eq!(menu.m.selection, 3);
+        let r = menu.search_step(b"la", Some(b'z'), false, 4001);
+        assert_eq!(r, MenuSearch { keep: 0, add: true }, "1501 ms later it starts over");
+        assert_eq!(menu.m.selection, 5);
     }
 
     #[test]
     fn values_change_like_cpp() {
-        assert_eq!(liero_menu_integer_left_right(5, 0, 10, 2, 1, 10, 5), 7);
+        assert_eq!(integer_left_right(5, 0, 10, 2, 1, 10, 5), 7);
+        assert_eq!(integer_left_right(5, 0, 10, 2, 1, 11, 5), 5, "waits for the repeat");
+        assert_eq!(integer_left_right(10, 0, 10, 2, 1, 0, 5), 10);
         assert_eq!(
-            liero_menu_integer_left_right(5, 0, 10, 2, 1, 11, 5),
-            5,
-            "waits for the repeat"
-        );
-        assert_eq!(liero_menu_integer_left_right(10, 0, 10, 2, 1, 0, 5), 10);
-        assert_eq!(
-            liero_menu_integer_left_right(9, 0, 10, 2, 1, 0, 5),
+            integer_left_right(9, 0, 10, 2, 1, 0, 5),
             11,
             "C++ can pass max by a step"
         );
-        assert_eq!(liero_menu_enum_change(3, 0, 3, 1), 0);
-        assert_eq!(liero_menu_enum_change(0, 0, 3, -1), 3);
-        assert_eq!(liero_menu_enum_change(1, 1, 40, -1), 40);
+        assert_eq!(enum_change(3, 0, 3, 1), 0);
+        assert_eq!(enum_change(0, 0, 3, -1), 3);
+        assert_eq!(enum_change(1, 1, 40, -1), 40);
 
-        let text = liero_menu_value_text;
+        let text = value_text;
         assert_eq!(text(150, LIERO_MENU_VALUE_PERCENTAGE), b"150%");
         assert_eq!(text(-3, LIERO_MENU_VALUE_INTEGER), b"-3");
         assert_eq!(text(754, LIERO_MENU_VALUE_TIME), b"12:34");
@@ -1307,11 +880,10 @@ mod tests {
     fn closest_weapon_name() {
         assert_eq!(levenshtein(b"kitten", b"SITTING"), 3);
         assert_eq!(levenshtein(b"", b"abc"), 3);
-        let names: Vec<_> = NAMES.iter().map(|n| s(n)).collect();
-        let find =
-            |t: &[u8]| unsafe { liero_menu_closest_name(names.as_ptr(), names.len() as i32, t.as_ptr(), t.len()) };
-        assert_eq!(find(b"lasr"), 3);
-        assert_eq!(find(b"MINI"), 2, "relative to the name's length");
-        assert_eq!(find(b"zim"), 5);
+        let find = |t: &[u8]| closest_name(NAMES, t);
+        assert_eq!(find(b"lasr"), Some(3));
+        assert_eq!(find(b"MINI"), Some(2), "relative to the name's length");
+        assert_eq!(find(b"zim"), Some(5));
+        assert_eq!(closest_name([], b"zim"), None);
     }
 }

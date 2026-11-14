@@ -14,8 +14,8 @@ use crate::gfx::Bitmap;
 use crate::item::{ItemAction, ItemBehavior};
 use crate::keys::{is_extended, key_name, LIERO_DK_ESCAPE};
 use crate::menu::{
-    liero_menu_closest_name, liero_menu_draw_palette_overlay, liero_menu_draw_rgb_overlay, MenuBox, MenuHooks,
-    MenuItemSpec, OwnedMenu, LIERO_MENU_VALUE_FRAMES, LIERO_MENU_VALUE_PERCENTAGE, LIERO_MENU_VALUE_TIME,
+    closest_name, draw_palette_overlay, draw_rgb_overlay, Menu, MenuHooks, MenuItem, LIERO_MENU_VALUE_FRAMES,
+    LIERO_MENU_VALUE_PERCENTAGE, LIERO_MENU_VALUE_TIME,
 };
 use crate::menu_screen::{LIERO_MENU_HIDDEN, LIERO_MENU_MAIN, LIERO_MENU_PLAYER, LIERO_MENU_SETTINGS};
 use crate::screen::{BoxedScreen, Host};
@@ -183,7 +183,7 @@ struct Pending {
 /// The menus (`Gfx`'s `mainMenu`, `settingsMenu`, `playerMenu`,
 /// `hiddenMenu` and `curMenu`).
 pub struct Menus {
-    menus: [Box<MenuBox>; 4],
+    menus: [Box<Menu>; 4],
     cur: i32,
     /// Whose settings the player menu shows.
     player: i32,
@@ -255,7 +255,7 @@ fn array_enum(setting: Setting, n: &'static [&'static [u8]]) -> Behavior {
 
 impl Menus {
     fn new() -> Self {
-        let raw = |x, y| Box::new(MenuBox(OwnedMenu::raw(x, y, false)));
+        let raw = |x, y| Box::new(Menu::raw(x, y, false));
         Menus {
             menus: [raw(53, 20), raw(178, 20), raw(178, 20), raw(178, 20)],
             cur: LIERO_MENU_MAIN,
@@ -265,8 +265,8 @@ impl Menus {
         }
     }
 
-    fn menu(&mut self, kind: i32) -> &mut OwnedMenu {
-        &mut self.menus[kind as usize].0
+    fn menu(&mut self, kind: i32) -> &mut Menu {
+        &mut self.menus[kind as usize]
     }
 
     /// Runs `f` on the player menu's worm's settings.
@@ -278,21 +278,13 @@ impl Menus {
 
     /// `Gfx::loadMenus`: the items, added to what the menus have.
     fn load(&mut self) {
-        fn add(m: &mut OwnedMenu, color: u8, dis_colour: u8, name: &[u8], id: i32, selectable: bool) {
-            let spec = MenuItemSpec {
-                string: lstr(name),
-                value: lstr(&[]),
-                color,
-                dis_colour,
-                has_value: false,
-                visible: true,
-                selectable,
-                id,
-            };
-            m.insert(m.len(), &spec);
-            m.m.visible_item_count += 1;
+        fn add(m: &mut Menu, color: u8, dis_colour: u8, name: &[u8], id: i32, selectable: bool) {
+            let mut item = MenuItem::new(name, color, dis_colour);
+            item.selectable = selectable;
+            item.id = id;
+            m.add_at(item, None, true);
         }
-        let item = |m: &mut OwnedMenu, color: u8, name: &[u8], id: i32| add(m, color, 7, name, id, true);
+        let item = |m: &mut Menu, color: u8, name: &[u8], id: i32| add(m, color, 7, name, id, true);
 
         let hidden = self.menu(LIERO_MENU_HIDDEN);
         for (name, id) in [
@@ -387,7 +379,7 @@ impl Menus {
 
     /// What `kind`'s item `i` does (`getItemBehavior`).
     fn behavior(&mut self, app: &mut App, kind: i32, i: usize) -> Behavior {
-        let id = self.menu(kind).ids[i];
+        let id = self.menu(kind).items[i].id;
         match kind {
             LIERO_MENU_MAIN => match id {
                 MA_REPLAYS => Behavior::ReplaySelect,
@@ -511,7 +503,7 @@ impl Menus {
     }
 
     fn index_of(&mut self, kind: i32, id: i32) -> Option<usize> {
-        self.menu(kind).ids.iter().position(|&x| x == id)
+        self.menu(kind).index_of(id)
     }
 
     /// The player's profile file, if there is one.
@@ -549,12 +541,12 @@ impl Menus {
             }
             Behavior::ProfileSave { save_as: false } => {
                 let has = self.profile_path(app).is_some();
-                self.menu(kind).visible[i] = has;
+                self.menu(kind).items[i].visible = has;
             }
             Behavior::ProfileLoaded => {
                 let p = self.profile_path(app);
                 self.set_value(kind, i, p.as_deref().map(base_name).unwrap_or_default());
-                self.menu(kind).visible[i] = p.is_some();
+                self.menu(kind).items[i].visible = p.is_some();
             }
             Behavior::Level => self.update_level(app, kind, i),
             Behavior::OptionsSave => {
@@ -580,7 +572,7 @@ impl Menus {
         drop((st, tc));
         self.set_value(kind, i, value);
         let r = self.index_of(kind, SI_REGENERATE_LEVEL).expect("no regenerate item");
-        self.menu(kind).names[r] = regen;
+        self.menu(kind).items[r].name = regen;
     }
 
     /// `Menu::updateItems`: every item's value, then what the menu shows.
@@ -615,8 +607,7 @@ impl Menus {
 
     fn set_visibility(&mut self, kind: i32, id: i32, state: bool) {
         let i = self.index_of(kind, id).expect("no such item") as i32;
-        self.menu(kind)
-            .with(|m, items, n| unsafe { crate::menu::liero_menu_set_visibility(m, items, n, i, state) });
+        self.menu(kind).set_visibility(i, state);
     }
 
     fn selection(&mut self, kind: i32) -> Option<usize> {
@@ -673,7 +664,7 @@ impl Menus {
         }
         // The window's switches show in other items too (`setFullscreen`
         // and `setDoubleRes` update the menu).
-        let id = self.menu(kind).ids[i];
+        let id = self.menu(kind).items[i].id;
         if a.update_menu || (kind == LIERO_MENU_HIDDEN && a.update_item && (id == HM_DOUBLE_RES || id == HM_FULLSCREEN))
         {
             self.update_items(app, kind);
@@ -898,13 +889,10 @@ impl Menus {
                     let closest = {
                         let tc = app.tc_data();
                         let order = tc.weapon_order();
-                        let names: Vec<Str> = order.iter().map(|&w| lstr(tc.weapon_name(w as usize))).collect();
-                        unsafe {
-                            liero_menu_closest_name(names.as_ptr(), names.len() as i32, typed.as_ptr(), typed.len())
-                        }
+                        closest_name(order.iter().map(|&w| tc.weapon_name(w as usize)), &typed)
                     };
-                    if closest >= 0 {
-                        self.set(app, host, Setting::WormWeapon(slot), 1 + closest);
+                    if let Some(closest) = closest {
+                        self.set(app, host, Setting::WormWeapon(slot), 1 + closest as i32);
                     }
                     self.update_items(app, kind);
                 }
@@ -975,7 +963,7 @@ impl Menus {
         self.cur = kind;
     }
 
-    pub fn box_of(&mut self, kind: i32) -> &mut MenuBox {
+    pub fn box_of(&mut self, kind: i32) -> &mut Menu {
         &mut self.menus[kind as usize]
     }
 
@@ -998,14 +986,14 @@ impl Menus {
                 if c.kind == LIERO_MENU_PLAYER && (PL_RED..=PL_BLUE).contains(&id) {
                     let ws = c.settings.borrow().data.worms[c.player as usize].clone();
                     let ws = &ws.borrow().data;
-                    liero_menu_draw_rgb_overlay(&c.scr, x, y, selected, ws.rgb[(id - PL_RED) as usize], ws.color);
+                    draw_rgb_overlay(&c.scr, x, y, selected, ws.rgb[(id - PL_RED) as usize], ws.color);
                 } else if c.kind == LIERO_MENU_HIDDEN && id == HM_PALETTE_SELECT {
-                    liero_menu_draw_palette_overlay(&c.scr, x, y, selected, c.palette_color);
+                    draw_palette_overlay(&c.scr, x, y, selected, c.palette_color);
                 }
             }
         }
         let ctx = Ctx {
-            ids: self.menu(kind).ids.clone(),
+            ids: self.menu(kind).items.iter().map(|it| it.id).collect(),
             kind,
             scr: *scr,
             player: self.player,
@@ -1038,7 +1026,7 @@ pub fn liero_menus_new() -> SharedMenus {
 pub fn liero_menus_reset(m: &mut Menus) {
     let fresh = Menus::new();
     for (dst, src) in m.menus.iter_mut().zip(fresh.menus) {
-        dst.0 = src.0.clone();
+        dst.clone_from(&src);
     }
     m.cur = LIERO_MENU_MAIN;
     m.player = 0;
@@ -1051,7 +1039,7 @@ pub fn liero_menus_load(m: &mut Menus) {
     m.load();
 }
 
-pub fn liero_menus_box(m: &mut Menus, kind: i32) -> *mut MenuBox {
+pub fn liero_menus_box(m: &mut Menus, kind: i32) -> *mut Menu {
     m.box_of(kind)
 }
 
@@ -1144,7 +1132,7 @@ mod tests {
     }
 
     fn value(m: &mut Menus, kind: i32, i: usize) -> Vec<u8> {
-        m.menu(kind).values[i].clone()
+        m.menu(kind).items[i].value.clone()
     }
 
     #[test]

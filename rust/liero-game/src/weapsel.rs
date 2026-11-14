@@ -13,8 +13,8 @@ use std::ffi::c_void;
 use crate::app::App;
 use crate::game_box::Game;
 use crate::gfx::{liero_gfx_draw_rounded_box, liero_palette_fade, liero_palette_rotate_from, Bitmap};
-use crate::menu::liero_menu_draw_versus;
-use crate::menu::{Menu, MenuBox, MenuHooks, MenuItemSpec, OwnedMenu};
+use crate::menu::draw_versus;
+use crate::menu::{Menu, MenuHooks, MenuItem};
 use crate::rand::Rand;
 use crate::renderer::Renderer;
 use crate::sfx::SoundOut;
@@ -36,7 +36,7 @@ const DONE_ITEM: i32 = 6;
 /// One worm's weapon menu.
 struct WeapselMenu {
     /// "Randomize", the five weapons and "Done".
-    menu: MenuBox,
+    menu: Menu,
     /// The worm's chosen weapon numbers (`WormSettings::weapons`), 5 of them.
     weapons: *mut u32,
     /// The worm, whose controls pick and which is given the weapons.
@@ -244,23 +244,8 @@ pub unsafe fn liero_weapsel_choose(weapons: *mut u32, random: bool, env: &Weapse
     }
 }
 
-fn item(name: &[u8], color: u8) -> MenuItemSpec {
-    MenuItemSpec {
-        string: Str {
-            ptr: name.as_ptr(),
-            len: name.len(),
-        },
-        value: Str {
-            ptr: name.as_ptr(),
-            len: 0,
-        },
-        color,
-        dis_colour: color,
-        has_value: false,
-        visible: true,
-        selectable: true,
-        id: -1,
-    }
+fn item(name: &[u8], color: u8) -> MenuItem {
+    MenuItem::new(name, color, color)
 }
 
 /// Starts weapon selection (`WeaponSelection::WeaponSelection`): each
@@ -279,8 +264,8 @@ pub unsafe fn liero_weapsel_new(spec: &WeapselSpec, env: &WeapselEnv) -> *mut We
         for i in 0..spec.worm_count.max(0) as usize {
             let w = &*spec.worms.add(i);
             // Menu(), placed later, with items it doesn't count as visible.
-            let mut menu = OwnedMenu::raw(0, 0, false);
-            menu.insert(0, &item(spec.randomize.bytes(), 57));
+            let mut menu = Menu::raw(0, 0, false);
+            menu.add_at(item(spec.randomize.bytes(), 57), None, false);
             menu.m.x = w.center_x - 31;
             menu.m.y = w.center_y - 51;
 
@@ -292,13 +277,13 @@ pub unsafe fn liero_weapsel_new(spec: &WeapselSpec, env: &WeapselEnv) -> *mut We
                 ww.ammo = 0;
                 ww.kind = weapon;
                 worm.current_weapon = 0;
-                menu.insert(menu.len(), &item(&weapon_names[weapon as usize], 48));
+                menu.add_at(item(&weapon_names[weapon as usize], 48), None, false);
             }
-            menu.insert(menu.len(), &item(spec.done.bytes(), 10));
+            menu.add_at(item(spec.done.bytes(), 10), None, false);
             menu.move_to(0);
 
             menus.push(WeapselMenu {
-                menu: MenuBox(menu),
+                menu,
                 weapons: w.weapons,
                 worm: w.worm,
                 ready: w.ready,
@@ -332,7 +317,7 @@ pub fn liero_weapsel_menu_count(ws: &Weapsel) -> i32 {
 }
 
 /// Menu `i`, for the hash run to read.
-pub fn liero_weapsel_menu(ws: &mut Weapsel, i: i32) -> *mut MenuBox {
+pub fn liero_weapsel_menu(ws: &mut Weapsel, i: i32) -> *mut Menu {
     &mut ws.menus[i as usize].menu
 }
 
@@ -402,13 +387,8 @@ pub unsafe fn liero_weapsel_process(ws: &mut Weapsel, env: &WeapselEnv) -> bool 
             // Item names to change, once the menu isn't borrowed.
             let mut renames = Vec::new();
             let ready = &mut wm.ready;
-            wm.menu.0.with(|m, items, n| {
-                let items = if n <= 0 {
-                    &mut [][..]
-                } else {
-                    std::slice::from_raw_parts_mut(items, n as usize)
-                };
-                let mut menu = Menu { m, items };
+            let menu = &mut wm.menu;
+            (|| {
                 let slot = menu.m.selection - 1;
 
                 if *ready {
@@ -447,9 +427,9 @@ pub unsafe fn liero_weapsel_process(ws: &mut Weapsel, env: &WeapselEnv) -> bool 
                         *ready = true;
                     }
                 }
-            });
+            })();
             for (slot, w) in renames {
-                wm.menu.0.names[slot as usize + 1] = ws.weapon_names[w as usize].clone();
+                wm.menu.items[slot as usize + 1].name = ws.weapon_names[w as usize].clone();
             }
 
             all_ready = all_ready && wm.ready;
@@ -466,7 +446,7 @@ fn draw_menu(wm: &mut WeapselMenu, scr: &Bitmap, font: &Font, x: i32) {
         ctx: std::ptr::null_mut(),
         draw_overlay: no_overlay,
     };
-    wm.menu.0.draw_with(scr, font, &hooks, false, x, false);
+    wm.menu.draw_with(scr, font, &hooks, false, x, false);
 }
 
 /// The split-screen weapon selection over the frozen game: the title, each
@@ -483,7 +463,7 @@ pub unsafe fn liero_weapsel_draw(ws: &mut Weapsel, scr: &Bitmap, menu_scr: &Bitm
 
         for wm in &mut ws.menus {
             let width = font.dims(&wm.name).0;
-            let (x, y) = (wm.menu.0.m.x, wm.menu.0.m.y);
+            let (x, y) = (wm.menu.m.x, wm.menu.m.y);
             liero_gfx_draw_rounded_box(scr, x + 29 - width / 2, y - 11, 0, 7, width);
             font.text(scr, &wm.name, x + 31 - width / 2, y - 10, wm.color + 1, 1);
             if !wm.ready {
@@ -681,12 +661,12 @@ pub unsafe fn liero_weapsel_draw_game(ws: &mut Weapsel, a: &mut App, r: *mut Ren
                 let scr = (*r).bmp.view();
                 let w = game.settings_box().data.worms.clone();
                 let w = [w[0].borrow(), w[1].borrow()];
-                liero_menu_draw_versus(
+                draw_versus(
                     &scr,
                     &font,
-                    Str::of(&line()),
-                    Str::of(&w[0].data.name),
-                    Str::of(&w[1].data.name),
+                    &line(),
+                    &w[0].data.name,
+                    &w[1].data.name,
                     w[0].data.color,
                     w[1].data.color,
                     cx,

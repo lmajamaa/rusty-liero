@@ -99,8 +99,8 @@ impl MenuScreen {
     }
 
     /// Runs `f` on `kind`'s menu.
-    fn menu<R>(&self, kind: i32, f: impl FnOnce(&mut crate::menu::OwnedMenu) -> R) -> R {
-        f(&mut self.menus().box_of(kind).0)
+    fn menu<R>(&self, kind: i32, f: impl FnOnce(&mut crate::menu::Menu) -> R) -> R {
+        f(self.menus().box_of(kind))
     }
 
     fn cur(&self) -> i32 {
@@ -113,13 +113,15 @@ impl MenuScreen {
 
     fn move_main_to(&self, id: i32) {
         self.menu(LIERO_MENU_MAIN, |main| {
-            let i = (0..main.len()).find(|&i| main.ids[i] == id).map_or(-1, |i| i as i32);
+            let i = (0..main.len())
+                .find(|&i| main.items[i].id == id)
+                .map_or(-1, |i| i as i32);
             main.move_to(i);
         });
     }
 
     fn main_selected_id(&self) -> i32 {
-        self.menu(LIERO_MENU_MAIN, |main| main.selected().map_or(-1, |i| main.ids[i]))
+        self.menu(LIERO_MENU_MAIN, |main| main.selected().map_or(-1, |i| main.items[i].id))
     }
 
     /// What an item's `onEnter` returned, put to `how`. True if the menu

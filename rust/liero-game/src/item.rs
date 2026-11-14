@@ -4,9 +4,7 @@
 //! writes back what comes out, then does what the result says (redraw the
 //! item or the whole menu, or open the number box).
 
-use crate::menu::{
-    liero_menu_enum_change, liero_menu_integer_left_right, liero_menu_value_text, LIERO_MENU_VALUE_INTEGER,
-};
+use crate::menu::{enum_change, integer_left_right, value_text, LIERO_MENU_VALUE_INTEGER};
 
 const SOUND_RIGHT: i32 = 25;
 const SOUND_LEFT: i32 = 26;
@@ -90,7 +88,7 @@ impl<'a> ItemBehavior<'a> {
     }
 
     fn change_enum(&self, v: i32, dir: i32) -> (i32, ItemAction) {
-        let new_v = liero_menu_enum_change(v as u32, self.min as u32, self.max as u32, dir) as i32;
+        let new_v = enum_change(v as u32, self.min as u32, self.max as u32, dir) as i32;
         let a = ItemAction {
             update_menu: new_v != v,
             ..Default::default()
@@ -117,15 +115,8 @@ impl<'a> ItemBehavior<'a> {
                 (i32::from(v == 0), a)
             }
             ItemKind::Integer => {
-                let new_v = liero_menu_integer_left_right(
-                    v,
-                    self.min,
-                    self.max,
-                    self.step,
-                    dir,
-                    menu_cycles,
-                    self.scroll_interval,
-                );
+                let new_v =
+                    integer_left_right(v, self.min, self.max, self.step, dir, menu_cycles, self.scroll_interval);
                 let a = ItemAction {
                     keep_going: true,
                     update_item: new_v != v,
@@ -172,7 +163,7 @@ impl<'a> ItemBehavior<'a> {
         match self.kind {
             ItemKind::Switch => name(usize::from(v != 0)),
             ItemKind::Enum if !self.names.is_empty() => name(v as u32 as usize),
-            ItemKind::Integer | ItemKind::Enum => liero_menu_value_text(v, self.value_kind),
+            ItemKind::Integer | ItemKind::Enum => value_text(v, self.value_kind),
         }
     }
 }

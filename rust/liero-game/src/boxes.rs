@@ -4,7 +4,7 @@
 use std::ffi::c_void;
 
 use crate::keys::is_extended;
-use crate::menu::{liero_menu_draw_info_box, liero_menu_draw_input_box};
+use crate::menu::{draw_info_box, draw_input_box};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
 // SDL's scancodes.
@@ -37,7 +37,7 @@ impl Screen for InfoBox {
                 host.fill_screen(app, BG_COLOR);
             }
             if let (Some(scr), Some(font)) = (host.screen(app), host.font(app)) {
-                liero_menu_draw_info_box(&scr, &font, &self.text, self.x, self.y);
+                draw_info_box(&scr, &font, &self.text, self.x, self.y);
             }
             self.shown = true;
             return Tick::stay(true);
@@ -137,7 +137,7 @@ impl Screen for InputBox {
         let mut shown = self.buffer.clone();
         shown.push(b'_');
         if let (Some(scr), Some(frozen), Some(font)) = (host.screen(app), host.frozen(app), host.font(app)) {
-            liero_menu_draw_input_box(&scr, &frozen, &font, &shown, self.x, self.y, true);
+            draw_input_box(&scr, &frozen, &font, &shown, self.x, self.y, true);
         }
         host.text_input(true);
         self.host = Some(host.clone());
