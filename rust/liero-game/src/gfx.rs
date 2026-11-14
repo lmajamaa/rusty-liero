@@ -138,7 +138,7 @@ fn clip_image(mut x: i32, mut y: i32, mut width: i32, mut height: i32, pitch: i3
 /// Draws a `width` x `height` image from `mem` (rows `pitch` apart) at
 /// (x, y), clipped. `f` gets the source and screen pixel, the position in
 /// the visible part, and returns the new screen pixel, if any.
-// The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
+// The arguments of the C++ it was ported from; phase 4 of docs/001-rust-port.md groups them.
 #[allow(clippy::too_many_arguments)]
 fn blit(
     scr: &Bitmap,

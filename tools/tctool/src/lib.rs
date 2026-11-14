@@ -2,7 +2,7 @@
 //! OpenLiero TC folder. Rust port of the C++ tctool in `src/tc_tool`; the
 //! reading and writing are in the `liero-data` crate.
 
-// No unsafe code, and none may be added (PLAN.md, phase 4).
+// No unsafe code, and none may be added (docs/001-rust-port.md, phase 4).
 #![forbid(unsafe_code)]
 
 use liero_data::{exe, save};

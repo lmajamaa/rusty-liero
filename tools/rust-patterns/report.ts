@@ -6,7 +6,7 @@
 //   bun tools/rust-patterns/report.ts --fail-on-rise <base-dir> <head-dir>
 //
 // With --fail-on-rise it exits with 1 if any pattern's count is higher in
-// head than in base: in phase 4 of PLAN.md the counts only go down.
+// head than in base: in phase 4 of docs/001-rust-port.md the counts only go down.
 //
 // Comments and string literals are skipped, so "unsafe" in a doc comment or a
 // message doesn't count. Files under target/ are ignored.

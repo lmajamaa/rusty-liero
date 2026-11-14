@@ -4,7 +4,7 @@ This is a Rust port of OpenLiero, the open-source remake of Liero 1.33 by
 Erik Lindroos (gliptic) and others, made so that it runs in the browser. The port keeps the game exactly as it was: the same seed gives the
 same game, frame for frame, and replays recorded by OpenLiero play back the
 same. `tools/hashrun` checks that against hashes from the original C++.
-[Rust port](RUST_PORT.md) describes how the port was done, and [Plan](PLAN.md) has its step-by-step plan and notes.
+[How the port was done](docs/002-rust-port-results.md) describes the port, [the port plan](docs/001-rust-port.md) has its step-by-step plan and notes, and [online multiplayer](docs/003-multiplayer.md) is the plan for what comes next.
 
 The game is only built for the web, with Docker (see below), from Rust. tctool, written
 in Rust, is a native command-line tool.
