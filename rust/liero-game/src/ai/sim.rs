@@ -301,7 +301,7 @@ pub unsafe fn process_dumb(rand: &mut LieroRand, fields: &LieroGameFields, place
             .map(|(_, o)| [(*o.data).pos.x, (*o.data).pos.y])
             .collect();
 
-        let k = &*((*fields.tc).ai_params.as_ptr() as *const [[i32; 7]; 2]);
+        let k = &(*fields.tc).model.ai_params;
         dumb::process(rand, &worm, &others, k)
     }
 }

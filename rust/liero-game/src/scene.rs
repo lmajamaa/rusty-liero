@@ -173,7 +173,7 @@ fn scene<'a>(
         font: &tc.font,
         materials: &tc.materials,
         level: src.level,
-        bonus_frames: tc.bonus_frames,
+        bonus_frames: tc.model.bonus_frames,
 
         reloading: tc.text(s("Reloading")),
         kills: tc.text(s("Kills")),

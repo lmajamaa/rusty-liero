@@ -753,9 +753,11 @@ mod tests {
 
     #[test]
     fn the_level_line_names_the_menus_level_file() {
-        let texts = liero_data::exe::TEXTS.iter().map(|t| t.0.as_bytes().to_vec()).collect();
         let mut tc = LieroTcData::empty();
-        tc.texts = texts;
+        tc.model.texts = liero_data::exe::TEXTS
+            .iter()
+            .map(|&(n, _)| (n, n.as_bytes().to_vec()))
+            .collect();
         assert_eq!(level_line(&tc, b"", b"a/b.lev"), b"LevelRandom");
         assert_eq!(level_line(&tc, b"x", b"C:\\lev/a.b.lev"), b"LevelIs1a.bLevelIs2");
         assert_eq!(level_line(&tc, b"x", b"dir.d\\name"), b"LevelIs1nameLevelIs2");

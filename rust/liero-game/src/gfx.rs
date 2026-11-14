@@ -624,14 +624,14 @@ pub fn liero_palette_rotate_from(pal: &mut LieroPalette, source: &LieroPalette, 
 pub fn liero_game_palette(
     pal: &mut LieroPalette,
     origpal: &LieroPalette,
-    color_anim: &[i32; 8],
+    color_anim: &[(i32, i32); 4],
     cycles: i32,
     fade: i32,
     screen_flash: i32,
 ) {
     *pal = *origpal;
-    for a in color_anim.chunks(2) {
-        liero_palette_rotate_from(pal, origpal, a[0], a[1], (cycles >> 3) as u32);
+    for &(from, to) in color_anim {
+        liero_palette_rotate_from(pal, origpal, from, to, (cycles >> 3) as u32);
     }
     liero_palette_fade(pal, fade);
     if screen_flash > 0 {
@@ -765,7 +765,7 @@ mod tests {
                 unused: 0,
             };
         }
-        let anims = [10, 12, 20, 21, 0, 0, 0, 0];
+        let anims = [(10, 12), (20, 21), (0, 0), (0, 0)];
         let mut pal = [LieroColor::default(); 256];
         // Tick 8 rotates each range by one.
         liero_game_palette(&mut pal, &orig, &anims, 8, 32, 0);

@@ -7,7 +7,7 @@ use crate::settings::liero_settings_box_new;
 /// A TC's level tables: colour 0 is background, 5 dirt, the rest nothing.
 struct Tables {
     materials: [LieroMaterial; 256],
-    textures: [LieroTexture; LIERO_TEXTURE_COUNT],
+    textures: [Texture; LIERO_TEXTURE_COUNT],
     sprites: Vec<u8>,
 }
 
@@ -16,7 +16,7 @@ impl Tables {
         let mut materials = [LieroMaterial::default(); 256];
         materials[5].flags = LIERO_MATERIAL_DIRT;
         materials[0].flags = LIERO_MATERIAL_BACKGROUND;
-        let mut textures = [LieroTexture::default(); LIERO_TEXTURE_COUNT];
+        let mut textures = [Texture::default(); LIERO_TEXTURE_COUNT];
         for t in textures.iter_mut() {
             t.r_frame = 1;
         }

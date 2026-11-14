@@ -7,7 +7,6 @@
 
 use crate::fs::Node;
 use crate::gfx::LieroColor;
-use crate::level::{LieroTexture, LIERO_TEXTURE_COUNT};
 use crate::rand::LieroRand;
 use crate::sfx::samples_from_tc;
 use liero_data::model::{self, Common};
@@ -47,24 +46,10 @@ pub struct LieroTcData {
     /// The TC as loaded, with F8's changes.
     pub model: Common,
     pub sounds: Vec<LieroTcSound>,
-    /// In the order of `LIERO_CDEFS`, `LIERO_SDEFS` and `LIERO_HDEFS`.
-    pub constants: Vec<i32>,
-    pub texts: Vec<Vec<u8>>,
-    pub hacks: Vec<bool>,
-    /// 6-bit VGA palette, red, green and blue for each of 256 entries.
-    pub palette: [u8; 768],
-    /// The same palette as the game's `Palette` holds it (`Common::exepal`).
+    /// The model's palette as the game's `Palette` holds it
+    /// (`Common::exepal`).
     pub palette_colors: [LieroColor; 256],
-    /// (from, to) for each of 4 colour animations.
-    pub color_anim: [i32; 8],
     pub materials: [crate::material::LieroMaterial; 256],
-    pub textures: [LieroTexture; LIERO_TEXTURE_COUNT],
-    /// [bonus * 2 + (0 = timer, 1 = timerV)].
-    pub bonus_rand_timer: [i32; 4],
-    pub bonus_sobjects: [i32; 2],
-    pub bonus_frames: [i32; 2],
-    /// [(0 = off, 1 = on) * 7 + key].
-    pub ai_params: [i32; 14],
     pub small_sprites: LieroTcSprites,
     pub large_sprites: LieroTcSprites,
     pub text_sprites: LieroTcSprites,
@@ -194,21 +179,6 @@ impl LieroTc {
             })
             .collect();
 
-        let mut palette = [0u8; 768];
-        for (i, entry) in c.palette.iter().enumerate() {
-            palette[i * 3..i * 3 + 3].copy_from_slice(entry);
-        }
-        let mut color_anim = [0; 8];
-        for (i, &(from, to)) in c.color_anim.iter().enumerate() {
-            color_anim[i * 2] = from;
-            color_anim[i * 2 + 1] = to;
-        }
-        let textures = c.textures.map(|t| LieroTexture {
-            n_draw_back: t.n_draw_back,
-            m_frame: t.m_frame,
-            s_frame: t.s_frame,
-            r_frame: t.r_frame,
-        });
         let font = std::array::from_fn(|i| match c.font.get(i) {
             Some(ch) => crate::gfx::LieroFontChar {
                 data: ch.data,
@@ -222,28 +192,8 @@ impl LieroTc {
 
         let data = LieroTcData {
             sounds,
-            constants: c.constants.iter().map(|&(_, v)| v).collect(),
-            texts: c.texts.iter().map(|(_, t)| t.to_vec()).collect(),
-            hacks: c.hacks.iter().map(|&(_, h)| h).collect(),
-            palette,
-            palette_colors: std::array::from_fn(|i| LieroColor {
-                r: palette[i * 3],
-                g: palette[i * 3 + 1],
-                b: palette[i * 3 + 2],
-                unused: 0,
-            }),
-            color_anim,
+            palette_colors: c.palette.map(|[r, g, b]| LieroColor { r, g, b, unused: 0 }),
             materials: c.materials.map(|flags| crate::material::LieroMaterial { flags }),
-            textures,
-            bonus_rand_timer: [
-                c.bonus_rand_timer[0][0],
-                c.bonus_rand_timer[0][1],
-                c.bonus_rand_timer[1][0],
-                c.bonus_rand_timer[1][1],
-            ],
-            bonus_sobjects: c.bonus_sobjects,
-            bonus_frames: c.bonus_frames,
-            ai_params: std::array::from_fn(|i| c.ai_params[i / 7][i % 7]),
             small_sprites: sprites(&c.small_sprites),
             large_sprites: sprites(&c.large_sprites),
             text_sprites: sprites(&c.text_sprites),
@@ -280,9 +230,6 @@ impl LieroTcData {
             let p = tc.as_mut_ptr();
             std::ptr::addr_of_mut!((*p).model).write(empty_model());
             std::ptr::addr_of_mut!((*p).sounds).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).constants).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).texts).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).hacks).write(Vec::new());
             std::ptr::addr_of_mut!((*p).weap_order).write(Vec::new());
             std::ptr::addr_of_mut!((*p).small_sprites).write(Default::default());
             std::ptr::addr_of_mut!((*p).large_sprites).write(Default::default());
@@ -297,7 +244,7 @@ impl LieroTcData {
     pub(crate) fn level_common(&self) -> crate::level::Common<'_> {
         crate::level::Common {
             materials: &self.materials,
-            textures: &self.textures,
+            textures: &self.model.textures,
             large_sprites: self.large_sprites.pixels(),
         }
     }
@@ -503,9 +450,10 @@ pub fn load_checked(node: &Node) -> Result<SharedTc, String> {
     let Some(d) = tc.data.as_deref() else {
         return Err(format!("Could not load the TC: {}", tc.error));
     };
-    if d.constants.len() != liero_data::exe::CONSTANT_ORDER.len()
-        || d.texts.len() != liero_data::exe::TEXTS.len()
-        || d.hacks.len() != liero_data::exe::HACKS.len()
+    let m = &d.model;
+    if m.constants.len() != liero_data::exe::CONSTANT_ORDER.len()
+        || m.texts.len() != liero_data::exe::TEXTS.len()
+        || m.hacks.len() != liero_data::exe::HACKS.len()
     {
         return Err("The TC's constants, texts and hacks don't match the game's".into());
     }
@@ -569,17 +517,17 @@ pub(crate) const fn s(name: &str) -> usize {
 impl LieroTcData {
     /// TC constant `i` (`common.C[i]`), from `c`.
     pub(crate) fn constant(&self, i: usize) -> i32 {
-        self.constants[i]
+        self.model.constants[i].1
     }
 
     /// TC hack `i` (`common.H[i]`), from `h`.
     pub(crate) fn hack(&self, i: usize) -> bool {
-        self.hacks[i]
+        self.model.hacks[i].1
     }
 
     /// TC text `i` (`common.S[i]`), from `s`.
     pub(crate) fn text(&self, i: usize) -> &[u8] {
-        &self.texts[i]
+        &self.model.texts[i].1
     }
 
     /// The weapons in menu order (`weapOrder`), as indexes into `weapons`.

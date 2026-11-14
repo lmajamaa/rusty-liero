@@ -352,7 +352,7 @@ impl LieroGame {
         crate::gfx::liero_game_palette(
             &mut rd.pal,
             &rd.origpal,
-            &tc.color_anim,
+            &tc.model.color_anim,
             data.cycles,
             rd.fade_value,
             data.screen_flash,
@@ -708,7 +708,6 @@ pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&
     use crate::tc::{c, h};
     let constant = |name| tc.map_or(0, |tc| tc.constant(c(name)));
     let hack = |name| tc.is_some_and(|tc| tc.hack(h(name)));
-    let t = tc.map_or([0; 4], |tc| tc.bonus_rand_timer);
     LieroGameSettings {
         game_mode: s.game_mode as i32,
         max_bonuses: s.max_bonuses,
@@ -717,7 +716,7 @@ pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&
         zone_capture_time: 70,
         weap_table: s.weap_table.as_ptr(),
         weapon_count: tc.map_or(0, |tc| tc.model.weapons.len() as i32),
-        bonus_rand_timer: [[t[0], t[1]], [t[2], t[3]]],
+        bonus_rand_timer: tc.map_or([[0; 2]; 2], |tc| tc.model.bonus_rand_timer),
         bonus_spawn_rect_x: constant("BonusSpawnRectX"),
         bonus_spawn_rect_y: constant("BonusSpawnRectY"),
         bonus_spawn_rect_w: constant("BonusSpawnRectW"),
@@ -942,15 +941,19 @@ mod tests {
 
     #[test]
     fn the_rules_take_the_tcs_constants_hacks_and_bonus_timers() {
-        use crate::tc::{c, h};
-        let constants: Vec<i32> = (0..liero_data::exe::CONSTANT_ORDER.len() as i32)
-            .map(|i| 1000 + i)
-            .collect();
+        use crate::tc::c;
+        let order = liero_data::exe::CONSTANT_ORDER;
+        let hacks = |on: Option<&str>| {
+            liero_data::exe::HACKS
+                .iter()
+                .map(|&(n, _)| (n, Some(n) == on))
+                .collect()
+        };
         let mut tc = LieroTcData::empty();
-        tc.constants = constants;
-        tc.bonus_rand_timer = [1, 2, 3, 4];
+        tc.model.constants = order.iter().zip(1000..).map(|(&n, v)| (n, v)).collect();
+        tc.model.bonus_rand_timer = [[1, 2], [3, 4]];
         tc.model.weapons = (0..40).map(|_| liero_data::model::Weapon::default()).collect();
-        tc.hacks = vec![false; liero_data::exe::HACKS.len()];
+        tc.model.hacks = hacks(None);
         let s = crate::settings::liero_settings_box_new();
         s.borrow_mut().data.max_bonuses = 6;
         s.borrow_mut().data.load_change = true;
@@ -970,9 +973,7 @@ mod tests {
         // Each hack sets only its own field.
         let names = ["BonusSpawnRect", "BonusOnlyHealth", "BonusOnlyWeapon", "BonusDisable"];
         for (i, name) in names.iter().enumerate() {
-            let mut hacks = vec![false; liero_data::exe::HACKS.len()];
-            hacks[h(name)] = true;
-            tc.hacks = hacks;
+            tc.model.hacks = hacks(Some(name));
             let g = game_settings(&s.borrow().data, Some(&tc));
             let got = [
                 g.bonus_spawn_rect,

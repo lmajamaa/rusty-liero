@@ -140,11 +140,11 @@ impl<'a> World<'a> {
     }
 
     fn constant(&self, i: usize) -> i32 {
-        self.tc.constants[i]
+        self.tc.constant(i)
     }
 
     fn hack(&self, i: usize) -> bool {
-        self.tc.hacks[i]
+        self.tc.hack(i)
     }
 
     fn weapon(&self, i: i32) -> &'a Weapon {
@@ -493,7 +493,7 @@ impl<'a> World<'a> {
 
         if self.g.data.bonuses.arr[slot].process(&self.g.level, &k) {
             let b = self.g.data.bonuses.arr[slot];
-            let kind = self.tc.bonus_sobjects[b.frame as usize];
+            let kind = self.tc.model.bonus_sobjects[b.frame as usize];
             self.create_sobject(kind, ix, ftoi(b.y), 0, FiredBy::NONE, None);
             // The explosion may have freed it.
             if self.g.data.bonuses.arr[slot].used {
