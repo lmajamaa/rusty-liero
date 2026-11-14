@@ -52,8 +52,7 @@ impl LieroApp {
             self.files.settings_node = node.cloned().unwrap_or_default();
         }
         let settings = LieroSettingsBox::defaults();
-        // SAFETY: nothing else has the new box yet.
-        let status = node.and_then(|n| unsafe { (*settings.as_ptr()).load(n, legacy) });
+        let status = node.and_then(|n| settings.borrow_mut().load(n, legacy));
         self.settings = Some(settings);
         match status {
             Some(LieroSettingsStatus::Ok) => true,
@@ -67,12 +66,12 @@ impl LieroApp {
     /// (`Gfx::saveSettings`). False if it can't be written.
     pub fn save_settings(&mut self, node: &Node) -> bool {
         self.files.settings_node = node.clone();
-        node.write(&self.menu_settings().text())
+        node.write(&crate::app::menu_settings().text())
     }
 
     /// Takes the settings as liero.cfg has them.
     pub fn mark_settings_saved(&mut self) {
-        self.files.saved_text = self.menu_settings().text();
+        self.files.saved_text = crate::app::menu_settings().text();
     }
 
     /// Writes liero.cfg in the config folder if the settings changed since
@@ -80,7 +79,7 @@ impl LieroApp {
     /// browser's menu calls it, since a closed tab never reaches the save at
     /// the end.
     pub fn save_settings_if_changed(&mut self) {
-        let text = self.menu_settings().text();
+        let text = crate::app::menu_settings().text();
         if text == self.files.saved_text {
             return;
         }
@@ -124,7 +123,7 @@ fn preview_level(node: &Node) {
     let Some(bytes) = node.read() else { return };
     let tc = crate::app::menu_tc_data();
     let mut level = LieroLevelBox::new();
-    let powerlevel = a.menu_settings().data.load_powerlevel_palette;
+    let powerlevel = crate::app::menu_settings().data.load_powerlevel_palette;
     if !level.load(&tc.level_common(), &tc.palette_colors, powerlevel, &bytes) {
         return;
     }
@@ -154,7 +153,7 @@ impl FileSource for AppFiles {
         let node = self.node(rel);
         match &mut self.choice {
             Choice::Level => {
-                let s = a.menu_settings();
+                let mut s = crate::app::menu_settings();
                 s.data.random_level = random;
                 s.level_file = if random { Vec::new() } else { full_path.to_vec() };
             }
@@ -190,7 +189,7 @@ impl FileSource for AppFiles {
             }
             Choice::Tc => match crate::tc::load_checked(&node) {
                 Ok(tc) => {
-                    a.menu_settings().tc = name.to_vec();
+                    crate::app::menu_settings().tc = name.to_vec();
                     a.files.chosen_tc = Some(tc);
                 }
                 Err(e) => panic!("{e}"),
@@ -222,7 +221,7 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
             let tc = crate::app::menu_tc_data();
             let spec = Spec {
                 random_name: tc.text(text("Random")).to_vec(),
-                select: a.menu_settings().level_file.clone(),
+                select: crate::app::menu_settings().level_file.clone(),
                 has_select: true,
                 enter_sound: true,
                 ..spec(b"LEV", tc.text(text("SelLevel")))
@@ -235,7 +234,7 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
                 has_select: true,
                 ..spec(b"LPF", b"Select profile:")
             };
-            let ws = a.menu_settings().worms[player as usize].clone();
+            let ws = crate::app::menu_settings().worms[player as usize].clone();
             (spec, config, Choice::Profile(ws))
         }
         LIERO_SELECTOR_REPLAY => {
@@ -296,7 +295,8 @@ pub(crate) fn save_profile_as(player: i32, name: &[u8]) {
     let mut file = name.to_vec();
     file.extend_from_slice(b".lpf");
     let node = a.files.config.go(b"Profiles").go(&file);
-    let mut ws = a.menu_settings().worms[player as usize].borrow_mut();
+    let ws = crate::app::menu_settings().worms[player as usize].clone();
+    let mut ws = ws.borrow_mut();
     if !liero_worm_settings_box_save_profile(&mut ws, Some(&node.clone())) {
         panic!("Could not write {}", path(&node));
     }

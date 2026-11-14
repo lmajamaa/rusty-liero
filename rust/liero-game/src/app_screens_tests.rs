@@ -1,16 +1,16 @@
 use super::*;
 use crate::controllers::{liero_controller_is_replay, LieroController};
 use crate::fs::Node;
-use crate::settings::{liero_settings_box_new, LieroSettingsBox};
+use crate::settings::{liero_settings_box_new, SharedSettings};
 use crate::tc::SharedTc;
 
 thread_local! {
-    static SETTINGS: *mut LieroSettingsBox = liero_settings_box_new();
+    static SETTINGS: SharedSettings = liero_settings_box_new();
     static TC: SharedTc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
 }
 
-unsafe fn settings() -> *mut LieroSettingsBox {
-    SETTINGS.with(|s| *s)
+fn settings() -> SharedSettings {
+    SETTINGS.with(|s| s.clone())
 }
 
 fn tc() -> SharedTc {
@@ -21,10 +21,7 @@ fn tc() -> SharedTc {
 /// match behind the menu.
 fn set_up() -> &'static mut LieroApp {
     let a = app();
-    // SAFETY: the app takes references of its own.
-    unsafe {
-        crate::app::liero_app_set_settings(a, settings());
-    }
+    crate::app::liero_app_set_settings(a, Some(settings()));
     a.set_tc(Some(tc()));
     restart(a);
     a
@@ -55,10 +52,10 @@ fn resuming_a_replay_shows_the_single_screen() {
 
     // A replay chosen in the menu, as the settings say.
     a.primary_single = false;
-    a.menu_settings().data.single_screen_replay = false;
+    crate::app::menu_settings().data.single_screen_replay = false;
     assert_eq!(after_menu(a, MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
     assert!(!a.primary_single);
-    a.menu_settings().data.single_screen_replay = true;
+    crate::app::menu_settings().data.single_screen_replay = true;
     assert_eq!(after_menu(a, MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
     assert!(a.primary_single);
     a.controller = None;
@@ -93,14 +90,16 @@ unsafe fn no_menu() -> LieroScreen {
 #[test]
 fn a_new_game_keeps_the_level_unless_the_settings_changed() {
     let a = set_up();
-    let s = a.menu_settings();
-    (s.data.random_level, s.data.regenerate_level) = (true, false);
+    {
+        let mut s = crate::app::menu_settings();
+        (s.data.random_level, s.data.regenerate_level) = (true, false);
+    }
     restart(a);
     let pixels = |a: &mut LieroApp| unsafe { (*liero_controller_level(controller(a))).pixels().to_vec() };
     let first = pixels(a);
     assert_eq!(after_menu(a, MAIN_NEW_GAME), LIERO_AFTER_MENU_PLAY);
     assert_eq!(pixels(a), first);
-    s.data.regenerate_level = true;
+    crate::app::menu_settings().data.regenerate_level = true;
     after_menu(a, MAIN_NEW_GAME);
     assert_ne!(pixels(a), first);
 

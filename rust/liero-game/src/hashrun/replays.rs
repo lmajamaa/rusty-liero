@@ -85,7 +85,7 @@ fn worm_hash(b: &mut LieroWormSettingsBox) -> Hash {
 
 /// The game's settings and worms' settings hashes.
 fn add_settings_hashes(f: &mut Fnv, game: &mut LieroGame, with_index: bool) {
-    add_hash(f, &settings_hash(game.settings_box()));
+    add_hash(f, &settings_hash(&mut game.settings_box()));
     if with_index {
         f.u32(game.listed_worms().count() as u32);
     }
@@ -303,9 +303,9 @@ pub(super) fn hash_replay(
         // `beginPlayback`: a game with default settings that the replay
         // fills in.
         let settings = LieroSettingsBox::defaults();
-        // SAFETY: the game keeps references to the settings and the TC.
+        // SAFETY: a new game.
         let mut g = unsafe { Box::from_raw(liero_game_new()) };
-        unsafe { liero_game_set_context(&mut g, settings.as_ptr(), Some(tc.clone()), LieroSoundOut::NONE) };
+        liero_game_set_context(&mut g, Some(settings), Some(tc.clone()), LieroSoundOut::NONE);
         // SAFETY: the reader fills in `g`, which outlives it here.
         let o = unsafe { liero_replay_reader_begin(r, &mut g) };
         if let Some(e) = thrown(&o) {
@@ -419,10 +419,12 @@ fn record_game(
             for c in changes.iter().filter(|c| c.tick == tick) {
                 // As when the options menu is opened during a game.
                 liero_replay_writer_unfocus(writer);
-                let s = &mut game.settings_box().data;
-                s.loading_time = c.loading_time;
-                s.max_bonuses = c.max_bonuses;
-                s.blood = c.blood;
+                {
+                    let s = &mut game.settings_box().data;
+                    s.loading_time = c.loading_time;
+                    s.max_bonuses = c.max_bonuses;
+                    s.blood = c.blood;
+                }
                 if let Some(name) = c.worm_name {
                     game.worm_at(1).expect("no second worm").settings_mut().name = name.as_bytes().to_vec();
                 }

@@ -40,15 +40,20 @@ fn controller(a: &mut LieroApp) -> &mut crate::controllers::LieroController {
 
 /// A new local controller with the menus' settings and TC.
 fn new_local(a: &mut LieroApp) -> Box<crate::controllers::LieroController> {
-    // SAFETY: the menus' settings and TC are valid while C++ runs.
-    unsafe { Box::from_raw(liero_local_controller_new(a.menu_settings(), a.menu_tc())) }
+    // SAFETY: the app has a host while it runs.
+    unsafe { Box::from_raw(liero_local_controller_new(a.shared_settings(), a.menu_tc())) }
 }
 
 /// A level made from the menus' settings with the app's random numbers.
 fn new_level(a: &mut LieroApp) -> Box<LieroLevelBox> {
     let mut level = LieroLevelBox::new();
     let tc = crate::app::menu_tc_data();
-    level.generate_from_settings(&tc.level_common(), &tc.palette_colors, a.menu_settings(), &mut a.rand);
+    level.generate_from_settings(
+        &tc.level_common(),
+        &tc.palette_colors,
+        &crate::app::menu_settings(),
+        &mut a.rand,
+    );
     level
 }
 
@@ -79,18 +84,19 @@ fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
     match selection {
         MAIN_NEW_GAME => {
             let mut new = new_local(a);
-            let s = a.menu_settings();
             // SAFETY: the controller's level is valid while it is.
             let old = a
                 .controller
                 .as_deref_mut()
-                .and_then(|c| unsafe { liero_controller_level(c).as_mut() });
-            match old {
-                Some(old)
-                    if !s.data.regenerate_level
+                .and_then(|c| unsafe { liero_controller_level(c).as_mut() })
+                .filter(|old| {
+                    let s = crate::app::menu_settings();
+                    !s.data.regenerate_level
                         && s.data.random_level == old.data().old_random_level
-                        && s.level_file == old.old_level_file() =>
-                {
+                        && s.level_file == old.old_level_file()
+                });
+            match old {
+                Some(old) => {
                     // Take level and palette from old game
                     swap_level(&mut new, old);
                 }
@@ -108,7 +114,7 @@ fn after_menu(a: &mut LieroApp, selection: i32) -> i32 {
         }
         MAIN_QUIT => return LIERO_AFTER_MENU_QUIT,
         MAIN_REPLAY => {
-            if a.menu_settings().data.single_screen_replay {
+            if crate::app::menu_settings().data.single_screen_replay {
                 a.primary_single = true;
             }
         }

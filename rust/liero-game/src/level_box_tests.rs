@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::material::{LIERO_MATERIAL_BACKGROUND, LIERO_MATERIAL_DIRT};
-use crate::settings::{liero_settings_box_free, liero_settings_box_new};
+use crate::settings::liero_settings_box_new;
 
 /// A TC's level tables: colour 0 is background, 5 dirt, the rest nothing.
 struct Tables {
@@ -112,14 +112,15 @@ fn the_settings_level_file_gets_lev_added_and_falls_back_to_random() {
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(format!("{dir}/MAP.LEV"), lev(&[])).unwrap();
     let t = Tables::new();
-    unsafe {
-        let s = &mut *liero_settings_box_new();
+    {
+        let shared = liero_settings_box_new();
+        let mut s = shared.borrow_mut();
         s.data.random_level = false;
         s.data.shadow = false;
         s.level_file = format!("{dir}/MAP").into_bytes();
         let mut l = LieroLevelBox::new();
         let mut rand = LieroRand::new(3);
-        l.generate_from_settings(&t.common(), &exepal(), s, &mut rand);
+        l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
         assert!(l.pixels().iter().all(|&p| p == 5));
         assert_eq!(
             (l.data().old_random_level, l.old_level_file()),
@@ -129,7 +130,7 @@ fn the_settings_level_file_gets_lev_added_and_falls_back_to_random() {
 
         // A file that isn't there makes a random level.
         s.level_file = format!("{dir}/NONE").into_bytes();
-        l.generate_from_settings(&t.common(), &exepal(), s, &mut rand);
+        l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
         assert_ne!(rand, LieroRand::new(3));
         assert!(l.pixels().iter().any(|&p| p != 5));
 
@@ -137,11 +138,10 @@ fn the_settings_level_file_gets_lev_added_and_falls_back_to_random() {
         // becomes floor.
         std::fs::write(format!("{dir}/BG.LEV"), vec![0; PIXELS]).unwrap();
         s.level_file = format!("{dir}/BG.LEV").into_bytes();
-        l.generate_from_settings(&t.common(), &exepal(), s, &mut rand);
+        l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
         assert_eq!(l.pixels()[PIXELS - 1], 0);
         s.data.shadow = true;
-        l.generate_from_settings(&t.common(), &exepal(), s, &mut rand);
+        l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
         assert_eq!((l.pixels()[PIXELS - 1], l.pixels()[0]), (13, 0));
-        liero_settings_box_free(s);
     }
 }

@@ -4,7 +4,6 @@ use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::fs::Node;
 use crate::menus::{liero_menus_new, LieroMenusHooks};
 use crate::settings::liero_settings_box_new;
-use crate::shared::Shared;
 
 unsafe fn zero() -> u32 {
     0
@@ -22,8 +21,7 @@ unsafe fn set(_: bool) {}
 fn set_up() -> &'static mut LieroApp {
     let a = app();
     if a.settings.is_none() {
-        // SAFETY: the new box's reference is the app's.
-        a.settings = Some(unsafe { Shared::adopt(liero_settings_box_new()) });
+        a.settings = Some(liero_settings_box_new());
     }
     if !a.has_tc() {
         a.set_tc(Some(
@@ -43,7 +41,7 @@ fn set_up() -> &'static mut LieroApp {
     }
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    let mut c = unsafe { Box::from_raw(liero_local_controller_new(a.menu_settings(), a.menu_tc())) };
+    let mut c = unsafe { Box::from_raw(liero_local_controller_new(a.shared_settings(), a.menu_tc())) };
     let level = unsafe { &mut *liero_controller_level(&mut c) };
     level.resize(504, 350);
     level.set_pixels(&vec![7; 504 * 350], |_| Default::default());

@@ -187,8 +187,7 @@ pub(super) const HOOKS: LieroGameHooks = LieroGameHooks {
 pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Option<&[&str; 5]>) -> Box<LieroGame> {
     let d = tc_data(tc);
     let settings = LieroSettingsBox::defaults();
-    // SAFETY: nothing else has the new settings yet.
-    let s = unsafe { &mut *settings.as_ptr() };
+    let mut s = settings.borrow_mut();
     s.data.game_mode = game_mode;
     for ws in &s.worms {
         let mut ws = ws.borrow_mut();
@@ -201,6 +200,8 @@ pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Opt
     // 0 gives bots random weapons; 2 keeps the ones set above. (The
     // default, 1, would keep the menu's default weapons: all bazookas.)
     s.data.select_bot_weapons = if weapons.is_some() { 2 } else { 0 };
+    let worms = s.worms.clone();
+    drop(s);
 
     // Everything random comes from these seeds. Weapon selection and the
     // level use the app's random numbers, as in the menus.
@@ -211,10 +212,15 @@ pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Opt
     // controller makes them, with settings and a TC that it keeps.
     unsafe {
         let mut game = Box::from_raw(liero_game_new());
-        crate::game_box::liero_game_set_context(&mut game, settings.as_ptr(), Some(tc.clone()), LieroSoundOut::NONE);
+        crate::game_box::liero_game_set_context(
+            &mut game,
+            Some(settings.clone()),
+            Some(tc.clone()),
+            LieroSoundOut::NONE,
+        );
         game.data_mut().rand.seed(seed.wrapping_mul(7919));
 
-        for (i, ws) in s.worms.iter().enumerate() {
+        for (i, ws) in worms.iter().enumerate() {
             let id = liero_game_new_worm(&mut game, Some(ws.clone()));
             let ws = ws.borrow();
             liero_game_list_worm(&mut game, Some(id));
@@ -249,14 +255,14 @@ pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Opt
         );
 
         let mut level = LieroLevelBox::new();
-        level.generate_from_settings(&d.level_common(), &d.palette_colors, s, &mut a.rand);
+        level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
 
         let ws = liero_weapsel_start(&mut game);
         liero_weapsel_finish(&mut *ws);
         liero_weapsel_free(ws);
 
-        let lives = s.data.lives;
+        let lives = settings.borrow().data.lives;
         for w in game.listed_worms() {
             w.expect("an empty place among the game's worms").data.lives = lives;
         }

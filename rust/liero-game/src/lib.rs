@@ -44,7 +44,6 @@ pub mod screen;
 pub mod selector;
 pub mod settings;
 pub mod sfx;
-pub mod shared;
 pub mod shell;
 pub mod stats;
 pub mod tc;

@@ -276,10 +276,8 @@ impl LieroMenus {
         &mut self.menus[kind as usize].0
     }
 
-    // The app's settings and TC outlive the call they're used in, and
-    // nothing else holds them meanwhile.
     fn settings<'a>(&self) -> &'a mut LieroSettingsData {
-        &mut crate::app::app().menu_settings().data
+        &mut app_settings().data
     }
 
     fn worm<'a>(&self) -> &'a mut LieroWormSettingsBox {
@@ -565,7 +563,7 @@ impl LieroMenus {
         let st = self.settings();
         let tc = self.tc();
         let (value, regen) = if !st.random_level {
-            let file = &crate::app::app().menu_settings().level_file;
+            let file = &app_settings().level_file;
             let mut v = b"\"".to_vec();
             v.extend(base_name(file));
             v.push(b'"');
@@ -982,13 +980,21 @@ impl LieroMenus {
     }
 }
 
+/// The app's settings. The menus keep references into them, and into the
+/// worms' settings, between calls (`Behavior`), which a `RefMut` can't, so
+/// they go around the `RefCell`s until menu items become an enum of what
+/// they edit (step 9 of phase 4 in PLAN.md).
+fn app_settings<'a>() -> &'a mut crate::settings::LieroSettingsBox {
+    // SAFETY: the app holds the settings for as long as the menus use them,
+    // and nothing else borrows them while the menus run: the game behind the
+    // menu doesn't tick, and the menus' callers hold no borrow of them.
+    unsafe { &mut *crate::app::app().settings.as_ref().expect("no menu settings").as_ptr() }
+}
+
 /// `player`'s settings in the app's.
 fn worm_settings<'a>(player: i32) -> &'a mut LieroWormSettingsBox {
-    // SAFETY: the app's settings hold them. The menus keep references into
-    // them between calls (`Behavior::Weapon`), which a `RefMut` can't, so
-    // they go around the `RefCell`; nothing else borrows them while the
-    // menus run, as the game behind the menu doesn't tick.
-    unsafe { &mut *crate::app::app().menu_settings().worms[player as usize].as_ptr() }
+    // SAFETY: as for `app_settings`.
+    unsafe { &mut *app_settings().worms[player as usize].as_ptr() }
 }
 
 /// C's `atoi` on digits: the leading number, saturating as a 32-bit int.
@@ -1116,8 +1122,7 @@ mod tests {
     /// The menus with their items, on the app's new settings.
     fn menus() -> LieroMenus {
         let a = crate::app::app();
-        // SAFETY: the new box's reference is the app's.
-        a.settings = Some(unsafe { crate::shared::Shared::adopt(crate::settings::liero_settings_box_new()) });
+        a.settings = Some(crate::settings::liero_settings_box_new());
         a.files.settings_node = crate::fs::Node::new(b"config/LIERO.CFG");
         DOUBLE_RES.set(Box::leak(Box::new(false)));
         CYCLES.set(0);

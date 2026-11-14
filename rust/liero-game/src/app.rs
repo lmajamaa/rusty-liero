@@ -13,10 +13,9 @@ use crate::controllers::LieroController;
 use crate::keys::LieroKeys;
 use crate::rand::{LieroRand, LIERO_RAND_DEFAULT_SEED};
 use crate::renderer::{LieroBitmapBox, LieroRenderer};
-use crate::settings::LieroSettingsBox;
-use crate::shared::Shared;
+use crate::settings::{LieroSettingsBox, SharedSettings};
 use crate::tc::{tc_data, LieroTcData, SharedTc};
-use std::cell::Ref;
+use std::cell::{Ref, RefMut};
 
 pub struct LieroApp {
     /// For things that don't affect the game: the menus, weapon selection
@@ -37,7 +36,7 @@ pub struct LieroApp {
     pub menu_cycles: u32,
     /// The menus' settings (`gfx.settings`), which can be another game's
     /// than the one played. Loading options replaces them.
-    pub settings: Option<Shared<LieroSettingsBox>>,
+    pub settings: Option<SharedSettings>,
     /// The TC the menus and new games use (`gfx.common`), set with
     /// `set_tc`.
     tc: Option<SharedTc>,
@@ -59,11 +58,9 @@ pub struct LieroApp {
 }
 
 impl LieroApp {
-    /// The menus' settings.
-    pub fn menu_settings(&self) -> &'static mut LieroSettingsBox {
-        // SAFETY: the app's reference keeps the box, and the game runs on
-        // one thread.
-        unsafe { &mut *self.settings.as_ref().expect("no menu settings").as_ptr() }
+    /// The menus' settings, to share with a game.
+    pub fn shared_settings(&self) -> SharedSettings {
+        self.settings.clone().expect("no menu settings")
     }
 }
 
@@ -89,6 +86,12 @@ impl LieroApp {
 pub(crate) fn menu_font() -> crate::text::LieroFont<'static> {
     let a: &'static LieroApp = app();
     crate::text::LieroFont { chars: &a.font }
+}
+
+/// The menus' settings. Panics if there are none, or if they're borrowed.
+pub fn menu_settings() -> RefMut<'static, LieroSettingsBox> {
+    let a: &'static LieroApp = app();
+    a.settings.as_ref().expect("no menu settings").borrow_mut()
 }
 
 /// The menus' TC's data. Panics if there's no TC.
@@ -161,15 +164,9 @@ pub fn liero_app_frozen(a: &mut LieroApp, spectator: bool) -> *mut LieroBitmapBo
     }
 }
 
-/// Makes `s` (or none, if null) the menus' settings, taking a reference to
-/// it.
-///
-/// # Safety
-/// `s` is a valid box, or null.
-pub unsafe fn liero_app_set_settings(a: &mut LieroApp, s: *mut LieroSettingsBox) {
-    unsafe {
-        a.settings = (!s.is_null()).then(|| Shared::retain(s));
-    }
+/// Makes `s` (or none) the menus' settings.
+pub fn liero_app_set_settings(a: &mut LieroApp, s: Option<SharedSettings>) {
+    a.settings = s;
 }
 
 /// The renderer the screen shows.

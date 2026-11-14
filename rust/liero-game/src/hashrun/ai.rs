@@ -78,11 +78,13 @@ const CONFIGS: [AiConfig; 6] = [
 
 fn run_ai_game(out: &mut Out, tc: &SharedTc, c: &AiConfig, interval: i32) {
     let mut game = set_up_game(tc, c.seed, c.game_mode, c.weapons);
-    let s = &mut game.settings_box().data;
-    s.ai_frames = c.ai_frames;
-    s.ai_mutations = c.ai_mutations;
-    s.ai_parallels = c.ai_parallels;
-    s.ai_traces = c.ai_traces;
+    {
+        let s = &mut game.settings_box().data;
+        s.ai_frames = c.ai_frames;
+        s.ai_mutations = c.ai_mutations;
+        s.ai_parallels = c.ai_parallels;
+        s.ai_traces = c.ai_traces;
+    }
 
     // As the app makes them for controller 2.
     for i in 0..2 {
