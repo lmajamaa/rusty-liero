@@ -1,6 +1,6 @@
 # Counts unsafe Rust and FFI patterns in the pull request and its base branch,
 # and posts the comparison as a comment on the pull request, updating the same
-# comment on later pushes. In phase 4 of PLAN.md the counts only go down, so
+# comment on later pushes. In phase 4 of docs/001-rust-port.md the counts only go down, so
 # the check fails if one went up.
 #
 # The counting job runs the pull request's code with a read-only token. Only
