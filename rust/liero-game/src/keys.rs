@@ -231,7 +231,7 @@ pub fn sdl_to_dos(scancode: i32) -> u32 {
     usize::try_from(scancode)
         .ok()
         .and_then(|i| SDL_TO_DOS.get(i))
-        .map_or(UNKNOWN_DOS_KEY, |&k| k as u32)
+        .map_or(UNKNOWN_DOS_KEY, |&k| u32::from(k))
 }
 
 pub fn is_extended(key: u32) -> bool {
@@ -320,13 +320,13 @@ impl Keys {
     pub fn frame_skip(&mut self, frame_skip: &mut i32, inverse: &mut bool) {
         let mut skip = 0;
         for (i, n) in (sc::N1..=sc::N0).enumerate() {
-            if self.test_once(sdl_to_dos(n as i32)) {
+            if self.test_once(sdl_to_dos(i32::from(n))) {
                 skip = 1 << i;
                 break;
             }
         }
         if skip != 0 {
-            *inverse = self.test(sdl_to_dos(sc::RCTRL as i32)) || self.test(sdl_to_dos(sc::LCTRL as i32));
+            *inverse = self.test(sdl_to_dos(i32::from(sc::RCTRL))) || self.test(sdl_to_dos(i32::from(sc::LCTRL)));
             *frame_skip = skip;
         }
     }
@@ -365,7 +365,7 @@ pub fn joy_axis(buttons: &mut JoyButtons, joy: i32, axis: u8, value: i16) -> Key
     let base = 4 + 2 * axis as usize;
     // Axes past 13 would be past the buttons; C wrote past the array.
     if base + 1 < buttons.len() {
-        let value = value as i32;
+        let value = i32::from(value);
         change(buttons, &mut out, joy, base, value > JOY_AXIS_THRESHOLD);
         change(buttons, &mut out, joy, base + 1, value < -JOY_AXIS_THRESHOLD);
     }
@@ -398,11 +398,11 @@ pub fn joy_button(buttons: &mut JoyButtons, joy: i32, button: u8, pressed: bool)
 
 /// The key a joystick event gives when waiting for a key to bind, or 0.
 pub fn joy_axis_key(joy: i32, axis: u8, value: i16) -> u32 {
-    let value = value as i32;
+    let value = i32::from(value);
     if value > JOY_AXIS_THRESHOLD {
-        joy_key(joy, 4 + 2 * axis as i32)
+        joy_key(joy, 4 + 2 * i32::from(axis))
     } else if value < -JOY_AXIS_THRESHOLD {
-        joy_key(joy, 5 + 2 * axis as i32)
+        joy_key(joy, 5 + 2 * i32::from(axis))
     } else {
         0
     }
@@ -482,7 +482,7 @@ pub fn sdl_to_dos_keysym(scancode: i32) -> u32 {
 
 /// The key for a gamepad button, after the hat's 16 keys.
 pub fn joy_button_key(joy: i32, button: u8) -> u32 {
-    joy_key(joy, 16 + button as i32)
+    joy_key(joy, 16 + i32::from(button))
 }
 
 pub const KEY_NAMES: [&[u8]; 177] = [
@@ -710,7 +710,7 @@ mod tests {
             assert!(w[0].0 < w[1].0);
         }
         for &(d, s) in DOS_KEYS.iter() {
-            assert!((d as u32) < MAX_DOS_KEY && d != 0 && d as u32 != UNKNOWN_DOS_KEY);
+            assert!(u32::from(d) < MAX_DOS_KEY && d != 0 && u32::from(d) != UNKNOWN_DOS_KEY);
             seen[s as usize] += 1;
         }
         for (s, &n) in seen.iter().enumerate() {
@@ -741,8 +741,8 @@ mod tests {
             (231, 89), // Right GUI
             (511, 89),
         ] {
-            assert_eq!(sdl_to_dos(s as i32), d, "{s}");
-            assert_eq!(sdl_to_dos_keysym(s as i32), d, "{s}");
+            assert_eq!(sdl_to_dos(i32::from(s)), d, "{s}");
+            assert_eq!(sdl_to_dos_keysym(i32::from(s)), d, "{s}");
         }
         for s in [-1, -1000, 512, 513, i32::MAX, i32::MIN] {
             assert_eq!(sdl_to_dos(s), 89);
@@ -752,21 +752,21 @@ mod tests {
     #[test]
     fn key_state() {
         let mut k = Keys::default();
-        assert_eq!(k.event(sc::A as i32, true), 0x1e);
+        assert_eq!(k.event(i32::from(sc::A), true), 0x1e);
         assert!(k.test(0x1e));
-        assert!(k.test_sdl(sc::A as i32));
+        assert!(k.test_sdl(i32::from(sc::A)));
         assert!(k.test_once(0x1e));
         assert!(!k.test(0x1e));
         k.toggle(5);
-        assert!(k.test_sdl_once(sc::N1 as i32 + 3));
+        assert!(k.test_sdl_once(i32::from(sc::N1) + 3));
         assert!(!k.test(5));
         k.set(176, true);
         assert!(k.test(176));
         // Past the DOS keys: ignored.
         k.set(177, true);
         assert!(!k.test(177));
-        k.event(sc::LEFT as i32, true);
-        k.release_sdl(sc::LEFT as i32);
+        k.event(i32::from(sc::LEFT), true);
+        k.release_sdl(i32::from(sc::LEFT));
         assert!(!k.test(0xa3));
         // Unknown keys go to 89.
         k.event(231, true);
@@ -782,18 +782,18 @@ mod tests {
         k.frame_skip(&mut skip, &mut inv);
         assert_eq!((skip, inv), (1, false));
         // The first of several wins and only it is released.
-        k.event(sc::N1 as i32 + 2, true);
-        k.event(sc::N0 as i32, true);
-        k.event(sc::RCTRL as i32, true);
+        k.event(i32::from(sc::N1) + 2, true);
+        k.event(i32::from(sc::N0), true);
+        k.event(i32::from(sc::RCTRL), true);
         k.frame_skip(&mut skip, &mut inv);
         assert_eq!((skip, inv), (4, true));
-        k.event(sc::RCTRL as i32, false);
+        k.event(i32::from(sc::RCTRL), false);
         k.frame_skip(&mut skip, &mut inv);
         assert_eq!((skip, inv), (512, false));
-        k.event(sc::LCTRL as i32, true);
+        k.event(i32::from(sc::LCTRL), true);
         k.frame_skip(&mut skip, &mut inv);
         assert_eq!((skip, inv), (512, false));
-        k.event(sc::N1 as i32 + 8, true);
+        k.event(i32::from(sc::N1) + 8, true);
         k.frame_skip(&mut skip, &mut inv);
         assert_eq!((skip, inv), (256, true));
     }

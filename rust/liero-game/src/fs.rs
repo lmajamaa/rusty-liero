@@ -88,7 +88,7 @@ fn u32_at(d: &[u8], at: usize) -> Option<u32> {
 fn crc32(data: &[u8]) -> u32 {
     let mut c = !0u32;
     for &b in data {
-        c ^= b as u32;
+        c ^= u32::from(b);
         for _ in 0..8 {
             c = if c & 1 != 0 { (c >> 1) ^ 0xedb8_8320 } else { c >> 1 };
         }

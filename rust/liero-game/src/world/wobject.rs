@@ -376,7 +376,7 @@ impl<'a> World<'a> {
                     self.hurt_sound(i);
                 }
 
-                if w.worm_collide && self.rand(w.worm_collide as u32) == 0 {
+                if w.worm_collide && self.rand(u32::from(w.worm_collide)) == 0 {
                     if w.worm_explode {
                         explode = true;
                     }

@@ -29,7 +29,7 @@ impl Rand {
     }
 
     pub fn next_u32(&mut self) -> u32 {
-        let t = MULTIPLIER * self.x as u64 + self.c as u64;
+        let t = MULTIPLIER * u64::from(self.x) + u64::from(self.c);
         self.c = (t >> 32) as u32;
         self.x = t as u32;
         self.x
@@ -37,7 +37,7 @@ impl Rand {
 
     /// Number in [0, max).
     pub fn below(&mut self, max: u32) -> u32 {
-        ((self.next_u32() as u64 * max as u64) >> 32) as u32
+        ((u64::from(self.next_u32()) * u64::from(max)) >> 32) as u32
     }
 
     /// Number in [min, max). Needs min <= max; C++'s `Rand` checks that before
@@ -48,7 +48,7 @@ impl Rand {
 
     /// Number in [0, max).
     pub fn double_below(&mut self, max: f64) -> f64 {
-        self.next_u32() as f64 / 4294967296.0 * max
+        f64::from(self.next_u32()) / 4294967296.0 * max
     }
 }
 
@@ -104,7 +104,7 @@ mod tests {
         let mut r = Rand::new(4242);
         let mut h = Fnv::new();
         for i in 0..100_000u32 {
-            h.add64(r.double_below(1.0 + i as f64 * 0.37).to_bits());
+            h.add64(r.double_below(1.0 + f64::from(i) * 0.37).to_bits());
         }
         assert_eq!(h.finish(), EXPECTED_DOUBLE);
     }

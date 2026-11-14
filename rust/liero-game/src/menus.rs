@@ -699,7 +699,7 @@ impl Menus {
     ) -> BoxedScreen {
         unsafe fn keep(ctx: *mut c_void, text: &[u8]) {
             unsafe {
-                *(ctx as *mut Vec<u8>) = text.to_vec();
+                *ctx.cast::<Vec<u8>>() = text.to_vec();
             }
         }
         let mut typed = Box::new(text.to_vec());

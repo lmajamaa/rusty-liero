@@ -124,23 +124,23 @@ fn now_ms() -> f64 {
 fn scancode(code: &str) -> i32 {
     let letter_or_digit = |rest: &str, base: i32| {
         let c = rest.as_bytes();
-        (c.len() == 1).then(|| base + c[0] as i32)
+        (c.len() == 1).then(|| base + i32::from(c[0]))
     };
     if let Some(n) = code
         .strip_prefix("Key")
-        .and_then(|r| letter_or_digit(r, 4 - b'A' as i32))
+        .and_then(|r| letter_or_digit(r, 4 - i32::from(b'A')))
     {
         return n;
     }
     if let Some(d) = code
         .strip_prefix("Digit")
-        .and_then(|r| letter_or_digit(r, -(b'0' as i32)))
+        .and_then(|r| letter_or_digit(r, -i32::from(b'0')))
     {
         return if d == 0 { 39 } else { 29 + d };
     }
     if let Some(d) = code
         .strip_prefix("Numpad")
-        .and_then(|r| letter_or_digit(r, -(b'0' as i32)))
+        .and_then(|r| letter_or_digit(r, -i32::from(b'0')))
     {
         return if d == 0 { 98 } else { 88 + d };
     }

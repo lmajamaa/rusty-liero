@@ -53,7 +53,7 @@ impl ControllerData {
     /// `inverse_frame_skip`, one every `frame_skip` frames.
     pub fn ticks(&self) -> i32 {
         if self.inverse_frame_skip {
-            (self.cycles % self.frame_skip == 0) as i32
+            i32::from(self.cycles % self.frame_skip == 0)
         } else {
             self.frame_skip
         }

@@ -100,7 +100,7 @@ pub fn cos_sin_table() -> [IVec2; COS_SIN_ENTRIES] {
         // overflows 64 bits for some angles; it wraps around as in the C++
         // version, and the table depends on that.
         let mut num = Fp {
-            s: xf as i64,
+            s: i64::from(xf),
             bits: scale_bits,
         };
         let mut t: i64 = 1;
@@ -111,7 +111,7 @@ pub fn cos_sin_table() -> [IVec2; COS_SIN_ENTRIES] {
                 t += 1;
                 num.s /= t;
                 num.reduce(31);
-                num.s = num.s.wrapping_mul(xf as i64);
+                num.s = num.s.wrapping_mul(i64::from(xf));
                 num.bits += scale_bits;
             }
 
@@ -146,8 +146,8 @@ mod tests {
     #[test]
     fn isqrt_exact_squares_and_neighbours() {
         for n in [0u32, 1, 2, 3, 255, 256, 65535, 65536, 0xffff_ffff] {
-            let r = isqrt(n) as u64;
-            assert!(r * r <= n as u64 && (r + 1) * (r + 1) > n as u64, "{n}");
+            let r = u64::from(isqrt(n));
+            assert!(r * r <= u64::from(n) && (r + 1) * (r + 1) > u64::from(n), "{n}");
         }
     }
 

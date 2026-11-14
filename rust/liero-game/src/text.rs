@@ -34,7 +34,7 @@ impl Str {
 }
 
 fn digit(v: i32) -> u8 {
-    (b'0' as i32).wrapping_add(v) as u8
+    i32::from(b'0').wrapping_add(v) as u8
 }
 
 /// "MM:SS" from seconds: `timeToString`.

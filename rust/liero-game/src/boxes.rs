@@ -266,7 +266,7 @@ mod tests {
 
     unsafe fn keep(ctx: *mut c_void, text: &[u8]) {
         unsafe {
-            *(ctx as *mut Vec<u8>) = text.to_vec();
+            *ctx.cast::<Vec<u8>>() = text.to_vec();
         }
     }
 
@@ -289,7 +289,7 @@ mod tests {
         let mut frames = 0;
         for _ in 0..100 {
             let t = s.tick(&mut crate::app::App::new(), host);
-            frames += t.shown as usize;
+            frames += usize::from(t.shown);
             if let Some(result) = t.closed() {
                 return (result, frames);
             }

@@ -58,7 +58,7 @@ impl<'a> Bitmap<'a> {
     /// Index of (x, y) as C++'s `getPixel` computed it, or None outside the
     /// buffer, where C++ would have written to other memory.
     fn index(&self, x: i32, y: i32) -> Option<usize> {
-        let i = (y as i64) * (self.pitch as i64) + x as i64;
+        let i = i64::from(y) * i64::from(self.pitch) + i64::from(x);
         (0 <= i && (i as usize) < self.pixels.len()).then_some(i as usize)
     }
 
@@ -531,9 +531,9 @@ pub fn palette_activate(pal: &Palette, real: &mut Palette) {
 /// Applies `f` to every component of `pal`.
 fn map_components(pal: &mut Palette, f: impl Fn(i32) -> i32) {
     for c in pal.iter_mut() {
-        c.r = f(c.r as i32) as u8;
-        c.g = f(c.g as i32) as u8;
-        c.b = f(c.b as i32) as u8;
+        c.r = f(i32::from(c.r)) as u8;
+        c.g = f(i32::from(c.g)) as u8;
+        c.b = f(i32::from(c.b)) as u8;
     }
 }
 

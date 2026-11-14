@@ -63,9 +63,9 @@ const SC_W: i32 = sc_letter(b'w');
 /// typing search reads.
 fn key_code(sc: i32) -> i32 {
     match sc {
-        SC_A..=SC_Z => b'a' as i32 + (sc - SC_A),
-        SC_1..=SC_9 => b'1' as i32 + (sc - SC_1),
-        SC_0 => b'0' as i32,
+        SC_A..=SC_Z => i32::from(b'a') + (sc - SC_A),
+        SC_1..=SC_9 => i32::from(b'1') + (sc - SC_1),
+        SC_0 => i32::from(b'0'),
         // SDL_SCANCODE_TO_KEYCODE
         _ => sc | 1 << 30,
     }

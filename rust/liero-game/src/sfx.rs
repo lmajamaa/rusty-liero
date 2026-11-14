@@ -43,10 +43,10 @@ pub fn samples_from_tc(data: &[u8], out: &mut [i16]) {
     let Some((&first, rest)) = data.split_first() else {
         return;
     };
-    let mut prev = (first as i8) as i32 * 30;
+    let mut prev = i32::from(first as i8) * 30;
     out[0] = prev as i16;
     for (j, &b) in rest.iter().enumerate() {
-        let cur = (b as i8) as i32 * 30;
+        let cur = i32::from(b as i8) * 30;
         out[1 + 2 * j] = ((prev + cur) / 2) as i16;
         out[2 + 2 * j] = cur as i16;
         prev = cur;
@@ -95,8 +95,8 @@ impl Channel {
         let scaler = (self.volumes & 0x1fff) as i32;
         for o in out.iter_mut().skip(rel_begin) {
             // An empty sound has nothing to read; C read past its end.
-            let s = sound.get((self.sound_pos >> 32) as usize).copied().unwrap_or(0) as i32;
-            let mixed = (*o as i32 + ((s * scaler) >> 12)).clamp(-32768, 32767);
+            let s = i32::from(sound.get((self.sound_pos >> 32) as usize).copied().unwrap_or(0));
+            let mixed = (i32::from(*o) + ((s * scaler) >> 12)).clamp(-32768, 32767);
             *o = mixed as i16;
             self.sound_pos = self.sound_pos.wrapping_add(self.stride);
             if (self.sound_pos >> 32) as u32 >= len {

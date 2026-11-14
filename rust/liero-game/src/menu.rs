@@ -310,9 +310,9 @@ impl Menu {
         } else {
             item.color
         };
-        font.text(scr, string, x + 2, y + 1, c as i32, 1);
+        font.text(scr, string, x + 2, y + 1, i32::from(c), 1);
         if item.has_value {
-            font.text(scr, value, value_x + 2, y + 1, c as i32, 1);
+            font.text(scr, value, value_x + 2, y + 1, i32::from(c), 1);
         }
     }
 
@@ -581,7 +581,7 @@ pub fn levenshtein(a: &[u8], b: &[u8]) -> u32 {
     }
     for x in 1..=b.len() {
         for y in 1..=a.len() {
-            let c = (!a[y - 1].eq_ignore_ascii_case(&b[x - 1])) as u32;
+            let c = u32::from(!a[y - 1].eq_ignore_ascii_case(&b[x - 1]));
             m[x * w + y] = (m[(x - 1) * w + y] + 1)
                 .min(m[x * w + y - 1] + 1)
                 .min(m[(x - 1) * w + y - 1] + c);
@@ -597,7 +597,7 @@ pub fn closest_name<'n>(names: impl IntoIterator<Item = &'n [u8]>, search: &[u8]
     let mut best = None;
     let mut minimum = f64::MAX;
     for (i, name) in names.into_iter().enumerate() {
-        let dist = levenshtein(name, search) as f64 / name.len() as f64;
+        let dist = f64::from(levenshtein(name, search)) / name.len() as f64;
         if dist < minimum {
             best = Some(i);
             minimum = dist;
@@ -668,9 +668,9 @@ pub fn draw_input_box(scr: &Bitmap, frozen: &Bitmap, font: &Font, text: &[u8], x
     // `frozen`, so this is a width, not an x. Skip it where it would read
     // outside `frozen`.
     let copy_w = clr_x + 10 + width;
-    let start = y as i64 * frozen.pitch as i64 + clr_x as i64;
-    let end = start + 7 * frozen.pitch as i64 + copy_w as i64;
-    if start >= 0 && end <= frozen.pitch as i64 * frozen.h as i64 {
+    let start = i64::from(y) * i64::from(frozen.pitch) + i64::from(clr_x);
+    let end = start + 7 * i64::from(frozen.pitch) + i64::from(copy_w);
+    if start >= 0 && end <= i64::from(frozen.pitch) * i64::from(frozen.h) {
         let mem: Vec<u8> = frozen.pixels[start as usize..end as usize]
             .iter()
             .map(|p| p.get())

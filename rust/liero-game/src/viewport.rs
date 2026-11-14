@@ -315,7 +315,7 @@ impl<'a> Painter<'a> {
         for &ch in text {
             let c = ch.wrapping_sub(b'A');
             if c < 26 {
-                if let Some(mem) = set.sprite(c as i32) {
+                if let Some(mem) = set.sprite(i32::from(c)) {
                     blit_image(scr, mem, x, y, set.width, set.height, set.width);
                 }
             }
@@ -440,12 +440,13 @@ impl<'a> Painter<'a> {
             _ => return,
         };
 
-        let state = self
-            .worms
-            .iter()
-            .enumerate()
-            .any(|(i, w)| i as i32 != pos && ahead(w.timer, worm.timer)) as usize;
-        let color = STATE_COLOURS[(holder != Some(worm.index)) as usize][state];
+        let state = usize::from(
+            self.worms
+                .iter()
+                .enumerate()
+                .any(|(i, w)| i as i32 != pos && ahead(w.timer, worm.timer)),
+        );
+        let color = STATE_COLOURS[usize::from(holder != Some(worm.index))][state];
 
         // C++ calls drawText(scr, str, len, x, y, color) with these four
         // numbers, so 5 * scale is the length and the rest are shifted by one.
@@ -907,8 +908,8 @@ impl Viewport {
     fn scroll_to(&mut self, dest_x: i32, dest_y: i32, steps: i32) {
         for _ in 0..steps {
             let (tx, ty) = (dest_x - self.center_x, dest_y - self.center_y);
-            self.x += (self.x < tx) as i32 - (self.x > tx) as i32;
-            self.y += (self.y < ty) as i32 - (self.y > ty) as i32;
+            self.x += i32::from(self.x < tx) - i32::from(self.x > tx);
+            self.y += i32::from(self.y < ty) - i32::from(self.y > ty);
         }
     }
 

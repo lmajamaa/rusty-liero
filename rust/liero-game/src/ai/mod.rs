@@ -22,7 +22,7 @@ struct Fnv(u64);
 impl Fnv {
     fn add(&mut self, v: u32) {
         for i in 0..4 {
-            self.0 ^= ((v >> (i * 8)) & 0xff) as u64;
+            self.0 ^= u64::from((v >> (i * 8)) & 0xff);
             self.0 = self.0.wrapping_mul(0x100000001b3);
         }
     }
@@ -56,7 +56,7 @@ fn hash(ai: &FollowAi) -> u64 {
     ] {
         f.int(v);
     }
-    f.add(ai.testing as u32);
+    f.add(u32::from(ai.testing));
 
     f.add(ai.cand_plan.len() as u32);
     for p in &ai.cand_plan {
@@ -91,7 +91,7 @@ fn hash(ai: &FollowAi) -> u64 {
     for p in &ai.evaluate_positions {
         f.int(p.x);
         f.int(p.y);
-        f.add(p.color as u32);
+        f.add(u32::from(p.color));
     }
     f.0
 }

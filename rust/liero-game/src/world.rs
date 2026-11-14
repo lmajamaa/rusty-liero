@@ -399,7 +399,7 @@ impl<'a> World<'a> {
                                 x: itof(cx),
                                 y: itof(cy),
                             },
-                            pix as i32,
+                            i32::from(pix),
                             owner_idx,
                             fired_by,
                         );

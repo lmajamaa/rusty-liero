@@ -375,7 +375,7 @@ fn stretch(src: &[f64], len: usize) -> Vec<f64> {
             i += 1;
             cum -= len;
         }
-        *out = if c != 0 { sum / c as f64 } else { 0.0 };
+        *out = if c != 0 { sum / f64::from(c) } else { 0.0 };
     }
     v
 }
@@ -432,7 +432,7 @@ fn percent(nom: i32, den: i32) -> String {
     if den == 0 {
         String::new()
     } else {
-        format!("{:.2}%", nom as f64 * 100.0 / den as f64)
+        format!("{:.2}%", f64::from(nom) * 100.0 / f64::from(den))
     }
 }
 
@@ -456,7 +456,7 @@ impl StatsScreen {
         let graph_width = (pane_width - 20).max(0) as usize;
 
         let worm_damages = [0, 1].map(|i| {
-            let damage: Vec<f64> = stats.worms[i].frame_stats.iter().map(|f| f.damage as f64).collect();
+            let damage: Vec<f64> = stats.worms[i].frame_stats.iter().map(|f| f64::from(f.damage)).collect();
             let mut d = stretch(&damage, graph_width);
             cumulative(&mut d);
             normalize(&mut d, 50.0);
@@ -467,7 +467,7 @@ impl StatsScreen {
         let diff: Vec<f64> = a
             .iter()
             .zip(b)
-            .map(|(a, b)| a.total_hp as f64 - b.total_hp as f64)
+            .map(|(a, b)| f64::from(a.total_hp) - f64::from(b.total_hp))
             .collect();
         let mut total_hp_diff = stretch(&diff, graph_width);
         normalize(&mut total_hp_diff, 100.0);
@@ -714,7 +714,7 @@ impl StatsScreen {
             offs_x: 0,
             y: 0,
         };
-        let offs_x = (pane * -(scene.render_res_x as f64)).floor() as i32;
+        let offs_x = (pane * -f64::from(scene.render_res_x)).floor() as i32;
         let offs_y = offset as i32;
 
         r.pane(0, offs_x, offs_y, |r| {
@@ -954,7 +954,7 @@ mod tests {
         let mut h = Fnv::new();
         let mut add = |s: String| {
             for b in s.bytes() {
-                h.add(b as u32);
+                h.add(u32::from(b));
             }
             h.add(0xffff_ffff);
         };

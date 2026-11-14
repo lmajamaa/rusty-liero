@@ -29,7 +29,7 @@ fn zip(files: &[(&str, &[u8], bool)], bad_crc: bool) -> Vec<u8> {
     let mut central = Vec::new();
     for (i, (name, data, deflate)) in files.iter().enumerate() {
         let body = if *deflate { deflated(data) } else { data.to_vec() };
-        let crc = crc32(data) ^ (bad_crc && i == 0) as u32;
+        let crc = crc32(data) ^ u32::from(bad_crc && i == 0);
         let method: u16 = if *deflate { 8 } else { 0 };
         let offset = out.len() as u32;
         let attr: u32 = if name.ends_with('/') { 0x10 } else { 0 };

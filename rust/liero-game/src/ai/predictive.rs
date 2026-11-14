@@ -222,8 +222,8 @@ impl InputContext {
         }
 
         let other = games.worm(g, worm.index ^ 1);
-        self.facing_enemy = ((other.pos[0] > worm.pos[0]) as i32 == worm.direction) as i32;
-        self.ninjarope_out = worm.rope_out as i32;
+        self.facing_enemy = i32::from(i32::from(other.pos[0] > worm.pos[0]) == worm.direction);
+        self.ninjarope_out = i32::from(worm.rope_out);
         cs
     }
 }
@@ -422,20 +422,20 @@ fn total_health(w: &AiWorm) -> f64 {
     if !w.visible {
         h = w.settings_health;
     }
-    w.lives as f64 * (w.settings_health as f64 * 5.0 / 4.0) + h as f64
+    f64::from(w.lives) * (f64::from(w.settings_health) * 5.0 / 4.0) + f64::from(h)
 }
 
 fn total_health_norm(w: &AiWorm) -> f64 {
-    total_health(w) * 100.0 / w.settings_health as f64
+    total_health(w) * 100.0 / f64::from(w.settings_health)
 }
 
 fn total_ammo_worth(w: &AiWorm) -> f64 {
     let mut worth = 0.0;
     for weap in &w.weapons {
         if weap.loading_left > 0 {
-            worth += 3.0 - (weap.loading_left as f64 * 3.0) / weap.loading_time as f64;
+            worth += 3.0 - (f64::from(weap.loading_left) * 3.0) / f64::from(weap.loading_time);
         } else {
-            worth += 3.0 + (weap.ammo as f64 * 3.0) / weap.max_ammo as f64;
+            worth += 3.0 + (f64::from(weap.ammo) * 3.0) / f64::from(weap.max_ammo);
         }
     }
     worth
@@ -454,7 +454,7 @@ fn worm_distance(from: &AiWorm, to: &AiWorm) -> i32 {
 
 /// An aiming angle, fixed point 0..128, in radians.
 fn langle_to_radians(langle: i32) -> f64 {
-    ((langle + itof(32)) & (itof(128) - 1)) as f64 * 0.04908738521234052 / 65536.0
+    f64::from((langle + itof(32)) & (itof(128) - 1)) * 0.04908738521234052 / 65536.0
 }
 
 fn normalized_langle(langle: i32) -> i32 {
@@ -478,8 +478,8 @@ fn radian_diff(a: f64, b: f64) -> f64 {
 
 /// How far `from` aims from `to`, past a tolerance.
 fn aiming_diff_worms(from: &AiWorm, to: &AiWorm) -> f64 {
-    let xo = (to.pos[0] - from.pos[0]).abs() as f64;
-    let yo = (to.pos[1] - from.pos[1]) as f64;
+    let xo = f64::from((to.pos[0] - from.pos[0]).abs());
+    let yo = f64::from(to.pos[1] - from.pos[1]);
     let angle_to_target = if xo != 0.0 || yo != 0.0 { yo.atan2(xo) } else { 0.0 };
     let current_aim = langle_to_radians(normalized_langle(from.aiming_angle));
     let tolerance = PI / 8.0;
@@ -502,8 +502,8 @@ fn obstacle(level: &LevelView, x: f64, y: f64) -> i32 {
 
 /// Rock and dirt between two pixels, sampled every 2 pixels.
 fn obstacles_between(level: &LevelView, from: (i32, i32), to: (i32, i32)) -> i32 {
-    let org = (from.0 as f64, from.1 as f64);
-    let mut dir = (to.0 as f64, to.1 as f64);
+    let org = (f64::from(from.0), f64::from(from.1));
+    let mut dir = (f64::from(to.0), f64::from(to.1));
     dir.0 -= org.0;
     dir.1 -= org.1;
     let l = (dir.0 * dir.0 + dir.1 * dir.1).sqrt();
@@ -521,10 +521,10 @@ fn obstacles_between(level: &LevelView, from: (i32, i32), to: (i32, i32)) -> i32
 
 /// The same between two worms, from their fixed-point positions.
 fn obstacles_worms(level: &LevelView, from: &AiWorm, to: &AiWorm) -> i32 {
-    let org_x = from.pos[0] as f64 / 65536.0;
-    let org_y = from.pos[1] as f64 / 65536.0;
-    let mut dir_x = (to.pos[0] - from.pos[0]) as f64 / 65536.0;
-    let mut dir_y = (to.pos[1] - from.pos[1]) as f64 / 65536.0;
+    let org_x = f64::from(from.pos[0]) / 65536.0;
+    let org_y = f64::from(from.pos[1]) / 65536.0;
+    let mut dir_x = f64::from(to.pos[0] - from.pos[0]) / 65536.0;
+    let mut dir_y = f64::from(to.pos[1] - from.pos[1]) / 65536.0;
     let l = (dir_x * dir_x + dir_y * dir_y).sqrt();
     dir_x /= l;
     dir_y /= l;
@@ -559,8 +559,8 @@ fn simple_ai<W: Games>(games: &mut W, g: W::G, place: i32, initial: u32) {
         set(&mut cs, FIRE, true);
     } else {
         let current_aim = langle_to_radians(normalized_langle(worm.aiming_angle));
-        let dir_x = (target.pos[0] - worm.pos[0]).abs() as f64;
-        let dir_y = (target.pos[1] - worm.pos[1]) as f64;
+        let dir_x = f64::from((target.pos[0] - worm.pos[0]).abs());
+        let dir_y = f64::from(target.pos[1] - worm.pos[1]);
         let angle_to_target = dir_y.atan2(dir_x);
         let tolerance = 2.0 * PI / 32.0;
         let aim_diff = radian_diff(angle_to_target, current_aim);
@@ -699,8 +699,8 @@ impl FollowAi {
             if (path.0 != orgl.0 && path.1 != orgl.1) && obstacles_between(level, orgl, path) > 4 {
                 break;
             }
-            dir_x = (path.0 - orgl.0).abs() as f64;
-            dir_y = (path.1 - orgl.1) as f64;
+            dir_x = f64::from((path.0 - orgl.0).abs());
+            dir_y = f64::from(path.1 - orgl.1);
         }
 
         let current_aim = langle_to_radians(normalized_langle(from.aiming_angle));
@@ -729,10 +729,10 @@ impl FollowAi {
                 optimal_dist = 50.0;
             }
             let g = self.dlevel.cells[c as usize].g;
-            let d = max((g as f64 / 256.0 - optimal_dist).abs() - 10.0, 0.0) * weights.distance;
+            let d = max((f64::from(g) / 256.0 - optimal_dist).abs() - 10.0, 0.0) * weights.distance;
             len *= psigmoid(d / 100.0);
         } else {
-            len += worm_distance(&me_w, &target_w) as f64 / 10.0;
+            len += f64::from(worm_distance(&me_w, &target_w)) / 10.0;
         }
 
         if me_org.steerable_count == 1 {
@@ -742,8 +742,8 @@ impl FollowAi {
                 let mg = self.dlevel.cells[missile_cell as usize].g;
                 let wg = self.dlevel.cells[wc as usize].g;
                 if mg < wg {
-                    let closer = wg as f64 - mg as f64;
-                    score += psigmoid(closer / wg as f64) * 100.0 * weights.missile;
+                    let closer = f64::from(wg) - f64::from(mg);
+                    score += psigmoid(closer / f64::from(wg)) * 100.0 * weights.missile;
                 }
             }
         }
@@ -784,13 +784,13 @@ impl FollowAi {
                 score += 50.0;
             }
             if info.contender_idx == Some(me_w.index) {
-                score += info.contender_frames as f64 * 30.0 / 70.0;
+                score += f64::from(info.contender_frames) * 30.0 / 70.0;
             }
             if info.holder_idx == Some(target_w.index) {
                 score -= 50.0;
             }
             if info.contender_idx == Some(target_w.index) {
-                score -= info.contender_frames as f64 * 30.0 / 70.0;
+                score -= f64::from(info.contender_frames) * 30.0 / 70.0;
             }
         }
         score
@@ -849,7 +849,7 @@ impl FollowAi {
             match ms {
                 Mutation::Identity => {}
                 Mutation::Range(start, stop) => {
-                    if i as u64 >= start as u64 && (i as u64) < stop as u64 {
+                    if i as u64 >= u64::from(start) && (i as u64) < u64::from(stop) {
                         plan[i] = self.model.random(&context, &mut self.rand);
                     }
                 }

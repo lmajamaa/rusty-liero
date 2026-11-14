@@ -724,7 +724,7 @@ pub fn read_frame<S: Source + ?Sized>(
             0..=0x7f => {
                 for (i, (f, _)) in worms.iter_mut().enumerate() {
                     let state = if i == 0 { first } else { r.0.get()? };
-                    f.control_states = (state as u32 ^ f.prev_control_states) & 0x7f;
+                    f.control_states = (u32::from(state) ^ f.prev_control_states) & 0x7f;
                 }
                 return Ok(read);
             }

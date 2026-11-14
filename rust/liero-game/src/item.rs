@@ -142,7 +142,7 @@ impl<'a> ItemBehavior<'a> {
                 if !self.allow_entry {
                     return (v, ItemAction::default());
                 }
-                let digits = 1 + (self.max as f64).log10().floor() as i32;
+                let digits = 1 + f64::from(self.max).log10().floor() as i32;
                 let a = ItemAction {
                     enter_digits: digits,
                     ..Default::default()

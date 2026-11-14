@@ -225,7 +225,7 @@ impl Tc {
             w.laser_sight = r(5) == 0;
             w.launch_sound = r(sounds);
             w.leave_shell_delay = r(30);
-            w.leave_shells = (r(1) == 0) as i32;
+            w.leave_shells = i32::from(r(1) == 0);
             w.loading_time = r(70 * 3);
             w.loop_anim = r(10) == 0;
             w.loop_sound = 0;

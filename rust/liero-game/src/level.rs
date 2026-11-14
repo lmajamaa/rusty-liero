@@ -199,18 +199,18 @@ impl Level<'_> {
         self.set_pixel(0, 0, (rand.below(7) + 12) as u8, common);
 
         for y in 1..height {
-            let v = ((rand.below(7) + 12) + self.pixel(0, y - 1) as u32) >> 1;
+            let v = ((rand.below(7) + 12) + u32::from(self.pixel(0, y - 1))) >> 1;
             self.set_pixel(0, y, v as u8, common);
         }
 
         for x in 1..width {
-            let v = ((rand.below(7) + 12) + self.pixel(x - 1, 0) as u32) >> 1;
+            let v = ((rand.below(7) + 12) + u32::from(self.pixel(x - 1, 0))) >> 1;
             self.set_pixel(x, 0, v as u8, common);
         }
 
         for y in 1..height {
             for x in 1..width {
-                let v = (self.pixel(x - 1, y) as u32 + self.pixel(x, y - 1) as u32 + rand.below(8) + 12) / 3;
+                let v = (u32::from(self.pixel(x - 1, y)) + u32::from(self.pixel(x, y - 1)) + rand.below(8) + 12) / 3;
                 self.set_pixel(x, y, v as u8, common);
             }
         }
@@ -243,7 +243,7 @@ impl Level<'_> {
                     if src > 0 {
                         let pix = self.pixel(mx, my);
                         if pix > 176 && pix < 180 {
-                            self.set_pixel(mx, my, ((src as u32 + pix as u32) / 2) as u8, common);
+                            self.set_pixel(mx, my, ((u32::from(src) + u32::from(pix)) / 2) as u8, common);
                         } else {
                             self.set_pixel(mx, my, src, common);
                         }
@@ -439,7 +439,7 @@ impl Level<'_> {
                     *vdist += 1;
                 }
 
-                filled -= !free(self.materials[m - w as usize]) as i32;
+                filled -= i32::from(!free(self.materials[m - w as usize]));
             }
         }
 
@@ -1004,8 +1004,8 @@ mod tests {
             h.add(self.width as u32);
             h.add(self.height as u32);
             for (d, m) in self.data.iter().zip(&self.materials) {
-                h.add(*d as u32);
-                h.add(m.flags as u32);
+                h.add(u32::from(*d));
+                h.add(u32::from(m.flags));
             }
         }
     }
@@ -1099,7 +1099,7 @@ mod tests {
                 let selected = level.get().select_spawn(&mut r, w, ht);
                 let pos = selected.unwrap_or(IVec2 { x: -1, y: -1 });
                 found_any |= selected.is_some();
-                h.add(selected.is_some() as u32);
+                h.add(u32::from(selected.is_some()));
                 h.add(pos.x as u32);
                 h.add(pos.y as u32);
                 hash_rand(&mut h, &r);
@@ -1121,7 +1121,7 @@ mod tests {
         l.draw_miniature(&scr, 0, 0, 3);
         let mut h = Fnv::new();
         for p in bitmap {
-            h.add(p as u32);
+            h.add(u32::from(p));
         }
         assert_eq!(h.finish(), EXPECTED_MINIATURE);
     }

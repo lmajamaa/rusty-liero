@@ -311,7 +311,7 @@ pub(super) fn hash_replay(
         add64(&mut f, hash_game(g));
         add_settings_hashes(&mut f, g, false);
     }
-    out.hash(&format!("{name}-replay-end"), ticks as i64, f);
+    out.hash(&format!("{name}-replay-end"), i64::from(ticks), f);
     eprintln!("{name}: {outcome} after {ticks} ticks");
 
     drop(reader);

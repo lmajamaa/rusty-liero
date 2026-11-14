@@ -58,7 +58,15 @@ impl World<'_> {
                         for _ in 0..11 {
                             let angle = self.rand(128) as i32;
                             let index = self.worm(i).index;
-                            self.create_nobject2(2, angle, IVec2::default(), r.pos, pix as i32, index, FiredBy::NONE);
+                            self.create_nobject2(
+                                2,
+                                angle,
+                                IVec2::default(),
+                                r.pos,
+                                i32::from(pix),
+                                index,
+                                FiredBy::NONE,
+                            );
                         }
                     }
                 }
