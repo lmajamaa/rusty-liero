@@ -1080,7 +1080,7 @@ mod tests {
         // Every field is copied.
         assert_eq!(format!("{c:?}"), format!("{a:?}"));
         c.x = 1;
-        assert_eq!(a.x, 12);
+        assert_eq!((a.x, c.x), (12, 1), "the copy changes alone");
     }
 
     fn process(vp: &mut LieroViewport, kind: i32, worms: &[LieroViewWorm]) {
