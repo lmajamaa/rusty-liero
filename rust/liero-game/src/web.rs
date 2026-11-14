@@ -14,15 +14,15 @@
 //! same physical key on every layout, as SDL does natively; Emscripten's SDL
 //! went by `keyCode` instead, which differs for some keys on other layouts.
 
-use crate::app::LieroApp;
+use crate::app::App;
 use crate::app_screens::liero_main_screen;
 use crate::controllers::liero_controller_on_key;
-use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, LieroColor};
-use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, LieroKeyChanges};
+use crate::gfx::{liero_gfx_fit_screen, liero_gfx_scale_draw, liero_palette_activate, Color};
+use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, KeyChanges};
 use crate::menu_screen::LIERO_MENU_HIDDEN;
 use crate::menus::{liero_menus_load, liero_menus_new};
-use crate::screen::{liero_app_frame, liero_app_push, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack};
-use crate::sfx::{LieroMixer, LieroSoundOut};
+use crate::screen::{liero_app_frame, liero_app_push, Event, Host, Platform, ScreenStack, TypedKey};
+use crate::sfx::{Mixer, SoundOut};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -80,7 +80,7 @@ struct Shell {
     events: VecDeque<Ev>,
     /// The keys pressed since the frame's events were last read
     /// (`Gfx::keyBuf`).
-    key_buf: Vec<LieroTypedKey>,
+    key_buf: Vec<TypedKey>,
     text_input: bool,
     pads: Vec<Option<Pad>>,
     canvas: Option<HtmlCanvasElement>,
@@ -88,7 +88,7 @@ struct Shell {
     /// The canvas's pixels, as RGBA.
     rgba: Vec<u8>,
     prev_mag: i32,
-    mixer: Option<*mut LieroMixer>,
+    mixer: Option<*mut Mixer>,
     audio: Option<AudioContext>,
     /// When the game started, in `performance.now()` milliseconds.
     start_ms: f64,
@@ -332,7 +332,7 @@ fn poll_gamepads() {
 // ---- Events, as `Gfx::processEvent`
 
 /// Passes a key to the app's controller, if it has one.
-fn send_key(a: &mut LieroApp, to_controller: bool, key: u32, down: bool) {
+fn send_key(a: &mut App, to_controller: bool, key: u32, down: bool) {
     if !to_controller || key == 0 {
         return;
     }
@@ -342,7 +342,7 @@ fn send_key(a: &mut LieroApp, to_controller: bool, key: u32, down: bool) {
     }
 }
 
-fn send_keys(a: &mut LieroApp, to_controller: bool, changes: LieroKeyChanges) {
+fn send_keys(a: &mut App, to_controller: bool, changes: KeyChanges) {
     for i in 0..changes.count as usize {
         send_key(a, to_controller, changes.keys[i], changes.states[i]);
     }
@@ -350,7 +350,7 @@ fn send_keys(a: &mut LieroApp, to_controller: bool, changes: LieroKeyChanges) {
 
 /// The app's view of gamepad `joy`'s buttons.
 /// `f` on pad `joy`'s button states as the app sees them, if it's there.
-fn on_pad(joy: i32, f: impl FnOnce(&mut JoyButtons) -> LieroKeyChanges) -> Option<LieroKeyChanges> {
+fn on_pad(joy: i32, f: impl FnOnce(&mut JoyButtons) -> KeyChanges) -> Option<KeyChanges> {
     shell(|s| {
         s.pads
             .get_mut(joy as usize)
@@ -359,13 +359,13 @@ fn on_pad(joy: i32, f: impl FnOnce(&mut JoyButtons) -> LieroKeyChanges) -> Optio
     })
 }
 
-fn process_event(a: &mut LieroApp, ev: Ev, to_controller: bool) {
+fn process_event(a: &mut App, ev: Ev, to_controller: bool) {
     match ev {
         Ev::Key { down, scancode, sym } => {
             if down {
                 shell(|s| {
                     if s.key_buf.len() < 32 {
-                        s.key_buf.push(LieroTypedKey {
+                        s.key_buf.push(TypedKey {
                             sym,
                             scancode: scancode as u32,
                         });
@@ -399,7 +399,7 @@ fn next_event() -> Option<Ev> {
 }
 
 /// `Gfx::process`: every event that came, into the key states.
-fn process(a: &mut LieroApp, to_controller: bool) {
+fn process(a: &mut App, to_controller: bool) {
     shell(|s| s.key_buf.clear());
     while let Some(ev) = next_event() {
         process_event(a, ev, to_controller);
@@ -422,7 +422,7 @@ fn set_video_mode(double_res: bool) {
 }
 
 /// `Gfx::setFullscreen`: the setting, and the browser's full screen.
-fn set_fullscreen(a: &mut LieroApp, on: bool, update_menu: bool) {
+fn set_fullscreen(a: &mut App, on: bool, update_menu: bool) {
     if on == crate::shell::liero_shell_fullscreen(a) {
         return;
     }
@@ -457,7 +457,7 @@ fn on_fullscreen_change() {
 
 /// The browser left full screen: the setting goes off, so the menu shows it
 /// and F11 turns it back on in one press.
-fn left_fullscreen(a: &mut LieroApp) {
+fn left_fullscreen(a: &mut App) {
     if crate::shell::liero_shell_fullscreen(a) {
         crate::shell::liero_shell_set_fullscreen(a, false);
         a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
@@ -465,11 +465,11 @@ fn left_fullscreen(a: &mut LieroApp) {
 }
 
 /// `Gfx::draw` and `flip`: the primary renderer's frame on the canvas.
-fn show_frame(a: &LieroApp) {
+fn show_frame(a: &App) {
     let r = if a.primary_single { &*a.single } else { &*a.play };
     let bmp = r.bmp.view();
     let d = &r.data;
-    let mut real = [LieroColor::default(); 256];
+    let mut real = [Color::default(); 256];
     liero_palette_activate(&d.pal, &mut real);
     // RGBA in memory, as ImageData has it.
     let pal32: [u32; 256] = std::array::from_fn(|i| u32::from_le_bytes([real[i].r, real[i].g, real[i].b, 255]));
@@ -501,7 +501,7 @@ fn show_frame(a: &LieroApp) {
 
 // ---- What the screens call
 
-fn mixer() -> *mut LieroMixer {
+fn mixer() -> *mut Mixer {
     shell(|s| s.mixer).unwrap_or(std::ptr::null_mut())
 }
 
@@ -513,10 +513,10 @@ fn ticks_now() -> u32 {
 struct WebPlatform;
 
 impl Platform for WebPlatform {
-    fn poll_event(&self, app: &mut LieroApp) -> Option<LieroEvent> {
+    fn poll_event(&self, app: &mut App) -> Option<Event> {
         let ev = next_event()?;
         process_event(app, ev, false);
-        let mut e = LieroEvent::default();
+        let mut e = Event::default();
         match ev {
             Ev::Key { down, scancode, .. } => {
                 e.key_down = down;
@@ -541,11 +541,11 @@ impl Platform for WebPlatform {
         Some(e)
     }
 
-    fn process(&self, app: &mut LieroApp) {
+    fn process(&self, app: &mut App) {
         process(app, false);
     }
 
-    fn process_controller(&self, app: &mut LieroApp) {
+    fn process_controller(&self, app: &mut App) {
         process(app, true);
     }
 
@@ -557,7 +557,7 @@ impl Platform for WebPlatform {
         shell(|s| s.text_input = on);
     }
 
-    fn typed_keys(&self) -> Vec<LieroTypedKey> {
+    fn typed_keys(&self) -> Vec<TypedKey> {
         shell(|s| s.key_buf.clone())
     }
 
@@ -592,8 +592,8 @@ impl Platform for WebPlatform {
         .into_bytes()
     }
 
-    fn sound(&self) -> LieroSoundOut {
-        LieroSoundOut {
+    fn sound(&self) -> SoundOut {
+        SoundOut {
             mixer: mixer(),
             report: None,
         }
@@ -604,7 +604,7 @@ impl Platform for WebPlatform {
         set_video_mode(on);
     }
 
-    fn set_fullscreen(&self, app: &mut LieroApp, on: bool) {
+    fn set_fullscreen(&self, app: &mut App, on: bool) {
         set_fullscreen(app, on, false);
     }
 
@@ -612,7 +612,7 @@ impl Platform for WebPlatform {
         (js_sys::Math::random() * 4_294_967_296.0) as u32
     }
 
-    fn show(&self, app: &LieroApp) {
+    fn show(&self, app: &App) {
         show_frame(app);
     }
 
@@ -623,7 +623,7 @@ impl Platform for WebPlatform {
 // ---- Sound
 
 /// Starts Web Audio pulling the mixer, or None if the browser won't.
-fn start_audio(mixer: *mut LieroMixer) -> Option<AudioContext> {
+fn start_audio(mixer: *mut Mixer) -> Option<AudioContext> {
     let opts = AudioContextOptions::new();
     opts.set_sample_rate(SAMPLE_RATE);
     let ctx = AudioContext::new_with_context_options(&opts).ok()?;
@@ -793,7 +793,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
         s.start_ms = now_ms();
     });
 
-    let mut app = LieroApp::new();
+    let mut app = App::new();
     let a = &mut app;
     // TODO from the C++: better seeding.
     a.rand.seed((js_sys::Date::now() / 1000.0) as u32);
@@ -815,7 +815,7 @@ pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> 
     }
 
     // Kept for the page's life.
-    let mixer: *mut LieroMixer = Box::into_raw(Box::default());
+    let mixer: *mut Mixer = Box::into_raw(Box::default());
     match start_audio(mixer) {
         Some(audio) => shell(|s| {
             s.mixer = Some(mixer);
@@ -850,7 +850,7 @@ type FrameFn = Closure<dyn FnMut()>;
 /// Runs the screens on `app` every animation frame (as the C++ shell's
 /// `emscripten_set_main_loop` did), with the 14 ms steps due, until they
 /// close; then saves the settings, as the game does when it ends.
-fn run_frames(stack: ScreenStack, host: Host, mut app: LieroApp) {
+fn run_frames(stack: ScreenStack, host: Host, mut app: App) {
     let mut stack = Some(stack);
     let next: Rc<RefCell<Option<FrameFn>>> = Rc::new(RefCell::new(None));
     let again = next.clone();

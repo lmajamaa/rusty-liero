@@ -246,23 +246,23 @@ pub fn joy_key(joy: i32, button: i32) -> u32 {
 
 /// Which DOS keys are down.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LieroKeys {
+pub struct Keys {
     pub down: [bool; LIERO_MAX_DOS_KEY as usize],
 }
 
-impl Default for LieroKeys {
+impl Default for Keys {
     fn default() -> Self {
-        LieroKeys {
+        Keys {
             down: [false; LIERO_MAX_DOS_KEY as usize],
         }
     }
 }
 
-impl LieroKeys {
+impl Keys {
     // Keys past the DOS ones are ignored (C indexed past the array).
     /// Every key up.
     pub fn clear(&mut self) {
-        *self = LieroKeys::default();
+        *self = Keys::default();
     }
 
     /// Whether the DOS key for an SDL key is down.
@@ -334,13 +334,13 @@ impl LieroKeys {
 
 /// Key presses and releases that a joystick event made.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroKeyChanges {
+pub struct KeyChanges {
     pub count: u32,
     pub keys: [u32; 4],
     pub states: [bool; 4],
 }
 
-impl LieroKeyChanges {
+impl KeyChanges {
     fn push(&mut self, key: u32, state: bool) {
         self.keys[self.count as usize] = key;
         self.states[self.count as usize] = state;
@@ -351,7 +351,7 @@ impl LieroKeyChanges {
 /// A joystick's button states, the hat, axes and buttons as above.
 pub type JoyButtons = [bool; LIERO_MAX_JOY_BUTTONS as usize];
 
-fn change(buttons: &mut JoyButtons, out: &mut LieroKeyChanges, joy: i32, button: usize, state: bool) {
+fn change(buttons: &mut JoyButtons, out: &mut KeyChanges, joy: i32, button: usize, state: bool) {
     if buttons[button] != state {
         buttons[button] = state;
         out.push(joy_key(joy, button as i32), state);
@@ -360,8 +360,8 @@ fn change(buttons: &mut JoyButtons, out: &mut LieroKeyChanges, joy: i32, button:
 
 /// An axis moving: its two directions as buttons 4 + 2 * axis (positive)
 /// and the one after (negative).
-pub fn joy_axis(buttons: &mut JoyButtons, joy: i32, axis: u8, value: i16) -> LieroKeyChanges {
-    let mut out = LieroKeyChanges::default();
+pub fn joy_axis(buttons: &mut JoyButtons, joy: i32, axis: u8, value: i16) -> KeyChanges {
+    let mut out = KeyChanges::default();
     let base = 4 + 2 * axis as usize;
     // Axes past 13 would be past the buttons; C wrote past the array.
     if base + 1 < buttons.len() {
@@ -373,10 +373,10 @@ pub fn joy_axis(buttons: &mut JoyButtons, joy: i32, axis: u8, value: i16) -> Lie
 }
 
 /// The hat moving: up, down, left and right as buttons 0 to 3.
-pub fn joy_hat(buttons: &mut JoyButtons, joy: i32, value: u8) -> LieroKeyChanges {
+pub fn joy_hat(buttons: &mut JoyButtons, joy: i32, value: u8) -> KeyChanges {
     // SDL_HAT_UP, DOWN, LEFT and RIGHT.
     const BITS: [u8; 4] = [1, 4, 8, 2];
-    let mut out = LieroKeyChanges::default();
+    let mut out = KeyChanges::default();
     for (b, bit) in BITS.iter().enumerate() {
         change(buttons, &mut out, joy, b, value & bit != 0);
     }
@@ -385,8 +385,8 @@ pub fn joy_hat(buttons: &mut JoyButtons, joy: i32, value: u8) -> LieroKeyChanges
 
 /// A button going down or up: button 16 + `button`, reported even when
 /// unchanged.
-pub fn joy_button(buttons: &mut JoyButtons, joy: i32, button: u8, pressed: bool) -> LieroKeyChanges {
-    let mut out = LieroKeyChanges::default();
+pub fn joy_button(buttons: &mut JoyButtons, joy: i32, button: u8, pressed: bool) -> KeyChanges {
+    let mut out = KeyChanges::default();
     let b = 16 + button as usize;
     // Buttons past 15 would be past the array; C wrote past it.
     if let Some(s) = buttons.get_mut(b) {
@@ -417,7 +417,7 @@ pub fn joy_hat_key(joy: i32, value: u8) -> u32 {
 
 /// One worm's controls and states for `liero_local_controller_key`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroWormKeys {
+pub struct WormKeys {
     /// The key for each control: up, down, left, right, fire, change,
     /// jump and dig.
     pub controls: *const u32,
@@ -684,7 +684,7 @@ pub fn key_name(key: u32) -> Vec<u8> {
 /// # Safety
 /// Each worm's `controls` points to `control_count` controls, and its
 /// `states` and `clean` are valid.
-pub unsafe fn local_controller_key(worms: &[LieroWormKeys], control_count: usize, key: i32, key_state: bool) -> bool {
+pub unsafe fn local_controller_key(worms: &[WormKeys], control_count: usize, key: i32, key_state: bool) -> bool {
     unsafe {
         let controls: Vec<&[u32]> = worms
             .iter()
@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn key_state() {
-        let mut k = LieroKeys::default();
+        let mut k = Keys::default();
         assert_eq!(k.event(sc::A as i32, true), 0x1e);
         assert!(k.test(0x1e));
         assert!(k.test_sdl(sc::A as i32));
@@ -772,12 +772,12 @@ mod tests {
         k.event(231, true);
         assert!(k.test(89));
         k.clear();
-        assert_eq!(k, LieroKeys::default());
+        assert_eq!(k, Keys::default());
     }
 
     #[test]
     fn frame_skip() {
-        let mut k = LieroKeys::default();
+        let mut k = Keys::default();
         let (mut skip, mut inv) = (1, false);
         k.frame_skip(&mut skip, &mut inv);
         assert_eq!((skip, inv), (1, false));
@@ -864,12 +864,12 @@ mod tests {
         let mut clean = [0u32; 2];
         let key = |k: u32, s: bool, states: &mut [u32; 2], clean: &mut [u32; 2]| unsafe {
             let worms = [
-                LieroWormKeys {
+                WormKeys {
                     controls: w0.as_ptr(),
                     states: &mut states[0],
                     clean: &mut clean[0],
                 },
-                LieroWormKeys {
+                WormKeys {
                     controls: w1.as_ptr(),
                     states: &mut states[1],
                     clean: &mut clean[1],

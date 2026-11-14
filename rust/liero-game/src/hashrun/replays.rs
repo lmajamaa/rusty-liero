@@ -6,20 +6,20 @@
 use super::game::hash_game;
 use super::games::{bot_tick, set_up_game, tc_data, GAME_OF_TAG, HOLDAZONE, HOOKS, KILL_EM_ALL};
 use super::{Fnv, Out};
-use crate::app::LieroApp;
+use crate::app::App;
 use crate::controllers::liero_game_focus;
 use crate::deflate::{inflate, Deflater, Inflated};
 use crate::fs::Node;
-use crate::game::LieroRect;
+use crate::game::Rect;
 use crate::game_box::{
     liero_game_add_viewport, liero_game_assign, liero_game_clear_viewports, liero_game_clone, liero_game_new,
-    liero_game_set_context, LieroGame,
+    liero_game_set_context, Game,
 };
-use crate::renderer::LieroRenderer;
-use crate::replay::{LieroReplayStatus, LIERO_REPLAY_VERSION};
-use crate::replay_file::{LieroReplayOutcome, LieroReplayReader, LieroReplayWriter};
-use crate::settings::{LieroSettingsBox, LieroWormSettingsBox};
-use crate::sfx::LieroSoundOut;
+use crate::renderer::Renderer;
+use crate::replay::{ReplayStatus, LIERO_REPLAY_VERSION};
+use crate::replay_file::{ReplayOutcome, ReplayReader, ReplayWriter};
+use crate::settings::{SettingsBox, WormSettingsBox};
+use crate::sfx::SoundOut;
 use crate::tc::SharedTc;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use liero_data::gash::Hash;
@@ -64,7 +64,7 @@ fn add64(f: &mut Fnv, v: u64) {
 }
 
 /// `Settings::updateHash`, which leaves the settings as written.
-fn settings_hash(b: &mut LieroSettingsBox) -> Hash {
+fn settings_hash(b: &mut SettingsBox) -> Hash {
     let mut s = b.settings();
     let h = data::archive_hash(&mut s);
     b.set_settings(&s);
@@ -72,7 +72,7 @@ fn settings_hash(b: &mut LieroSettingsBox) -> Hash {
 }
 
 /// `WormSettings::updateHash`.
-fn worm_hash(b: &mut LieroWormSettingsBox) -> Hash {
+fn worm_hash(b: &mut WormSettingsBox) -> Hash {
     let mut w = b.worm();
     let h = data::worm_hash(&mut w);
     b.set_worm(&w);
@@ -80,7 +80,7 @@ fn worm_hash(b: &mut LieroWormSettingsBox) -> Hash {
 }
 
 /// The game's settings and worms' settings hashes.
-fn add_settings_hashes(f: &mut Fnv, game: &mut LieroGame, with_index: bool) {
+fn add_settings_hashes(f: &mut Fnv, game: &mut Game, with_index: bool) {
     add_hash(f, &settings_hash(&mut game.settings_box()));
     if with_index {
         f.u32(game.listed_worms().count() as u32);
@@ -96,7 +96,7 @@ fn add_settings_hashes(f: &mut Fnv, game: &mut LieroGame, with_index: bool) {
 
 /// The settings, worm settings and indexes, viewports and level palette
 /// and materials, which a replay stores but `hash_game` leaves out.
-fn hash_loaded(f: &mut Fnv, game: &mut LieroGame) {
+fn hash_loaded(f: &mut Fnv, game: &mut Game) {
     add_settings_hashes(f, game, true);
 
     let vps = game.split_viewports();
@@ -142,23 +142,19 @@ fn hash_loaded(f: &mut Fnv, game: &mut LieroGame) {
 
 /// What C++ threw for an outcome: "archive error" for a checkpoint, an
 /// exception otherwise.
-fn thrown(o: &LieroReplayOutcome) -> Option<String> {
+fn thrown(o: &ReplayOutcome) -> Option<String> {
     let message = o.message;
     match o.status {
-        LieroReplayStatus::ReadError => Some(format!("exception: {message}")),
-        LieroReplayStatus::CheckError => Some(format!("archive error: {message}")),
+        ReplayStatus::ReadError => Some(format!("exception: {message}")),
+        ReplayStatus::CheckError => Some(format!("archive error: {message}")),
         // What std::vector::at threw in libc++.
-        LieroReplayStatus::OutOfRange => Some("exception: vector".into()),
+        ReplayStatus::OutOfRange => Some("exception: vector".into()),
         _ => None,
     }
 }
 
 /// `ReplayReader::playbackFrame`: false at the end of the replay.
-fn playback_frame(
-    reader: &mut LieroReplayReader,
-    game: &mut LieroGame,
-    renderer: &mut LieroRenderer,
-) -> Result<bool, String> {
+fn playback_frame(reader: &mut ReplayReader, game: &mut Game, renderer: &mut Renderer) -> Result<bool, String> {
     let o = reader.frame(game);
     if o.end {
         return Ok(false);
@@ -177,9 +173,9 @@ fn playback_frame(
 fn play_back(
     out: &mut Out,
     name: &str,
-    reader: &mut LieroReplayReader,
-    game: &mut LieroGame,
-    renderer: &mut LieroRenderer,
+    reader: &mut ReplayReader,
+    game: &mut Game,
+    renderer: &mut Renderer,
     interval: i32,
     max_ticks: i32,
     rewind_at: i32,
@@ -194,7 +190,7 @@ fn play_back(
             .data
             .stats_x = x;
     }
-    let r = |x1, y1, x2, y2| LieroRect { x1, y1, x2, y2 };
+    let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
     let w0 = game.worm_at(0).expect("no first worm").data.index;
     let w1 = game.worm_at(1).expect("no second worm").data.index;
     liero_game_add_viewport(
@@ -282,22 +278,22 @@ pub(super) fn hash_replay(
         out.hash(&format!("{name}-replay-file"), 0, f);
     }
 
-    let mut renderer = LieroRenderer::new();
+    let mut renderer = Renderer::new();
     renderer.set_render_resolution(320, 200);
     renderer.load_palette(&tc_data(tc));
 
-    let mut reader = LieroReplayReader::new(&node(path)).unwrap_or_else(|| panic!("Could not read {path}"));
+    let mut reader = ReplayReader::new(&node(path)).unwrap_or_else(|| panic!("Could not read {path}"));
     let r = &mut reader;
 
-    let mut game: Option<Box<LieroGame>> = None;
+    let mut game: Option<Box<Game>> = None;
     let mut ticks = 0;
     let result = (|| {
         // `beginPlayback`: a game with default settings that the replay
         // fills in.
-        let settings = LieroSettingsBox::defaults();
+        let settings = SettingsBox::defaults();
         // SAFETY: a new game.
         let mut g = unsafe { Box::from_raw(liero_game_new()) };
-        liero_game_set_context(&mut g, Some(settings), Some(tc.clone()), LieroSoundOut::NONE);
+        liero_game_set_context(&mut g, Some(settings), Some(tc.clone()), SoundOut::NONE);
         let o = r.begin(&mut g);
         if let Some(e) = thrown(&o) {
             return Err(e);
@@ -354,7 +350,7 @@ struct SettingsChange {
 }
 
 /// Starts a bot game as the bot games do and runs it `ticks` ticks.
-fn bot_game(a: &mut LieroApp, tc: &SharedTc, seed: u32, game_mode: u32, ticks: i32) -> Box<LieroGame> {
+fn bot_game(a: &mut App, tc: &SharedTc, seed: u32, game_mode: u32, ticks: i32) -> Box<Game> {
     let mut game = set_up_game(a, tc, seed, game_mode, None);
     let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
@@ -370,7 +366,7 @@ fn bot_game(a: &mut LieroApp, tc: &SharedTc, seed: u32, game_mode: u32, ticks: i
 /// starts; otherwise after that many ticks.
 #[allow(clippy::too_many_arguments)]
 fn record_game(
-    a: &mut LieroApp,
+    a: &mut App,
     tc: &SharedTc,
     path: &str,
     seed: u32,
@@ -380,7 +376,7 @@ fn record_game(
     version: i32,
     changes: &[SettingsChange],
 ) {
-    let mut writer = LieroReplayWriter::new(&node(path)).unwrap_or_else(|| panic!("Could not write {path}"));
+    let mut writer = ReplayWriter::new(&node(path)).unwrap_or_else(|| panic!("Could not write {path}"));
     writer.set_version(version);
     let mut game = if start_tick == 0 {
         let mut game = set_up_game(a, tc, seed, game_mode, None);
@@ -442,7 +438,7 @@ fn frame_offset(first_frame: usize, k: usize) -> usize {
     first_frame + 2 * k + 4 * k.div_ceil(1050)
 }
 
-pub fn hash_replays(a: &mut LieroApp, out: &mut Out) {
+pub fn hash_replays(a: &mut App, out: &mut Out) {
     let tc = super::tc::bundled();
     let tc = &tc;
 

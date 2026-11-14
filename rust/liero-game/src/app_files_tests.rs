@@ -3,18 +3,18 @@ use crate::menus::LIERO_SELECTOR_TC;
 
 /// An empty folder for one test, and an app with default settings and its
 /// config folder there.
-fn set_up(name: &str) -> (LieroApp, String) {
+fn set_up(name: &str) -> (App, String) {
     let dir = format!("target/app-files-tests/{name}");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let mut a = LieroApp::new();
-    a.settings = Some(LieroSettingsBox::defaults());
+    let mut a = App::new();
+    a.settings = Some(SettingsBox::defaults());
     a.files.config = Node::new(dir.as_bytes());
     (a, dir)
 }
 
 /// The full path of `rel` in the config folder.
-fn in_config(a: &LieroApp, rel: &str) -> Vec<u8> {
+fn in_config(a: &App, rel: &str) -> Vec<u8> {
     join_path(a.files.config.full_path(), rel.as_bytes())
 }
 
@@ -26,7 +26,7 @@ fn source(root: &str, choice: Choice) -> AppFiles {
 }
 
 /// The bundled TC, as the app's.
-fn with_tc(a: &mut LieroApp) {
+fn with_tc(a: &mut App) {
     a.set_tc(Some(
         crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
     ));
@@ -62,10 +62,7 @@ fn loading_options_makes_new_settings_and_shows_their_file() {
     // A file that isn't there gives the defaults, and is still shown.
     let missing = Node::new(format!("{dir}/missing.cfg").as_bytes());
     assert!(!a.load_settings(Some(&missing), false));
-    assert_eq!(
-        a.settings_mut().data.lives,
-        LieroSettingsBox::defaults().borrow().data.lives
-    );
+    assert_eq!(a.settings_mut().data.lives, SettingsBox::defaults().borrow().data.lives);
     assert_eq!(settings_path(a), in_config(a, "missing.cfg"));
     // LIERO.DAT doesn't change which file is shown.
     a.load_settings(Some(&file), true);

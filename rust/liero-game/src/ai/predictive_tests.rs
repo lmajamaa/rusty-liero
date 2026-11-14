@@ -1,6 +1,6 @@
 use super::*;
 use crate::ai::path::{FULL_HEIGHT, FULL_WIDTH};
-use crate::material::LieroMaterial;
+use crate::material::Material;
 use crate::material::LIERO_MATERIAL_BACKGROUND;
 
 #[test]
@@ -81,7 +81,7 @@ fn model_random_follows_the_weights() {
     let c = InputContext::default();
     m.trans[c.pack()] = [0.0; STATES];
     m.trans[c.pack()][17] = 1.0;
-    let mut rand = LieroRand::new(3);
+    let mut rand = Rand::new(3);
     for _ in 0..100 {
         assert_eq!(m.random(&c, &mut rand), InputState(17));
     }
@@ -96,22 +96,22 @@ fn model_random_follows_the_weights() {
 /// presses and wear the target's health down while it's being aimed at.
 #[derive(Clone, Default)]
 struct FakeGame {
-    worms: [LieroAiWorm; 2],
-    info: LieroAiGame,
+    worms: [AiWorm; 2],
+    info: AiGame,
     freed: bool,
 }
 
 struct Fake {
     games: Vec<FakeGame>,
     level: Vec<u8>,
-    materials: Vec<LieroMaterial>,
+    materials: Vec<Material>,
     clones: usize,
     frees: usize,
 }
 
 impl Fake {
     fn new() -> Self {
-        let worm = |index, x: i32, direction| LieroAiWorm {
+        let worm = |index, x: i32, direction| AiWorm {
             index,
             pos: [x << 16, 100 << 16],
             aiming_angle: 32 << 16,
@@ -121,7 +121,7 @@ impl Fake {
             health: 100,
             lives: 3,
             settings_health: 100,
-            weapons: [LieroAiWeapon {
+            weapons: [AiWeapon {
                 ammo: 5,
                 loading_time: 50,
                 max_ammo: 5,
@@ -129,7 +129,7 @@ impl Fake {
             }; 5],
             ..Default::default()
         };
-        let info = LieroAiGame {
+        let info = AiGame {
             ai_frames: 20,
             ai_mutations: 2,
             ai_traces: true,
@@ -146,7 +146,7 @@ impl Fake {
             }],
             level: vec![0; (FULL_WIDTH * FULL_HEIGHT) as usize],
             materials: vec![
-                LieroMaterial {
+                Material {
                     flags: LIERO_MATERIAL_BACKGROUND
                 };
                 256
@@ -196,11 +196,11 @@ impl Games for Fake {
         }
     }
 
-    fn game(&mut self, g: usize) -> LieroAiGame {
+    fn game(&mut self, g: usize) -> AiGame {
         self.games[g].info
     }
 
-    fn worm(&mut self, g: usize, place: i32) -> LieroAiWorm {
+    fn worm(&mut self, g: usize, place: i32) -> AiWorm {
         self.games[g].worms[place as usize]
     }
 

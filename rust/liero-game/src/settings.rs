@@ -1,6 +1,6 @@
 //! The settings the game runs with: `liero_data`'s `Settings`, with each
-//! player's worm settings shared (`LieroSettingsBox`), and a worm's settings
-//! with the profile they were kept in (`LieroWormSettingsBox`).
+//! player's worm settings shared (`SettingsBox`), and a worm's settings
+//! with the profile they were kept in (`WormSettingsBox`).
 
 use crate::fs::Node;
 use liero_data::settings::{self as data, ArchiveError, Bytes, Extensions, Settings, TextError, WormSettings};
@@ -15,7 +15,7 @@ pub const LIERO_MAX_CONTROL_EX: usize = data::MAX_CONTROL_EX;
 /// What a settings call did.
 ///
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum LieroSettingsStatus {
+pub enum SettingsStatus {
     Ok,
     /// liero.cfg didn't parse (`gvl::toml::parse_error`), or LIERO.DAT ended
     /// early.
@@ -30,11 +30,11 @@ pub enum LieroSettingsStatus {
     CheckError,
 }
 
-fn archive_status(r: Result<(), ArchiveError>) -> LieroSettingsStatus {
+fn archive_status(r: Result<(), ArchiveError>) -> SettingsStatus {
     match r {
-        Ok(()) => LieroSettingsStatus::Ok,
-        Err(ArchiveError::Read) => LieroSettingsStatus::ReadError,
-        Err(ArchiveError::Check) => LieroSettingsStatus::CheckError,
+        Ok(()) => SettingsStatus::Ok,
+        Err(ArchiveError::Read) => SettingsStatus::ReadError,
+        Err(ArchiveError::Check) => SettingsStatus::CheckError,
     }
 }
 
@@ -44,9 +44,9 @@ fn archive_status(r: Result<(), ArchiveError>) -> LieroSettingsStatus {
 /// or fails its checkpoint is loaded as far as it was read, with its
 /// colour: `status` says so, and C++ threw before putting the colour back.
 pub fn liero_worm_settings_box_load_profile(
-    s: &mut LieroWormSettingsBox,
+    s: &mut WormSettingsBox,
     node: Option<&Node>,
-    status: &mut LieroSettingsStatus,
+    status: &mut SettingsStatus,
 ) -> bool {
     let Some(node) = node else { return false };
     let Some(d) = node.read() else { return false };
@@ -59,7 +59,7 @@ pub fn liero_worm_settings_box_load_profile(
     let color = s.data.color;
     s.profile = Some(node.clone());
     s.set_worm(&worm);
-    if matches!(status, LieroSettingsStatus::Ok) {
+    if matches!(status, SettingsStatus::Ok) {
         s.data.color = color;
     }
     true
@@ -69,7 +69,7 @@ pub fn liero_worm_settings_box_load_profile(
 /// version's archive, and remembers the profile
 /// (`WormSettings::saveProfile`). False, with nothing changed, if the file
 /// can't be written.
-pub fn liero_worm_settings_box_save_profile(s: &mut LieroWormSettingsBox, node: Option<&Node>) -> bool {
+pub fn liero_worm_settings_box_save_profile(s: &mut WormSettingsBox, node: Option<&Node>) -> bool {
     let Some(node) = node else { return false };
     // Opened before the archive is made, as `toOctetWriter` was.
     if node.prepare_write().is_none() {
@@ -92,21 +92,21 @@ pub type GameSettings = Settings<SharedWormSettings>;
 /// The game's settings. A clone shares the worms' settings, as C++'s
 /// `Settings::clone` did.
 #[derive(Clone)]
-pub struct LieroSettingsBox {
+pub struct SettingsBox {
     pub data: GameSettings,
 }
 
 /// A worm's settings, shared by the settings that hold them, their clones
 /// and the game's worms (C++'s `shared_ptr<WormSettings>`). The menus
 /// change them while a game behind the menu plays with them.
-pub type SharedWormSettings = Rc<RefCell<LieroWormSettingsBox>>;
+pub type SharedWormSettings = Rc<RefCell<WormSettingsBox>>;
 
 /// The game's settings, shared by the app's menus and the games played with
 /// them (C++'s `shared_ptr<Settings>`): the menus change them while a game
 /// behind the menu plays. A replay's game has its own.
-pub type SharedSettings = Rc<RefCell<LieroSettingsBox>>;
+pub type SharedSettings = Rc<RefCell<SettingsBox>>;
 
-impl LieroSettingsBox {
+impl SettingsBox {
     /// The settings as the formats read and write them, with the worms'.
     pub(crate) fn settings(&self) -> Settings {
         let worms = self.data.worms.each_ref().map(|w| w.borrow().worm());
@@ -134,20 +134,20 @@ impl LieroSettingsBox {
     /// Reads liero.cfg (or LIERO.DAT, if `legacy`) from `node` over the
     /// settings, as far as it reads (`Settings::load` and `loadLegacy`):
     /// None if the file can't be read, else whether it read whole.
-    pub(crate) fn load(&mut self, node: &crate::fs::Node, legacy: bool) -> Option<LieroSettingsStatus> {
+    pub(crate) fn load(&mut self, node: &crate::fs::Node, legacy: bool) -> Option<SettingsStatus> {
         let bytes = node.read()?;
         let mut settings = self.settings();
         let status = if legacy {
             if data::read_legacy(&mut settings, &bytes) {
-                LieroSettingsStatus::Ok
+                SettingsStatus::Ok
             } else {
-                LieroSettingsStatus::Failed
+                SettingsStatus::Failed
             }
         } else {
             match data::read_text(&mut settings, &bytes) {
-                Ok(()) => LieroSettingsStatus::Ok,
-                Err(TextError::Parse(_)) => LieroSettingsStatus::Failed,
-                Err(TextError::MissingKey(_)) => LieroSettingsStatus::MissingKey,
+                Ok(()) => SettingsStatus::Ok,
+                Err(TextError::Parse(_)) => SettingsStatus::Failed,
+                Err(TextError::MissingKey(_)) => SettingsStatus::MissingKey,
             }
         };
         self.set_settings(&settings);
@@ -161,14 +161,14 @@ impl LieroSettingsBox {
 }
 
 /// A worm's settings (`WormSettings`), and where they were last kept.
-pub struct LieroWormSettingsBox {
+pub struct WormSettingsBox {
     pub data: WormSettings,
     /// The profile they were last loaded from or saved to, if any. A clone
     /// starts without one, as a new `WormSettings` did.
     pub profile: Option<crate::fs::Node>,
 }
 
-impl LieroWormSettingsBox {
+impl WormSettingsBox {
     /// The settings as the archives read and write them.
     pub(crate) fn worm(&self) -> WormSettings {
         self.data.clone()
@@ -193,9 +193,9 @@ impl LieroWormSettingsBox {
     }
 }
 
-impl Clone for LieroWormSettingsBox {
+impl Clone for WormSettingsBox {
     fn clone(&self) -> Self {
-        LieroWormSettingsBox {
+        WormSettingsBox {
             data: self.data.clone(),
             profile: None,
         }
@@ -204,9 +204,9 @@ impl Clone for LieroWormSettingsBox {
 
 /// Every field zero or empty, as a new C++ `WormSettings` box was before
 /// the defaults were set.
-impl Default for LieroWormSettingsBox {
+impl Default for WormSettingsBox {
     fn default() -> Self {
-        LieroWormSettingsBox {
+        WormSettingsBox {
             data: WormSettings {
                 health: 0,
                 controller: 0,
@@ -226,7 +226,7 @@ impl Default for LieroWormSettingsBox {
 /// Settings with every field zero or empty, and the worms' too; C++ then
 /// sets the defaults.
 pub fn liero_settings_box_new() -> SharedSettings {
-    Rc::new(RefCell::new(LieroSettingsBox {
+    Rc::new(RefCell::new(SettingsBox {
         data: Settings {
             ext: Extensions {
                 record_replays: false,
@@ -266,17 +266,17 @@ pub fn liero_settings_box_new() -> SharedSettings {
 }
 
 /// Player `i`'s worm settings.
-pub fn liero_settings_box_worm(s: &LieroSettingsBox, i: usize) -> SharedWormSettings {
+pub fn liero_settings_box_worm(s: &SettingsBox, i: usize) -> SharedWormSettings {
     s.data.worms[i].clone()
 }
 
 /// Makes player `i`'s worm settings `w`.
-pub fn liero_settings_box_set_worm(s: &mut LieroSettingsBox, i: usize, w: SharedWormSettings) {
+pub fn liero_settings_box_set_worm(s: &mut SettingsBox, i: usize, w: SharedWormSettings) {
     s.data.worms[i] = w;
 }
 
 /// A copy of `s` that shares its worms' settings.
-pub fn liero_settings_box_clone(s: &LieroSettingsBox) -> SharedSettings {
+pub fn liero_settings_box_clone(s: &SettingsBox) -> SharedSettings {
     Rc::new(RefCell::new(s.clone()))
 }
 
@@ -286,7 +286,7 @@ pub fn new_worm_settings() -> SharedWormSettings {
 }
 
 /// A copy of `s`, shared by no one yet.
-pub fn clone_worm_settings(s: &LieroWormSettingsBox) -> SharedWormSettings {
+pub fn clone_worm_settings(s: &WormSettingsBox) -> SharedWormSettings {
     Rc::new(RefCell::new(s.clone()))
 }
 
@@ -344,7 +344,7 @@ mod box_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("p.lpf");
         let path_bytes = path.to_str().unwrap().as_bytes().to_vec();
-        let w = LieroWormSettingsBox::default();
+        let w = WormSettingsBox::default();
         {
             let mut w = w;
             let w = &mut w;
@@ -361,9 +361,9 @@ mod box_tests {
             w.profile = None;
             w.data.health = 1;
             w.data.color = 9;
-            let mut status = LieroSettingsStatus::Failed;
+            let mut status = SettingsStatus::Failed;
             assert!(liero_worm_settings_box_load_profile(w, Some(&node), &mut status));
-            assert!(matches!(status, LieroSettingsStatus::Ok));
+            assert!(matches!(status, SettingsStatus::Ok));
             assert_eq!(
                 (w.data.health, w.data.color, &w.data.name[..]),
                 (50, 9, &b"WORMY"[..]),
@@ -388,7 +388,7 @@ mod box_tests {
     #[test]
     fn a_clone_has_no_profile() {
         let node = Node::new(b"a/b.lpf");
-        let mut w = LieroWormSettingsBox {
+        let mut w = WormSettingsBox {
             profile: Some(node.clone()),
             ..Default::default()
         };

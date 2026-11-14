@@ -4,7 +4,7 @@
 
 use super::{Fnv, Out};
 use crate::fs::Node;
-use crate::tc::{load_checked, LieroTcData, SharedTc};
+use crate::tc::{load_checked, SharedTc, TcData};
 use liero_data::model::SpriteSet;
 use liero_data::save;
 
@@ -28,7 +28,7 @@ pub fn hash_tc(out: &mut Out) {
     let tc = bundled();
     let t = tc.borrow();
     let m = t.model().expect("the TC loaded");
-    let d: &LieroTcData = t.data().expect("the TC loaded");
+    let d: &TcData = t.data().expect("the TC loaded");
 
     out.hash("tc-cfg", 0, Fnv::of(&save::tc_text(m)));
 

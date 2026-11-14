@@ -3,14 +3,14 @@
 //! chosen (`MenuScreen` and `Gfx::menuStep` in C++). It closes with the item
 //! chosen.
 //!
-//! The menus and their items are `LieroMenus` (`menus.rs`): an item may
+//! The menus and their items are `Menus` (`menus.rs`): an item may
 //! open a screen, and the screen goes on where it stopped when that one
 //! closes. The app sets the menus up and draws them (`app_menus.rs`);
 //! saving the settings is the app's (`app_files.rs`), and F8's random TC
 //! is seeded by the platform.
 
-use crate::app::LieroApp;
-use crate::menus::{LieroMenus, SharedMenus};
+use crate::app::App;
+use crate::menus::{Menus, SharedMenus};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use std::cell::RefMut;
 
@@ -94,7 +94,7 @@ struct MenuScreen {
 }
 
 impl MenuScreen {
-    fn menus(&self) -> RefMut<'_, LieroMenus> {
+    fn menus(&self) -> RefMut<'_, Menus> {
         self.menus.borrow_mut()
     }
 
@@ -138,7 +138,7 @@ impl MenuScreen {
 
     /// Enter on `kind`'s item. Returns the screen it opened, if any; else
     /// whether the menu closes at once.
-    fn enter(&mut self, app: &mut LieroApp, host: &Host, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
+    fn enter(&mut self, app: &mut App, host: &Host, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
         let (r, opened) = self.menus().enter(app, host, kind);
         if let Some(opened) = opened {
             self.how = how;
@@ -148,7 +148,7 @@ impl MenuScreen {
     }
 
     /// One pass of the menu's loop (`Gfx::menuStep`).
-    fn step(&mut self, app: &mut LieroApp, host: &Host) -> Step {
+    fn step(&mut self, app: &mut App, host: &Host) -> Step {
         if self.part != Part::Top && self.take_result(self.how, self.entered) {
             return Step::Close;
         }
@@ -279,7 +279,7 @@ impl MenuScreen {
         Step::Done
     }
 
-    fn run_step(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
+    fn run_step(&mut self, app: &mut App, host: &Host) -> Tick {
         match self.step(app, host) {
             Step::Close => Tick::close(self.selected),
             Step::Opened(screen) => Tick::push(screen),
@@ -292,7 +292,7 @@ impl MenuScreen {
 }
 
 impl Screen for MenuScreen {
-    fn tick(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut App, host: &Host) -> Tick {
         // The pass an item stopped goes on; the screen that closed read the
         // events.
         if self.resumed {
@@ -338,7 +338,7 @@ impl Screen for MenuScreen {
         }
     }
 
-    fn resume(&mut self, app: &mut LieroApp, host: &Host, result: i32) {
+    fn resume(&mut self, app: &mut App, host: &Host, result: i32) {
         let entered = self.menus().then(app, host, result);
         self.entered = entered;
         self.resumed = true;

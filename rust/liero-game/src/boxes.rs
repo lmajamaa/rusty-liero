@@ -30,7 +30,7 @@ struct InfoBox {
 const BG_COLOR: u8 = 0;
 
 impl Screen for InfoBox {
-    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::App, host: &Host) -> Tick {
         if !self.shown {
             if self.clear_screen {
                 host.menu_palette(app);
@@ -68,7 +68,7 @@ struct KeyChoice {
 }
 
 impl Screen for KeyChoice {
-    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::App, host: &Host) -> Tick {
         while let Some(ev) = host.poll_event(app) {
             if ev.choice && (self.extended || !is_extended(ev.key)) {
                 return Tick::close(ev.key as i32);
@@ -79,7 +79,7 @@ impl Screen for KeyChoice {
 }
 
 /// Called with the text when Enter closes a text box.
-pub type LieroInputDone = unsafe fn(ctx: *mut c_void, text: &[u8]);
+pub type InputDone = unsafe fn(ctx: *mut c_void, text: &[u8]);
 
 /// Typing a line into a box over the frozen screen. It shows a frame for
 /// each event. Enter hands the text to `done` and closes with 1, Escape
@@ -90,7 +90,7 @@ struct InputBox {
     x: i32,
     y: i32,
     digits_only: bool,
-    done: Option<LieroInputDone>,
+    done: Option<InputDone>,
     ctx: *mut c_void,
     shown: bool,
     /// The host that turned text input on, to turn it off again.
@@ -105,7 +105,7 @@ impl InputBox {
 }
 
 impl Screen for InputBox {
-    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::App, host: &Host) -> Tick {
         if self.shown {
             let Some(ev) = host.poll_event(app) else {
                 return Tick::stay(false);
@@ -188,7 +188,7 @@ pub unsafe fn liero_input_box_screen(
     x: i32,
     y: i32,
     digits_only: bool,
-    done: Option<LieroInputDone>,
+    done: Option<InputDone>,
     ctx: *mut c_void,
 ) -> BoxedScreen {
     Box::new(InputBox {
@@ -207,7 +207,7 @@ pub unsafe fn liero_input_box_screen(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{LieroEvent, Platform};
+    use crate::screen::{Event, Platform};
     use std::cell::RefCell;
     use std::collections::VecDeque;
     use std::rc::Rc;
@@ -215,7 +215,7 @@ mod tests {
     /// Gives out its events, and logs what the screen asks of it.
     #[derive(Default)]
     struct TestPlatform {
-        events: RefCell<VecDeque<LieroEvent>>,
+        events: RefCell<VecDeque<Event>>,
         log: RefCell<Vec<String>>,
     }
 
@@ -226,13 +226,13 @@ mod tests {
     }
 
     impl Platform for TestPlatform {
-        fn poll_event(&self, _app: &mut crate::app::LieroApp) -> Option<LieroEvent> {
+        fn poll_event(&self, _app: &mut crate::app::App) -> Option<Event> {
             self.events.borrow_mut().pop_front()
         }
         fn play_sound(&self, id: i32) {
             self.log(format!("sound {id}"));
         }
-        fn process(&self, _app: &mut crate::app::LieroApp) {
+        fn process(&self, _app: &mut crate::app::App) {
             self.log("process".into());
         }
         fn text_input(&self, on: bool) {
@@ -241,7 +241,7 @@ mod tests {
     }
 
     /// A host with `events`, and its platform to read the log from.
-    fn host(events: &[LieroEvent]) -> (Host, Rc<TestPlatform>) {
+    fn host(events: &[Event]) -> (Host, Rc<TestPlatform>) {
         let p = Rc::new(TestPlatform {
             events: RefCell::new(events.iter().copied().collect()),
             ..Default::default()
@@ -249,15 +249,15 @@ mod tests {
         (Host::new(p.clone()), p)
     }
 
-    fn typed(c: u8) -> LieroEvent {
-        LieroEvent {
+    fn typed(c: u8) -> Event {
+        Event {
             text: c,
             ..Default::default()
         }
     }
 
-    fn down(scancode: u32) -> LieroEvent {
-        LieroEvent {
+    fn down(scancode: u32) -> Event {
+        Event {
             key_down: true,
             scancode,
             ..Default::default()
@@ -288,7 +288,7 @@ mod tests {
     fn run(s: &mut dyn Screen, host: &Host) -> (i32, usize) {
         let mut frames = 0;
         for _ in 0..100 {
-            let t = s.tick(&mut crate::app::LieroApp::new(), host);
+            let t = s.tick(&mut crate::app::App::new(), host);
             frames += t.shown as usize;
             if let Some(result) = t.closed() {
                 return (result, frames);
@@ -335,17 +335,17 @@ mod tests {
     #[test]
     fn key_choice_skips_extended_keys_unless_asked() {
         let ext = (1..400).find(|&k| is_extended(k)).unwrap();
-        let plain = LieroEvent {
+        let plain = Event {
             choice: true,
             key: 0x11,
             ..Default::default()
         };
-        let extended = LieroEvent {
+        let extended = Event {
             choice: true,
             key: ext,
             ..Default::default()
         };
-        let not_a_key = LieroEvent {
+        let not_a_key = Event {
             key: 0x22,
             ..Default::default()
         };

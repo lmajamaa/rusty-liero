@@ -7,8 +7,8 @@ use crate::settings::liero_settings_box_new;
 
 /// An app with menus, the bundled TC, its screens sized, and a match that
 /// hasn't started, on a level of colour 7.
-fn set_up() -> LieroApp {
-    let mut app = LieroApp::new();
+fn set_up() -> App {
+    let mut app = App::new();
     let a = &mut app;
     a.settings = Some(liero_settings_box_new());
     a.set_tc(Some(
@@ -57,10 +57,10 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
     let a = &mut set_up();
     a.frozen_spectator.copy_from(&a.single.bmp);
     let chars = a.font().chars.to_vec();
-    let font = crate::text::LieroFont { chars: &chars };
+    let font = crate::text::Font { chars: &chars };
     let (cx, cy) = (320, 100);
     // Drawing the same words again changes nothing; other words do.
-    let shows = |a: &mut LieroApp, words: &[u8]| {
+    let shows = |a: &mut App, words: &[u8]| {
         let before = a.single.bmp.pixels().to_vec();
         font.centered(&a.single.bmp.view(), words, cx, cy + 48, 7, 2);
         a.single.bmp.pixels() == before

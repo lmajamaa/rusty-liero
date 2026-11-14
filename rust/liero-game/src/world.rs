@@ -10,32 +10,32 @@
 //! explosion pushes nearby objects, and a new object can reuse a freed
 //! slot), so objects are worked on by their slots and read afresh at the
 //! points the C++ code read them. Only sounds and the stats' clock call
-//! out (`LieroGameHooks`).
+//! out (`GameHooks`).
 
 use std::ffi::c_void;
 use std::ptr::null_mut;
 
-use crate::game::{Game, LieroBonusState, LieroGameFields, LieroGameHooks, LieroGameSettings, LieroRect};
+use crate::game::{BonusState, GameFields, GameHooks, Rect, RuleSettings, Rules};
 use crate::level::slice;
-use crate::math::{cos_sin, ftoi, itof, vector_length, LieroIVec2};
-use crate::object::LieroBObject;
+use crate::math::{cos_sin, ftoi, itof, vector_length, IVec2};
+use crate::object::BObject;
 use crate::object::{
     add, div, ftoi_vec, inside, liero_explosion_damage, liero_explosion_push_object, liero_explosion_push_worm, sub,
-    LieroBonusConstants,
+    BonusConstants,
 };
-use crate::objects::{Cursor, FiredBy, LieroNObject, LieroWObject};
-use crate::sfx::LieroSoundOut;
+use crate::objects::{Cursor, FiredBy, NObject, WObject};
+use crate::sfx::SoundOut;
 use crate::stats::{
     liero_stats_after_death, liero_stats_after_spawn, liero_stats_damage_dealt, liero_stats_damage_potential,
-    liero_stats_hit, liero_stats_shot, LieroStats,
+    liero_stats_hit, liero_stats_shot, Stats,
 };
-use crate::tc::{c, h, LieroTcData};
-use crate::viewport::LieroViewport;
-use crate::weapon::{LieroWeapon, LieroWormWeapon};
+use crate::tc::{c, h, TcData};
+use crate::viewport::Viewport;
+use crate::weapon::{WeaponView, WormWeapon};
 use crate::worm::{
-    LieroWormConstants, LieroWormData, LieroWormEnv, WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
+    WormConstants, WormData, WormEnv, WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
 };
-use liero_data::model::{NObject, SObject, Weapon};
+use liero_data::model::{NObject as NObjectType, SObject as SObjectType, Weapon};
 
 mod nobject;
 mod rope;
@@ -46,8 +46,8 @@ mod worm;
 const WORM_ANIM_TAB: [i32; 4] = [0, 7, 0, 14];
 
 /// The parts of TC weapon `id`, `w`, that `weapon.rs` uses (C++'s `toRust`).
-pub(crate) fn weapon_view(id: i32, w: &Weapon) -> LieroWeapon {
-    LieroWeapon {
+pub(crate) fn weapon_view(id: i32, w: &Weapon) -> WeaponView {
+    WeaponView {
         id,
         detect_distance: w.detect_distance,
         affect_by_worm: w.affect_by_worm,
@@ -94,8 +94,8 @@ pub(crate) fn weapon_view(id: i32, w: &Weapon) -> LieroWeapon {
 }
 
 /// `v * m / d` on both components, rounding towards zero like C++.
-fn mul_div(v: LieroIVec2, m: i32, d: i32) -> LieroIVec2 {
-    LieroIVec2 {
+fn mul_div(v: IVec2, m: i32, d: i32) -> IVec2 {
+    IVec2 {
         x: v.x.wrapping_mul(m) / d,
         y: v.y.wrapping_mul(m) / d,
     }
@@ -103,16 +103,16 @@ fn mul_div(v: LieroIVec2, m: i32, d: i32) -> LieroIVec2 {
 
 /// The whole game, borrowed for a tick, with the clock from C++.
 pub(crate) struct World<'a> {
-    pub(crate) g: Game<'a>,
-    tc: &'a LieroTcData,
+    pub(crate) g: Rules<'a>,
+    tc: &'a TcData,
     /// The split-screen and spectator viewports, whose shake and death
     /// banners the tick moves.
-    viewports: Vec<&'a mut LieroViewport>,
-    spectators: Vec<&'a mut LieroViewport>,
+    viewports: Vec<&'a mut Viewport>,
+    spectators: Vec<&'a mut Viewport>,
     /// The stats the tick records, if any.
-    stats: Option<&'a mut LieroStats>,
-    sound: LieroSoundOut,
-    h: &'a LieroGameHooks<'a>,
+    stats: Option<&'a mut Stats>,
+    sound: SoundOut,
+    h: &'a GameHooks<'a>,
 }
 
 impl<'a> World<'a> {
@@ -122,13 +122,13 @@ impl<'a> World<'a> {
     /// As `Game::new`; the TC, the viewports and the stats (which may be
     /// null) are valid for `'a` too, and nothing else uses the viewports
     /// or the stats meanwhile.
-    pub(crate) unsafe fn new(f: &'a LieroGameFields, s: &'a LieroGameSettings, h: &'a LieroGameHooks<'a>) -> Self {
+    pub(crate) unsafe fn new(f: &'a GameFields, s: &'a RuleSettings, h: &'a GameHooks<'a>) -> Self {
         unsafe {
-            let viewports = |list: *const *mut LieroViewport, n: i32| -> Vec<&'a mut LieroViewport> {
+            let viewports = |list: *const *mut Viewport, n: i32| -> Vec<&'a mut Viewport> {
                 slice(list, n.max(0) as usize).iter().map(|&v| &mut *v).collect()
             };
             World {
-                g: Game::new(f, s),
+                g: Rules::new(f, s),
                 tc: &*f.tc,
                 viewports: viewports(f.viewports, f.viewport_count),
                 spectators: viewports(f.spectator_viewports, f.spectator_viewport_count),
@@ -152,12 +152,12 @@ impl<'a> World<'a> {
         &self.tc.model.weapons[i as usize]
     }
 
-    fn nobject_type(&self, i: i32) -> &'a NObject {
+    fn nobject_type(&self, i: i32) -> &'a NObjectType {
         assert!(0 <= i, "no object type {i}");
         &self.tc.model.nobjects[i as usize]
     }
 
-    fn sobject_type(&self, i: i32) -> &'a SObject {
+    fn sobject_type(&self, i: i32) -> &'a SObjectType {
         assert!(0 <= i, "no object type {i}");
         &self.tc.model.sobjects[i as usize]
     }
@@ -175,7 +175,7 @@ impl<'a> World<'a> {
     }
 
     /// Worm `i`, a position in the game's worms.
-    fn worm(&self, i: i32) -> &LieroWormData {
+    fn worm(&self, i: i32) -> &WormData {
         self.g.worm(i)
     }
 
@@ -207,7 +207,7 @@ impl<'a> World<'a> {
     }
 
     /// The stats the game records, if any.
-    fn stats(&mut self) -> Option<&mut LieroStats> {
+    fn stats(&mut self) -> Option<&mut Stats> {
         self.stats.as_deref_mut()
     }
 
@@ -282,11 +282,11 @@ impl<'a> World<'a> {
     // Creating objects.
 
     /// `Game::createBObject`.
-    fn create_bobject(&mut self, pos: LieroIVec2, vel: LieroIVec2) {
+    fn create_bobject(&mut self, pos: IVec2, vel: IVec2) {
         // Taking the slot uses no random numbers, so the colour can come first.
         let n = self.constant(c("NumBloodColours")) as u32;
         let color = self.rand(n) as i32 + self.constant(c("FirstBloodColour"));
-        *self.g.data.bobjects.new_object_reuse() = LieroBObject { pos, vel, color };
+        *self.g.data.bobjects.new_object_reuse() = BObject { pos, vel, color };
     }
 
     /// `createSObject`: an explosion or smoke, which hurts and pushes what
@@ -383,7 +383,7 @@ impl<'a> World<'a> {
             }
 
             let width = t.detect_range / 2;
-            let rect = LieroRect {
+            let rect = Rect {
                 x1: (x - width).max(0),
                 y1: (y - width).max(0),
                 x2: (x + width + 1).min(self.g.level.width),
@@ -399,8 +399,8 @@ impl<'a> World<'a> {
                         self.create_nobject2(
                             2,
                             angle,
-                            LieroIVec2::default(),
-                            LieroIVec2 {
+                            IVec2::default(),
+                            IVec2 {
                                 x: itof(cx),
                                 y: itof(cy),
                             },
@@ -488,7 +488,7 @@ impl<'a> World<'a> {
         let ix = ftoi(self.g.data.bonuses.arr[slot].x);
         assert!(ix >= 0 && ix < self.g.level.width);
 
-        let k = LieroBonusConstants {
+        let k = BonusConstants {
             gravity: self.constant(c("BonusGravity")),
             bounce_mul: self.constant(c("BonusBounceMul")),
             bounce_div: self.constant(c("BonusBounceDiv")),
@@ -520,9 +520,9 @@ impl<'a> World<'a> {
             }
         }
     }
-    fn worm_constants(&self) -> LieroWormConstants {
+    fn worm_constants(&self) -> WormConstants {
         let k = |name| self.constant(c(name));
-        LieroWormConstants {
+        WormConstants {
             min_bounce_up: k("MinBounceUp"),
             min_bounce_down: k("MinBounceDown"),
             min_bounce_left: k("MinBounceLeft"),
@@ -609,7 +609,7 @@ impl<'a> World<'a> {
             };
 
             let [min_time, rand_time] = s.bonus_rand_timer[frame as usize];
-            let mut b = LieroBonusState {
+            let mut b = BonusState {
                 x: itof(ix),
                 y: itof(iy),
                 vel_y: 0,
@@ -684,7 +684,7 @@ impl<'a> World<'a> {
     }
 
     /// `Game::processFrame`, but for the viewports' own processing, which
-    /// `LieroGame::process_frame` does after.
+    /// `Game::process_frame` does after.
     pub(crate) fn process_frame(&mut self) {
         let s = self.g.s;
 
@@ -746,7 +746,7 @@ impl<'a> World<'a> {
 }
 
 /// Whether worm `w` holds control `c`.
-fn pressed(w: &LieroWormData, c: u32) -> bool {
+fn pressed(w: &WormData, c: u32) -> bool {
     (w.control_states >> c) & 1 != 0
 }
 

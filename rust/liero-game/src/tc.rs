@@ -2,12 +2,12 @@
 //!
 //! The reading itself is `liero_data::load`, from a file node (`fs.rs`),
 //! since a TC can be a folder, a zip file or both joined. C++ copies the
-//! result into `Common` from the `LieroTcData` here, which owns everything
+//! result into `Common` from the `TcData` here, which owns everything
 //! it holds.
 
 use crate::fs::Node;
-use crate::gfx::LieroColor;
-use crate::rand::LieroRand;
+use crate::gfx::Color;
+use crate::rand::Rand;
 use crate::sfx::samples_from_tc;
 use liero_data::model::SpriteSet;
 use liero_data::model::{self, Common};
@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 /// A loaded TC: the model as `liero_data` reads it, and what the game
 /// works out from it.
-pub struct LieroTcData {
+pub struct TcData {
     /// The TC as loaded, with F8's changes.
     pub model: Common,
     /// Each of the model's sounds as the 16-bit samples the mixer plays,
@@ -27,8 +27,8 @@ pub struct LieroTcData {
     pub samples: Vec<Vec<i16>>,
     /// The model's palette as the game's `Palette` holds it
     /// (`Common::exepal`).
-    pub palette_colors: [LieroColor; 256],
-    pub materials: [crate::material::LieroMaterial; 256],
+    pub palette_colors: [Color; 256],
+    pub materials: [crate::material::Material; 256],
     /// Precomputed: weapon indexes sorted by name, and the worm and fire cone
     /// sprites facing both ways (`Common::precompute`).
     pub weap_order: Vec<i32>,
@@ -37,9 +37,9 @@ pub struct LieroTcData {
 }
 
 /// A loaded TC, or the error that stopped loading it.
-pub struct LieroTc {
+pub struct Tc {
     error: String,
-    data: Option<Box<LieroTcData>>,
+    data: Option<Box<TcData>>,
 }
 
 /// Weapon indexes sorted by name, as bytes. (The C++ used `std::sort`, which
@@ -103,16 +103,16 @@ pub fn fire_cone_sprites(large: &model::SpriteSet) -> Vec<u8> {
     out
 }
 
-impl LieroTc {
+impl Tc {
     fn failed(error: String) -> Self {
-        LieroTc { error, data: None }
+        Tc { error, data: None }
     }
 
     fn new(common: Common) -> Result<Self, Error> {
         if common.large_sprites.count < 37 {
             return Err(Error("the TC has too few large sprites".into()));
         }
-        let mut tc = LieroTc::failed(String::new());
+        let mut tc = Tc::failed(String::new());
         let c = &common;
         let samples = c
             .sounds
@@ -125,10 +125,10 @@ impl LieroTc {
             })
             .collect();
 
-        let data = LieroTcData {
+        let data = TcData {
             samples,
-            palette_colors: c.palette.map(|[r, g, b]| LieroColor { r, g, b, unused: 0 }),
-            materials: c.materials.map(|flags| crate::material::LieroMaterial { flags }),
+            palette_colors: c.palette.map(|[r, g, b]| Color { r, g, b, unused: 0 }),
+            materials: c.materials.map(|flags| crate::material::Material { flags }),
             weap_order: weapon_order(&c.weapons),
             worm_sprites: SpriteSet {
                 data: worm_sprites(&c.large_sprites),
@@ -150,7 +150,7 @@ impl LieroTc {
     }
 }
 
-impl LieroTcData {
+impl TcData {
     /// A TC with no tables and every other field zero, for tests.
     #[cfg(test)]
     pub(crate) fn empty() -> Box<Self> {
@@ -178,7 +178,7 @@ impl LieroTcData {
     }
 }
 
-impl LieroTc {
+impl Tc {
     /// F8 on the menu: the developers' random TC (`Gfx::randomizeTc`). The
     /// values come from a generator seeded with 14, as the C++ did. The
     /// order the object types get theirs in is shuffled from `shuffle_seed`;
@@ -187,7 +187,7 @@ impl LieroTc {
         let Some(d) = &mut self.data else {
             return;
         };
-        let mut r = LieroRand::new(14);
+        let mut r = Rand::new(14);
         let sobjects = d.model.sobjects.len() as u32;
         let nobjects = d.model.nobjects.len() as u32;
         let sounds = d.model.sounds.len() as u32;
@@ -195,7 +195,7 @@ impl LieroTc {
         let large = d.model.large_sprites.count as u32;
 
         let mut order: Vec<usize> = (0..d.model.nobjects.len()).collect();
-        let mut shuffle = LieroRand::new(shuffle_seed);
+        let mut shuffle = Rand::new(shuffle_seed);
         for i in (1..order.len()).rev() {
             order.swap(i, shuffle.below(i as u32 + 1) as usize);
         }
@@ -305,15 +305,15 @@ impl LieroTc {
     }
 }
 
-/// F8's random TC (`LieroTc::randomize`), in place: the games that share
+/// F8's random TC (`Tc::randomize`), in place: the games that share
 /// the TC, as one behind the menu does, play with it too, as in C++.
-pub fn liero_tc_randomize(tc: &RefCell<LieroTc>, shuffle_seed: u32) {
+pub fn liero_tc_randomize(tc: &RefCell<Tc>, shuffle_seed: u32) {
     tc.borrow_mut().randomize(shuffle_seed);
 }
 
 /// Loads the TC in `node`, each file at its path inside it (`/` between
 /// folders).
-fn load(node: &Node) -> LieroTc {
+fn load(node: &Node) -> Tc {
     let mut read = |path: &str| {
         let file = path
             .as_bytes()
@@ -321,15 +321,15 @@ fn load(node: &Node) -> LieroTc {
             .fold(node.clone(), |n, part| n.go(part));
         file.read().ok_or_else(|| Error(format!("Could not read {path}")))
     };
-    match liero_data::load::load(&mut read).and_then(LieroTc::new) {
+    match liero_data::load::load(&mut read).and_then(Tc::new) {
         Ok(tc) => tc,
-        Err(e) => LieroTc::failed(e.0),
+        Err(e) => Tc::failed(e.0),
     }
 }
 
 /// A TC as the app, the controllers and the games hold it (C++'s
 /// `shared_ptr<Common>`). Only F8 changes it after loading.
-pub type SharedTc = Rc<RefCell<LieroTc>>;
+pub type SharedTc = Rc<RefCell<Tc>>;
 
 /// Loads the TC in `node` (`Common::load`). Always returns a TC; its
 /// `error` says whether loading failed.
@@ -338,13 +338,13 @@ pub fn liero_tc_load(node: &Node) -> SharedTc {
 }
 
 /// The data of a TC that loaded. Panics on one that didn't.
-pub fn tc_data(tc: &RefCell<LieroTc>) -> Ref<'_, LieroTcData> {
+pub fn tc_data(tc: &RefCell<Tc>) -> Ref<'_, TcData> {
     Ref::map(tc.borrow(), |t| t.data().expect("the TC didn't load"))
 }
 
-impl LieroTc {
+impl Tc {
     /// The loaded data, or none if loading failed.
-    pub fn data(&self) -> Option<&LieroTcData> {
+    pub fn data(&self) -> Option<&TcData> {
         self.data.as_deref()
     }
 
@@ -355,15 +355,15 @@ impl LieroTc {
 
     /// A TC of `data` alone, for tests.
     #[cfg(test)]
-    pub(crate) fn of(data: Box<LieroTcData>) -> SharedTc {
-        Rc::new(RefCell::new(LieroTc {
+    pub(crate) fn of(data: Box<TcData>) -> SharedTc {
+        Rc::new(RefCell::new(Tc {
             error: String::new(),
             data: Some(data),
         }))
     }
 }
 
-impl LieroTc {
+impl Tc {
     /// The TC as loaded, with F8's changes.
     pub(crate) fn model(&self) -> Option<&Common> {
         self.data.as_ref().map(|d| &d.model)
@@ -442,7 +442,7 @@ pub(crate) const fn s(name: &str) -> usize {
     panic!("no such text");
 }
 
-impl LieroTcData {
+impl TcData {
     /// TC constant `i` (`common.C[i]`), from `c`.
     pub(crate) fn constant(&self, i: usize) -> i32 {
         self.model.constants[i].1

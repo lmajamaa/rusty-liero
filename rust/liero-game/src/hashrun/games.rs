@@ -5,20 +5,20 @@
 
 use super::game::{add_screen, hash_frame, hash_game, hash_stats};
 use super::{Fnv, Out};
-use crate::app::LieroApp;
+use crate::app::App;
 use crate::controllers::liero_game_focus;
 use crate::fs::Node;
-use crate::game::{LieroGameHooks, LieroRect};
+use crate::game::{GameHooks, Rect};
 use crate::game_box::{
-    liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_worm_set_ai, LieroGame,
+    liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_worm_set_ai, Game,
 };
-use crate::level::LieroLevelBox;
-use crate::renderer::LieroRenderer;
-use crate::replay_file::LieroReplayWriter;
-use crate::settings::LieroSettingsBox;
-use crate::sfx::LieroSoundOut;
-use crate::stats::{stats_scene, LieroStatsScreen};
-use crate::tc::{LieroTcData, SharedTc};
+use crate::level::LevelBox;
+use crate::renderer::Renderer;
+use crate::replay_file::ReplayWriter;
+use crate::settings::SettingsBox;
+use crate::sfx::SoundOut;
+use crate::stats::{stats_scene, StatsScreen};
+use crate::tc::{SharedTc, TcData};
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{liero_weapsel_finish, liero_weapsel_free, liero_weapsel_start};
 
@@ -155,7 +155,7 @@ const CONFIGS: [RunConfig; 17] = [
 pub(super) use crate::tc::tc_data;
 
 /// The menu positions of the named weapons.
-fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
+fn weapon_positions(d: &TcData, names: &[&str; 5]) -> [u32; 5] {
     let (weapons, order) = (&d.model.weapons, &d.weap_order);
     names.map(|name| {
         // The last of the same name, as the C++ loop left it.
@@ -172,19 +172,19 @@ fn no_ticks() -> u64 {
 }
 
 /// What a tick runs with: the stats clock isn't hashed.
-pub(super) const HOOKS: LieroGameHooks<'static> = LieroGameHooks { hires_ticks: &no_ticks };
+pub(super) const HOOKS: GameHooks<'static> = GameHooks { hires_ticks: &no_ticks };
 
 /// A bot-vs-bot game as the hash run sets it up, before it starts, with
 /// random weapons when `weapons` is None (`setUpGame`).
 pub(super) fn set_up_game(
-    a: &mut LieroApp,
+    a: &mut App,
     tc: &SharedTc,
     seed: u32,
     game_mode: u32,
     weapons: Option<&[&str; 5]>,
-) -> Box<LieroGame> {
+) -> Box<Game> {
     let d = tc_data(tc);
-    let settings = LieroSettingsBox::defaults();
+    let settings = SettingsBox::defaults();
     let mut s = settings.borrow_mut();
     s.data.game_mode = game_mode;
     for ws in &s.data.worms {
@@ -209,12 +209,7 @@ pub(super) fn set_up_game(
     // controller makes them, with settings and a TC that it keeps.
     unsafe {
         let mut game = Box::from_raw(liero_game_new());
-        crate::game_box::liero_game_set_context(
-            &mut game,
-            Some(settings.clone()),
-            Some(tc.clone()),
-            LieroSoundOut::NONE,
-        );
+        crate::game_box::liero_game_set_context(&mut game, Some(settings.clone()), Some(tc.clone()), SoundOut::NONE);
         game.data_mut().rand.seed(seed.wrapping_mul(7919));
 
         for (i, ws) in worms.iter().enumerate() {
@@ -230,7 +225,7 @@ pub(super) fn set_up_game(
             crate::ai::liero_worm_ai_rand(ai).seed(seed.wrapping_mul(104_729).wrapping_add(i as u32));
         }
 
-        let r = |x1, y1, x2, y2| LieroRect { x1, y1, x2, y2 };
+        let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
         liero_game_add_viewport(&mut game, r(0, 0, 158, 158), 0, 504, 350, LIERO_VIEWPORT_WORM, false);
         liero_game_add_viewport(
             &mut game,
@@ -251,7 +246,7 @@ pub(super) fn set_up_game(
             true,
         );
 
-        let mut level = LieroLevelBox::new();
+        let mut level = LevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
 
@@ -268,22 +263,22 @@ pub(super) fn set_up_game(
 }
 
 /// The bots' controls for the next tick (`botTick`), untimed.
-pub(super) fn bot_tick(game: &mut LieroGame) {
+pub(super) fn bot_tick(game: &mut Game) {
     game.process_ais(None);
 }
 
 /// Ends the game's stats and draws the stats screen over the last frame, at
 /// each pane and part way between them, scrolled to several depths
 /// (`hashStatsScreen`).
-fn hash_stats_screen(out: &mut Out, name: &str, game: &mut LieroGame, renderer: &mut LieroRenderer, d: &LieroTcData) {
+fn hash_stats_screen(out: &mut Out, name: &str, game: &mut Game, renderer: &mut Renderer, d: &TcData) {
     game.stats_finish();
     let g = game.stats_game();
     let stats = game.stats();
     out.line(&format!("{name}-stats-end 0 {:016x}", hash_stats(stats)));
 
-    let mut bg = crate::renderer::LieroBitmapBox::new();
+    let mut bg = crate::renderer::BitmapBox::new();
     bg.copy_from(&renderer.bmp);
-    let screen = LieroStatsScreen::new(stats, renderer.data.render_res_x);
+    let screen = StatsScreen::new(stats, renderer.data.render_res_x);
     let scene = stats_scene(d, &g, renderer.data.render_res_x, renderer.data.render_res_y);
 
     let mut n = 0;
@@ -301,7 +296,7 @@ fn hash_stats_screen(out: &mut Out, name: &str, game: &mut LieroGame, renderer: 
     }
 }
 
-fn run_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interval: i32) {
+fn run_game(a: &mut App, out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interval: i32) {
     let d = tc_data(tc);
     let mut game = set_up_game(a, tc, config.seed, config.game_mode, config.weapons);
     let name = config.name;
@@ -309,20 +304,16 @@ fn run_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, config: &RunConfig, 
     // Records a replay of the game, as the local controller does when
     // replays are on, to play it back afterwards.
     let path = format!("/tmp/{name}.lrp");
-    let mut writer =
-        LieroReplayWriter::new(&Node::new(path.as_bytes())).unwrap_or_else(|| panic!("Could not write {path}"));
+    let mut writer = ReplayWriter::new(&Node::new(path.as_bytes())).unwrap_or_else(|| panic!("Could not write {path}"));
     let o = writer.begin(&mut game);
-    assert!(
-        o.status == crate::replay::LieroReplayStatus::Ok,
-        "the replay didn't begin"
-    );
+    assert!(o.status == crate::replay::ReplayStatus::Ok, "the replay didn't begin");
 
     let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
 
     // Drawing doesn't change the game, so the game hashes don't depend on it.
-    let mut split = LieroRenderer::new();
-    let mut spectator = LieroRenderer::new();
+    let mut split = Renderer::new();
+    let mut spectator = Renderer::new();
     split.set_render_resolution(320, 200);
     spectator.set_render_resolution(640, 400);
     for r in [&mut split, &mut spectator] {
@@ -374,7 +365,7 @@ fn run_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, config: &RunConfig, 
 }
 
 /// Every bot game, `ticks` long at most and hashed every `interval`.
-pub fn hash_games(a: &mut LieroApp, out: &mut Out, ticks: i32, interval: i32) {
+pub fn hash_games(a: &mut App, out: &mut Out, ticks: i32, interval: i32) {
     let tc = super::tc::bundled();
     for config in &CONFIGS {
         run_game(a, out, &tc, config, ticks, interval);

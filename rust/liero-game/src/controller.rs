@@ -3,7 +3,7 @@
 //! match is running, the fade to and from the menu, and the frame skip.
 //! Rust owns it, and the fields of C++'s `CommonController` refer to it.
 
-use crate::keys::LieroKeys;
+use crate::keys::Keys;
 
 /// `GameState`: before the match, choosing weapons, playing, and the match
 /// over.
@@ -17,7 +17,7 @@ pub const LIERO_FADE_SHOWN: i32 = 33;
 
 /// A controller's state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LieroControllerData {
+pub struct ControllerData {
     /// `LIERO_STATE_*`.
     pub state: i32,
     /// 0 is black, `LIERO_FADE_SHOWN` fully shown.
@@ -31,10 +31,10 @@ pub struct LieroControllerData {
     pub cycles: i32,
 }
 
-impl Default for LieroControllerData {
+impl Default for ControllerData {
     /// What C++'s controller constructors set.
     fn default() -> Self {
-        LieroControllerData {
+        ControllerData {
             state: LIERO_STATE_INITIAL,
             fade_value: 0,
             going_to_menu: false,
@@ -45,7 +45,7 @@ impl Default for LieroControllerData {
     }
 }
 
-impl LieroControllerData {
+impl ControllerData {
     /// How many game ticks this frame runs: `frame_skip`, or with
     /// `inverse_frame_skip`, one every `frame_skip` frames.
     pub fn ticks(&self) -> i32 {
@@ -62,13 +62,13 @@ impl LieroControllerData {
     }
 }
 
-pub fn liero_controller_data_new() -> *mut LieroControllerData {
+pub fn liero_controller_data_new() -> *mut ControllerData {
     Box::into_raw(Box::default())
 }
 
 /// # Safety
 /// `c` comes from `liero_controller_data_new`, and isn't used after.
-pub unsafe fn liero_controller_data_free(c: *mut LieroControllerData) {
+pub unsafe fn liero_controller_data_free(c: *mut ControllerData) {
     unsafe {
         if !c.is_null() {
             drop(Box::from_raw(c));
@@ -78,7 +78,7 @@ pub unsafe fn liero_controller_data_free(c: *mut LieroControllerData) {
 
 /// `CommonController::process`: 1 to 0 choose the frame skip, with ctrl
 /// inverted, and the frame is counted.
-pub fn liero_controller_process(c: &mut LieroControllerData, keys: &mut LieroKeys) {
+pub fn liero_controller_process(c: &mut ControllerData, keys: &mut Keys) {
     keys.frame_skip(&mut c.frame_skip, &mut c.inverse_frame_skip);
     c.cycles += 1;
 }
@@ -93,7 +93,7 @@ mod tests {
             let c = liero_controller_data_new();
             assert_eq!(
                 *c,
-                LieroControllerData {
+                ControllerData {
                     state: LIERO_STATE_INITIAL,
                     fade_value: 0,
                     going_to_menu: false,
@@ -108,13 +108,13 @@ mod tests {
 
     #[test]
     fn ticks_follow_the_frame_skip() {
-        let mut c = LieroControllerData {
+        let mut c = ControllerData {
             frame_skip: 3,
             ..Default::default()
         };
         assert_eq!(
             (0..6)
-                .map(|i| LieroControllerData { cycles: i, ..c }.ticks())
+                .map(|i| ControllerData { cycles: i, ..c }.ticks())
                 .collect::<Vec<_>>(),
             [3; 6]
         );
@@ -122,7 +122,7 @@ mod tests {
         // C++: !(cycles % frameSkip).
         assert_eq!(
             (0..6)
-                .map(|i| LieroControllerData { cycles: i, ..c }.ticks())
+                .map(|i| ControllerData { cycles: i, ..c }.ticks())
                 .collect::<Vec<_>>(),
             [1, 0, 0, 1, 0, 0]
         );
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn in_game_states() {
         let at = |state| {
-            LieroControllerData {
+            ControllerData {
                 state,
                 ..Default::default()
             }

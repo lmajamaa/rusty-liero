@@ -11,10 +11,10 @@ use super::game::{hash_frame, hash_game};
 use super::games::{bot_tick, set_up_game, tc_data, GAME_OF_TAG, HOLDAZONE, HOOKS, KILL_EM_ALL};
 use super::{Fnv, Out};
 use crate::ai::{liero_worm_ai_hash, liero_worm_ai_rand};
-use crate::app::LieroApp;
+use crate::app::App;
 use crate::controllers::liero_game_focus;
 use crate::game_box::liero_worm_set_ai;
-use crate::renderer::LieroRenderer;
+use crate::renderer::Renderer;
 use crate::tc::SharedTc;
 
 struct AiConfig {
@@ -77,7 +77,7 @@ const CONFIGS: [AiConfig; 6] = [
     ),
 ];
 
-fn run_ai_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, c: &AiConfig, interval: i32) {
+fn run_ai_game(a: &mut App, out: &mut Out, tc: &SharedTc, c: &AiConfig, interval: i32) {
     let mut game = set_up_game(a, tc, c.seed, c.game_mode, c.weapons);
     {
         let s = &mut game.settings_box().data;
@@ -99,8 +99,8 @@ fn run_ai_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, c: &AiConfig, int
     let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
 
-    let mut split = LieroRenderer::new();
-    let mut spectator = LieroRenderer::new();
+    let mut split = Renderer::new();
+    let mut spectator = Renderer::new();
     split.set_render_resolution(320, 200);
     spectator.set_render_resolution(640, 400);
     for r in [&mut split, &mut spectator] {
@@ -150,7 +150,7 @@ fn run_ai_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, c: &AiConfig, int
     ));
 }
 
-pub fn hash_ai_games(a: &mut LieroApp, out: &mut Out) {
+pub fn hash_ai_games(a: &mut App, out: &mut Out) {
     let tc = super::tc::bundled();
     for c in &CONFIGS {
         run_ai_game(a, out, &tc, c, if c.ticks <= 200 { 10 } else { 50 });

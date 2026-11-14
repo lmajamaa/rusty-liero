@@ -32,7 +32,7 @@ impl World<'_> {
             .map(|w| self.g.worm_id(w));
 
         let diff = sub(r.pos, self.worm(i).pos);
-        let force = LieroIVec2 {
+        let force = IVec2 {
             x: diff.x.wrapping_shl(force_shl_x as u32) / force_div_x,
             y: diff.y.wrapping_shl(force_shl_y as u32) / force_div_y,
         };
@@ -58,21 +58,13 @@ impl World<'_> {
                         for _ in 0..11 {
                             let angle = self.rand(128) as i32;
                             let index = self.worm(i).index;
-                            self.create_nobject2(
-                                2,
-                                angle,
-                                LieroIVec2::default(),
-                                r.pos,
-                                pix as i32,
-                                index,
-                                FiredBy::NONE,
-                            );
+                            self.create_nobject2(2, angle, IVec2::default(), r.pos, pix as i32, index, FiredBy::NONE);
                         }
                     }
                 }
             }
 
-            r.vel = LieroIVec2::default();
+            r.vel = IVec2::default();
         } else if let Some(anchor) = r.anchor {
             if !r.attached {
                 // TODO in C++: should this be separate from attaching to terrain?

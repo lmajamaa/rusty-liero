@@ -5,11 +5,11 @@
 //! What a selector lists and what choosing a file does is a `FileSource`;
 //! the app's are in `app_files.rs`.
 
-use crate::app::LieroApp;
-use crate::gfx::{liero_gfx_draw_rounded_box, LieroBitmap};
-use crate::menu::{LieroMenu, OwnedMenu};
+use crate::app::App;
+use crate::gfx::{liero_gfx_draw_rounded_box, Bitmap};
+use crate::menu::{MenuState, OwnedMenu};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
-use crate::text::LieroFont;
+use crate::text::Font;
 
 // SDL's scancodes.
 const SCANCODE_RETURN: u32 = 40;
@@ -41,11 +41,11 @@ pub trait FileSource {
     /// Whether `rel` exists.
     fn exists(&mut self, rel: &[u8]) -> bool;
     /// The cursor moved to file `rel`: show what it is on `app`'s screens.
-    fn preview(&mut self, _app: &LieroApp, _rel: &[u8]) {}
+    fn preview(&mut self, _app: &App, _rel: &[u8]) {}
     /// Enter on file `rel`, whose full path is `full_path` and name `name`,
     /// or on the random level, in `app`. Returns what the screen closes
     /// with.
-    fn choose(&mut self, app: &mut LieroApp, rel: &[u8], full_path: &[u8], name: &[u8], random: bool) -> i32;
+    fn choose(&mut self, app: &mut App, rel: &[u8], full_path: &[u8], name: &[u8], random: bool) -> i32;
 }
 
 /// What a selector lists and where it starts.
@@ -117,7 +117,7 @@ fn join_path(root: &[u8], leaf: &[u8]) -> Vec<u8> {
 
 /// `Menu(178, 28)` with `setHeight(14)`, as a file list is.
 fn file_list() -> OwnedMenu {
-    OwnedMenu::new(LieroMenu {
+    OwnedMenu::new(MenuState {
         x: LIST_X,
         y: 28,
         height: 14,
@@ -288,7 +288,7 @@ impl Selector {
     }
 
     /// The keys: false on Escape (`FileSelector::process`).
-    fn process(&mut self, app: &mut LieroApp, host: &Host) -> bool {
+    fn process(&mut self, app: &mut App, host: &Host) -> bool {
         let cur = self.current;
         if app.test_key_once(SCANCODE_UP) {
             host.play_sound(SOUND_UP);
@@ -320,14 +320,14 @@ impl Selector {
         true
     }
 
-    fn framed_text(scr: &LieroBitmap, font: &LieroFont, text: &[u8], x: i32, y: i32) {
+    fn framed_text(scr: &Bitmap, font: &Font, text: &[u8], x: i32, y: i32) {
         let width = font.dims(text).0;
         liero_gfx_draw_rounded_box(scr, x, y, 0, 7, width);
         font.text(scr, text, x + 2, y + 1, TITLE_COLOR, 1);
     }
 
     /// Previews the file under the cursor if it's new there.
-    fn update_preview(&mut self, app: &LieroApp) {
+    fn update_preview(&mut self, app: &App) {
         let cur = self.cur_sel();
         if self.previewed != cur {
             if let Some(c) = cur.filter(|&c| Some(c) != self.random && !self.nodes[c].folder) {
@@ -338,7 +338,7 @@ impl Selector {
         }
     }
 
-    fn draw(&mut self, app: &LieroApp, host: &Host) {
+    fn draw(&mut self, app: &App, host: &Host) {
         let (Some(scr), Some(font)) = (host.screen(app), host.font(app)) else {
             return;
         };
@@ -362,7 +362,7 @@ impl Selector {
     }
 
     /// Enter: what the screen closes with, if it closes.
-    fn choose(&mut self, app: &mut LieroApp, host: &Host) -> Option<i32> {
+    fn choose(&mut self, app: &mut App, host: &Host) -> Option<i32> {
         if self.enter_sound {
             host.play_sound(SOUND_CHOICE);
         }
@@ -374,11 +374,11 @@ impl Selector {
 }
 
 /// Copies the screen as it was before the selector opened over it.
-fn restore_frozen(app: &LieroApp, host: &Host) {
+fn restore_frozen(app: &App, host: &Host) {
     let (Some(scr), Some(frozen)) = (host.screen(app), host.frozen(app)) else {
         return;
     };
-    let len = |b: &LieroBitmap| b.pitch.max(0) as usize * b.h.max(0) as usize;
+    let len = |b: &Bitmap| b.pitch.max(0) as usize * b.h.max(0) as usize;
     let n = len(&scr).min(len(&frozen));
     for (to, from) in scr.pixels[..n].iter().zip(&frozen.pixels[..n]) {
         to.set(from.get());
@@ -386,7 +386,7 @@ fn restore_frozen(app: &LieroApp, host: &Host) {
 }
 
 impl Screen for Selector {
-    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::App, host: &Host) -> Tick {
         if self.shown {
             host.process(app);
         }
@@ -501,13 +501,13 @@ mod tests {
                 .is_some_and(|e| e.iter().any(|(n, _)| n == file))
         }
 
-        fn preview(&mut self, _: &LieroApp, _: &[u8]) {
+        fn preview(&mut self, _: &App, _: &[u8]) {
             if self.previews {
                 self.state.borrow_mut().previews += 1;
             }
         }
 
-        fn choose(&mut self, _: &mut LieroApp, rel: &[u8], full: &[u8], name: &[u8], random: bool) -> i32 {
+        fn choose(&mut self, _: &mut App, rel: &[u8], full: &[u8], name: &[u8], random: bool) -> i32 {
             let s = |x: &[u8]| String::from_utf8(x.to_vec()).unwrap();
             let line = format!("{}|{}|{}|{}", s(rel), s(full), s(name), random);
             self.state.borrow_mut().chosen.push(line);
@@ -580,7 +580,7 @@ mod tests {
         let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/two.lrp", b"", false), tree_source(&t));
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
         assert_eq!(sel.cur_sel().map(|c| sel.nodes[c].name.clone()), Some(b"two".to_vec()));
-        assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), Some(5));
+        assert_eq!(sel.choose(&mut App::new(), &Host::none()), Some(5));
         assert_eq!(
             t.borrow().chosen.clone(),
             ["Replays/two.lrp|/cfg/Replays/two.lrp|two|false"]
@@ -598,7 +598,7 @@ mod tests {
     fn enter_on_a_folder_opens_it() {
         let t = tree(&[("", &[("Replays", true)]), ("Replays", &[("one.lrp", false)])]);
         let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), tree_source(&t));
-        assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), None);
+        assert_eq!(sel.choose(&mut App::new(), &Host::none()), None);
         assert_eq!(sel.nodes[sel.current].rel, b"Replays");
     }
 
@@ -606,7 +606,7 @@ mod tests {
     fn random_level_is_chosen_as_random() {
         let t = tree(&[("", &[("a.lev", false)])]);
         let mut sel = Selector::new(&spec(b"LEV", b"", b"Random", false), tree_source(&t));
-        assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), Some(5));
+        assert_eq!(sel.choose(&mut App::new(), &Host::none()), Some(5));
         assert_eq!(t.borrow().chosen.clone(), ["||Random|true"]);
     }
 
@@ -619,17 +619,17 @@ mod tests {
         ]);
         let mut sel = Selector::new(&spec(b"", b"", b"", true), tree_source(&t));
         assert_eq!(names(&mut sel, ROOT), ["good"]);
-        assert_eq!(sel.choose(&mut LieroApp::new(), &Host::none()), Some(5));
+        assert_eq!(sel.choose(&mut App::new(), &Host::none()), Some(5));
     }
 
     /// Text typed.
     #[derive(Default)]
     struct KeyPlatform {
-        typed: RefCell<Vec<crate::screen::LieroTypedKey>>,
+        typed: RefCell<Vec<crate::screen::TypedKey>>,
     }
 
     impl crate::screen::Platform for KeyPlatform {
-        fn typed_keys(&self) -> Vec<crate::screen::LieroTypedKey> {
+        fn typed_keys(&self) -> Vec<crate::screen::TypedKey> {
             std::mem::take(&mut *self.typed.borrow_mut())
         }
     }
@@ -637,7 +637,7 @@ mod tests {
     fn key_host(typed_text: &[u8]) -> Host {
         let typed = typed_text
             .iter()
-            .map(|&c| crate::screen::LieroTypedKey {
+            .map(|&c| crate::screen::TypedKey {
                 sym: i32::from(c),
                 scancode: 0,
             })
@@ -651,7 +651,7 @@ mod tests {
     fn escape_wins_over_left_and_right() {
         let t = tree(&[("", &[("Replays", true)]), ("Replays", &[("one.lrp", false)])]);
         let mut sel = Selector::new(&spec(b"LRP", b"/cfg/Replays/one.lrp", b"", false), tree_source(&t));
-        let mut a = LieroApp::new();
+        let mut a = App::new();
         a.press(&[SCANCODE_LEFT, SCANCODE_ESCAPE]);
         assert!(!sel.process(&mut a, &key_host(b"")));
         // Left wasn't read, and the folder is still open.
@@ -664,7 +664,7 @@ mod tests {
         let t = tree(&[("", &[("alpha.lrp", false), ("beta.lrp", false), ("gamma.lrp", false)])]);
         let mut sel = Selector::new(&spec(b"LRP", b"", b"", false), tree_source(&t));
         // "mm" is only inside "gamma".
-        assert!(sel.process(&mut LieroApp::new(), &key_host(b"mm")));
+        assert!(sel.process(&mut App::new(), &key_host(b"mm")));
         assert_eq!(
             sel.cur_sel().map(|c| sel.nodes[c].name.clone()),
             Some(b"gamma".to_vec())
@@ -682,14 +682,14 @@ mod tests {
             }),
         );
         // Random is selected first: nothing to preview.
-        sel.update_preview(&LieroApp::new());
+        sel.update_preview(&App::new());
         assert_eq!(t.borrow().previews, 0);
         sel.menu(ROOT).movement(1);
-        sel.update_preview(&LieroApp::new());
-        sel.update_preview(&LieroApp::new());
+        sel.update_preview(&App::new());
+        sel.update_preview(&App::new());
         assert_eq!(t.borrow().previews, 1);
         sel.menu(ROOT).movement(1);
-        sel.update_preview(&LieroApp::new());
+        sel.update_preview(&App::new());
         assert_eq!(t.borrow().previews, 2);
     }
 

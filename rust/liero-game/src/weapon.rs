@@ -7,13 +7,13 @@
 //! and lasers (`WObject::process` and `WObject::blowUpObject`) in
 //! `world/wobject.rs`.
 
-use crate::math::{cos_sin, LieroIVec2};
+use crate::math::{cos_sin, IVec2};
 use crate::object::add;
-use crate::rand::LieroRand;
+use crate::rand::Rand;
 
 /// `v * m / d` on both components, rounding towards zero like C++.
-fn mul_div(v: LieroIVec2, m: i32, d: i32) -> LieroIVec2 {
-    LieroIVec2 {
+fn mul_div(v: IVec2, m: i32, d: i32) -> IVec2 {
+    IVec2 {
         x: v.x.wrapping_mul(m) / d,
         y: v.y.wrapping_mul(m) / d,
     }
@@ -32,7 +32,7 @@ pub(crate) const ENDLESS_LASER_ID: i32 = 28;
 
 /// The parts of a C++ `Weapon` that Rust uses.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroWeapon {
+pub struct WeaponView {
     pub id: i32,
     pub detect_distance: i32,
     pub affect_by_worm: bool,
@@ -80,7 +80,7 @@ pub struct LieroWeapon {
 
 /// A worm's weapon slot, laid out like C++'s `WormWeapon`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroWormWeapon {
+pub struct WormWeapon {
     /// The weapon: its index in the TC's weapons, or -1 for none.
     pub kind: i32,
     pub ammo: i32,
@@ -93,13 +93,13 @@ pub const LIERO_SELECTABLE_WEAPONS: usize = 5;
 
 /// How a new weapon object starts, from `Weapon::fire`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LieroLaunch {
-    pub vel: LieroIVec2,
+pub struct Launch {
+    pub vel: IVec2,
     pub cur_frame: i32,
     pub time_left: i32,
 }
 
-impl LieroWeapon {
+impl WeaponView {
     /// `Weapon::computedLoadingTime`: the reload time with the game's
     /// loading time setting (a percentage), at least 1 tick.
     pub fn computed_loading_time(&self, loading_time_percent: i32) -> i32 {
@@ -113,7 +113,7 @@ impl LieroWeapon {
 
     /// Velocity, first frame and fuse of a shot fired at `angle` (0 to 127)
     /// with `speed` (percent) and the shooter's `vel`.
-    pub fn launch(&self, rand: &mut LieroRand, angle: i32, vel: LieroIVec2, speed: i32) -> LieroLaunch {
+    pub fn launch(&self, rand: &mut Rand, angle: i32, vel: IVec2, speed: i32) -> Launch {
         let mut v = add(mul_div(cos_sin(angle), speed, 100), vel);
 
         if self.distribution != 0 {
@@ -147,7 +147,7 @@ impl LieroWeapon {
             time_left -= rand.below(self.time_to_explo_v as u32) as i32;
         }
 
-        LieroLaunch {
+        Launch {
             vel: v,
             cur_frame,
             time_left,
@@ -159,8 +159,8 @@ impl LieroWeapon {
 mod tests {
     use super::*;
 
-    fn weapon() -> LieroWeapon {
-        LieroWeapon {
+    fn weapon() -> WeaponView {
+        WeaponView {
             speed: 100,
             start_frame: -1,
             color_bullets: 40,
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn loading_time_is_at_least_one_tick() {
-        let w = LieroWeapon {
+        let w = WeaponView {
             loading_time: 3,
             ..weapon()
         };
@@ -181,26 +181,26 @@ mod tests {
 
     #[test]
     fn launch_aims_along_the_table_and_adds_velocity() {
-        let mut rand = LieroRand::new(1);
+        let mut rand = Rand::new(1);
         let mut copy = rand;
-        let l = weapon().launch(&mut rand, 32, LieroIVec2 { x: 5, y: 7 }, 200);
+        let l = weapon().launch(&mut rand, 32, IVec2 { x: 5, y: 7 }, 200);
         // Entry 32 is (-65536, 0); only the colour uses the RNG here.
-        assert_eq!(l.vel, LieroIVec2 { x: -131072 + 5, y: 7 });
+        assert_eq!(l.vel, IVec2 { x: -131072 + 5, y: 7 });
         assert_eq!(l.cur_frame, 40 - copy.below(2) as i32);
         assert_eq!(l.time_left, 0);
     }
 
     #[test]
     fn dtype1_frame_follows_the_angle() {
-        let w = LieroWeapon {
+        let w = WeaponView {
             start_frame: 0,
             shot_type: LIERO_SHOT_DTYPE1,
             ..weapon()
         };
-        let mut rand = LieroRand::new(1);
+        let mut rand = Rand::new(1);
         let frames: Vec<i32> = [0, 12, 20, 64, 65, 127]
             .iter()
-            .map(|&a| w.launch(&mut rand, a, LieroIVec2::default(), 100).cur_frame)
+            .map(|&a| w.launch(&mut rand, a, IVec2::default(), 100).cur_frame)
             .collect();
         assert_eq!(frames, [0, 0, 1, 6, 6, 12]);
     }

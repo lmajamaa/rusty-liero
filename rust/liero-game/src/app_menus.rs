@@ -3,25 +3,25 @@
 //! game behind the menus, who plays whom on the spectator screen, and the
 //! menus' palettes fading in and cycling.
 
-use crate::app::LieroApp;
+use crate::app::App;
 use crate::controllers::{liero_controller_level, liero_controller_running};
 use crate::gfx::{liero_gfx_fill_rect, liero_palette_fade, liero_palette_rotate_from, liero_palette_set_worm_colour};
 use crate::menu::{
     liero_menu_box_count, liero_menu_box_id, liero_menu_box_move_to, liero_menu_box_set_string,
-    liero_menu_box_set_visibility, liero_menu_draw_versus, LieroMenuBox,
+    liero_menu_box_set_visibility, liero_menu_draw_versus, MenuBox,
 };
 use crate::menu_screen::{LIERO_MENU_MAIN, LIERO_MENU_SETTINGS};
 use crate::menus::liero_menus_draw;
-use crate::renderer::LieroRenderer;
+use crate::renderer::Renderer;
 use crate::tc::s as text;
-use crate::text::LieroStr;
+use crate::text::Str;
 use crate::weapsel::level_line;
 
 /// The main menu's items `menu_start` changes (`MainMenu`).
 const MAIN_RESUME_GAME: i32 = 0;
 const MAIN_NEW_GAME: i32 = 1;
 
-impl LieroApp {
+impl App {
     // Clippy's suggestion, passing the function, doesn't compile: an
     // `extern "C"` fn isn't a Rust closure over the reference.
     #[allow(clippy::redundant_closure)]
@@ -31,20 +31,20 @@ impl LieroApp {
 }
 
 /// The index of the item with `id`, or -1.
-fn index_of(b: &LieroMenuBox, id: i32) -> i32 {
+fn index_of(b: &MenuBox, id: i32) -> i32 {
     (0..liero_menu_box_count(b))
         .find(|&i| liero_menu_box_id(b, i) == id)
         .unwrap_or(-1)
 }
 
-fn set_string(b: &mut LieroMenuBox, id: i32, s: &str) {
+fn set_string(b: &mut MenuBox, id: i32, s: &str) {
     liero_menu_box_set_string(b, index_of(b, id), s.as_bytes());
 }
 
 /// Sets the menus up for the main menu screen (`Gfx::menuStart`): the
 /// copyright line, resume or new game first, the frozen screens with the
 /// level's miniature on the spectator one. Returns the item F1 picks.
-pub(crate) fn menu_start(a: &mut LieroApp) -> i32 {
+pub(crate) fn menu_start(a: &mut App) -> i32 {
     let center_x = a.single.data.render_res_x / 2;
     {
         let scr = a.play.bmp.view();
@@ -91,7 +91,7 @@ pub(crate) fn menu_start(a: &mut LieroApp) -> i32 {
 
 /// The frozen screen with the main menu over it, greyed out while another
 /// menu is up (`Gfx::drawBasicMenu`).
-pub(crate) fn draw_basic_menu(a: &mut LieroApp) {
+pub(crate) fn draw_basic_menu(a: &mut App) {
     a.play.bmp.copy_from(&a.frozen);
     let menus = a.shared_menus();
     let mut menus = menus.borrow_mut();
@@ -110,7 +110,7 @@ pub(crate) fn draw_basic_menu(a: &mut LieroApp) {
 
 /// Who plays whom, the level and whether a game is paused, on the frozen
 /// spectator screen (`Gfx::drawSpectatorInfo`).
-pub(crate) fn draw_spectator_info(a: &mut LieroApp) {
+pub(crate) fn draw_spectator_info(a: &mut App) {
     let (cx, cy) = (a.single.data.render_res_x / 2, a.single.data.render_res_y / 4);
     a.single.bmp.copy_from(&a.frozen_spectator);
     let s = a.settings_mut();
@@ -123,9 +123,9 @@ pub(crate) fn draw_spectator_info(a: &mut LieroApp) {
         liero_menu_draw_versus(
             &scr,
             &font,
-            LieroStr::of(&line),
-            LieroStr::of(&w[0].data.name),
-            LieroStr::of(&w[1].data.name),
+            Str::of(&line),
+            Str::of(&w[0].data.name),
+            Str::of(&w[1].data.name),
             w[0].data.color,
             w[1].data.color,
             cx,
@@ -138,7 +138,7 @@ pub(crate) fn draw_spectator_info(a: &mut LieroApp) {
 
 /// The main menu screen's frame: the frozen screens with the menus over
 /// them, the settings menu beside the main menu while it's current.
-pub(crate) fn draw_menus(a: &mut LieroApp) {
+pub(crate) fn draw_menus(a: &mut App) {
     draw_basic_menu(a);
     draw_spectator_info(a);
     let menus = a.shared_menus();
@@ -154,7 +154,7 @@ pub(crate) fn draw_menus(a: &mut LieroApp) {
 
 /// The menus' palette for the next frame (`Gfx::menuFade`): fading in
 /// unless `quitting`, the colours cycling, and the worms' colours.
-pub(crate) fn menu_fade(a: &mut LieroApp, quitting: bool) {
+pub(crate) fn menu_fade(a: &mut App, quitting: bool) {
     let settings = a.shared_settings();
     let s = settings.borrow();
     a.menu_cycles = a.menu_cycles.wrapping_add(1);
@@ -168,7 +168,7 @@ pub(crate) fn menu_fade(a: &mut LieroApp, quitting: bool) {
     }
 }
 
-fn palette(r: &mut LieroRenderer, cycles: u32, s: &crate::settings::LieroSettingsBox) {
+fn palette(r: &mut Renderer, cycles: u32, s: &crate::settings::SettingsBox) {
     let d = &mut r.data;
     d.pal = d.origpal;
     liero_palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, cycles);
@@ -180,7 +180,7 @@ fn palette(r: &mut LieroRenderer, cycles: u32, s: &crate::settings::LieroSetting
 }
 
 /// Both screens black before the menu's first frame.
-pub(crate) fn clear_palettes(a: &mut LieroApp) {
+pub(crate) fn clear_palettes(a: &mut App) {
     for r in [&mut *a.play, &mut *a.single] {
         r.data.pal = [Default::default(); 256];
     }

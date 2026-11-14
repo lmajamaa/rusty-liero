@@ -9,8 +9,7 @@
 use super::{Fnv, Out};
 use crate::fs::Node;
 use crate::settings::{
-    liero_worm_settings_box_load_profile, liero_worm_settings_box_save_profile, LieroSettingsStatus,
-    LieroWormSettingsBox,
+    liero_worm_settings_box_load_profile, liero_worm_settings_box_save_profile, SettingsStatus, WormSettingsBox,
 };
 use liero_data::gash::Hash;
 use liero_data::settings::{self as data, ArchiveError, Bytes, Settings, TextError, WormSettings};
@@ -619,8 +618,8 @@ fn load_legacy(node: &Node, s: &mut Settings) -> bool {
 }
 
 /// A worm's settings in a box of their own, without a profile.
-fn worm_box(ws: &WormSettings) -> LieroWormSettingsBox {
-    let mut b = LieroWormSettingsBox::default();
+fn worm_box(ws: &WormSettings) -> WormSettingsBox {
+    let mut b = WormSettingsBox::default();
     b.set_worm(ws);
     b
 }
@@ -640,7 +639,7 @@ fn save_profile(node: &Node, ws: &WormSettings) -> Result<(), Thrown> {
 /// `WormSettings::loadProfile` over `ws`.
 fn load_profile(node: &Node, ws: &mut WormSettings) -> Result<(), Thrown> {
     let mut b = worm_box(ws);
-    let mut status = LieroSettingsStatus::Ok;
+    let mut status = SettingsStatus::Ok;
     let read = liero_worm_settings_box_load_profile(&mut b, Some(node), &mut status);
     *ws = b.worm();
     if !read {
@@ -650,8 +649,8 @@ fn load_profile(node: &Node, ws: &mut WormSettings) -> Result<(), Thrown> {
         )));
     }
     match status {
-        LieroSettingsStatus::ReadError => Err(ArchiveError::Read.into()),
-        LieroSettingsStatus::CheckError => Err(ArchiveError::Check.into()),
+        SettingsStatus::ReadError => Err(ArchiveError::Read.into()),
+        SettingsStatus::CheckError => Err(ArchiveError::Check.into()),
         _ => Ok(()),
     }
 }

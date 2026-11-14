@@ -4,31 +4,29 @@
 //! end of the game. Results have to stay bit-identical to the C++ versions,
 //! which `tools/hashrun` checks.
 //!
-//! Rust owns the game's state (`LieroGameData`, with the object lists) and
-//! each worm's (`LieroWormData`). The rules and the tick (in `world.rs`)
+//! Rust owns the game's state (`GameData`, with the object lists) and
+//! each worm's (`WormData`). The rules and the tick (in `world.rs`)
 //! borrow them, through `Game`, for the call.
 
-use crate::level::{slice, Level, LieroLevel};
+use crate::level::{slice, Level, RawLevel};
 use crate::math::ftoi;
-use crate::objects::{
-    zeroed_box, LieroBObjectList, LieroBonusList, LieroNObjectList, LieroSObjectList, LieroWObjectList,
-};
-use crate::rand::LieroRand;
-use crate::sfx::LieroSoundOut;
-use crate::stats::{LieroStats, LieroStatsWorm};
-use crate::tc::LieroTcData;
-use crate::text::LieroStr;
-use crate::viewport::LieroViewport;
+use crate::objects::{zeroed_box, BObjectList, BonusList, NObjectList, SObjectList, WObjectList};
+use crate::rand::Rand;
+use crate::sfx::SoundOut;
+use crate::stats::{Stats, StatsWorm};
+use crate::tc::TcData;
+use crate::text::Str;
+use crate::viewport::Viewport;
 use crate::world::World;
 use crate::worm::{
-    LieroWormData, WormId, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL,
+    WormData, WormId, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL,
     LIERO_GAME_SCALES_OF_JUSTICE,
 };
 
 /// Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
 /// `gvl::rect`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LieroRect {
+pub struct Rect {
     pub x1: i32,
     pub y1: i32,
     pub x2: i32,
@@ -37,8 +35,8 @@ pub struct LieroRect {
 
 /// Holdazone's zone, laid out like C++'s `Holdazone`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LieroHoldazone {
-    pub rect: LieroRect,
+pub struct Holdazone {
+    pub rect: Rect,
     /// The worm holding the zone, or -1.
     pub holder_idx: i32,
     /// The worm taking the zone, or -1.
@@ -51,7 +49,7 @@ pub struct LieroHoldazone {
 
 /// A new bonus's fields, as `set_bonus` copies them into C++'s `Bonus`.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroBonusState {
+pub struct BonusState {
     pub x: i32,
     pub y: i32,
     pub vel_y: i32,
@@ -62,16 +60,16 @@ pub struct LieroBonusState {
 
 /// A worm, as the game rules see it.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroGameWorm {
-    pub data: *mut LieroWormData,
+pub struct GameWorm {
+    pub data: *mut WormData,
     /// Its place in the game's pool, which ropes are anchored by.
     pub id: crate::worm::WormId,
     /// The worm's full health (`settings->health`).
     pub max_health: i32,
     /// The worm's bot, if any (null for a human).
-    pub ai: *mut crate::ai::LieroWormAi,
+    pub ai: *mut crate::ai::WormAi,
     /// The worm's name and colour, from its settings.
-    pub name: LieroStr,
+    pub name: Str,
     pub color: i32,
 }
 
@@ -81,7 +79,7 @@ pub struct LieroGameWorm {
 /// It is 74 KB, more than the web build's stack, so it is only made and
 /// copied on the heap: `new_boxed`, `clone_boxed` and `assign`.
 #[derive(Debug)]
-pub struct LieroGameData {
+pub struct GameData {
     pub cycles: i32,
     /// The worm that died last, which is 'it' in Game of Tag, or -1.
     pub last_killed_idx: i32,
@@ -91,29 +89,29 @@ pub struct LieroGameData {
     pub paused: bool,
     /// Worms don't respawn in quick simulations (the AI's look-ahead).
     pub quick_sim: bool,
-    pub holdazone: LieroHoldazone,
-    pub rand: LieroRand,
-    pub bonuses: LieroBonusList,
-    pub wobjects: LieroWObjectList,
-    pub sobjects: LieroSObjectList,
-    pub nobjects: LieroNObjectList,
-    pub bobjects: LieroBObjectList,
+    pub holdazone: Holdazone,
+    pub rand: Rand,
+    pub bonuses: BonusList,
+    pub wobjects: WObjectList,
+    pub sobjects: SObjectList,
+    pub nobjects: NObjectList,
+    pub bobjects: BObjectList,
 }
 
-impl LieroGameData {
+impl GameData {
     /// What C++'s `Game` constructor set, before it seeds `rand`.
     pub fn new_boxed() -> Box<Self> {
         // SAFETY: all zeros is a valid value of every field but `bobjects`,
         // which is written before the box is used.
         let mut g: Box<Self> = unsafe {
             let mut g = zeroed_box::<Self>();
-            std::ptr::addr_of_mut!((*g.as_mut_ptr()).bobjects).write(LieroBObjectList::new(1));
+            std::ptr::addr_of_mut!((*g.as_mut_ptr()).bobjects).write(BObjectList::new(1));
             g.assume_init()
         };
         g.last_killed_idx = -1;
         g.paused = true;
-        g.holdazone = LieroHoldazone {
-            rect: LieroRect::default(),
+        g.holdazone = Holdazone {
+            rect: Rect::default(),
             holder_idx: -1,
             contender_idx: -1,
             contender_frames: 0,
@@ -121,7 +119,7 @@ impl LieroGameData {
             zone_width: 50,
             zone_height: 34,
         };
-        g.rand = LieroRand::default();
+        g.rand = Rand::default();
         g.bonuses.init();
         g.wobjects.clear();
         g.sobjects.clear();
@@ -156,13 +154,13 @@ impl LieroGameData {
     }
 }
 
-pub fn liero_game_data_new() -> *mut LieroGameData {
-    Box::into_raw(LieroGameData::new_boxed())
+pub fn liero_game_data_new() -> *mut GameData {
+    Box::into_raw(GameData::new_boxed())
 }
 
 /// # Safety
 /// `g` is valid.
-pub unsafe fn liero_game_data_clone(g: &LieroGameData) -> *mut LieroGameData {
+pub unsafe fn liero_game_data_clone(g: &GameData) -> *mut GameData {
     Box::into_raw(g.clone_boxed())
 }
 
@@ -170,13 +168,13 @@ pub unsafe fn liero_game_data_clone(g: &LieroGameData) -> *mut LieroGameData {
 ///
 /// # Safety
 /// Both are valid, and nothing points into `to`'s blood particles after.
-pub unsafe fn liero_game_data_assign(to: &mut LieroGameData, from: &LieroGameData) {
+pub unsafe fn liero_game_data_assign(to: &mut GameData, from: &GameData) {
     to.assign(from);
 }
 
 /// # Safety
 /// `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
-pub unsafe fn liero_game_data_free(g: *mut LieroGameData) {
+pub unsafe fn liero_game_data_free(g: *mut GameData) {
     unsafe {
         if !g.is_null() {
             drop(Box::from_raw(g));
@@ -188,30 +186,30 @@ pub unsafe fn liero_game_data_free(g: *mut LieroGameData) {
 /// entries in the order of C++'s `Game::worms`; worm numbers (killers,
 /// holders, 'it') are positions in it.
 #[derive(Clone, Copy)]
-pub struct LieroGameFields {
-    pub worms: *const LieroGameWorm,
+pub struct GameFields {
+    pub worms: *const GameWorm,
     pub worm_count: i32,
     /// Every worm the game has, by `WormId`, listed or not.
-    pub pool: *const *mut LieroWormData,
+    pub pool: *const *mut WormData,
     pub pool_count: usize,
-    pub game: *mut LieroGameData,
-    pub level: LieroLevel,
+    pub game: *mut GameData,
+    pub level: RawLevel,
     /// The TC. Only the tick reads it, so the rules may leave it null.
-    pub tc: *const LieroTcData,
+    pub tc: *const TcData,
     /// The viewports, whose shake and death banners the tick moves.
-    pub viewports: *const *mut LieroViewport,
+    pub viewports: *const *mut Viewport,
     pub viewport_count: i32,
-    pub spectator_viewports: *const *mut LieroViewport,
+    pub spectator_viewports: *const *mut Viewport,
     pub spectator_viewport_count: i32,
     /// The stats the tick records, or null for none.
-    pub stats: *mut LieroStats,
+    pub stats: *mut Stats,
     /// Where its sounds go.
-    pub sound: LieroSoundOut,
+    pub sound: SoundOut,
 }
 
 /// Game settings, and TC constants and hacks, for the rules.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroGameSettings {
+pub struct RuleSettings {
     /// `LIERO_GAME_*`.
     pub game_mode: i32,
     pub max_bonuses: i32,
@@ -247,16 +245,16 @@ pub struct LieroGameSettings {
 }
 
 /// What the tick takes from the host: the clock.
-pub struct LieroGameHooks<'a> {
+pub struct GameHooks<'a> {
     /// The clock the stats time ticks with (`appHiresTicks`).
     pub hires_ticks: &'a dyn Fn() -> u64,
 }
 
 /// A worm as the stats read it (`statsWorm` in C++).
-pub(crate) fn stats_worm(w: &LieroWormData, max_health: i32) -> LieroStatsWorm {
+pub(crate) fn stats_worm(w: &WormData, max_health: i32) -> StatsWorm {
     use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT};
     let pressed = |c: u32| (w.control_states >> c) & 1 != 0;
-    LieroStatsWorm {
+    StatsWorm {
         index: w.index,
         x: ftoi(w.pos.x),
         y: ftoi(w.pos.y),
@@ -277,17 +275,17 @@ pub(crate) fn stats_worm(w: &LieroWormData, max_health: i32) -> LieroStatsWorm {
 
 /// The game as the rules change it: its state, every worm it has (listed
 /// or not) by `WormId`, and its level, borrowed for the call.
-pub(crate) struct Game<'a> {
-    pub(crate) data: &'a mut LieroGameData,
-    pool: Vec<&'a mut LieroWormData>,
+pub(crate) struct Rules<'a> {
+    pub(crate) data: &'a mut GameData,
+    pool: Vec<&'a mut WormData>,
     /// The listed worms, in order: their ids and full health. Worm numbers
     /// (killers, holders, 'it') are positions in it.
     list: Vec<(WormId, i32)>,
     pub(crate) level: Level<'a>,
-    pub(crate) s: &'a LieroGameSettings,
+    pub(crate) s: &'a RuleSettings,
 }
 
-impl<'a> Game<'a> {
+impl<'a> Rules<'a> {
     /// Borrows what `f` points to.
     ///
     /// # Safety
@@ -295,7 +293,7 @@ impl<'a> Game<'a> {
     /// uses them meanwhile. This checks that the pool's worms are distinct,
     /// that no worm is listed twice, and that each listed worm's data is
     /// the pool's worm of its id.
-    pub(crate) unsafe fn new(f: &'a LieroGameFields, s: &'a LieroGameSettings) -> Self {
+    pub(crate) unsafe fn new(f: &'a GameFields, s: &'a RuleSettings) -> Self {
         unsafe {
             let pool_ptrs = slice(f.pool, f.pool_count);
             for (i, p) in pool_ptrs.iter().enumerate() {
@@ -314,7 +312,7 @@ impl<'a> Game<'a> {
             for (i, (id, _)) in list.iter().enumerate() {
                 assert!(!list[..i].iter().any(|(other, _)| other == id), "a worm listed twice");
             }
-            Game {
+            Rules {
                 data: &mut *f.game,
                 pool: pool_ptrs.iter().map(|&p| &mut *p).collect(),
                 list,
@@ -325,7 +323,7 @@ impl<'a> Game<'a> {
     }
 }
 
-impl Game<'_> {
+impl Rules<'_> {
     pub(crate) fn worm_count(&self) -> i32 {
         self.list.len() as i32
     }
@@ -341,27 +339,27 @@ impl Game<'_> {
     }
 
     /// Worm `i`, a position in the game's worms.
-    pub(crate) fn worm(&self, i: i32) -> &LieroWormData {
+    pub(crate) fn worm(&self, i: i32) -> &WormData {
         self.pool_worm(self.worm_id(i))
     }
 
-    pub(crate) fn worm_mut(&mut self, i: i32) -> &mut LieroWormData {
+    pub(crate) fn worm_mut(&mut self, i: i32) -> &mut WormData {
         self.pool_worm_mut(self.worm_id(i))
     }
 
     /// The game's worm `id`, listed or not.
-    pub(crate) fn pool_worm(&self, id: WormId) -> &LieroWormData {
+    pub(crate) fn pool_worm(&self, id: WormId) -> &WormData {
         self.pool.get(id.0 as usize).unwrap_or_else(|| panic!("no worm {id:?}"))
     }
 
-    pub(crate) fn pool_worm_mut(&mut self, id: WormId) -> &mut LieroWormData {
+    pub(crate) fn pool_worm_mut(&mut self, id: WormId) -> &mut WormData {
         self.pool
             .get_mut(id.0 as usize)
             .unwrap_or_else(|| panic!("no worm {id:?}"))
     }
 
     /// The listed worms as the stats read them.
-    pub(crate) fn stats_worms(&self) -> Vec<LieroStatsWorm> {
+    pub(crate) fn stats_worms(&self) -> Vec<StatsWorm> {
         (0..self.worm_count())
             .map(|i| stats_worm(self.worm(i), self.max_health(i)))
             .collect()
@@ -470,7 +468,7 @@ impl Game<'_> {
                 .level
                 .select_spawn(&mut self.data.rand, z.zone_width, z.zone_height - 8);
             if let Some(pos) = pos {
-                z.rect = LieroRect {
+                z.rect = Rect {
                     x1: pos.x,
                     y1: pos.y,
                     x2: pos.x + z.zone_width,
@@ -601,7 +599,7 @@ impl Game<'_> {
 ///
 /// # Safety
 /// See above.
-pub unsafe fn liero_game_process_frame(game: &LieroGameFields, settings: &LieroGameSettings, hooks: &LieroGameHooks) {
+pub unsafe fn liero_game_process_frame(game: &GameFields, settings: &RuleSettings, hooks: &GameHooks) {
     unsafe {
         World::new(game, settings, hooks).process_frame();
     }
@@ -612,22 +610,16 @@ pub unsafe fn liero_game_process_frame(game: &LieroGameFields, settings: &LieroG
 ///
 /// # Safety
 /// See above.
-pub unsafe fn liero_game_damage(
-    game: &LieroGameFields,
-    settings: &LieroGameSettings,
-    target: i32,
-    amount: i32,
-    by_idx: i32,
-) {
-    unsafe { Game::new(game, settings) }.damage(target, amount, by_idx);
+pub unsafe fn liero_game_damage(game: &GameFields, settings: &RuleSettings, target: i32, amount: i32, by_idx: i32) {
+    unsafe { Rules::new(game, settings) }.damage(target, amount, by_idx);
 }
 
 /// Heals worm `target` by `amount`: `Game::doHealing`.
 ///
 /// # Safety
 /// See above.
-pub unsafe fn liero_game_heal(game: &LieroGameFields, settings: &LieroGameSettings, target: i32, amount: i32) {
-    unsafe { Game::new(game, settings) }.heal(target, amount);
+pub unsafe fn liero_game_heal(game: &GameFields, settings: &RuleSettings, target: i32, amount: i32) {
+    unsafe { Rules::new(game, settings) }.heal(target, amount);
 }
 
 /// `Game::startGame`: the start sound, the blood list made
@@ -635,10 +627,10 @@ pub unsafe fn liero_game_heal(game: &LieroGameFields, settings: &LieroGameSettin
 ///
 /// # Safety
 /// See above; the TC is valid too.
-pub unsafe fn liero_game_start(game: &LieroGameFields, settings: &LieroGameSettings, blood_particle_max: i32) {
+pub unsafe fn liero_game_start(game: &GameFields, settings: &RuleSettings, blood_particle_max: i32) {
     unsafe {
         game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
-        let mut g = Game::new(game, settings);
+        let mut g = Rules::new(game, settings);
         g.data.bobjects.resize(blood_particle_max.max(0) as usize);
         if settings.game_mode == LIERO_GAME_HOLDAZONE {
             g.spawn_zone();
@@ -650,25 +642,25 @@ pub unsafe fn liero_game_start(game: &LieroGameFields, settings: &LieroGameSetti
 ///
 /// # Safety
 /// See above.
-pub unsafe fn liero_game_is_over(game: &LieroGameFields, settings: &LieroGameSettings) -> bool {
-    unsafe { Game::new(game, settings) }.is_over()
+pub unsafe fn liero_game_is_over(game: &GameFields, settings: &RuleSettings) -> bool {
+    unsafe { Rules::new(game, settings) }.is_over()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn worm(health: i32) -> LieroWormData {
-        LieroWormData {
+    fn worm(health: i32) -> WormData {
+        WormData {
             visible: true,
             health,
             lives: 5,
-            ..LieroWormData::default()
+            ..WormData::default()
         }
     }
 
-    fn settings(game_mode: i32) -> LieroGameSettings {
-        LieroGameSettings {
+    fn settings(game_mode: i32) -> RuleSettings {
+        RuleSettings {
             game_mode,
             max_bonuses: 0,
             time_to_lose: 600,
@@ -694,18 +686,18 @@ mod tests {
     }
 
     /// Runs `f` on a game of `worms`, all with 100 full health.
-    fn with_game(worms: &mut [LieroWormData], f: impl FnOnce(&LieroGameFields)) {
-        let views: Vec<LieroGameWorm> = worms
+    fn with_game(worms: &mut [WormData], f: impl FnOnce(&GameFields)) {
+        let views: Vec<GameWorm> = worms
             .iter_mut()
             .enumerate()
             .map(|(i, w)| {
                 w.index = i as i32;
-                LieroGameWorm {
+                GameWorm {
                     id: crate::worm::WormId(i as u32),
                     data: w,
                     max_health: 100,
                     ai: std::ptr::null_mut(),
-                    name: LieroStr {
+                    name: Str {
                         ptr: std::ptr::null(),
                         len: 0,
                     },
@@ -713,15 +705,15 @@ mod tests {
                 }
             })
             .collect();
-        let pool: Vec<*mut LieroWormData> = views.iter().map(|w| w.data).collect();
-        let mut game = LieroGameData::new_boxed();
-        let fields = LieroGameFields {
+        let pool: Vec<*mut WormData> = views.iter().map(|w| w.data).collect();
+        let mut game = GameData::new_boxed();
+        let fields = GameFields {
             worms: views.as_ptr(),
             worm_count: views.len() as i32,
             pool: pool.as_ptr(),
             pool_count: pool.len(),
             game: &mut *game,
-            level: LieroLevel {
+            level: RawLevel {
                 data: std::ptr::null_mut(),
                 materials: std::ptr::null_mut(),
                 width: 0,
@@ -733,7 +725,7 @@ mod tests {
             spectator_viewports: std::ptr::null(),
             spectator_viewport_count: 0,
             stats: std::ptr::null_mut(),
-            sound: LieroSoundOut::NONE,
+            sound: SoundOut::NONE,
         };
         f(&fields);
     }
@@ -745,11 +737,11 @@ mod tests {
         unsafe fn report(sound: i32) {
             PLAYED.store(sound, Ordering::SeqCst);
         }
-        let tc = crate::tc::LieroTcData::empty();
+        let tc = crate::tc::TcData::empty();
         with_game(&mut [worm(100), worm(100)], |f| {
             let mut f = *f;
             f.tc = &*tc;
-            f.sound = LieroSoundOut {
+            f.sound = SoundOut {
                 mixer: std::ptr::null_mut(),
                 report: Some(report),
             };
@@ -874,7 +866,7 @@ mod tests {
 
     #[test]
     fn rect_contains_excludes_far_edges() {
-        let r = LieroRect {
+        let r = Rect {
             x1: 10,
             y1: 20,
             x2: 15,

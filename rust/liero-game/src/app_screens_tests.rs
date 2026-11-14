@@ -1,5 +1,5 @@
 use super::*;
-use crate::controllers::{liero_controller_is_replay, LieroController};
+use crate::controllers::{liero_controller_is_replay, Controller};
 use crate::fs::Node;
 use crate::settings::liero_settings_box_new;
 use crate::tc::SharedTc;
@@ -11,8 +11,8 @@ fn tc() -> SharedTc {
 
 /// An app with the menus' settings and the bundled TC, and a match behind
 /// the menu.
-fn set_up() -> LieroApp {
-    let mut a = LieroApp::new();
+fn set_up() -> App {
+    let mut a = App::new();
     crate::app::liero_app_set_settings(&mut a, Some(liero_settings_box_new()));
     a.set_tc(Some(tc()));
     restart(&mut a, &Host::none());
@@ -20,7 +20,7 @@ fn set_up() -> LieroApp {
 }
 
 /// A replay controller that hasn't started.
-fn replay() -> Box<LieroController> {
+fn replay() -> Box<Controller> {
     let dir = "target/app-screens-tests";
     std::fs::create_dir_all(dir).unwrap();
     let path = format!("{dir}/empty.lrp");
@@ -76,7 +76,7 @@ fn a_new_game_keeps_the_level_unless_the_settings_changed() {
         (s.data.random_level, s.data.regenerate_level) = (true, false);
     }
     restart(a, &Host::none());
-    let pixels = |a: &mut LieroApp| unsafe { (*liero_controller_level(controller(a))).pixels().to_vec() };
+    let pixels = |a: &mut App| unsafe { (*liero_controller_level(controller(a))).pixels().to_vec() };
     let first = pixels(a);
     assert_eq!(after_menu(a, &Host::none(), MAIN_NEW_GAME), LIERO_AFTER_MENU_PLAY);
     assert_eq!(pixels(a), first);

@@ -11,7 +11,7 @@ fn tc() -> SharedTc {
 }
 
 /// A local match with the worms named `names`, on a level of its own.
-fn local(tc: SharedTc, names: [&str; 2]) -> Box<LieroController> {
+fn local(tc: SharedTc, names: [&str; 2]) -> Box<Controller> {
     let settings = liero_settings_box_new();
     for (w, name) in settings.borrow().data.worms.iter().zip(names) {
         w.borrow_mut().data.name = name.as_bytes().to_vec();
@@ -33,7 +33,7 @@ fn escape_fades_to_the_menu_once() {
         assert_eq!(c.data.fade_value, 5);
 
         // A replay takes Escape and nothing else.
-        let mut r = LieroController::new(Kind::Replay(Replay {
+        let mut r = Controller::new(Kind::Replay(Replay {
             reader: None,
             tc: tc.clone(),
             game: None,
@@ -62,7 +62,7 @@ fn focus_starts_weapon_selection_and_sets_both_palettes() {
     let tc = tc();
     let mut c = local(tc.clone(), ["a", "b"]);
     c.game().unwrap().level_box_mut().data_mut().origpal[200].r = 7;
-    let a = &mut LieroApp::new();
+    let a = &mut App::new();
     a.play.data.origpal[200].r = 0;
     a.single.data.origpal[200].r = 0;
     unsafe { c.focus(a, &Host::none()) };
@@ -110,23 +110,23 @@ fn r_rewinds_a_replay_to_its_start() {
         }
         let blood = game.settings_box().data.ext.blood_particle_max;
         game.start(blood);
-        let mut w = crate::replay_file::LieroReplayWriter::new(&node).unwrap();
-        assert_eq!(w.begin(game).status, LieroReplayStatus::Ok);
+        let mut w = crate::replay_file::ReplayWriter::new(&node).unwrap();
+        assert_eq!(w.begin(game).status, ReplayStatus::Ok);
         for i in 0..30 {
             game.worm_at(0).unwrap().data.control_states = if i % 3 == 0 { 1 } else { 4 };
             w.frame(game);
-            game.process_frame(&LieroGameHooks { hires_ticks: &|| 0 });
+            game.process_frame(&GameHooks { hires_ticks: &|| 0 });
         }
         drop(w);
         drop(c);
 
-        let a = &mut LieroApp::new();
+        let a = &mut App::new();
         crate::app::liero_app_set_settings(a, Some(liero_settings_box_new()));
         let mut r = Box::from_raw(liero_replay_controller_new(&node, tc));
         r.focus(a, &Host::none());
         assert_eq!(r.data.state, LIERO_STATE_GAME);
         assert!(r.process(a, &Host::none()));
-        let pos = |r: &LieroController| match &r.kind {
+        let pos = |r: &Controller| match &r.kind {
             Kind::Replay(r) => r.reader.as_ref().unwrap().pos(),
             _ => unreachable!(),
         };
@@ -152,7 +152,7 @@ fn r_rewinds_a_replay_to_its_start() {
 fn the_game_fades_in_to_fully_shown() {
     let tc = tc();
     let mut c = local(tc.clone(), ["a", "b"]);
-    let a = &mut LieroApp::new();
+    let a = &mut App::new();
     unsafe {
         for _ in 0..40 {
             assert!(c.process(a, &Host::none()));
@@ -172,7 +172,7 @@ fn the_game_fades_in_to_fully_shown() {
 fn f8_changes_the_tc_of_the_game_behind_the_menu() {
     let tc = tc();
     let mut c = local(tc.clone(), ["a", "b"]);
-    let ammo = |c: &mut LieroController| -> Vec<i32> {
+    let ammo = |c: &mut Controller| -> Vec<i32> {
         c.game()
             .unwrap()
             .tc_data()

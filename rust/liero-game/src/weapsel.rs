@@ -3,27 +3,27 @@
 //! drawing the menus. Results have to stay bit-identical to the C++
 //! versions, which `tools/hashrun` checks.
 //!
-//! Rust owns the menus and which worms are ready (`LieroWeapsel`); C++ owns
+//! Rust owns the menus and which worms are ready (`Weapsel`); C++ owns
 //! the worms and their settings. Weapons are numbered as the menus list them,
 //! from 1; `weap_order` turns a number into a weapon. Hooks read and clear the
 //! worms' controls, play sounds and give the worms their weapons.
 
 use std::ffi::c_void;
 
-use crate::app::LieroApp;
-use crate::game_box::LieroGame;
-use crate::gfx::{liero_gfx_draw_rounded_box, liero_palette_fade, liero_palette_rotate_from, LieroBitmap};
+use crate::app::App;
+use crate::game_box::Game;
+use crate::gfx::{liero_gfx_draw_rounded_box, liero_palette_fade, liero_palette_rotate_from, Bitmap};
 use crate::menu::liero_menu_draw_versus;
-use crate::menu::{LieroMenuBox, LieroMenuHooks, LieroMenuItemSpec, Menu, OwnedMenu};
-use crate::rand::LieroRand;
-use crate::renderer::LieroRenderer;
-use crate::sfx::LieroSoundOut;
+use crate::menu::{Menu, MenuBox, MenuHooks, MenuItemSpec, OwnedMenu};
+use crate::rand::Rand;
+use crate::renderer::Renderer;
+use crate::sfx::SoundOut;
 use crate::tc::s as text;
-use crate::tc::LieroTcData;
-use crate::text::{LieroFont, LieroStr};
+use crate::tc::TcData;
+use crate::text::{Font, Str};
 use crate::weapon::LIERO_SELECTABLE_WEAPONS;
 use crate::worm::{
-    LieroWormData, LIERO_CONTROL_DOWN, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT, LIERO_CONTROL_UP,
+    WormData, LIERO_CONTROL_DOWN, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT, LIERO_CONTROL_UP,
 };
 
 /// Size of `Settings::weapTable`.
@@ -36,11 +36,11 @@ const DONE_ITEM: i32 = 6;
 /// One worm's weapon menu.
 struct WeapselMenu {
     /// "Randomize", the five weapons and "Done".
-    menu: LieroMenuBox,
+    menu: MenuBox,
     /// The worm's chosen weapon numbers (`WormSettings::weapons`), 5 of them.
     weapons: *mut u32,
     /// The worm, whose controls pick and which is given the weapons.
-    worm: *mut LieroWormData,
+    worm: *mut WormData,
     /// The worm has chosen.
     ready: bool,
     name: Vec<u8>,
@@ -48,13 +48,13 @@ struct WeapselMenu {
 }
 
 /// Weapon selection: each viewport's worm's menu (`WeaponSelection`).
-pub struct LieroWeapsel {
+pub struct Weapsel {
     menus: Vec<WeapselMenu>,
     /// Each weapon's name, by weapon index.
     weapon_names: Vec<Vec<u8>>,
     /// The game whose worms choose, when started from one
     /// (`liero_weapsel_start`).
-    game: *mut LieroGame,
+    game: *mut Game,
     /// What's behind the menus has been drawn and frozen, on the play and
     /// the spectator screen.
     cached: bool,
@@ -64,12 +64,12 @@ pub struct LieroWeapsel {
 }
 
 /// A worm choosing weapons.
-pub struct LieroWeapselWorm {
+pub struct WeapselWorm {
     /// The worm in the viewport.
-    pub worm: *mut LieroWormData,
+    pub worm: *mut WormData,
     /// `WormSettings::weapons`, which the menu changes in place.
     pub weapons: *mut u32,
-    pub name: LieroStr,
+    pub name: Str,
     pub color: i32,
     /// The centre of the worm's viewport.
     pub center_x: i32,
@@ -81,42 +81,42 @@ pub struct LieroWeapselWorm {
 }
 
 /// What weapon selection starts with.
-pub struct LieroWeapselSpec {
-    pub worms: *const LieroWeapselWorm,
+pub struct WeapselSpec {
+    pub worms: *const WeapselWorm,
     pub worm_count: i32,
     /// Each weapon's name, by weapon index.
-    pub weapon_names: *const LieroStr,
+    pub weapon_names: *const Str,
     pub weapon_count: i32,
-    pub randomize: LieroStr,
-    pub done: LieroStr,
+    pub randomize: Str,
+    pub done: Str,
 }
 
 /// The game's weapon tables.
-pub struct LieroWeapselEnv {
+pub struct WeapselEnv {
     /// `Settings::weapTable`, 40 entries: 0 when a weapon can be chosen.
     pub weap_table: *const u32,
     /// `Common::weapOrder`: the weapon for each number, minus one.
     pub weap_order: *const i32,
     pub weapon_count: i32,
     /// `gfx.rand`, which the menus use.
-    pub rand: *mut LieroRand,
+    pub rand: *mut Rand,
     /// The weapons the worms are given, and the menus' sounds, which play
     /// on `sound`.
-    pub tc: *const LieroTcData,
-    pub sound: LieroSoundOut,
+    pub tc: *const TcData,
+    pub sound: SoundOut,
 }
 
 struct Env<'a> {
     table: &'a [u32],
     order: &'a [i32],
     weapon_count: i32,
-    rand: &'a mut LieroRand,
-    tc: *const LieroTcData,
-    sound: LieroSoundOut,
+    rand: &'a mut Rand,
+    tc: *const TcData,
+    sound: SoundOut,
 }
 
 impl<'a> Env<'a> {
-    unsafe fn new(e: &'a LieroWeapselEnv) -> Self {
+    unsafe fn new(e: &'a WeapselEnv) -> Self {
         unsafe {
             let order = if e.weapon_count <= 0 {
                 &[][..]
@@ -215,8 +215,8 @@ impl<'a> Env<'a> {
 /// Writes the weapons to `out`.
 ///
 /// # Safety
-/// See `LieroWeapselEnv`; `weapons` and `out` hold 5 entries.
-pub unsafe fn liero_weapsel_choose(weapons: *mut u32, random: bool, env: &LieroWeapselEnv, out: *mut i32) {
+/// See `WeapselEnv`; `weapons` and `out` hold 5 entries.
+pub unsafe fn liero_weapsel_choose(weapons: *mut u32, random: bool, env: &WeapselEnv, out: *mut i32) {
     unsafe {
         let mut e = Env::new(env);
         let weapons = std::slice::from_raw_parts_mut(weapons, LIERO_SELECTABLE_WEAPONS);
@@ -244,13 +244,13 @@ pub unsafe fn liero_weapsel_choose(weapons: *mut u32, random: bool, env: &LieroW
     }
 }
 
-fn item(name: &[u8], color: u8) -> LieroMenuItemSpec {
-    LieroMenuItemSpec {
-        string: LieroStr {
+fn item(name: &[u8], color: u8) -> MenuItemSpec {
+    MenuItemSpec {
+        string: Str {
             ptr: name.as_ptr(),
             len: name.len(),
         },
-        value: LieroStr {
+        value: Str {
             ptr: name.as_ptr(),
             len: 0,
         },
@@ -268,9 +268,9 @@ fn item(name: &[u8], color: u8) -> LieroMenuItemSpec {
 /// which the worm is given, empty, with its first weapon current.
 ///
 /// # Safety
-/// `spec`'s pointers are valid for their counts, and see `LieroWeapselEnv`.
+/// `spec`'s pointers are valid for their counts, and see `WeapselEnv`.
 /// The worms and their `weapons` outlive the selection.
-pub unsafe fn liero_weapsel_new(spec: &LieroWeapselSpec, env: &LieroWeapselEnv) -> *mut LieroWeapsel {
+pub unsafe fn liero_weapsel_new(spec: &WeapselSpec, env: &WeapselEnv) -> *mut Weapsel {
     unsafe {
         let weapon_names: Vec<Vec<u8>> = (0..spec.weapon_count.max(0) as usize)
             .map(|i| (*spec.weapon_names.add(i)).bytes().to_vec())
@@ -298,7 +298,7 @@ pub unsafe fn liero_weapsel_new(spec: &LieroWeapselSpec, env: &LieroWeapselEnv) 
             menu.move_to(0);
 
             menus.push(WeapselMenu {
-                menu: LieroMenuBox(menu),
+                menu: MenuBox(menu),
                 weapons: w.weapons,
                 worm: w.worm,
                 ready: w.ready,
@@ -306,7 +306,7 @@ pub unsafe fn liero_weapsel_new(spec: &LieroWeapselSpec, env: &LieroWeapselEnv) 
                 color: w.color,
             });
         }
-        Box::into_raw(Box::new(LieroWeapsel {
+        Box::into_raw(Box::new(Weapsel {
             menus,
             weapon_names,
             game: std::ptr::null_mut(),
@@ -319,7 +319,7 @@ pub unsafe fn liero_weapsel_new(spec: &LieroWeapselSpec, env: &LieroWeapselEnv) 
 
 /// # Safety
 /// `ws` came from `liero_weapsel_new` and isn't used after.
-pub unsafe fn liero_weapsel_free(ws: *mut LieroWeapsel) {
+pub unsafe fn liero_weapsel_free(ws: *mut Weapsel) {
     unsafe {
         if !ws.is_null() {
             drop(Box::from_raw(ws));
@@ -327,31 +327,31 @@ pub unsafe fn liero_weapsel_free(ws: *mut LieroWeapsel) {
     }
 }
 
-pub fn liero_weapsel_menu_count(ws: &LieroWeapsel) -> i32 {
+pub fn liero_weapsel_menu_count(ws: &Weapsel) -> i32 {
     ws.menus.len() as i32
 }
 
 /// Menu `i`, for the hash run to read.
-pub fn liero_weapsel_menu(ws: &mut LieroWeapsel, i: i32) -> *mut LieroMenuBox {
+pub fn liero_weapsel_menu(ws: &mut Weapsel, i: i32) -> *mut MenuBox {
     &mut ws.menus[i as usize].menu
 }
 
-pub fn liero_weapsel_ready(ws: &LieroWeapsel, i: i32) -> bool {
+pub fn liero_weapsel_ready(ws: &Weapsel, i: i32) -> bool {
     ws.menus[i as usize].ready
 }
 
 /// `Worm::pressed`.
-fn pressed(worm: &LieroWormData, control: u32) -> bool {
+fn pressed(worm: &WormData, control: u32) -> bool {
     worm.control_states >> control & 1 != 0
 }
 
 /// `Worm::release`.
-fn release(worm: &mut LieroWormData, control: u32) {
+fn release(worm: &mut WormData, control: u32) {
     worm.control_states &= !(1 << control);
 }
 
 /// `Worm::pressedOnce`: whether it was pressed, then clears it.
-fn pressed_once(worm: &mut LieroWormData, control: u32) -> bool {
+fn pressed_once(worm: &mut WormData, control: u32) -> bool {
     let p = pressed(worm, control);
     release(worm, control);
     p
@@ -364,12 +364,7 @@ fn pressed_once(worm: &mut LieroWormData, control: u32) -> bool {
 /// # Safety
 /// `worms` holds `count` valid worms, each with its settings' 5 weapon
 /// numbers in `weapons`, and `tc` is valid.
-pub unsafe fn liero_weapsel_finalize(
-    worms: *const *mut LieroWormData,
-    weapons: *const *const u32,
-    count: i32,
-    tc: &LieroTcData,
-) {
+pub unsafe fn liero_weapsel_finalize(worms: *const *mut WormData, weapons: *const *const u32, count: i32, tc: &TcData) {
     unsafe {
         for i in 0..count.max(0) as usize {
             let worm = &mut **worms.add(i);
@@ -395,8 +390,8 @@ pub unsafe fn liero_weapsel_finalize(
 /// Returns whether every worm is ready.
 ///
 /// # Safety
-/// See `LieroWeapselEnv`.
-pub unsafe fn liero_weapsel_process(ws: &mut LieroWeapsel, env: &LieroWeapselEnv) -> bool {
+/// See `WeapselEnv`.
+pub unsafe fn liero_weapsel_process(ws: &mut Weapsel, env: &WeapselEnv) -> bool {
     unsafe {
         let mut e = Env::new(env);
         let mut all_ready = true;
@@ -466,8 +461,8 @@ pub unsafe fn liero_weapsel_process(ws: &mut LieroWeapsel, env: &LieroWeapselEnv
 
 unsafe fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
 
-fn draw_menu(wm: &mut WeapselMenu, scr: &LieroBitmap, font: &LieroFont, x: i32) {
-    let hooks = LieroMenuHooks {
+fn draw_menu(wm: &mut WeapselMenu, scr: &Bitmap, font: &Font, x: i32) {
+    let hooks = MenuHooks {
         ctx: std::ptr::null_mut(),
         draw_overlay: no_overlay,
     };
@@ -479,14 +474,8 @@ fn draw_menu(wm: &mut WeapselMenu, scr: &LieroBitmap, font: &LieroFont, x: i32) 
 /// menus go, as C++ drew them on the play screen.
 ///
 /// # Safety
-/// See `LieroBitmap`; `title` is valid.
-pub unsafe fn liero_weapsel_draw(
-    ws: &mut LieroWeapsel,
-    scr: &LieroBitmap,
-    menu_scr: &LieroBitmap,
-    font: &LieroFont,
-    title: LieroStr,
-) {
+/// See `Bitmap`; `title` is valid.
+pub unsafe fn liero_weapsel_draw(ws: &mut Weapsel, scr: &Bitmap, menu_scr: &Bitmap, font: &Font, title: Str) {
     unsafe {
         let title = title.bytes();
         liero_gfx_draw_rounded_box(scr, 114, 2, 0, 7, font.dims(title).0);
@@ -506,7 +495,7 @@ pub unsafe fn liero_weapsel_draw(
 
 /// The spectator window's weapon selection: the first two worms' menus, at
 /// the sides, while not ready.
-pub fn liero_weapsel_draw_spectator(ws: &mut LieroWeapsel, scr: &LieroBitmap, font: &LieroFont) {
+pub fn liero_weapsel_draw_spectator(ws: &mut Weapsel, scr: &Bitmap, font: &Font) {
     for (wm, x) in ws.menus.iter_mut().zip([10, 560]) {
         if !wm.ready {
             draw_menu(wm, scr, font, x);
@@ -515,10 +504,10 @@ pub fn liero_weapsel_draw_spectator(ws: &mut LieroWeapsel, scr: &LieroBitmap, fo
 }
 
 /// The weapon tables of `game`, with the app's random numbers.
-unsafe fn game_env(game: &LieroGame, rand: &mut LieroRand) -> LieroWeapselEnv {
+unsafe fn game_env(game: &Game, rand: &mut Rand) -> WeapselEnv {
     unsafe {
         let tc = &*game.tc_ptr();
-        LieroWeapselEnv {
+        WeapselEnv {
             weap_table: game.settings_box().data.weap_table.as_ptr(),
             weap_order: tc.weap_order.as_ptr(),
             weapon_count: tc.model.weapons.len() as i32,
@@ -530,8 +519,8 @@ unsafe fn game_env(game: &LieroGame, rand: &mut LieroRand) -> LieroWeapselEnv {
 }
 
 /// The TC's font.
-pub(crate) fn tc_font(tc: &LieroTcData) -> LieroFont<'_> {
-    LieroFont { chars: &tc.model.font }
+pub(crate) fn tc_font(tc: &TcData) -> Font<'_> {
+    Font { chars: &tc.model.font }
 }
 
 /// The part of a path after the last slash (`getLeaf`).
@@ -548,7 +537,7 @@ pub(crate) fn basename(name: &[u8]) -> &[u8] {
 
 /// The line naming the level: random if the game's settings have no level
 /// file, and otherwise the menus' level file's name, as C++ took it.
-pub(crate) fn level_line(tc: &LieroTcData, game_level_file: &[u8], menu_level_file: &[u8]) -> Vec<u8> {
+pub(crate) fn level_line(tc: &TcData, game_level_file: &[u8], menu_level_file: &[u8]) -> Vec<u8> {
     if game_level_file.is_empty() {
         tc.text(text("LevelRandom")).to_vec()
     } else {
@@ -568,9 +557,9 @@ pub(crate) fn level_line(tc: &LieroTcData, game_level_file: &[u8], menu_level_fi
 /// # Safety
 /// The game has its context, and outlives the selection; each viewport's
 /// worm is listed and has settings.
-pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) -> *mut LieroWeapsel {
+pub unsafe fn liero_weapsel_start(game: &mut Game, rand: &mut Rand) -> *mut Weapsel {
     unsafe {
-        let g: *mut LieroGame = game;
+        let g: *mut Game = game;
         let tc = &*game.tc_ptr();
         let select = game.settings_box().data.ext.select_bot_weapons;
         let viewports: Vec<(i32, i32, i32)> = game
@@ -587,13 +576,13 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) ->
         let mut worms = Vec::new();
         for (idx, center_x, center_y) in viewports {
             let w = game.worm_at(idx as usize).expect("an empty place in a viewport");
-            let worm: *mut LieroWormData = &mut w.data;
+            let worm: *mut WormData = &mut w.data;
             let mut ws = w.settings_mut();
             let bot = ws.data.controller != 0;
-            worms.push(LieroWeapselWorm {
+            worms.push(WeapselWorm {
                 worm,
                 weapons: ws.data.weapons.as_mut_ptr(),
-                name: LieroStr {
+                name: Str {
                     ptr: ws.data.name.as_ptr(),
                     len: ws.data.name.len(),
                 },
@@ -604,14 +593,14 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) ->
                 ready: bot && select != 1,
             });
         }
-        let names: Vec<LieroStr> = tc.model.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
-        let spec = LieroWeapselSpec {
+        let names: Vec<Str> = tc.model.weapons.iter().map(|w| Str::of(&w.name)).collect();
+        let spec = WeapselSpec {
             worms: worms.as_ptr(),
             worm_count: worms.len() as i32,
             weapon_names: names.as_ptr(),
             weapon_count: names.len() as i32,
-            randomize: LieroStr::of(tc.text(text("Randomize"))),
-            done: LieroStr::of(tc.text(text("Done"))),
+            randomize: Str::of(tc.text(text("Randomize"))),
+            done: Str::of(tc.text(text("Done"))),
         };
         let env = game_env(game, rand);
         let ws = liero_weapsel_new(&spec, &env);
@@ -624,7 +613,7 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) ->
 ///
 /// # Safety
 /// See `liero_weapsel_start`.
-pub unsafe fn liero_weapsel_process_game(ws: &mut LieroWeapsel, rand: &mut LieroRand) -> bool {
+pub unsafe fn liero_weapsel_process_game(ws: &mut Weapsel, rand: &mut Rand) -> bool {
     unsafe {
         let env = game_env(&*ws.game, rand);
         liero_weapsel_process(ws, &env)
@@ -636,7 +625,7 @@ pub unsafe fn liero_weapsel_process_game(ws: &mut LieroWeapsel, rand: &mut Liero
 ///
 /// # Safety
 /// See `liero_weapsel_start`; every listed worm has settings.
-pub unsafe fn liero_weapsel_finish(ws: &mut LieroWeapsel) {
+pub unsafe fn liero_weapsel_finish(ws: &mut Weapsel) {
     unsafe {
         let game = &mut *ws.game;
         let tc = &*game.tc_ptr();
@@ -645,19 +634,19 @@ pub unsafe fn liero_weapsel_finish(ws: &mut LieroWeapsel) {
         for w in game.listed_worms() {
             let w = w.expect("an empty place among the game's worms");
             weapons.push(w.settings().data.weapons.as_ptr());
-            worms.push(&mut w.data as *mut LieroWormData);
+            worms.push(&mut w.data as *mut WormData);
         }
         liero_weapsel_finalize(worms.as_ptr(), weapons.as_ptr(), worms.len() as i32, tc);
     }
 }
 
 /// Hides the menus (the game went behind the menu), or shows them again.
-pub fn liero_weapsel_set_focused(ws: &mut LieroWeapsel, focused: bool) {
+pub fn liero_weapsel_set_focused(ws: &mut Weapsel, focused: bool) {
     ws.focused = focused;
 }
 
 /// The renderer's palette as the menus show it: cycling and fading.
-unsafe fn menu_palette(r: *mut LieroRenderer, menu_cycles: u32) {
+unsafe fn menu_palette(r: *mut Renderer, menu_cycles: u32) {
     unsafe {
         let d = &mut (*r).data;
         d.pal = d.origpal;
@@ -673,18 +662,12 @@ unsafe fn menu_palette(r: *mut LieroRenderer, menu_cycles: u32) {
 ///
 /// # Safety
 /// See `liero_weapsel_start`; `r` is valid.
-pub unsafe fn liero_weapsel_draw_game(
-    ws: &mut LieroWeapsel,
-    a: &mut LieroApp,
-    r: *mut LieroRenderer,
-    state: i32,
-    spectators: bool,
-) {
+pub unsafe fn liero_weapsel_draw_game(ws: &mut Weapsel, a: &mut App, r: *mut Renderer, state: i32, spectators: bool) {
     unsafe {
         let game = &mut *ws.game;
         let tc = &*game.tc_ptr();
         let font = tc_font(tc);
-        let g: *const LieroGame = game;
+        let g: *const Game = game;
         let menu_settings = a.shared_settings();
         // The game's settings can be the menus' own, so one at a time.
         let line = || {
@@ -701,9 +684,9 @@ pub unsafe fn liero_weapsel_draw_game(
                 liero_menu_draw_versus(
                     &scr,
                     &font,
-                    LieroStr::of(&line()),
-                    LieroStr::of(&w[0].data.name),
-                    LieroStr::of(&w[1].data.name),
+                    Str::of(&line()),
+                    Str::of(&w[0].data.name),
+                    Str::of(&w[1].data.name),
                     w[0].data.color,
                     w[1].data.color,
                     cx,
@@ -739,7 +722,7 @@ pub unsafe fn liero_weapsel_draw_game(
                 &(*r).bmp.view(),
                 &menu_scr,
                 &font,
-                LieroStr::of(tc.text(text("SelWeap"))),
+                Str::of(tc.text(text("SelWeap"))),
             );
             menu_palette(&mut *a.play, a.menu_cycles);
         }
@@ -753,7 +736,7 @@ mod tests {
 
     #[test]
     fn the_level_line_names_the_menus_level_file() {
-        let mut tc = LieroTcData::empty();
+        let mut tc = TcData::empty();
         tc.model.texts = liero_data::exe::TEXTS
             .iter()
             .map(|&(n, _)| (n, n.as_bytes().to_vec()))
@@ -772,14 +755,14 @@ mod tests {
     }
     use crate::rand::LIERO_RAND_DEFAULT_SEED;
 
-    fn env(table: &[u32; 40], order: &[i32], rand: &mut LieroRand) -> LieroWeapselEnv {
-        LieroWeapselEnv {
+    fn env(table: &[u32; 40], order: &[i32], rand: &mut Rand) -> WeapselEnv {
+        WeapselEnv {
             weap_table: table.as_ptr(),
             weap_order: order.as_ptr(),
             weapon_count: order.len() as i32,
             rand,
             tc: std::ptr::null(),
-            sound: LieroSoundOut::NONE,
+            sound: SoundOut::NONE,
         }
     }
 
@@ -790,7 +773,7 @@ mod tests {
         for t in table.iter_mut().skip(5) {
             *t = 1;
         }
-        let mut rand = LieroRand::new(LIERO_RAND_DEFAULT_SEED);
+        let mut rand = Rand::new(LIERO_RAND_DEFAULT_SEED);
         // Numbers 36 to 40 are weapons 4 to 0, the only ones allowed.
         let mut weapons = [40, 1, 2, 40, 39];
         let mut out = [0; 5];
@@ -817,7 +800,7 @@ mod tests {
         let mut table = [0u32; 40];
         table[0] = 1;
         table[39] = 2;
-        let mut rand = LieroRand::new(1);
+        let mut rand = Rand::new(1);
         let raw = env(&table, &order, &mut rand);
         let e = unsafe { Env::new(&raw) };
         assert_eq!(e.step(2, -1), 39, "wraps past the disabled first and last");
@@ -835,11 +818,11 @@ mod tests {
 
     /// A TC with `n` weapons, each with ammo 10 + its index.
     /// Boxed: it is too big for the wasm tests' stack.
-    fn tc(mut weapons: Vec<Weapon>, order: &[i32]) -> Box<LieroTcData> {
+    fn tc(mut weapons: Vec<Weapon>, order: &[i32]) -> Box<TcData> {
         for (i, w) in weapons.iter_mut().enumerate() {
             w.ammo = 10 + i as i32;
         }
-        let mut tc = LieroTcData::empty();
+        let mut tc = TcData::empty();
         tc.model.weapons = weapons;
         tc.weap_order = order.to_vec();
         tc
@@ -851,21 +834,21 @@ mod tests {
         let weapons: Vec<Weapon> = (0..40).map(|_| Weapon::default()).collect();
         let tc = tc(weapons, &order);
         let table = [0u32; 40];
-        let mut rand = LieroRand::new(1);
+        let mut rand = Rand::new(1);
         let mut raw = env(&table, &order, &mut rand);
         raw.tc = &*tc;
-        raw.sound = LieroSoundOut {
+        raw.sound = SoundOut {
             mixer: std::ptr::null_mut(),
             report: Some(report),
         };
 
-        let mut worm = LieroWormData::default();
+        let mut worm = WormData::default();
         let mut numbers = [1u32, 2, 3, 4, 5];
-        let names = [LieroStr {
+        let names = [Str {
             ptr: b"W".as_ptr(),
             len: 1,
         }; 40];
-        let spec_worm = LieroWeapselWorm {
+        let spec_worm = WeapselWorm {
             worm: &mut worm,
             weapons: numbers.as_mut_ptr(),
             name: names[0],
@@ -875,7 +858,7 @@ mod tests {
             random: false,
             ready: false,
         };
-        let spec = LieroWeapselSpec {
+        let spec = WeapselSpec {
             worms: &spec_worm,
             worm_count: 1,
             weapon_names: names.as_ptr(),
@@ -888,7 +871,7 @@ mod tests {
             assert_eq!(worm.weapons[2].kind, 2);
             assert_eq!(worm.weapons[2].ammo, 0);
 
-            let press = |worm: &mut LieroWormData, control: u32| {
+            let press = |worm: &mut WormData, control: u32| {
                 worm.control_states = 1 << control;
                 liero_weapsel_process(&mut *ws, &raw);
             };
@@ -911,7 +894,7 @@ mod tests {
         let order: Vec<i32> = (0..10).rev().collect();
         let weapons: Vec<Weapon> = (0..10).map(|_| Weapon::default()).collect();
         let tc = tc(weapons, &order);
-        let mut worm = LieroWormData {
+        let mut worm = WormData {
             current_weapon: 3,
             control_states: 0xff,
             ..Default::default()
@@ -919,7 +902,7 @@ mod tests {
         worm.weapons[1].delay_left = 5;
         worm.weapons[1].loading_left = 5;
         let numbers = [1u32, 2, 3, 4, 10];
-        let worms = [&mut worm as *mut LieroWormData];
+        let worms = [&mut worm as *mut WormData];
         let lists = [numbers.as_ptr()];
         unsafe { liero_weapsel_finalize(worms.as_ptr(), lists.as_ptr(), 1, &tc) };
         assert_eq!(worm.control_states, 0x80, "dig stays");

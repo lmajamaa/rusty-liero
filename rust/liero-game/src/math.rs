@@ -15,14 +15,14 @@ pub const fn ftoi(v: Fixed) -> i32 {
 
 /// Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LieroIVec2 {
+pub struct IVec2 {
     pub x: i32,
     pub y: i32,
 }
 
 /// Entry `angle` (0 to 127) of the cos/sin table, which is computed once.
-pub fn cos_sin(angle: i32) -> LieroIVec2 {
-    static TABLE: std::sync::OnceLock<[LieroIVec2; LIERO_COS_SIN_ENTRIES]> = std::sync::OnceLock::new();
+pub fn cos_sin(angle: i32) -> IVec2 {
+    static TABLE: std::sync::OnceLock<[IVec2; LIERO_COS_SIN_ENTRIES]> = std::sync::OnceLock::new();
     TABLE.get_or_init(cos_sin_table)[angle as usize]
 }
 
@@ -86,8 +86,8 @@ impl Fp {
 /// The 16.16 fixed-point table of directions, one per 1/128 of a turn, in
 /// C++'s `cossinTable` layout: x is -sin and y is cos of the angle. Computed with integer maths only, so it comes
 /// out the same on every platform.
-pub fn cos_sin_table() -> [LieroIVec2; LIERO_COS_SIN_ENTRIES] {
-    let mut table = [LieroIVec2::default(); LIERO_COS_SIN_ENTRIES];
+pub fn cos_sin_table() -> [IVec2; LIERO_COS_SIN_ENTRIES] {
+    let mut table = [IVec2::default(); LIERO_COS_SIN_ENTRIES];
     let scale_bits = 28;
     let scale: i32 = 13176795; // (2pi / 128) << scale_bits
 
@@ -170,8 +170,8 @@ mod tests {
     fn cos_sin_table_matches_cpp() {
         let table = cos_sin_table();
         // x is -sin and y is cos of the angle.
-        assert_eq!(table[0], LieroIVec2 { x: 0, y: 65536 });
-        assert_eq!(table[32], LieroIVec2 { x: -65536, y: 0 });
+        assert_eq!(table[0], IVec2 { x: 0, y: 65536 });
+        assert_eq!(table[32], IVec2 { x: -65536, y: 0 });
         let mut h = Fnv::new();
         for v in table {
             h.add(v.x as u32);

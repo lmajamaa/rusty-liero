@@ -470,7 +470,7 @@ fn sort_heap<T: Copy>(h: &mut [T], c: &impl Fn(&T, &T) -> bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rand::LieroRand;
+    use crate::rand::Rand;
     use crate::test_util::Fnv;
 
     // From rust/liero-game/reference/reference_values.cpp.
@@ -488,7 +488,7 @@ mod tests {
     /// laid out at random, ascending, descending, as an organ pipe, nearly
     /// descending or all equal.
     fn arrays(seed: u32, mut f: impl FnMut(&mut Vec<Item>)) {
-        let mut r = LieroRand::new(seed);
+        let mut r = Rand::new(seed);
         for t in 0..20000u32 {
             let n = if t % 50 == 0 { r.below(2000) } else { r.below(81) };
             let keys = 1 + r.below(if t % 3 == 0 { 3 } else { 40 });

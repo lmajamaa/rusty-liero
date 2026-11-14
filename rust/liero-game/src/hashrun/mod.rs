@@ -3,7 +3,7 @@
 //! into the lines `tools/hashrun/expected.txt` holds, which were made from
 //! the original C++. `src/bin/liero-hashrun.rs` prints them natively.
 
-use crate::app::LieroApp;
+use crate::app::App;
 use crate::menus::liero_menus_new;
 
 mod ai;
@@ -78,7 +78,7 @@ pub const SECTIONS: [&str; 10] = [
 
 /// Runs section `name`, giving its lines to `out`, with the bot games
 /// `ticks` long at most and hashed every `interval`.
-fn run_section(name: &str, a: &mut LieroApp, ticks: i32, interval: i32, out: &mut Out) {
+fn run_section(name: &str, a: &mut App, ticks: i32, interval: i32, out: &mut Out) {
     match name {
         "app" => app::hash_app(a, out),
         "games" => games::hash_games(a, out, ticks, interval),
@@ -115,7 +115,7 @@ pub fn hash_run(ticks: i32, interval: i32, only: &[String], out: &mut dyn FnMut(
     }
     // One app for every section, as in the game: the sections that use it
     // go on from what the ones before left.
-    let mut app = LieroApp::new();
+    let mut app = App::new();
     app.menus = Some(liero_menus_new());
     let mut out = Out(out);
     for name in SECTIONS

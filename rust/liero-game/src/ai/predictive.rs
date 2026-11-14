@@ -11,7 +11,7 @@
 
 use super::path::{LevelView, PathLevel, NO_CELL};
 use crate::math::{ftoi, itof, vector_length};
-use crate::rand::LieroRand;
+use crate::rand::Rand;
 
 /// Game modes, as `Settings::GameMode` numbers them.
 const GM_GAME_OF_TAG: u32 = 1;
@@ -42,7 +42,7 @@ const PI: f64 = std::f64::consts::PI;
 
 /// A worm weapon, as the AI reads it.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroAiWeapon {
+pub struct AiWeapon {
     pub ammo: i32,
     pub delay_left: i32,
     pub loading_left: i32,
@@ -53,7 +53,7 @@ pub struct LieroAiWeapon {
 
 /// What the AI reads of a worm.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroAiWorm {
+pub struct AiWorm {
     pub index: i32,
     pub pos: [i32; 2],
     pub aiming_angle: i32,
@@ -65,7 +65,7 @@ pub struct LieroAiWorm {
     /// The health worms start with, from the worm's settings.
     pub settings_health: i32,
     pub current_weapon: i32,
-    pub weapons: [LieroAiWeapon; 5],
+    pub weapons: [AiWeapon; 5],
     pub rope_out: bool,
     pub steerable_count: i32,
     pub steerable_sum: [i32; 2],
@@ -74,7 +74,7 @@ pub struct LieroAiWorm {
 
 /// What the AI reads of a game.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroAiGame {
+pub struct AiGame {
     pub game_mode: u32,
     pub holder_idx: i32,
     pub contender_idx: i32,
@@ -96,9 +96,9 @@ pub trait Games {
     fn clone_game(&mut self, g: Self::G) -> Self::G;
     fn free_game(&mut self, g: Self::G);
     fn process_frame(&mut self, g: Self::G);
-    fn game(&mut self, g: Self::G) -> LieroAiGame;
+    fn game(&mut self, g: Self::G) -> AiGame;
     /// The worm at `place` in the game's list, which is its index.
-    fn worm(&mut self, g: Self::G, place: i32) -> LieroAiWorm;
+    fn worm(&mut self, g: Self::G, place: i32) -> AiWorm;
     fn set_controls(&mut self, g: Self::G, place: i32, controls: u32);
     fn level(&self, g: Self::G) -> LevelView<'_>;
 }
@@ -392,7 +392,7 @@ impl TransModel {
     }
 
     /// A next state, with the row's weights as chances (`Model::random`).
-    fn random(&self, context: &InputContext, rand: &mut LieroRand) -> InputState {
+    fn random(&self, context: &InputContext, rand: &mut Rand) -> InputState {
         let v = &self.trans[context.pack()];
         let max = v.iter().fold(0.0, |a, &b| a + b);
         let mut el = rand.double_below(max);
@@ -417,7 +417,7 @@ fn max(a: f64, b: f64) -> f64 {
     }
 }
 
-fn total_health(w: &LieroAiWorm) -> f64 {
+fn total_health(w: &AiWorm) -> f64 {
     if w.lives == 0 {
         return -10000.0;
     }
@@ -428,11 +428,11 @@ fn total_health(w: &LieroAiWorm) -> f64 {
     w.lives as f64 * (w.settings_health as f64 * 5.0 / 4.0) + h as f64
 }
 
-fn total_health_norm(w: &LieroAiWorm) -> f64 {
+fn total_health_norm(w: &AiWorm) -> f64 {
     total_health(w) * 100.0 / w.settings_health as f64
 }
 
-fn total_ammo_worth(w: &LieroAiWorm) -> f64 {
+fn total_ammo_worth(w: &AiWorm) -> f64 {
     let mut worth = 0.0;
     for weap in &w.weapons {
         if weap.loading_left > 0 {
@@ -444,14 +444,14 @@ fn total_ammo_worth(w: &LieroAiWorm) -> f64 {
     worth
 }
 
-fn ready_weapons(w: &LieroAiWorm) -> i32 {
+fn ready_weapons(w: &AiWorm) -> i32 {
     w.weapons
         .iter()
         .filter(|weap| weap.loading_left == 0 && weap.delay_left < 70)
         .count() as i32
 }
 
-fn worm_distance(from: &LieroAiWorm, to: &LieroAiWorm) -> i32 {
+fn worm_distance(from: &AiWorm, to: &AiWorm) -> i32 {
     vector_length(ftoi(to.pos[0]) - ftoi(from.pos[0]), ftoi(to.pos[1]) - ftoi(from.pos[1]))
 }
 
@@ -480,7 +480,7 @@ fn radian_diff(a: f64, b: f64) -> f64 {
 }
 
 /// How far `from` aims from `to`, past a tolerance.
-fn aiming_diff_worms(from: &LieroAiWorm, to: &LieroAiWorm) -> f64 {
+fn aiming_diff_worms(from: &AiWorm, to: &AiWorm) -> f64 {
     let xo = (to.pos[0] - from.pos[0]).abs() as f64;
     let yo = (to.pos[1] - from.pos[1]) as f64;
     let angle_to_target = if xo != 0.0 || yo != 0.0 { yo.atan2(xo) } else { 0.0 };
@@ -523,7 +523,7 @@ fn obstacles_between(level: &LevelView, from: (i32, i32), to: (i32, i32)) -> i32
 }
 
 /// The same between two worms, from their fixed-point positions.
-fn obstacles_worms(level: &LevelView, from: &LieroAiWorm, to: &LieroAiWorm) -> i32 {
+fn obstacles_worms(level: &LevelView, from: &AiWorm, to: &AiWorm) -> i32 {
     let org_x = from.pos[0] as f64 / 65536.0;
     let org_y = from.pos[1] as f64 / 65536.0;
     let mut dir_x = (to.pos[0] - from.pos[0]) as f64 / 65536.0;
@@ -629,7 +629,7 @@ enum Mutation {
 
 /// A traced position, the copy's worm in fixed point, and its colour.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroAiTrace {
+pub struct AiTrace {
     pub x: i32,
     pub y: i32,
     pub color: u8,
@@ -640,12 +640,12 @@ pub struct LieroAiTrace {
 /// only code under `#if 0` read, so it's gone.
 #[derive(Clone)]
 pub struct FollowAi {
-    pub rand: LieroRand,
+    pub rand: Rand,
     pub frame: i32,
     pub current_context: InputContext,
     pub model: TransModel,
     pub evaluation_budget: i32,
-    pub evaluate_positions: Vec<LieroAiTrace>,
+    pub evaluate_positions: Vec<AiTrace>,
     pub cand_plan: Vec<CandPlan>,
     pub best: Option<usize>,
     pub testing: bool,
@@ -659,7 +659,7 @@ impl FollowAi {
     /// worm's AI `testing`, which tries changing to loading weapons.
     pub fn new(weights: Weights, candidates: usize, testing: bool) -> Self {
         FollowAi {
-            rand: LieroRand::default(),
+            rand: Rand::default(),
             frame: 0,
             current_context: InputContext::default(),
             model: TransModel::new(&weights),
@@ -681,7 +681,7 @@ impl FollowAi {
 
     /// How far the worm aims from where the path from its cell leads: the
     /// furthest of the next 15 cells it can see.
-    fn aiming_diff_path(&self, level: &LevelView, from: &LieroAiWorm, cell: Option<u32>) -> f64 {
+    fn aiming_diff_path(&self, level: &LevelView, from: &AiWorm, cell: Option<u32>) -> f64 {
         let cells = &self.dlevel.cells;
         let Some(cell) = cell.filter(|&c| cells[c as usize].parent != NO_CELL) else {
             return 1.0;
@@ -885,7 +885,7 @@ impl FollowAi {
             if ai_traces {
                 let t = 119 - (i * (119 - 104 + 1) / plan_size) as i32;
                 let w = games.worm(copy, me_copy);
-                self.evaluate_positions.push(LieroAiTrace {
+                self.evaluate_positions.push(AiTrace {
                     x: w.pos[0],
                     y: w.pos[1],
                     color: t as u8,

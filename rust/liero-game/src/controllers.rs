@@ -4,23 +4,23 @@
 //! What they open on top of the game (a message, the stats screen) waits in
 //! the controller for the game screen to push.
 
-use crate::app::LieroApp;
+use crate::app::App;
 use crate::boxes::liero_info_box_screen;
 use crate::controller::{
-    LieroControllerData, LIERO_FADE_SHOWN, LIERO_STATE_GAME, LIERO_STATE_GAME_ENDED, LIERO_STATE_INITIAL,
+    ControllerData, LIERO_FADE_SHOWN, LIERO_STATE_GAME, LIERO_STATE_GAME_ENDED, LIERO_STATE_INITIAL,
     LIERO_STATE_WEAPON_SELECTION,
 };
 use crate::fs::Node;
-use crate::game::{LieroGameHooks, LieroRect};
+use crate::game::{GameHooks, Rect};
 use crate::game_box::{
     liero_game_add_viewport, liero_game_clone, liero_game_list_worm, liero_game_new, liero_game_new_worm,
-    liero_game_set_context, liero_worm_set_ai, LieroGame,
+    liero_game_set_context, liero_worm_set_ai, Game,
 };
-use crate::keys::{local_controller_key, LieroWormKeys, LIERO_DK_ESCAPE};
-use crate::level::LieroLevelBox;
-use crate::renderer::LieroRenderer;
-use crate::replay::LieroReplayStatus;
-use crate::replay_file::{LieroReplayOutcome, LieroReplayReader, LieroReplayWriter};
+use crate::keys::{local_controller_key, WormKeys, LIERO_DK_ESCAPE};
+use crate::level::LevelBox;
+use crate::renderer::Renderer;
+use crate::replay::ReplayStatus;
+use crate::replay_file::{ReplayOutcome, ReplayReader, ReplayWriter};
 use crate::screen::{BoxedScreen, Host};
 use crate::settings::{liero_settings_box_new, SharedSettings, LIERO_MAX_CONTROL_EX};
 use crate::stats::liero_stats_presenter_screen;
@@ -28,7 +28,7 @@ use crate::tc::SharedTc;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{
     liero_weapsel_draw_game, liero_weapsel_finish, liero_weapsel_process_game, liero_weapsel_set_focused,
-    liero_weapsel_start, LieroWeapsel,
+    liero_weapsel_start, Weapsel,
 };
 
 /// `SDL_SCANCODE_R`, which rewinds a replay.
@@ -36,20 +36,20 @@ const SCANCODE_R: i32 = 21;
 
 /// A match played here.
 struct Local {
-    game: Box<LieroGame>,
-    ws: Option<Box<LieroWeapsel>>,
-    replay: Option<LieroReplayWriter>,
+    game: Box<Game>,
+    ws: Option<Box<Weapsel>>,
+    replay: Option<ReplayWriter>,
 }
 
 /// A replay played back.
 struct Replay {
-    reader: Option<LieroReplayReader>,
+    reader: Option<ReplayReader>,
     /// The TC the game is made with.
     tc: SharedTc,
-    game: Option<Box<LieroGame>>,
+    game: Option<Box<Game>>,
     /// The game as it started, which R rewinds to, and where in the replay
     /// that was.
-    initial: Option<Box<LieroGame>>,
+    initial: Option<Box<Game>>,
     initial_pos: usize,
 }
 
@@ -59,9 +59,9 @@ enum Kind {
 }
 
 /// A controller (`Controller`).
-pub struct LieroController {
+pub struct Controller {
     /// What both kinds share (`CommonController`), which C++ refers to.
-    data: LieroControllerData,
+    data: ControllerData,
     kind: Kind,
     /// A screen opened over the game, for the game screen to push.
     opened: Option<BoxedScreen>,
@@ -69,7 +69,7 @@ pub struct LieroController {
 
 /// A new game with the settings, the TC and the app's sound, its clock
 /// seeded from the time, as C++'s `Game` constructor did.
-unsafe fn new_game(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<LieroGame> {
+unsafe fn new_game(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<Game> {
     unsafe {
         let mut game = Box::from_raw(liero_game_new());
         liero_game_set_context(&mut game, Some(settings), Some(tc), host.sound());
@@ -78,8 +78,8 @@ unsafe fn new_game(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<L
     }
 }
 
-unsafe fn split_viewports(game: &mut LieroGame, worm0: i32, worm1: i32) {
-    let r = |x1, y1, x2, y2| LieroRect { x1, y1, x2, y2 };
+unsafe fn split_viewports(game: &mut Game, worm0: i32, worm1: i32) {
+    let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
     liero_game_add_viewport(game, r(0, 0, 158, 158), worm0, 504, 350, LIERO_VIEWPORT_WORM, false);
     liero_game_add_viewport(
         game,
@@ -94,8 +94,8 @@ unsafe fn split_viewports(game: &mut LieroGame, worm0: i32, worm1: i32) {
 
 /// The spectator viewport is always full size, +68 on x to align it in the
 /// middle.
-unsafe fn spectator_viewport(game: &mut LieroGame, spectator_list: bool) {
-    let r = LieroRect {
+unsafe fn spectator_viewport(game: &mut Game, spectator_list: bool) {
+    let r = Rect {
         x1: 0,
         y1: 0,
         x2: 504 + 68,
@@ -106,13 +106,13 @@ unsafe fn spectator_viewport(game: &mut LieroGame, spectator_list: bool) {
 
 /// The renderer `game` shows its new settings on: the play screen, or the
 /// single screen when a replay is shown on it.
-fn primary_renderer(app: &mut LieroApp) -> *mut LieroRenderer {
+fn primary_renderer(app: &mut App) -> *mut Renderer {
     crate::app::liero_app_primary(app)
 }
 
 /// The name a replay is recorded under: the time, then up to four letters
 /// and digits of each of the first two worms' names.
-unsafe fn replay_name(host: &Host, game: &mut LieroGame) -> Vec<u8> {
+unsafe fn replay_name(host: &Host, game: &mut Game) -> Vec<u8> {
     let mut name = host.replay_time(host.time());
     name.push(b' ');
     for i in 0..2 {
@@ -133,10 +133,10 @@ unsafe fn replay_name(host: &Host, game: &mut LieroGame) -> Vec<u8> {
     name
 }
 
-impl LieroController {
+impl Controller {
     fn new(kind: Kind) -> Box<Self> {
-        Box::new(LieroController {
-            data: LieroControllerData::default(),
+        Box::new(Controller {
+            data: ControllerData::default(),
             kind,
             opened: None,
         })
@@ -154,7 +154,7 @@ impl LieroController {
         self.open(s);
     }
 
-    fn game(&mut self) -> Option<&mut LieroGame> {
+    fn game(&mut self) -> Option<&mut Game> {
         match &mut self.kind {
             Kind::Local(l) => Some(&mut l.game),
             Kind::Replay(r) => r.game.as_deref_mut(),
@@ -162,7 +162,7 @@ impl LieroController {
     }
 
     /// Ends the game's stats and opens the stats screen (`presentStats`).
-    fn present_stats(&mut self, app: &mut LieroApp, host: &Host) {
+    fn present_stats(&mut self, app: &mut App, host: &Host) {
         let game = self.game().expect("no game");
         game.stats_finish();
         let g = game.stats_game();
@@ -175,13 +175,13 @@ impl LieroController {
         unsafe {
             let escape = match &mut self.kind {
                 Kind::Local(l) => {
-                    let keys: Vec<LieroWormKeys> = l
+                    let keys: Vec<WormKeys> = l
                         .game
                         .listed_worms()
                         .map(|w| {
                             let w = w.expect("an empty place among the game's worms");
                             let controls = w.settings().data.controls_ex.as_ptr();
-                            LieroWormKeys {
+                            WormKeys {
                                 controls,
                                 states: &mut w.data.control_states,
                                 clean: &mut w.data.clean_control_states,
@@ -210,7 +210,7 @@ impl LieroController {
         }
     }
 
-    unsafe fn focus(&mut self, app: &mut LieroApp, host: &Host) {
+    unsafe fn focus(&mut self, app: &mut App, host: &Host) {
         unsafe {
             let d = &mut self.data;
             if d.state == LIERO_STATE_GAME_ENDED {
@@ -256,7 +256,7 @@ impl LieroController {
         }
     }
 
-    unsafe fn process(&mut self, app: &mut LieroApp, host: &Host) -> bool {
+    unsafe fn process(&mut self, app: &mut App, host: &Host) -> bool {
         unsafe {
             match &mut self.kind {
                 Kind::Local(_) => self.process_local(app, host),
@@ -265,7 +265,7 @@ impl LieroController {
         }
     }
 
-    unsafe fn process_local(&mut self, app: &mut LieroApp, host: &Host) -> bool {
+    unsafe fn process_local(&mut self, app: &mut App, host: &Host) -> bool {
         unsafe {
             let Kind::Local(l) = &mut self.kind else { unreachable!() };
             if self.data.state == LIERO_STATE_WEAPON_SELECTION {
@@ -277,13 +277,13 @@ impl LieroController {
                 let mut i = 0;
                 while i < ticks && self.data.in_game() {
                     let Kind::Local(l) = &mut self.kind else { unreachable!() };
-                    l.game.process_ais(Some(&LieroGameHooks {
+                    l.game.process_ais(Some(&GameHooks {
                         hires_ticks: &|| host.hires_ticks(),
                     }));
                     if let Some(w) = &mut l.replay {
                         w.frame(&mut l.game);
                     }
-                    l.game.process_frame(&LieroGameHooks {
+                    l.game.process_frame(&GameHooks {
                         hires_ticks: &|| host.hires_ticks(),
                     });
                     if l.game.is_over() {
@@ -311,7 +311,7 @@ impl LieroController {
         }
     }
 
-    unsafe fn process_replay(&mut self, app: &mut LieroApp, host: &Host) -> bool {
+    unsafe fn process_replay(&mut self, app: &mut App, host: &Host) -> bool {
         unsafe {
             if self.data.in_game() {
                 let Kind::Replay(r) = &mut self.kind else {
@@ -351,7 +351,7 @@ impl LieroController {
                     let Kind::Replay(r) = &mut self.kind else {
                         unreachable!()
                     };
-                    r.game.as_mut().expect("no game").process_frame(&LieroGameHooks {
+                    r.game.as_mut().expect("no game").process_frame(&GameHooks {
                         hires_ticks: &|| host.hires_ticks(),
                     });
 
@@ -393,7 +393,7 @@ impl LieroController {
         }
     }
 
-    unsafe fn draw(&mut self, app: &mut LieroApp, renderer: *mut LieroRenderer, spectators: bool) {
+    unsafe fn draw(&mut self, app: &mut App, renderer: *mut Renderer, spectators: bool) {
         unsafe {
             let state = self.data.state;
             match &mut self.kind {
@@ -423,7 +423,7 @@ impl LieroController {
         }
     }
 
-    unsafe fn change_state(&mut self, app: &mut LieroApp, host: &Host, new_state: i32) {
+    unsafe fn change_state(&mut self, app: &mut App, host: &Host, new_state: i32) {
         unsafe {
             if self.data.state == new_state {
                 return;
@@ -435,7 +435,7 @@ impl LieroController {
         }
     }
 
-    unsafe fn change_local_state(&mut self, app: &mut LieroApp, host: &Host, new_state: i32) {
+    unsafe fn change_local_state(&mut self, app: &mut App, host: &Host, new_state: i32) {
         unsafe {
             let Kind::Local(l) = &mut self.kind else { unreachable!() };
             // The new state is prepared before the old one goes: weapon
@@ -479,7 +479,7 @@ impl LieroController {
         }
     }
 
-    unsafe fn change_replay_state(&mut self, app: &mut LieroApp, new_state: i32) {
+    unsafe fn change_replay_state(&mut self, app: &mut App, new_state: i32) {
         unsafe {
             let Kind::Replay(r) = &mut self.kind else {
                 unreachable!()
@@ -529,7 +529,7 @@ impl LieroController {
     }
 
     /// The level shown behind the menu, if any.
-    fn level(&mut self) -> Option<&mut LieroLevelBox> {
+    fn level(&mut self) -> Option<&mut LevelBox> {
         match &mut self.kind {
             Kind::Local(l) => Some(l.game.level_box_mut()),
             Kind::Replay(r) => match (&mut r.game, &r.reader) {
@@ -540,7 +540,7 @@ impl LieroController {
     }
 }
 
-impl Drop for LieroController {
+impl Drop for Controller {
     fn drop(&mut self) {
         self.end_record();
     }
@@ -549,23 +549,23 @@ impl Drop for LieroController {
 /// The error a replay outcome is, as the controllers catch it: a check
 /// error, and with `read_too` a read error. Others stop the app, as the
 /// exceptions C++ didn't catch did.
-fn caught(o: &LieroReplayOutcome, read_too: bool) -> Option<String> {
+fn caught(o: &ReplayOutcome, read_too: bool) -> Option<String> {
     let message = o.message.to_string();
     match o.status {
-        LieroReplayStatus::Ok => None,
-        LieroReplayStatus::CheckError => Some(message),
-        LieroReplayStatus::ReadError if read_too => Some(message),
-        LieroReplayStatus::ReadError => panic!("{message}"),
-        LieroReplayStatus::OutOfRange => panic!("vector"),
+        ReplayStatus::Ok => None,
+        ReplayStatus::CheckError => Some(message),
+        ReplayStatus::ReadError if read_too => Some(message),
+        ReplayStatus::ReadError => panic!("{message}"),
+        ReplayStatus::OutOfRange => panic!("vector"),
     }
 }
 
 /// Starts recording a replay of `l`'s game in the config folder's Replays.
-unsafe fn start_recording(app: &LieroApp, host: &Host, l: &mut Local) -> Result<(), String> {
+unsafe fn start_recording(app: &App, host: &Host, l: &mut Local) -> Result<(), String> {
     unsafe {
         let name = replay_name(host, &mut l.game);
         let node = app.files.config.go(b"Replays").go(&name);
-        let Some(mut w) = LieroReplayWriter::new(&node) else {
+        let Some(mut w) = ReplayWriter::new(&node) else {
             return Err(format!("Could not write {}", String::from_utf8_lossy(node.full_path())));
         };
         let o = w.begin(&mut l.game);
@@ -580,7 +580,7 @@ unsafe fn start_recording(app: &LieroApp, host: &Host, l: &mut Local) -> Result<
 
 /// A local match with the settings' two players (`LocalController`), with
 /// `host`'s sound and clock.
-pub fn liero_local_controller_new(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<LieroController> {
+pub fn liero_local_controller_new(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<Controller> {
     // SAFETY: the game is new, and the worms are its own.
     unsafe {
         let mut game = new_game(host, settings.clone(), tc);
@@ -599,7 +599,7 @@ pub fn liero_local_controller_new(host: &Host, settings: SharedSettings, tc: Sha
         }
         split_viewports(&mut game, indexes[0], indexes[1]);
         spectator_viewport(&mut game, true);
-        LieroController::new(Kind::Local(Local {
+        Controller::new(Kind::Local(Local {
             game,
             ws: None,
             replay: None,
@@ -609,8 +609,8 @@ pub fn liero_local_controller_new(host: &Host, settings: SharedSettings, tc: Sha
 
 /// A replay of `node`, played with `tc` (`ReplayController`), or null if
 /// it can't be read.
-pub fn liero_replay_controller_new(node: &Node, tc: SharedTc) -> *mut LieroController {
-    let Some(reader) = LieroReplayReader::new(node) else {
+pub fn liero_replay_controller_new(node: &Node, tc: SharedTc) -> *mut Controller {
+    let Some(reader) = ReplayReader::new(node) else {
         return std::ptr::null_mut();
     };
     let r = Replay {
@@ -620,12 +620,12 @@ pub fn liero_replay_controller_new(node: &Node, tc: SharedTc) -> *mut LieroContr
         initial: None,
         initial_pos: 0,
     };
-    Box::into_raw(LieroController::new(Kind::Replay(r)))
+    Box::into_raw(Controller::new(Kind::Replay(r)))
 }
 
 /// # Safety
 /// `c` comes from a `_new` here, or is null, and isn't used again.
-pub unsafe fn liero_controller_free(c: *mut LieroController) {
+pub unsafe fn liero_controller_free(c: *mut Controller) {
     unsafe {
         if !c.is_null() {
             drop(Box::from_raw(c));
@@ -634,7 +634,7 @@ pub unsafe fn liero_controller_free(c: *mut LieroController) {
 }
 
 /// What the controllers share, at a fixed address.
-pub fn liero_controller_data(c: &mut LieroController) -> *mut LieroControllerData {
+pub fn liero_controller_data(c: &mut Controller) -> *mut ControllerData {
     &mut c.data
 }
 
@@ -642,14 +642,14 @@ pub fn liero_controller_data(c: &mut LieroController) -> *mut LieroControllerDat
 ///
 /// # Safety
 /// `c` is valid.
-pub unsafe fn liero_controller_on_key(c: &mut LieroController, key: i32, state: bool) {
+pub unsafe fn liero_controller_on_key(c: &mut Controller, key: i32, state: bool) {
     unsafe {
         c.on_key(key, state);
     }
 }
 
 /// The menu opened.
-pub fn liero_controller_unfocus(c: &mut LieroController) {
+pub fn liero_controller_unfocus(c: &mut Controller) {
     c.unfocus();
 }
 
@@ -657,7 +657,7 @@ pub fn liero_controller_unfocus(c: &mut LieroController) {
 ///
 /// # Safety
 /// `c` is valid.
-pub unsafe fn liero_controller_focus(c: &mut LieroController, app: &mut LieroApp, host: &Host) {
+pub unsafe fn liero_controller_focus(c: &mut Controller, app: &mut App, host: &Host) {
     unsafe {
         c.focus(app, host);
     }
@@ -667,7 +667,7 @@ pub unsafe fn liero_controller_focus(c: &mut LieroController, app: &mut LieroApp
 ///
 /// # Safety
 /// `c` is valid.
-pub unsafe fn liero_controller_run(c: &mut LieroController, app: &mut LieroApp, host: &Host) -> bool {
+pub unsafe fn liero_controller_run(c: &mut Controller, app: &mut App, host: &Host) -> bool {
     unsafe { c.process(app, host) }
 }
 
@@ -676,38 +676,33 @@ pub unsafe fn liero_controller_run(c: &mut LieroController, app: &mut LieroApp, 
 ///
 /// # Safety
 /// `c` and `r` are valid.
-pub unsafe fn liero_controller_draw(
-    c: &mut LieroController,
-    app: &mut LieroApp,
-    r: *mut LieroRenderer,
-    spectators: bool,
-) {
+pub unsafe fn liero_controller_draw(c: &mut Controller, app: &mut App, r: *mut Renderer, spectators: bool) {
     unsafe {
         c.draw(app, r, spectators);
     }
 }
 
 /// Whether a game is on, for the menu to offer to resume it.
-pub fn liero_controller_running(c: &LieroController) -> bool {
+pub fn liero_controller_running(c: &Controller) -> bool {
     c.running()
 }
 
-pub fn liero_controller_is_replay(c: &LieroController) -> bool {
+pub fn liero_controller_is_replay(c: &Controller) -> bool {
     matches!(c.kind, Kind::Replay(_))
 }
 
 /// The level behind the menu, or null.
-pub fn liero_controller_level(c: &mut LieroController) -> *mut LieroLevelBox {
-    c.level().map_or(std::ptr::null_mut(), |l| l as *mut LieroLevelBox)
+pub fn liero_controller_level(c: &mut Controller) -> *mut LevelBox {
+    c.level().map_or(std::ptr::null_mut(), |l| l as *mut LevelBox)
 }
 
 /// The game, or null before a replay starts.
-pub fn liero_controller_game(c: &mut LieroController) -> *mut LieroGame {
-    c.game().map_or(std::ptr::null_mut(), |g| g as *mut LieroGame)
+pub fn liero_controller_game(c: &mut Controller) -> *mut Game {
+    c.game().map_or(std::ptr::null_mut(), |g| g as *mut Game)
 }
 
 /// The screen the controller opened, if any, to push.
-pub fn liero_controller_take_opened(c: &mut LieroController) -> Option<BoxedScreen> {
+pub fn liero_controller_take_opened(c: &mut Controller) -> Option<BoxedScreen> {
     c.opened.take()
 }
 
@@ -715,7 +710,7 @@ pub fn liero_controller_take_opened(c: &mut LieroController) -> Option<BoxedScre
 ///
 /// # Safety
 /// `r` is valid.
-pub unsafe fn liero_game_focus(g: &mut LieroGame, r: *mut LieroRenderer) {
+pub unsafe fn liero_game_focus(g: &mut Game, r: *mut Renderer) {
     unsafe {
         g.focus(r);
     }

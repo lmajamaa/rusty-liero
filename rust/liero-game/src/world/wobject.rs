@@ -11,12 +11,12 @@ use crate::weapon::{ENDLESS_LASER_ID, LIERO_SHOT_DTYPE2, LIERO_SHOT_LASER, LIERO
 
 impl<'a> World<'a> {
     /// A copy of weapon object `slot`.
-    pub(super) fn wobj(&self, slot: usize) -> LieroWObject {
+    pub(super) fn wobj(&self, slot: usize) -> WObject {
         self.g.data.wobjects.arr[slot]
     }
 
     /// Changes weapon object `slot` in place with `f`.
-    pub(super) fn update_wobj<R>(&mut self, slot: usize, f: impl FnOnce(&mut LieroWObject) -> R) -> R {
+    pub(super) fn update_wobj<R>(&mut self, slot: usize, f: impl FnOnce(&mut WObject) -> R) -> R {
         f(&mut self.g.data.wobjects.arr[slot])
     }
 
@@ -35,9 +35,9 @@ impl<'a> World<'a> {
         &mut self,
         kind: i32,
         angle: i32,
-        vel: LieroIVec2,
+        vel: IVec2,
         speed: i32,
-        pos: LieroIVec2,
+        pos: IVec2,
         owner_idx: i32,
         ww: FiredBy,
     ) {
@@ -95,7 +95,7 @@ impl<'a> World<'a> {
                 self.create_nobject2(
                     w.splinter_type,
                     angle,
-                    LieroIVec2::default(),
+                    IVec2::default(),
                     pos,
                     w.splinter_colour - color_sub,
                     cause_idx,
@@ -258,7 +258,7 @@ impl<'a> World<'a> {
                     if w.expl_ground {
                         do_explode = true;
                     } else {
-                        self.update_wobj(slot, |o| o.vel = LieroIVec2::default());
+                        self.update_wobj(slot, |o| o.vel = IVec2::default());
                     }
                 }
             } else {
@@ -315,7 +315,7 @@ impl<'a> World<'a> {
 
     /// Adds `impulse` to the objects within 2 pixels of weapon object
     /// `slot`, but the weapon objects of its weapon and owner.
-    fn push_objects(&mut self, slot: usize, impulse: LieroIVec2) {
+    fn push_objects(&mut self, slot: usize, impulse: IVec2) {
         let o = self.wobj(slot);
         let (pos, kind, owner) = (o.pos, o.kind, o.owner_idx);
 
@@ -390,6 +390,6 @@ impl<'a> World<'a> {
 
 /// Whether integer `p` is within 2 pixels of fixed-point `q` on both axes,
 /// as C++ compared them.
-fn near(pos: LieroIVec2, q: LieroIVec2) -> bool {
+fn near(pos: IVec2, q: IVec2) -> bool {
     pos.x >= q.x - itof(2) && pos.x <= q.x + itof(2) && pos.y >= q.y - itof(2) && pos.y <= q.y + itof(2)
 }

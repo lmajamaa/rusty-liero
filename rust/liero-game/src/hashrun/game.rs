@@ -3,13 +3,13 @@
 
 use super::Fnv;
 use crate::controller::LIERO_STATE_GAME;
-use crate::game_box::{LieroGame, LieroWorm};
-use crate::math::LieroIVec2;
-use crate::renderer::LieroRenderer;
-use crate::stats::{Heatmap, LieroStats};
+use crate::game_box::{Game, Worm};
+use crate::math::IVec2;
+use crate::renderer::Renderer;
+use crate::stats::{Heatmap, Stats};
 
 impl Fnv {
-    fn vec(&mut self, v: LieroIVec2) {
+    fn vec(&mut self, v: IVec2) {
         self.i32(v.x);
         self.i32(v.y);
     }
@@ -21,7 +21,7 @@ fn used<T>(arr: &[T], is_used: impl Fn(&T) -> bool) -> impl Iterator<Item = &T> 
 }
 
 /// `anchor_index` is the `index` of the worm its rope is anchored to, or -1.
-fn hash_worm(f: &mut Fnv, w: &LieroWorm, anchor_index: i32) {
+fn hash_worm(f: &mut Fnv, w: &Worm, anchor_index: i32) {
     let w = &w.data;
     f.vec(w.pos);
     f.vec(w.vel);
@@ -82,7 +82,7 @@ fn hash_worm(f: &mut Fnv, w: &LieroWorm, anchor_index: i32) {
     f.u32(w.prev_control_states);
 }
 
-pub fn hash_game(game: &mut LieroGame) -> u64 {
+pub fn hash_game(game: &mut Game) -> u64 {
     let mut f = Fnv::default();
     let g = game.data_mut();
     f.i32(g.cycles);
@@ -164,7 +164,7 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
 }
 
 /// A screen's pixels, row by row, and its palette (`hashFrame`).
-pub(super) fn add_screen(f: &mut Fnv, r: &LieroRenderer) {
+pub(super) fn add_screen(f: &mut Fnv, r: &Renderer) {
     let v = r.bmp.view();
     let (w, pitch) = (v.w as usize, v.pitch as usize);
     let pixels = r.bmp.pixels();
@@ -179,7 +179,7 @@ pub(super) fn add_screen(f: &mut Fnv, r: &LieroRenderer) {
 }
 
 /// The game as the split-screen and spectator windows would show it.
-pub fn hash_frame(game: &mut LieroGame, split: &mut LieroRenderer, spectator: &mut LieroRenderer) -> u64 {
+pub fn hash_frame(game: &mut Game, split: &mut Renderer, spectator: &mut Renderer) -> u64 {
     let mut f = Fnv::default();
     for (r, spectators) in [(split, false), (spectator, true)] {
         r.clear();
@@ -198,7 +198,7 @@ fn add_heatmap(f: &mut Fnv, hm: &Heatmap) {
 
 /// What the stats recorder has, but the process times, which are measured
 /// with the clock (`hashStats`).
-pub fn hash_stats(s: &LieroStats) -> u64 {
+pub fn hash_stats(s: &Stats) -> u64 {
     let mut f = Fnv::default();
     f.i32(s.frame);
     f.i32(s.game_time);

@@ -5,7 +5,7 @@
 
 use super::predictive::{CHANGE, DOWN, FIRE, JUMP, LEFT, RIGHT, UP};
 use crate::math::{cos_sin, ftoi, vector_length};
-use crate::rand::LieroRand;
+use crate::rand::Rand;
 
 /// `reacts`' order.
 const RF_DOWN: usize = 0;
@@ -14,7 +14,7 @@ const RF_RIGHT: usize = 3;
 
 /// What the bot reads of its worm.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroDumbAiWorm {
+pub struct DumbAiWorm {
     pub pos: [i32; 2],
     pub visible: bool,
     pub aiming_angle: i32,
@@ -54,12 +54,11 @@ impl Controls {
 /// One tick: the worm's controls after it. `others` are the other worms'
 /// positions, and `k` the TC's `aiParams`: for each control, one in how
 /// many ticks the bot changes it, when it's up and when it's down.
-pub fn process(rand: &mut LieroRand, worm: &LieroDumbAiWorm, others: &[[i32; 2]], k: &[[i32; 7]; 2]) -> u32 {
+pub fn process(rand: &mut Rand, worm: &DumbAiWorm, others: &[[i32; 2]], k: &[[i32; 7]; 2]) -> u32 {
     let mut cs = Controls(worm.control_states);
     // A chance of one in k[pressed][control] ticks.
-    let chance = |rand: &mut LieroRand, pressed: bool, control: u32| {
-        rand.below(k[pressed as usize][control as usize] as u32) == 0
-    };
+    let chance =
+        |rand: &mut Rand, pressed: bool, control: u32| rand.below(k[pressed as usize][control as usize] as u32) == 0;
 
     // The nearest worm, the first of any as near. C++ read a null worm
     // when there were no others.

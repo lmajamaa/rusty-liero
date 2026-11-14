@@ -16,11 +16,11 @@ pub const LIERO_MATERIAL_WORM: u8 = 1 << 5;
 // `repr(C)`: the TC's material bytes are read as these.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LieroMaterial {
+pub struct Material {
     pub flags: u8,
 }
 
-impl LieroMaterial {
+impl Material {
     fn any(self, mask: u8) -> bool {
         self.flags & mask != 0
     }
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn tests_match_flags() {
-        let m = |flags| LieroMaterial { flags };
+        let m = |flags| Material { flags };
         assert!(m(LIERO_MATERIAL_DIRT).dirt() && m(LIERO_MATERIAL_DIRT).any_dirt());
         assert!(m(LIERO_MATERIAL_DIRT2).dirt2() && !m(LIERO_MATERIAL_DIRT2).dirt());
         assert!(m(LIERO_MATERIAL_ROCK).dirt_rock() && !m(LIERO_MATERIAL_ROCK).dirt_back());

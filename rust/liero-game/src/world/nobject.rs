@@ -11,17 +11,17 @@ use super::*;
 
 impl<'a> World<'a> {
     /// A copy of non-weapon object `slot`.
-    fn nobj(&self, slot: usize) -> LieroNObject {
+    fn nobj(&self, slot: usize) -> NObject {
         self.g.data.nobjects.arr[slot]
     }
 
     /// Changes non-weapon object `slot` in place with `f`.
-    fn update_nobj<R>(&mut self, slot: usize, f: impl FnOnce(&mut LieroNObject) -> R) -> R {
+    fn update_nobj<R>(&mut self, slot: usize, f: impl FnOnce(&mut NObject) -> R) -> R {
         f(&mut self.g.data.nobjects.arr[slot])
     }
 
     /// The type of non-weapon object `slot`.
-    fn nobj_type(&self, slot: usize) -> &'a NObject {
+    fn nobj_type(&self, slot: usize) -> &'a NObjectType {
         self.nobject_type(self.nobj(slot).kind)
     }
 
@@ -41,8 +41,8 @@ impl<'a> World<'a> {
     pub(super) fn create_nobject(
         &mut self,
         kind: i32,
-        vel: LieroIVec2,
-        pos: LieroIVec2,
+        vel: IVec2,
+        pos: IVec2,
         color: i32,
         owner_idx: i32,
         fired_by: FiredBy,
@@ -87,8 +87,8 @@ impl<'a> World<'a> {
     pub(super) fn create_nobject1(
         &mut self,
         kind: i32,
-        mut vel: LieroIVec2,
-        pos: LieroIVec2,
+        mut vel: IVec2,
+        pos: IVec2,
         color: i32,
         owner_idx: i32,
         fired_by: FiredBy,
@@ -112,8 +112,8 @@ impl<'a> World<'a> {
         &mut self,
         kind: i32,
         angle: i32,
-        mut vel: LieroIVec2,
-        pos: LieroIVec2,
+        mut vel: IVec2,
+        pos: IVec2,
         color: i32,
         owner_idx: i32,
         fired_by: FiredBy,
@@ -164,7 +164,7 @@ impl<'a> World<'a> {
         if t.bounce > 0 {
             if self.blocked(inew_pos.x, ipos.y) {
                 self.update_nobj(slot, |o| {
-                    o.vel = LieroIVec2 {
+                    o.vel = IVec2 {
                         x: o.vel.x.wrapping_neg().wrapping_mul(t.bounce) / 100,
                         // TODO in C++: read from the EXE.
                         y: o.vel.y.wrapping_mul(4) / 5,
@@ -175,7 +175,7 @@ impl<'a> World<'a> {
 
             if self.blocked(ipos.x, inew_pos.y) {
                 self.update_nobj(slot, |o| {
-                    o.vel = LieroIVec2 {
+                    o.vel = IVec2 {
                         x: o.vel.x.wrapping_mul(4) / 5,
                         y: o.vel.y.wrapping_neg().wrapping_mul(t.bounce) / 100,
                     }
@@ -210,7 +210,7 @@ impl<'a> World<'a> {
         });
 
         if self.blocked(inew_pos.x, inew_pos.y) {
-            self.update_nobj(slot, |o| o.vel = LieroIVec2::default());
+            self.update_nobj(slot, |o| o.vel = IVec2::default());
 
             if t.expl_ground {
                 if t.start_frame > 0 && t.draw_on_map {
@@ -277,7 +277,7 @@ impl<'a> World<'a> {
                 self.create_nobject2(
                     t.splinter_type,
                     angle,
-                    LieroIVec2::default(),
+                    IVec2::default(),
                     o.pos,
                     t.splinter_colour - color_sub,
                     o.owner_idx,

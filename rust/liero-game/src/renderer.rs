@@ -2,36 +2,36 @@
 //! a bitmap with its palettes and fade (C++'s `Renderer`). Rust owns them,
 //! and the C++ types are views of them.
 
-use crate::game::LieroRect;
+use crate::game::Rect;
 use std::cell::Cell;
 
-use crate::gfx::{liero_gfx_fill, LieroBitmap, LieroColor};
-use crate::tc::LieroTcData;
+use crate::gfx::{liero_gfx_fill, Bitmap, Color};
+use crate::tc::TcData;
 
 /// A bitmap that owns its pixels. They are cells, so that views of it can
 /// be drawn on while others are held.
-pub struct LieroBitmapBox {
+pub struct BitmapBox {
     pixels: Vec<Cell<u8>>,
     w: i32,
     h: i32,
     pitch: i32,
-    clip: LieroRect,
+    clip: Rect,
 }
 
-impl LieroBitmapBox {
+impl BitmapBox {
     /// No pixels, as C++'s `Bitmap()` left it.
     pub fn new() -> Box<Self> {
-        Box::new(LieroBitmapBox {
+        Box::new(BitmapBox {
             pixels: Vec::new(),
             w: 0,
             h: 0,
             pitch: 0,
-            clip: LieroRect::default(),
+            clip: Rect::default(),
         })
     }
 
-    pub fn view(&self) -> LieroBitmap<'_> {
-        LieroBitmap {
+    pub fn view(&self) -> Bitmap<'_> {
+        Bitmap {
             pixels: &self.pixels,
             w: self.w,
             h: self.h,
@@ -48,7 +48,7 @@ impl LieroBitmapBox {
             self.pixels = vec![Cell::new(0); pitch.max(0) as usize * h.max(0) as usize];
             (self.w, self.h, self.pitch) = (w, h, pitch);
         }
-        self.clip = LieroRect {
+        self.clip = Rect {
             x1: 0,
             y1: 0,
             x2: w,
@@ -57,7 +57,7 @@ impl LieroBitmapBox {
     }
 
     /// `Bitmap::copy`: the same size and pixels as `other`.
-    pub fn copy_from(&mut self, other: &LieroBitmapBox) {
+    pub fn copy_from(&mut self, other: &BitmapBox) {
         self.alloc(other.w, other.h, other.pitch);
         self.pixels.clone_from(&other.pixels);
     }
@@ -70,11 +70,11 @@ impl LieroBitmapBox {
 
 /// A renderer's palettes and size, which C++'s `Renderer` refers to.
 #[derive(Clone, Copy)]
-pub struct LieroRendererData {
+pub struct RendererData {
     /// The palette shown.
-    pub pal: [LieroColor; 256],
+    pub pal: [Color; 256],
     /// The palette `pal` is made from.
-    pub origpal: [LieroColor; 256],
+    pub origpal: [Color; 256],
     pub fade_value: i32,
     /// The size drawn at, which `set_render_resolution` sets.
     pub render_res_x: i32,
@@ -82,22 +82,22 @@ pub struct LieroRendererData {
 }
 
 /// A bitmap to draw on, with its palettes.
-pub struct LieroRenderer {
-    pub data: LieroRendererData,
-    pub bmp: Box<LieroBitmapBox>,
+pub struct Renderer {
+    pub data: RendererData,
+    pub bmp: Box<BitmapBox>,
 }
 
-impl LieroRenderer {
+impl Renderer {
     pub fn new() -> Box<Self> {
-        Box::new(LieroRenderer {
-            data: LieroRendererData {
-                pal: [LieroColor::default(); 256],
-                origpal: [LieroColor::default(); 256],
+        Box::new(Renderer {
+            data: RendererData {
+                pal: [Color::default(); 256],
+                origpal: [Color::default(); 256],
                 fade_value: 0,
                 render_res_x: 320,
                 render_res_y: 200,
             },
-            bmp: LieroBitmapBox::new(),
+            bmp: BitmapBox::new(),
         })
     }
 
@@ -113,7 +113,7 @@ impl LieroRenderer {
     }
 
     /// `loadPalette`: both palettes from the TC's.
-    pub fn load_palette(&mut self, tc: &LieroTcData) {
+    pub fn load_palette(&mut self, tc: &TcData) {
         self.data.origpal = tc.palette_colors;
         self.data.pal = self.data.origpal;
     }
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn a_bitmap_keeps_its_pixels_at_the_same_size() {
-        let mut b = LieroBitmapBox::new();
+        let mut b = BitmapBox::new();
         assert!(b.view().pixels.is_empty());
         b.alloc(3, 2, 4);
         let v = b.view();
@@ -142,10 +142,10 @@ mod tests {
 
     #[test]
     fn a_copy_has_the_same_size_and_pixels() {
-        let mut a = LieroBitmapBox::new();
+        let mut a = BitmapBox::new();
         a.alloc(2, 2, 3);
         a.view().pixels[4].set(7);
-        let mut b = LieroBitmapBox::new();
+        let mut b = BitmapBox::new();
         b.alloc(5, 5, 5);
         b.copy_from(&a);
         assert_eq!((b.view().w, b.view().pitch, b.pixels()), (2, 3, vec![0, 0, 0, 0, 7, 0]));
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn a_renderer_sizes_and_clears_its_bitmap() {
-        let mut r = LieroRenderer::new();
+        let mut r = Renderer::new();
         r.set_render_resolution(4, 3);
         let v = r.bmp.view();
         assert_eq!(
