@@ -172,8 +172,16 @@ fn the_game_fades_in_to_fully_shown() {
 fn f8_changes_the_tc_of_the_game_behind_the_menu() {
     let tc = tc();
     let mut c = local(tc.clone(), ["a", "b"]);
-    let ammo =
-        |c: &mut LieroController| -> Vec<i32> { c.game().unwrap().tc_data().weapons.iter().map(|w| w.ammo).collect() };
+    let ammo = |c: &mut LieroController| -> Vec<i32> {
+        c.game()
+            .unwrap()
+            .tc_data()
+            .model
+            .weapons
+            .iter()
+            .map(|w| w.ammo)
+            .collect()
+    };
     let before = ammo(&mut c);
     crate::tc::liero_tc_randomize(&tc, 0);
     let after = ammo(&mut c);
@@ -181,6 +189,7 @@ fn f8_changes_the_tc_of_the_game_behind_the_menu() {
     assert_eq!(
         after,
         crate::tc::tc_data(&tc)
+            .model
             .weapons
             .iter()
             .map(|w| w.ammo)

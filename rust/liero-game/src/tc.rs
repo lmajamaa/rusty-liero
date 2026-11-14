@@ -16,112 +16,6 @@ use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
 #[derive(Default)]
-pub struct LieroTcWeapon {
-    /// Its index in the TC's weapons.
-    pub id: i32,
-    pub name: Vec<u8>,
-    pub detect_distance: i32,
-    pub affect_by_worm: bool,
-    pub blow_away: i32,
-    pub gravity: i32,
-    pub shadow: bool,
-    pub laser_sight: bool,
-    pub launch_sound: i32,
-    pub loop_sound: i32,
-    pub explo_sound: i32,
-    pub speed: i32,
-    pub add_speed: i32,
-    pub distribution: i32,
-    pub parts: i32,
-    pub recoil: i32,
-    pub mult_speed: i32,
-    pub delay: i32,
-    pub loading_time: i32,
-    pub ammo: i32,
-    pub create_on_exp: i32,
-    pub dirt_effect: i32,
-    pub leave_shells: i32,
-    pub leave_shell_delay: i32,
-    pub play_reload_sound: bool,
-    pub worm_explode: bool,
-    pub expl_ground: bool,
-    pub worm_collide: bool,
-    pub fire_cone: i32,
-    pub collide_with_objects: bool,
-    pub affect_by_explosions: bool,
-    pub bounce: i32,
-    pub time_to_explo: i32,
-    pub time_to_explo_v: i32,
-    pub hit_damage: i32,
-    pub blood_on_hit: i32,
-    pub start_frame: i32,
-    pub num_frames: i32,
-    pub loop_anim: bool,
-    pub shot_type: i32,
-    pub color_bullets: i32,
-    pub splinter_amount: i32,
-    pub splinter_colour: i32,
-    pub splinter_type: i32,
-    pub splinter_scatter: i32,
-    pub obj_trail_type: i32,
-    pub obj_trail_delay: i32,
-    pub part_trail_type: i32,
-    pub part_trail_obj: i32,
-    pub part_trail_delay: i32,
-    pub chain_explosion: bool,
-}
-
-#[derive(Default)]
-pub struct LieroTcNObject {
-    pub id: i32,
-    pub detect_distance: i32,
-    pub gravity: i32,
-    pub speed: i32,
-    pub speed_v: i32,
-    pub distribution: i32,
-    pub blow_away: i32,
-    pub bounce: i32,
-    pub hit_damage: i32,
-    pub worm_explode: bool,
-    pub expl_ground: bool,
-    pub worm_destroy: bool,
-    pub blood_on_hit: i32,
-    pub start_frame: i32,
-    pub num_frames: i32,
-    pub draw_on_map: bool,
-    pub color_bullets: i32,
-    pub create_on_exp: i32,
-    pub affect_by_explosions: bool,
-    pub dirt_effect: i32,
-    pub splinter_amount: i32,
-    pub splinter_colour: i32,
-    pub splinter_type: i32,
-    pub blood_trail: bool,
-    pub blood_trail_delay: i32,
-    pub leave_obj: i32,
-    pub leave_obj_delay: i32,
-    pub time_to_explo: i32,
-    pub time_to_explo_v: i32,
-}
-
-#[derive(Default)]
-pub struct LieroTcSObject {
-    pub id: i32,
-    pub start_sound: i32,
-    pub num_sounds: i32,
-    pub anim_delay: i32,
-    pub start_frame: i32,
-    pub num_frames: i32,
-    pub detect_range: i32,
-    pub damage: i32,
-    pub blow_away: i32,
-    pub shadow: bool,
-    pub shake: i32,
-    pub flash: i32,
-    pub dirt_effect: i32,
-}
-
-#[derive(Default)]
 pub struct LieroTcSound {
     pub name: Vec<u8>,
     /// Signed 8-bit samples.
@@ -147,11 +41,11 @@ pub struct LieroTcSprites {
 /// Characters in the font (`Font::chars`).
 pub const LIERO_TC_FONT_CHARS: usize = 250;
 
-/// Everything `Common` gets from a TC.
+/// A loaded TC: the model as `liero_data` reads it, and what the game
+/// works out from it.
 pub struct LieroTcData {
-    pub weapons: Vec<LieroTcWeapon>,
-    pub nobjects: Vec<LieroTcNObject>,
-    pub sobjects: Vec<LieroTcSObject>,
+    /// The TC as loaded, with F8's changes.
+    pub model: Common,
     pub sounds: Vec<LieroTcSound>,
     /// In the order of `LIERO_CDEFS`, `LIERO_SDEFS` and `LIERO_HDEFS`.
     pub constants: Vec<i32>,
@@ -185,7 +79,6 @@ pub struct LieroTcData {
 /// A loaded TC, or the error that stopped loading it.
 pub struct LieroTc {
     error: String,
-    common: Option<Common>,
     data: Option<Box<LieroTcData>>,
 }
 
@@ -276,11 +169,7 @@ pub fn fire_cone_sprites(large: &model::SpriteSet) -> Vec<u8> {
 
 impl LieroTc {
     fn failed(error: String) -> Self {
-        LieroTc {
-            error,
-            common: None,
-            data: None,
-        }
+        LieroTc { error, data: None }
     }
 
     fn new(common: Common) -> Result<Self, Error> {
@@ -289,120 +178,6 @@ impl LieroTc {
         }
         let mut tc = LieroTc::failed(String::new());
         let c = &common;
-        let weapons: Vec<_> = c
-            .weapons
-            .iter()
-            .enumerate()
-            .map(|(i, w)| LieroTcWeapon {
-                id: i as i32,
-                name: w.name.clone(),
-                detect_distance: w.detect_distance,
-                affect_by_worm: w.affect_by_worm,
-                blow_away: w.blow_away,
-                gravity: w.gravity,
-                shadow: w.shadow,
-                laser_sight: w.laser_sight,
-                launch_sound: w.launch_sound,
-                loop_sound: w.loop_sound,
-                explo_sound: w.explo_sound,
-                speed: w.speed,
-                add_speed: w.add_speed,
-                distribution: w.distribution,
-                parts: w.parts,
-                recoil: w.recoil,
-                mult_speed: w.mult_speed,
-                delay: w.delay,
-                loading_time: w.loading_time,
-                ammo: w.ammo,
-                create_on_exp: w.create_on_exp,
-                dirt_effect: w.dirt_effect,
-                leave_shells: w.leave_shells,
-                leave_shell_delay: w.leave_shell_delay,
-                play_reload_sound: w.play_reload_sound,
-                worm_explode: w.worm_explode,
-                expl_ground: w.expl_ground,
-                worm_collide: w.worm_collide,
-                fire_cone: w.fire_cone,
-                collide_with_objects: w.collide_with_objects,
-                affect_by_explosions: w.affect_by_explosions,
-                bounce: w.bounce,
-                time_to_explo: w.time_to_explo,
-                time_to_explo_v: w.time_to_explo_v,
-                hit_damage: w.hit_damage,
-                blood_on_hit: w.blood_on_hit,
-                start_frame: w.start_frame,
-                num_frames: w.num_frames,
-                loop_anim: w.loop_anim,
-                shot_type: w.shot_type,
-                color_bullets: w.color_bullets,
-                splinter_amount: w.splinter_amount,
-                splinter_colour: w.splinter_colour,
-                splinter_type: w.splinter_type,
-                splinter_scatter: w.splinter_scatter,
-                obj_trail_type: w.obj_trail_type,
-                obj_trail_delay: w.obj_trail_delay,
-                part_trail_type: w.part_trail_type,
-                part_trail_obj: w.part_trail_obj,
-                part_trail_delay: w.part_trail_delay,
-                chain_explosion: w.chain_explosion,
-            })
-            .collect();
-        let nobjects: Vec<_> = c
-            .nobjects
-            .iter()
-            .enumerate()
-            .map(|(i, n)| LieroTcNObject {
-                id: i as i32,
-                detect_distance: n.detect_distance,
-                gravity: n.gravity,
-                speed: n.speed,
-                speed_v: n.speed_v,
-                distribution: n.distribution,
-                blow_away: n.blow_away,
-                bounce: n.bounce,
-                hit_damage: n.hit_damage,
-                worm_explode: n.worm_explode,
-                expl_ground: n.expl_ground,
-                worm_destroy: n.worm_destroy,
-                blood_on_hit: n.blood_on_hit,
-                start_frame: n.start_frame,
-                num_frames: n.num_frames,
-                draw_on_map: n.draw_on_map,
-                color_bullets: n.color_bullets,
-                create_on_exp: n.create_on_exp,
-                affect_by_explosions: n.affect_by_explosions,
-                dirt_effect: n.dirt_effect,
-                splinter_amount: n.splinter_amount,
-                splinter_colour: n.splinter_colour,
-                splinter_type: n.splinter_type,
-                blood_trail: n.blood_trail,
-                blood_trail_delay: n.blood_trail_delay,
-                leave_obj: n.leave_obj,
-                leave_obj_delay: n.leave_obj_delay,
-                time_to_explo: n.time_to_explo,
-                time_to_explo_v: n.time_to_explo_v,
-            })
-            .collect();
-        let sobjects: Vec<_> = c
-            .sobjects
-            .iter()
-            .enumerate()
-            .map(|(i, s)| LieroTcSObject {
-                id: i as i32,
-                start_sound: s.start_sound,
-                num_sounds: s.num_sounds,
-                anim_delay: s.anim_delay,
-                start_frame: s.start_frame,
-                num_frames: s.num_frames,
-                detect_range: s.detect_range,
-                damage: s.damage,
-                blow_away: s.blow_away,
-                shadow: s.shadow,
-                shake: s.shake,
-                flash: s.flash,
-                dirt_effect: s.dirt_effect,
-            })
-            .collect();
         let sounds: Vec<_> = c
             .sounds
             .iter()
@@ -446,9 +221,6 @@ impl LieroTc {
         });
 
         let data = LieroTcData {
-            weapons,
-            nobjects,
-            sobjects,
             sounds,
             constants: c.constants.iter().map(|&(_, v)| v).collect(),
             texts: c.texts.iter().map(|(_, t)| t.to_vec()).collect(),
@@ -489,9 +261,10 @@ impl LieroTc {
                 height: 16,
                 count: 2 * 7,
             },
+            // Last: the fields above borrow it.
+            model: common,
         };
         tc.data = Some(Box::new(data));
-        tc.common = Some(common);
         Ok(tc)
     }
 }
@@ -505,9 +278,7 @@ impl LieroTcData {
         // and sprites, which are written before the box is used.
         unsafe {
             let p = tc.as_mut_ptr();
-            std::ptr::addr_of_mut!((*p).weapons).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).nobjects).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).sobjects).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).model).write(empty_model());
             std::ptr::addr_of_mut!((*p).sounds).write(Vec::new());
             std::ptr::addr_of_mut!((*p).constants).write(Vec::new());
             std::ptr::addr_of_mut!((*p).texts).write(Vec::new());
@@ -542,13 +313,13 @@ impl LieroTc {
             return;
         };
         let mut r = LieroRand::new(14);
-        let sobjects = d.sobjects.len() as u32;
-        let nobjects = d.nobjects.len() as u32;
+        let sobjects = d.model.sobjects.len() as u32;
+        let nobjects = d.model.nobjects.len() as u32;
         let sounds = d.sounds.len() as u32;
         let small = d.small_sprites.count as u32;
         let large = d.large_sprites.count as u32;
 
-        let mut order: Vec<usize> = (0..d.nobjects.len()).collect();
+        let mut order: Vec<usize> = (0..d.model.nobjects.len()).collect();
         let mut shuffle = LieroRand::new(shuffle_seed);
         for i in (1..order.len()).rev() {
             order.swap(i, shuffle.below(i as u32 + 1) as usize);
@@ -556,7 +327,7 @@ impl LieroTc {
 
         // `r(n)` as the C++ wrote it: unsigned, then stored in an int.
         let mut r = |n: u32| r.below(n) as i32;
-        for w in &mut d.weapons {
+        for w in &mut d.model.weapons {
             w.add_speed = r(30) - 5;
             w.affect_by_explosions = r(2) == 0;
             w.affect_by_worm = r(3) == 0;
@@ -608,7 +379,7 @@ impl LieroTc {
         }
 
         for (idx, &i) in order.iter().enumerate() {
-            let n = &mut d.nobjects[i];
+            let n = &mut d.model.nobjects[i];
             n.affect_by_explosions = r(5) == 0;
             n.blood_on_hit = r(5);
             n.blood_trail = r(10) == 0;
@@ -642,7 +413,7 @@ impl LieroTc {
             n.worm_explode = r(2) == 0;
         }
 
-        for s in &mut d.sobjects {
+        for s in &mut d.model.sobjects {
             s.anim_delay = 1 + r(10);
             s.blow_away = if r(2) == 0 { r(10000) } else { 0 };
             s.damage = r(30);
@@ -712,104 +483,15 @@ impl LieroTc {
     pub(crate) fn of(data: Box<LieroTcData>) -> SharedTc {
         Rc::new(RefCell::new(LieroTc {
             error: String::new(),
-            common: None,
             data: Some(data),
         }))
     }
 }
 
-/// Copies the named fields of `from` to `to`.
-macro_rules! copy_fields {
-    ($to:ident, $from:ident, $($f:ident),* $(,)?) => { $($to.$f = $from.$f;)* };
-}
-
 impl LieroTc {
-    /// The TC as loaded, before F8 changes the game's copies.
+    /// The TC as loaded, with F8's changes.
     pub(crate) fn model(&self) -> Option<&Common> {
-        self.common.as_ref()
-    }
-
-    /// Weapon `i` as the game has it, F8's changes included, as the model's.
-    pub(crate) fn weapon_model(&self, i: usize) -> model::Weapon {
-        let mut m = self.common.as_ref().expect("the TC didn't load").weapons[i].clone();
-        let w = &self.data.as_ref().expect("the TC didn't load").weapons[i];
-        copy_fields!(
-            m,
-            w,
-            detect_distance,
-            affect_by_worm,
-            blow_away,
-            gravity,
-            shadow,
-            laser_sight,
-            launch_sound,
-            loop_sound,
-            explo_sound,
-            speed,
-            add_speed,
-            distribution,
-            parts,
-            recoil,
-            mult_speed,
-            delay,
-            loading_time,
-            ammo,
-            create_on_exp,
-            dirt_effect,
-            leave_shells,
-            leave_shell_delay,
-            play_reload_sound,
-            worm_explode,
-            expl_ground,
-            worm_collide,
-            fire_cone,
-            collide_with_objects,
-            affect_by_explosions,
-            bounce,
-            time_to_explo,
-            time_to_explo_v,
-            hit_damage,
-            blood_on_hit,
-            start_frame,
-            num_frames,
-            loop_anim,
-            shot_type,
-            color_bullets,
-            splinter_amount,
-            splinter_colour,
-            splinter_type,
-            splinter_scatter,
-            obj_trail_type,
-            obj_trail_delay,
-            part_trail_type,
-            part_trail_obj,
-            part_trail_delay,
-            chain_explosion
-        );
-        m
-    }
-
-    /// Special object `i` as the game has it, as the model's.
-    pub(crate) fn sobject_model(&self, i: usize) -> model::SObject {
-        let mut m = self.common.as_ref().expect("the TC didn't load").sobjects[i].clone();
-        let o = &self.data.as_ref().expect("the TC didn't load").sobjects[i];
-        copy_fields!(
-            m,
-            o,
-            start_sound,
-            num_sounds,
-            anim_delay,
-            start_frame,
-            num_frames,
-            detect_range,
-            damage,
-            blow_away,
-            shadow,
-            shake,
-            flash,
-            dirt_effect
-        );
-        m
+        self.data.as_ref().map(|d| &d.model)
     }
 }
 
@@ -907,7 +589,39 @@ impl LieroTcData {
 
     /// Weapon `i`'s name.
     pub(crate) fn weapon_name(&self, i: usize) -> &[u8] {
-        &self.weapons[i].name
+        &self.model.weapons[i].name
+    }
+}
+
+/// A model with no tables, sprites or sounds, for tests.
+#[cfg(test)]
+fn empty_model() -> Common {
+    let sprites = || model::SpriteSet {
+        width: 0,
+        height: 0,
+        count: 0,
+        data: Vec::new(),
+    };
+    Common {
+        constants: Vec::new(),
+        texts: Vec::new(),
+        hacks: Vec::new(),
+        palette: [[0; 3]; 256],
+        color_anim: [(0, 0); 4],
+        materials: [0; 256],
+        weapons: Vec::new(),
+        nobjects: Vec::new(),
+        sobjects: Vec::new(),
+        textures: [model::Texture::default(); 9],
+        bonus_rand_timer: [[0; 2]; 2],
+        bonus_sobjects: [0; 2],
+        bonus_frames: [0; 2],
+        ai_params: [[0; 7]; 2],
+        large_sprites: sprites(),
+        small_sprites: sprites(),
+        text_sprites: sprites(),
+        font: Vec::new(),
+        sounds: Vec::new(),
     }
 }
 
@@ -1025,7 +739,7 @@ mod tests {
         let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
         assert!(b.borrow().error.is_empty(), "{}", b.borrow().error);
         let (da, db) = (tc_data(&a), tc_data(&b));
-        assert_eq!(da.weapons.len(), db.weapons.len());
+        assert_eq!(da.model.weapons.len(), db.model.weapons.len());
         assert_eq!(da.sounds.len(), db.sounds.len());
         for (sa, sb) in da.sounds.iter().zip(&db.sounds) {
             assert_eq!((sa.valid, sa.data.len()), (sb.valid, sb.data.len()));
@@ -1039,7 +753,7 @@ mod tests {
         let tc = liero_tc_load(&node);
         assert!(tc.borrow().error.is_empty(), "{}", tc.borrow().error);
         let data = tc_data(&tc);
-        assert_eq!(data.weapons.len(), 40);
+        assert_eq!(data.model.weapons.len(), 40);
         assert_eq!(data.font[b'A' as usize].width, 5);
 
         assert!(load_checked(&node).is_ok());

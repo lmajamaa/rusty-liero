@@ -219,7 +219,7 @@ struct Lists<'a> {
 
 fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
     let (tc, d, settings) = (src.tc, src.data, src.settings);
-    let weapons: Vec<LieroViewWeapon> = (tc.weapons.iter())
+    let weapons: Vec<LieroViewWeapon> = (tc.model.weapons.iter())
         .map(|w| {
             let t = settings.loading_time.wrapping_mul(w.loading_time) / 100;
             LieroViewWeapon {
@@ -258,7 +258,7 @@ fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
             x: o.x,
             y: o.y,
             cur_frame: o.cur_frame,
-            start_frame: tc.sobjects[o.id as usize].start_frame,
+            start_frame: tc.model.sobjects[o.id as usize].start_frame,
         })
         .collect();
     let wobjects: Vec<LieroViewWObject> = d
@@ -282,7 +282,7 @@ fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
         .map(|o| LieroViewNObject {
             pos: o.pos,
             cur_frame: o.cur_frame,
-            start_frame: tc.nobjects[o.kind as usize].start_frame,
+            start_frame: tc.model.nobjects[o.kind as usize].start_frame,
         })
         .collect();
     let bobjects: Vec<LieroViewBObject> = d
@@ -308,8 +308,8 @@ fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
 mod tests {
     use super::*;
     use crate::game::LieroRect;
-    use crate::tc::{LieroTcNObject, LieroTcSObject, LieroTcWeapon};
     use crate::viewport::LIERO_VIEWPORT_SPECTATOR;
+    use liero_data::model::{NObject, SObject, Weapon};
 
     fn defaults<T: Default>(n: usize) -> Vec<T> {
         (0..n).map(|_| T::default()).collect()
@@ -317,19 +317,18 @@ mod tests {
 
     /// A TC of three weapons, two sobject types and one nobject type.
     fn tc() -> Box<LieroTcData> {
-        let mut weapons: Vec<LieroTcWeapon> = defaults(3);
-        for (i, (w, t)) in weapons.iter_mut().zip([0, 1, 250]).enumerate() {
-            w.id = i as i32;
+        let mut weapons: Vec<Weapon> = defaults(3);
+        for (w, t) in weapons.iter_mut().zip([0, 1, 250]) {
             w.loading_time = t;
         }
-        let mut sobjects: Vec<LieroTcSObject> = defaults(2);
+        let mut sobjects: Vec<SObject> = defaults(2);
         sobjects[1].start_frame = 40;
-        let mut nobjects: Vec<LieroTcNObject> = defaults(1);
+        let mut nobjects: Vec<NObject> = defaults(1);
         nobjects[0].start_frame = 30;
         let mut tc = LieroTcData::empty();
-        tc.weapons = weapons;
-        tc.sobjects = sobjects;
-        tc.nobjects = nobjects;
+        tc.model.weapons = weapons;
+        tc.model.sobjects = sobjects;
+        tc.model.nobjects = nobjects;
         tc
     }
 

@@ -18,7 +18,7 @@ use crate::replay_file::LieroReplayWriter;
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
 use crate::stats::{stats_scene, LieroStatsScreen};
-use crate::tc::{LieroTcData, LieroTcWeapon, SharedTc};
+use crate::tc::{LieroTcData, SharedTc};
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{liero_weapsel_finish, liero_weapsel_free, liero_weapsel_start};
 
@@ -156,11 +156,11 @@ pub(super) use crate::tc::tc_data;
 
 /// The menu positions of the named weapons.
 fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
-    let (weapons, order) = (&d.weapons, &d.weap_order);
+    let (weapons, order) = (&d.model.weapons, &d.weap_order);
     names.map(|name| {
         // The last of the same name, as the C++ loop left it.
         let found = order.iter().rposition(|&w| {
-            let w: &LieroTcWeapon = &weapons[w as usize];
+            let w: &liero_data::model::Weapon = &weapons[w as usize];
             w.name == name.as_bytes()
         });
         found.unwrap_or_else(|| panic!("No weapon called {name} in the TC")) as u32 + 1

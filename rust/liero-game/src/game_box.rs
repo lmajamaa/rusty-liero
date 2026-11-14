@@ -716,7 +716,7 @@ pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&
         zone_timeout: s.zone_timeout,
         zone_capture_time: 70,
         weap_table: s.weap_table.as_ptr(),
-        weapon_count: tc.map_or(0, |tc| tc.weapons.len() as i32),
+        weapon_count: tc.map_or(0, |tc| tc.model.weapons.len() as i32),
         bonus_rand_timer: [[t[0], t[1]], [t[2], t[3]]],
         bonus_spawn_rect_x: constant("BonusSpawnRectX"),
         bonus_spawn_rect_y: constant("BonusSpawnRectY"),
@@ -949,8 +949,7 @@ mod tests {
         let mut tc = LieroTcData::empty();
         tc.constants = constants;
         tc.bonus_rand_timer = [1, 2, 3, 4];
-        // SAFETY: all zeroes is a valid weapon.
-        tc.weapons = (0..40).map(|_| crate::tc::LieroTcWeapon::default()).collect();
+        tc.model.weapons = (0..40).map(|_| liero_data::model::Weapon::default()).collect();
         tc.hacks = vec![false; liero_data::exe::HACKS.len()];
         let s = crate::settings::liero_settings_box_new();
         s.borrow_mut().data.max_bonuses = 6;

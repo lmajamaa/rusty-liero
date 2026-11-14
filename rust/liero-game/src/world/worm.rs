@@ -174,13 +174,13 @@ impl Worm<'_, '_> {
     }
 
     /// The current weapon's TC weapon.
-    fn tc_weapon(&self) -> &LieroTcWeapon {
+    fn tc_weapon(&self) -> &Weapon {
         self.world.weapon(self.slot().kind)
     }
 
     /// The current weapon's type.
     fn weapon(&self) -> LieroWeapon {
-        weapon_view(self.tc_weapon())
+        weapon_view(self.slot().kind, self.tc_weapon())
     }
 
     fn pressed(&self, c: u32) -> bool {
@@ -348,7 +348,7 @@ impl Worm<'_, '_> {
 
         for _ in 0..w.parts.max(0) {
             // `Weapon::fire`: one part of the shot.
-            let kind = self.world.weapon(self.slot().kind);
+            let kind = self.slot().kind;
             let (index, fired_by) = (self.index(), self.fired_by());
             self.world
                 .fire_weapon(kind, angle, firing_vel, speed, firing, index, fired_by);

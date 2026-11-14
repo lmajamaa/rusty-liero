@@ -81,7 +81,7 @@ pub fn hash_tc(out: &mut Out) {
     out.hash("tc-font", 0, h);
 
     let mut h = Fnv::default();
-    h.u32(d.weapons.len() as u32);
+    h.u32(d.model.weapons.len() as u32);
     for &i in &d.weap_order {
         h.i32(i);
     }
@@ -99,18 +99,10 @@ pub fn hash_random_tc(out: &mut Out) {
     // Any seed: only the shuffle, which isn't hashed, uses it.
     t.randomize(0);
     let m = t.model().expect("the TC loaded");
-    for i in 0..m.weapons.len() {
-        out.hash(
-            "tc-random-weapon",
-            i as i64,
-            Fnv::of(&save::weapon_text(m, &t.weapon_model(i))),
-        );
+    for (i, w) in m.weapons.iter().enumerate() {
+        out.hash("tc-random-weapon", i as i64, Fnv::of(&save::weapon_text(m, w)));
     }
-    for i in 0..m.sobjects.len() {
-        out.hash(
-            "tc-random-sobject",
-            i as i64,
-            Fnv::of(&save::sobject_text(&t.sobject_model(i))),
-        );
+    for (i, s) in m.sobjects.iter().enumerate() {
+        out.hash("tc-random-sobject", i as i64, Fnv::of(&save::sobject_text(s)));
     }
 }

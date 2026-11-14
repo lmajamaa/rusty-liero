@@ -645,7 +645,7 @@ impl LieroMenus {
 
     /// A player's weapon: one of the TC's, shown by name.
     fn weapon_item(&self, app: &LieroApp) -> LieroItemBehavior<'static> {
-        LieroItemBehavior::enumeration(1, app.tc_data().weapons.len() as i32, &[])
+        LieroItemBehavior::enumeration(1, app.tc_data().model.weapons.len() as i32, &[])
     }
 
     /// Runs a key on item `it`, which edits `setting`, and writes the

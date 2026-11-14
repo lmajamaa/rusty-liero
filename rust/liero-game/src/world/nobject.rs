@@ -21,7 +21,7 @@ impl<'a> World<'a> {
     }
 
     /// The type of non-weapon object `slot`.
-    fn nobj_type(&self, slot: usize) -> &'a LieroTcNObject {
+    fn nobj_type(&self, slot: usize) -> &'a NObject {
         self.nobject_type(self.nobj(slot).kind)
     }
 
