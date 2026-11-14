@@ -1,20 +1,20 @@
 //! Text helpers shared by the HUD and menus: strings from C++, the time
 //! formats from `text.cpp` and drawing with the game font.
 
-use crate::gfx::{liero_font_draw_char, liero_font_draw_text, liero_font_get_dims, LieroBitmap};
+use crate::gfx::{draw_char, draw_text, text_dims, Bitmap};
 use liero_data::model::FontChar;
 
 /// Text from C++: `len` bytes from `ptr`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroStr {
+pub struct Str {
     pub ptr: *const u8,
     pub len: usize,
 }
 
-impl LieroStr {
+impl Str {
     /// A view of `b`, valid while it is.
-    pub fn of(b: &[u8]) -> LieroStr {
-        LieroStr {
+    pub fn of(b: &[u8]) -> Str {
+        Str {
             ptr: b.as_ptr(),
             len: b.len(),
         }
@@ -34,7 +34,7 @@ impl LieroStr {
 }
 
 fn digit(v: i32) -> u8 {
-    (b'0' as i32).wrapping_add(v) as u8
+    i32::from(b'0').wrapping_add(v) as u8
 }
 
 /// "MM:SS" from seconds: `timeToString`.
@@ -75,28 +75,28 @@ pub fn time_to_string_ex(mut ms: i32, force_hours: bool, force_minutes: bool) ->
 
 /// The game font, `Font` in C++.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroFont<'a> {
+pub struct Font<'a> {
     pub chars: &'a [FontChar],
 }
 
-impl LieroFont<'_> {
+impl Font<'_> {
     /// `Font::drawText`.
-    pub(crate) fn text(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
-        liero_font_draw_text(scr, self.chars, text, x, y, color as u8, size);
+    pub(crate) fn text(&self, scr: &Bitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
+        draw_text(scr, self.chars, text, x, y, color as u8, size);
     }
 
     /// `Font::drawChar`.
-    pub(crate) fn char(&self, scr: &LieroBitmap, c: u8, x: i32, y: i32, color: i32) {
-        liero_font_draw_char(scr, self.chars, c, x, y, color as u8, 1);
+    pub(crate) fn char(&self, scr: &Bitmap, c: u8, x: i32, y: i32, color: i32) {
+        draw_char(scr, self.chars, c, x, y, color as u8, 1);
     }
 
     /// `Font::getDims`: the width, and the height.
     pub(crate) fn dims(&self, text: &[u8]) -> (i32, i32) {
-        liero_font_get_dims(self.chars, text)
+        text_dims(self.chars, text)
     }
 
     /// `Font::drawCenteredText`.
-    pub(crate) fn centered(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
+    pub(crate) fn centered(&self, scr: &Bitmap, text: &[u8], x: i32, y: i32, color: i32, size: i32) {
         let len = self.dims(text).0 * size;
         self.text(scr, text, x - len / 2, y, color, size);
     }

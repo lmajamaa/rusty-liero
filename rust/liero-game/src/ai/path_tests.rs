@@ -1,20 +1,20 @@
 use super::*;
-use crate::material::{LIERO_MATERIAL_BACKGROUND, LIERO_MATERIAL_DIRT, LIERO_MATERIAL_ROCK};
-use crate::rand::LieroRand;
+use crate::material::{MATERIAL_BACKGROUND, MATERIAL_DIRT, MATERIAL_ROCK};
+use crate::rand::Rand;
 
 const AIR: u8 = 0;
 const DIRT: u8 = 1;
 const ROCK: u8 = 2;
 
-fn materials() -> Vec<LieroMaterial> {
+fn materials() -> Vec<Material> {
     let mut m = vec![
-        LieroMaterial {
-            flags: LIERO_MATERIAL_BACKGROUND
+        Material {
+            flags: MATERIAL_BACKGROUND
         };
         256
     ];
-    m[DIRT as usize].flags = LIERO_MATERIAL_DIRT;
-    m[ROCK as usize].flags = LIERO_MATERIAL_ROCK;
+    m[DIRT as usize].flags = MATERIAL_DIRT;
+    m[ROCK as usize].flags = MATERIAL_ROCK;
     m
 }
 
@@ -175,7 +175,7 @@ fn unreachable_cells_fail() {
 /// order of g.
 #[test]
 fn heap_pops_in_order() {
-    let mut rand = LieroRand::new(7);
+    let mut rand = Rand::new(7);
     for round in 0..50 {
         let mut l = PathLevel::default();
         let n = 1 + rand.below(300) as usize;

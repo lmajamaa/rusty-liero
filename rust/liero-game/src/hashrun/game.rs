@@ -2,16 +2,17 @@
 //! which the bot games, replays, AI games and sound games print.
 
 use super::Fnv;
-use crate::controller::LIERO_STATE_GAME;
-use crate::game_box::{LieroGame, LieroWorm};
-use crate::math::LieroIVec2;
-use crate::renderer::LieroRenderer;
-use crate::stats::{Heatmap, LieroStats};
+use crate::controller::State;
+use crate::game_box::{Game, Worm};
+use crate::math::FVec2;
+use crate::renderer::Renderer;
+use crate::stats::{Heatmap, Stats};
 
 impl Fnv {
-    fn vec(&mut self, v: LieroIVec2) {
-        self.i32(v.x);
-        self.i32(v.y);
+    fn vec(&mut self, v: FVec2) {
+        let [x, y] = v.raw();
+        self.i32(x);
+        self.i32(y);
     }
 }
 
@@ -21,11 +22,12 @@ fn used<T>(arr: &[T], is_used: impl Fn(&T) -> bool) -> impl Iterator<Item = &T> 
 }
 
 /// `anchor_index` is the `index` of the worm its rope is anchored to, or -1.
-fn hash_worm(f: &mut Fnv, w: &LieroWorm, anchor_index: i32) {
+fn hash_worm(f: &mut Fnv, w: &Worm, anchor_index: i32) {
     let w = &w.data;
     f.vec(w.pos);
     f.vec(w.vel);
-    f.vec(w.logic_respawn);
+    f.i32(w.logic_respawn.x);
+    f.i32(w.logic_respawn.y);
     f.i32(w.hotspot_x);
     f.i32(w.hotspot_y);
     f.i32(w.aiming_angle);
@@ -65,7 +67,7 @@ fn hash_worm(f: &mut Fnv, w: &LieroWorm, anchor_index: i32) {
     f.i32(r.cur_len);
 
     f.i32(w.current_weapon);
-    f.i32(w.last_killed_by_idx);
+    f.i32(w.last_killed_by_idx.unwrap_or(-1));
     f.i32(w.fire_cone);
     f.i32(w.leave_shell_timer);
     w.reacts.iter().for_each(|&r| f.i32(r));
@@ -82,14 +84,14 @@ fn hash_worm(f: &mut Fnv, w: &LieroWorm, anchor_index: i32) {
     f.u32(w.prev_control_states);
 }
 
-pub fn hash_game(game: &mut LieroGame) -> u64 {
+pub fn hash_game(game: &mut Game) -> u64 {
     let mut f = Fnv::default();
     let g = game.data_mut();
     f.i32(g.cycles);
     f.u32(g.rand.x);
     f.u32(g.rand.c);
     f.i32(g.screen_flash);
-    f.i32(g.last_killed_idx);
+    f.i32(g.last_killed_idx.unwrap_or(-1));
     f.bool(g.got_changed);
 
     let z = &g.holdazone;
@@ -98,8 +100,8 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
         z.rect.y1,
         z.rect.x2,
         z.rect.y2,
-        z.holder_idx,
-        z.contender_idx,
+        z.holder_idx.unwrap_or(-1),
+        z.contender_idx.unwrap_or(-1),
         z.contender_frames,
         z.timeout_left,
         z.zone_width,
@@ -108,7 +110,7 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
         f.i32(v);
     }
 
-    for i in 0..crate::game_box::liero_game_worm_count(game) {
+    for i in 0..game.worm_count() {
         let w = game.worm_at(i).expect("an empty place among the game's worms");
         let anchor = w.data.ninjarope.anchor;
         let anchor_index = anchor.map_or(-1, |a| game.worm_mut(a).data.index);
@@ -164,7 +166,7 @@ pub fn hash_game(game: &mut LieroGame) -> u64 {
 }
 
 /// A screen's pixels, row by row, and its palette (`hashFrame`).
-pub(super) fn add_screen(f: &mut Fnv, r: &LieroRenderer) {
+pub(super) fn add_screen(f: &mut Fnv, r: &Renderer) {
     let v = r.bmp.view();
     let (w, pitch) = (v.w as usize, v.pitch as usize);
     let pixels = r.bmp.pixels();
@@ -179,11 +181,11 @@ pub(super) fn add_screen(f: &mut Fnv, r: &LieroRenderer) {
 }
 
 /// The game as the split-screen and spectator windows would show it.
-pub fn hash_frame(game: &mut LieroGame, split: &mut LieroRenderer, spectator: &mut LieroRenderer) -> u64 {
+pub fn hash_frame(game: &mut Game, split: &mut Renderer, spectator: &mut Renderer) -> u64 {
     let mut f = Fnv::default();
     for (r, spectators) in [(split, false), (spectator, true)] {
         r.clear();
-        game.draw(r, LIERO_STATE_GAME, spectators, false);
+        game.draw(r, State::Game, spectators, false);
         add_screen(&mut f, r);
     }
     f.0
@@ -198,7 +200,7 @@ fn add_heatmap(f: &mut Fnv, hm: &Heatmap) {
 
 /// What the stats recorder has, but the process times, which are measured
 /// with the clock (`hashStats`).
-pub fn hash_stats(s: &LieroStats) -> u64 {
+pub fn hash_stats(s: &Stats) -> u64 {
     let mut f = Fnv::default();
     f.i32(s.frame);
     f.i32(s.game_time);

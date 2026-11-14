@@ -6,19 +6,19 @@
 //! viewports: their shake and death banner move with every tick the AI
 //! plays out.
 
-use super::dumb::{self, LieroDumbAiWorm};
+use super::dumb::{self, DumbAiWorm};
 use super::path::LevelView;
-use super::predictive::{Games, LieroAiGame, LieroAiWeapon, LieroAiWorm};
-use crate::game::{LieroGameData, LieroGameFields, LieroGameHooks, LieroGameSettings, LieroGameWorm};
-use crate::level::LieroLevel;
-use crate::material::LieroMaterial;
-use crate::rand::LieroRand;
+use super::predictive::{AiGame, AiWeapon, AiWorm, Games};
+use crate::game::{GameData, GameFields, GameHooks, GameWorm, RuleSettings};
+use crate::level::RawLevel;
+use crate::material::Material;
+use crate::rand::Rand;
 use crate::world::World;
-use crate::worm::LieroWormData;
+use crate::worm::WormData;
 
 /// The AI's settings (`Settings::aiFrames`, `aiMutations`, `aiTraces`).
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroAiSettings {
+pub struct AiSettings {
     pub frames: i32,
     pub mutations: i32,
     pub traces: bool,
@@ -28,18 +28,18 @@ pub struct LieroAiSettings {
 /// copy, which owns its state, level and worms. `fields.worms` points into
 /// `worms`.
 pub struct SimGame {
-    fields: LieroGameFields,
-    settings: LieroGameSettings,
-    ai: LieroAiSettings,
-    worms: Vec<LieroGameWorm>,
-    _data: Option<Box<LieroGameData>>,
+    fields: GameFields,
+    settings: RuleSettings,
+    ai: AiSettings,
+    worms: Vec<GameWorm>,
+    _data: Option<Box<GameData>>,
     _pixels: Vec<u8>,
-    _materials: Vec<LieroMaterial>,
+    _materials: Vec<Material>,
     // Boxed so the raw pointers to them stay valid as the list grows.
     #[allow(clippy::vec_box)]
-    _worm_data: Vec<Box<LieroWormData>>,
+    _worm_data: Vec<Box<WormData>>,
     /// The game's worms by id, with the listed ones the copy's.
-    _pool: Vec<*mut LieroWormData>,
+    _pool: Vec<*mut WormData>,
 }
 
 fn no_ticks() -> u64 {
@@ -48,7 +48,7 @@ fn no_ticks() -> u64 {
 
 /// `NullSoundPlayer` and the base `StatsRecorder`, and no viewports to
 /// process.
-const NO_HOOKS: LieroGameHooks<'static> = LieroGameHooks { hires_ticks: &no_ticks };
+const NO_HOOKS: GameHooks<'static> = GameHooks { hires_ticks: &no_ticks };
 
 impl SimGame {
     /// The game the AI is in.
@@ -56,7 +56,7 @@ impl SimGame {
     /// # Safety
     /// The pointers in `fields` and `settings` must be valid while it is
     /// used.
-    unsafe fn borrowed(fields: &LieroGameFields, settings: &LieroGameSettings, ai: &LieroAiSettings) -> Box<Self> {
+    unsafe fn borrowed(fields: &GameFields, settings: &RuleSettings, ai: &AiSettings) -> Box<Self> {
         unsafe {
             let worms = std::slice::from_raw_parts(fields.worms, fields.worm_count as usize).to_vec();
             let mut g = Box::new(SimGame {
@@ -89,11 +89,11 @@ impl SimGame {
             let mut pixels = std::slice::from_raw_parts(level.data, len).to_vec();
             let mut materials = std::slice::from_raw_parts(level.materials, len).to_vec();
 
-            let mut worm_data: Vec<Box<LieroWormData>> = self.worms.iter().map(|w| Box::new(*w.data)).collect();
-            let worms: Vec<LieroGameWorm> = worm_data
+            let mut worm_data: Vec<Box<WormData>> = self.worms.iter().map(|w| Box::new(*w.data)).collect();
+            let worms: Vec<GameWorm> = worm_data
                 .iter_mut()
                 .zip(&self.worms)
-                .map(|(d, w)| LieroGameWorm {
+                .map(|(d, w)| GameWorm {
                     data: &mut **d,
                     id: w.id,
                     max_health: w.max_health,
@@ -112,7 +112,7 @@ impl SimGame {
             let mut fields = self.fields;
             fields.game = &mut *data;
             fields.pool = pool.as_ptr();
-            fields.level = LieroLevel {
+            fields.level = RawLevel {
                 data: pixels.as_mut_ptr(),
                 materials: materials.as_mut_ptr(),
                 width: level.width,
@@ -124,7 +124,7 @@ impl SimGame {
             // copies' ticks shake them and move their banners, which shows
             // in the frames drawn.
             fields.stats = std::ptr::null_mut();
-            fields.sound = crate::sfx::LieroSoundOut::NONE;
+            fields.sound = crate::sfx::SoundOut::NONE;
 
             let mut g = Box::new(SimGame {
                 fields,
@@ -142,7 +142,7 @@ impl SimGame {
         }
     }
 
-    fn worm(&self, place: i32) -> *mut LieroWormData {
+    fn worm(&self, place: i32) -> *mut WormData {
         self.worms[place as usize].data
     }
 }
@@ -150,7 +150,7 @@ impl SimGame {
 /// The games, as `*mut SimGame`.
 struct Sims;
 
-// SAFETY, for each call: the games are the one `liero_game_process_ais`
+// SAFETY, for each call: the games are the one `process_ais`
 // was given or copies made here, and are valid until freed.
 impl Games for Sims {
     type G = *mut SimGame;
@@ -170,13 +170,13 @@ impl Games for Sims {
         }
     }
 
-    fn game(&mut self, g: Self::G) -> LieroAiGame {
+    fn game(&mut self, g: Self::G) -> AiGame {
         unsafe {
             let g = &*g;
             let d = &*g.fields.game;
             let z = &d.holdazone;
-            LieroAiGame {
-                game_mode: g.settings.game_mode as u32,
+            AiGame {
+                game_mode: g.settings.game_mode,
                 holder_idx: z.holder_idx,
                 contender_idx: z.contender_idx,
                 contender_frames: z.contender_frames,
@@ -189,14 +189,14 @@ impl Games for Sims {
         }
     }
 
-    fn worm(&mut self, g: Self::G, place: i32) -> LieroAiWorm {
+    fn worm(&mut self, g: Self::G, place: i32) -> AiWorm {
         unsafe {
             let g = &*g;
             let tc = &*g.fields.tc;
             let w = &*g.worm(place);
-            LieroAiWorm {
+            AiWorm {
                 index: w.index,
-                pos: [w.pos.x, w.pos.y],
+                pos: w.pos.raw(),
                 aiming_angle: w.aiming_angle,
                 direction: w.direction,
                 visible: w.visible,
@@ -207,7 +207,7 @@ impl Games for Sims {
                 current_weapon: w.current_weapon,
                 weapons: w.weapons.map(|ww| {
                     let t = &tc.model.weapons[ww.kind as usize];
-                    LieroAiWeapon {
+                    AiWeapon {
                         ammo: ww.ammo,
                         delay_left: ww.delay_left,
                         loading_left: ww.loading_left,
@@ -254,9 +254,9 @@ impl Games for Sims {
 /// The pointers in `fields` and `settings` must be valid for the call.
 pub unsafe fn process(
     ai: &mut super::predictive::FollowAi,
-    fields: &LieroGameFields,
-    settings: &LieroGameSettings,
-    ai_settings: &LieroAiSettings,
+    fields: &GameFields,
+    settings: &RuleSettings,
+    ai_settings: &AiSettings,
     place: i32,
 ) -> u32 {
     unsafe {
@@ -272,15 +272,15 @@ pub unsafe fn process(
 ///
 /// # Safety
 /// The pointers in `fields` must be valid for the call.
-pub unsafe fn process_dumb(rand: &mut LieroRand, fields: &LieroGameFields, place: i32) -> u32 {
+pub unsafe fn process_dumb(rand: &mut Rand, fields: &GameFields, place: i32) -> u32 {
     unsafe {
         let worms = std::slice::from_raw_parts(fields.worms, fields.worm_count as usize);
         let me = &*worms[place as usize].data;
         let tc = &*fields.tc;
         let w = &tc.model.weapons[me.weapons[me.current_weapon as usize].kind as usize];
 
-        let worm = LieroDumbAiWorm {
-            pos: [me.pos.x, me.pos.y],
+        let worm = DumbAiWorm {
+            pos: me.pos.raw(),
             visible: me.visible,
             aiming_angle: me.aiming_angle,
             direction: me.direction,
@@ -298,7 +298,7 @@ pub unsafe fn process_dumb(rand: &mut LieroRand, fields: &LieroGameFields, place
             .iter()
             .enumerate()
             .filter(|&(i, _)| i != place as usize)
-            .map(|(_, o)| [(*o.data).pos.x, (*o.data).pos.y])
+            .map(|(_, o)| (*o.data).pos.raw())
             .collect();
 
         let k = &(*fields.tc).model.ai_params;

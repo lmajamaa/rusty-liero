@@ -4,9 +4,9 @@
 
 use super::{Fnv, Out};
 use crate::fs::Node;
-use crate::level::LieroLevelBox;
-use crate::rand::LieroRand;
-use crate::settings::LieroSettingsBox;
+use crate::level::LevelBox;
+use crate::rand::Rand;
+use crate::settings::SettingsBox;
 
 pub fn hash_level_files(out: &mut Out) {
     let tc = super::tc::bundled();
@@ -33,14 +33,14 @@ pub fn hash_level_files(out: &mut Out) {
             assert!(Node::new(path.as_bytes()).write(f), "Could not write {path}");
         }
         for with_palette in 0..2 {
-            let settings = LieroSettingsBox::defaults();
+            let settings = SettingsBox::defaults();
             let mut s = settings.borrow_mut();
             s.data.random_level = false;
             s.data.level_file = path.clone().into_bytes();
             s.data.ext.load_powerlevel_palette = with_palette != 0;
 
-            let mut rand = LieroRand::new(1234 + i as u32);
-            let mut lev = LieroLevelBox::new();
+            let mut rand = Rand::new(1234 + i as u32);
+            let mut lev = LevelBox::new();
             lev.generate_from_settings(&d.level_common(), &d.palette_colors, &s, &mut rand);
 
             let l = &lev.data().level;

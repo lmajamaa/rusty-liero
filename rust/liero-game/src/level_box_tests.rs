@@ -1,22 +1,22 @@
 //! Loading levels and making them from the settings.
 
 use super::*;
-use crate::material::{LIERO_MATERIAL_BACKGROUND, LIERO_MATERIAL_DIRT};
-use crate::settings::liero_settings_box_new;
+use crate::material::{MATERIAL_BACKGROUND, MATERIAL_DIRT};
+use crate::settings::new_settings;
 
 /// A TC's level tables: colour 0 is background, 5 dirt, the rest nothing.
 struct Tables {
-    materials: [LieroMaterial; 256],
-    textures: [Texture; LIERO_TEXTURE_COUNT],
+    materials: [Material; 256],
+    textures: [Texture; TEXTURE_COUNT],
     sprites: Vec<u8>,
 }
 
 impl Tables {
     fn new() -> Self {
-        let mut materials = [LieroMaterial::default(); 256];
-        materials[5].flags = LIERO_MATERIAL_DIRT;
-        materials[0].flags = LIERO_MATERIAL_BACKGROUND;
-        let mut textures = [Texture::default(); LIERO_TEXTURE_COUNT];
+        let mut materials = [Material::default(); 256];
+        materials[5].flags = MATERIAL_DIRT;
+        materials[0].flags = MATERIAL_BACKGROUND;
+        let mut textures = [Texture::default(); TEXTURE_COUNT];
         for t in textures.iter_mut() {
             t.r_frame = 1;
         }
@@ -36,8 +36,8 @@ impl Tables {
     }
 }
 
-fn exepal() -> [LieroColor; 256] {
-    std::array::from_fn(|i| LieroColor {
+fn exepal() -> [Color; 256] {
+    std::array::from_fn(|i| Color {
         r: i as u8 % 64,
         g: 1,
         b: 2,
@@ -45,7 +45,7 @@ fn exepal() -> [LieroColor; 256] {
     })
 }
 
-const PIXELS: usize = (LIERO_LEVEL_WIDTH * LIERO_LEVEL_HEIGHT) as usize;
+const PIXELS: usize = (LEVEL_WIDTH * LEVEL_HEIGHT) as usize;
 
 /// A .LEV file of colour 5, then `rest`.
 fn lev(rest: &[u8]) -> Vec<u8> {
@@ -63,19 +63,19 @@ fn powerlevel(palette_len: usize) -> Vec<u8> {
 #[test]
 fn a_level_file_has_its_pixels_and_materials() {
     let t = Tables::new();
-    let mut l = LieroLevelBox::new();
+    let mut l = LevelBox::new();
     l.data_mut().origpal[3].r = 9;
     assert!(l.load(&t.common(), &exepal(), true, &lev(&[])));
     assert_eq!(
         (l.data().level.width, l.data().level.height),
-        (LIERO_LEVEL_WIDTH, LIERO_LEVEL_HEIGHT)
+        (LEVEL_WIDTH, LEVEL_HEIGHT)
     );
     assert!(l.pixels().iter().all(|&p| p == 5));
-    assert!(l.materials.iter().all(|m| m.flags == LIERO_MATERIAL_DIRT));
+    assert!(l.materials.iter().all(|m| m.flags == MATERIAL_DIRT));
     assert_eq!(l.data().origpal, exepal());
 
     // Cut short: what there is is read, and loading fails.
-    let mut l = LieroLevelBox::new();
+    let mut l = LevelBox::new();
     let mut short = lev(&[]);
     short.truncate(PIXELS - 1);
     assert!(!l.load(&t.common(), &exepal(), true, &short));
@@ -86,7 +86,7 @@ fn a_level_file_has_its_pixels_and_materials() {
 fn a_powerlevel_palette_is_read_when_asked_for() {
     let t = Tables::new();
     let pal = exepal();
-    let mut l = LieroLevelBox::new();
+    let mut l = LevelBox::new();
     assert!(l.load(&t.common(), &pal, true, &powerlevel(768)));
     let o = l.data().origpal;
     // The top two bits of each component are dropped.
@@ -113,25 +113,25 @@ fn the_settings_level_file_gets_lev_added_and_falls_back_to_random() {
     std::fs::write(format!("{dir}/MAP.LEV"), lev(&[])).unwrap();
     let t = Tables::new();
     {
-        let shared = liero_settings_box_new();
+        let shared = new_settings();
         let mut s = shared.borrow_mut();
         s.data.random_level = false;
         s.data.shadow = false;
         s.data.level_file = format!("{dir}/MAP").into_bytes();
-        let mut l = LieroLevelBox::new();
-        let mut rand = LieroRand::new(3);
+        let mut l = LevelBox::new();
+        let mut rand = Rand::new(3);
         l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
         assert!(l.pixels().iter().all(|&p| p == 5));
         assert_eq!(
             (l.data().old_random_level, l.old_level_file()),
             (false, s.data.level_file.as_slice())
         );
-        assert_eq!(rand, LieroRand::new(3));
+        assert_eq!(rand, Rand::new(3));
 
         // A file that isn't there makes a random level.
         s.data.level_file = format!("{dir}/NONE").into_bytes();
         l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
-        assert_ne!(rand, LieroRand::new(3));
+        assert_ne!(rand, Rand::new(3));
         assert!(l.pixels().iter().any(|&p| p != 5));
 
         // Shadows go on a loaded level too: the bottom row's background

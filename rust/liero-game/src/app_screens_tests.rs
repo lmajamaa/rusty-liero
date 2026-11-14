@@ -1,54 +1,53 @@
 use super::*;
-use crate::controllers::{liero_controller_is_replay, LieroController};
+use crate::controllers::Controller;
 use crate::fs::Node;
-use crate::settings::liero_settings_box_new;
+use crate::menu::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
+use crate::settings::new_settings;
 use crate::tc::SharedTc;
 
 /// The bundled TC.
 fn tc() -> SharedTc {
-    crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"))
+    crate::tc::load_shared(&Node::new(b"../../TC/openliero"))
 }
 
 /// An app with the menus' settings and the bundled TC, and a match behind
 /// the menu.
-fn set_up() -> LieroApp {
-    let mut a = LieroApp::new();
-    crate::app::liero_app_set_settings(&mut a, Some(liero_settings_box_new()));
+fn set_up() -> App {
+    let mut a = App::new();
+    a.settings = Some(new_settings());
     a.set_tc(Some(tc()));
     restart(&mut a, &Host::none());
     a
 }
 
 /// A replay controller that hasn't started.
-fn replay() -> Box<LieroController> {
+fn replay() -> Box<Controller> {
     let dir = "target/app-screens-tests";
     std::fs::create_dir_all(dir).unwrap();
     let path = format!("{dir}/empty.lrp");
     std::fs::write(&path, b"").unwrap();
-    let c = crate::controllers::liero_replay_controller_new(&Node::new(path.as_bytes()), tc());
-    assert!(!c.is_null());
-    unsafe { Box::from_raw(c) }
+    Controller::replay(&Node::new(path.as_bytes()), tc()).expect("a replay")
 }
 
 #[test]
 fn resuming_a_replay_shows_the_single_screen() {
     let a = &mut set_up();
     a.primary_single = false;
-    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), AfterMenu::Play);
     assert!(!a.primary_single);
 
     a.controller = Some(replay());
-    assert!(liero_controller_is_replay(a.controller.as_deref().unwrap()));
-    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
+    assert!(a.controller.as_deref().unwrap().is_replay());
+    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), AfterMenu::Play);
     assert!(a.primary_single);
 
     // A replay chosen in the menu, as the settings say.
     a.primary_single = false;
     a.settings_mut().data.ext.single_screen_replay = false;
-    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), AfterMenu::Play);
     assert!(!a.primary_single);
     a.settings_mut().data.ext.single_screen_replay = true;
-    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), AfterMenu::Play);
     assert!(a.primary_single);
     a.controller = None;
 }
@@ -76,16 +75,16 @@ fn a_new_game_keeps_the_level_unless_the_settings_changed() {
         (s.data.random_level, s.data.regenerate_level) = (true, false);
     }
     restart(a, &Host::none());
-    let pixels = |a: &mut LieroApp| unsafe { (*liero_controller_level(controller(a))).pixels().to_vec() };
+    let pixels = |a: &mut App| controller(a).level().expect("no level").pixels().to_vec();
     let first = pixels(a);
-    assert_eq!(after_menu(a, &Host::none(), MAIN_NEW_GAME), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_NEW_GAME), AfterMenu::Play);
     assert_eq!(pixels(a), first);
     a.settings_mut().data.regenerate_level = true;
     after_menu(a, &Host::none(), MAIN_NEW_GAME);
     assert_ne!(pixels(a), first);
 
-    assert_eq!(after_menu(a, &Host::none(), MAIN_QUIT), LIERO_AFTER_MENU_QUIT);
-    assert_eq!(after_menu(a, &Host::none(), MAIN_TC), LIERO_AFTER_MENU_RESTART);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_QUIT), AfterMenu::Quit);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_TC), AfterMenu::Restart);
     let cycles = a.menu_cycles;
     draw(a, true);
     draw(a, false);

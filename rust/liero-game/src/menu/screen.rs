@@ -3,14 +3,17 @@
 //! chosen (`MenuScreen` and `Gfx::menuStep` in C++). It closes with the item
 //! chosen.
 //!
-//! The menus and their items are `LieroMenus` (`menus.rs`): an item may
+//! The menus and their items are `Menus` (`menu::menus`): an item may
 //! open a screen, and the screen goes on where it stopped when that one
-//! closes. The app sets the menus up and draws them (`app_menus.rs`);
+//! closes. The app sets the menus up and draws them (`menu::draw`);
 //! saving the settings is the app's (`app_files.rs`), and F8's random TC
 //! is seeded by the platform.
 
-use crate::app::LieroApp;
-use crate::menus::{LieroMenus, SharedMenus};
+use crate::app::App;
+use crate::menu::menus::{Menus, SharedMenus};
+use crate::menu::menus::{
+    MAIN_ADVANCED, MAIN_PLAYER1_SETTINGS, MAIN_PLAYER2_SETTINGS, MAIN_QUIT, MAIN_REPLAYS, MAIN_SETTINGS, MAIN_TC,
+};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use std::cell::RefMut;
 
@@ -35,20 +38,16 @@ const SOUND_UP: i32 = 26;
 const SOUND_DOWN: i32 = 25;
 const SOUND_CHOICE: i32 = 27;
 
-/// The menus.
-pub const LIERO_MENU_MAIN: i32 = 0;
-pub const LIERO_MENU_SETTINGS: i32 = 1;
-pub const LIERO_MENU_PLAYER: i32 = 2;
-pub const LIERO_MENU_HIDDEN: i32 = 3;
-
-/// The main menu's item ids (`MainMenu`).
-pub const LIERO_MAIN_SETTINGS: i32 = 2;
-pub const LIERO_MAIN_PLAYER1_SETTINGS: i32 = 3;
-pub const LIERO_MAIN_PLAYER2_SETTINGS: i32 = 4;
-pub const LIERO_MAIN_ADVANCED: i32 = 5;
-pub const LIERO_MAIN_QUIT: i32 = 6;
-pub const LIERO_MAIN_REPLAYS: i32 = 7;
-pub const LIERO_MAIN_TC: i32 = 9;
+/// The menus, in `Menus`' order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MenuKind {
+    #[default]
+    Main = 0,
+    Settings = 1,
+    Player = 2,
+    /// The advanced options.
+    Hidden = 3,
+}
 
 /// Where a pass stopped for a screen an item opened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,49 +85,54 @@ struct MenuScreen {
     menus: SharedMenus,
     phase: Phase,
     start_item: i32,
-    selected: i32,
+    /// What the menu closes with, once chosen.
+    selected: Option<i32>,
     part: Part,
     how: Use,
-    entered: i32,
+    entered: Option<i32>,
     resumed: bool,
 }
 
 impl MenuScreen {
-    fn menus(&self) -> RefMut<'_, LieroMenus> {
+    fn menus(&self) -> RefMut<'_, Menus> {
         self.menus.borrow_mut()
     }
 
     /// Runs `f` on `kind`'s menu.
-    fn menu<R>(&self, kind: i32, f: impl FnOnce(&mut crate::menu::OwnedMenu) -> R) -> R {
-        f(&mut self.menus().box_of(kind).0)
+    fn menu<R>(&self, kind: MenuKind, f: impl FnOnce(&mut crate::menu::Menu) -> R) -> R {
+        f(self.menus().box_of(kind))
     }
 
-    fn cur(&self) -> i32 {
+    fn cur(&self) -> MenuKind {
         self.menus().cur()
     }
 
-    fn set_cur(&self, kind: i32) {
+    fn set_cur(&self, kind: MenuKind) {
         self.menus().set_cur(kind)
     }
 
     fn move_main_to(&self, id: i32) {
-        self.menu(LIERO_MENU_MAIN, |main| {
-            let i = (0..main.len()).find(|&i| main.ids[i] == id).map_or(-1, |i| i as i32);
+        self.menu(MenuKind::Main, |main| {
+            let i = (0..main.len())
+                .find(|&i| main.items[i].id == id)
+                .map_or(-1, |i| i as i32);
             main.move_to(i);
         });
     }
 
-    fn main_selected_id(&self) -> i32 {
-        self.menu(LIERO_MENU_MAIN, |main| main.selected().map_or(-1, |i| main.ids[i]))
+    fn main_selected_id(&self) -> Option<i32> {
+        self.menu(MenuKind::Main, |main| {
+            main.selected().map(|i| main.items[i].id).filter(|&id| id >= 0)
+        })
     }
 
     /// What an item's `onEnter` returned, put to `how`. True if the menu
     /// closes at once (a new TC).
-    fn take_result(&mut self, how: Use, r: i32) -> bool {
+    fn take_result(&mut self, how: Use, r: Option<i32>) -> bool {
         match how {
             Use::Select => self.selected = r,
-            Use::Tc if r == LIERO_MAIN_TC => {
-                self.selected = LIERO_MAIN_TC;
+            Use::Tc if r == Some(MAIN_TC) => {
+                self.selected = Some(MAIN_TC);
                 return true;
             }
             _ => {}
@@ -138,7 +142,7 @@ impl MenuScreen {
 
     /// Enter on `kind`'s item. Returns the screen it opened, if any; else
     /// whether the menu closes at once.
-    fn enter(&mut self, app: &mut LieroApp, host: &Host, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
+    fn enter(&mut self, app: &mut App, host: &Host, kind: MenuKind, how: Use) -> Result<bool, BoxedScreen> {
         let (r, opened) = self.menus().enter(app, host, kind);
         if let Some(opened) = opened {
             self.how = how;
@@ -148,7 +152,7 @@ impl MenuScreen {
     }
 
     /// One pass of the menu's loop (`Gfx::menuStep`).
-    fn step(&mut self, app: &mut LieroApp, host: &Host) -> Step {
+    fn step(&mut self, app: &mut App, host: &Host) -> Step {
         if self.part != Part::Top && self.take_result(self.how, self.entered) {
             return Step::Close;
         }
@@ -170,13 +174,13 @@ impl MenuScreen {
             if app.save_settings_on_change {
                 app.save_settings_if_changed();
             }
-            crate::app_menus::draw_menus(app);
+            crate::menu::draw::draw_menus(app);
 
             if app.test_key_once(SCANCODE_ESCAPE) {
-                if self.cur() == LIERO_MENU_MAIN {
-                    self.move_main_to(LIERO_MAIN_QUIT);
+                if self.cur() == MenuKind::Main {
+                    self.move_main_to(MAIN_QUIT);
                 } else {
-                    self.set_cur(LIERO_MENU_MAIN);
+                    self.set_cur(MenuKind::Main);
                 }
             }
             if app.test_key_once(SCANCODE_UP) {
@@ -190,29 +194,29 @@ impl MenuScreen {
 
             if app.test_key_once(SCANCODE_RETURN) || app.test_key_once(SCANCODE_KP_ENTER) {
                 let cur = self.cur();
-                if cur == LIERO_MENU_MAIN {
+                if cur == MenuKind::Main {
                     host.play_sound(SOUND_CHOICE);
                     let s = self.main_selected_id();
                     match s {
-                        LIERO_MAIN_SETTINGS => self.set_cur(LIERO_MENU_SETTINGS),
-                        LIERO_MAIN_PLAYER1_SETTINGS | LIERO_MAIN_PLAYER2_SETTINGS => {
-                            self.menus().player_settings(app, s - LIERO_MAIN_PLAYER1_SETTINGS)
+                        Some(MAIN_SETTINGS) => self.set_cur(MenuKind::Settings),
+                        Some(id @ (MAIN_PLAYER1_SETTINGS | MAIN_PLAYER2_SETTINGS)) => {
+                            self.menus().player_settings(app, id - MAIN_PLAYER1_SETTINGS)
                         }
-                        LIERO_MAIN_ADVANCED => self.menus().open_hidden(app),
-                        LIERO_MAIN_REPLAYS => {
+                        Some(MAIN_ADVANCED) => self.menus().open_hidden(app),
+                        Some(MAIN_REPLAYS) => {
                             enter!(cur, Use::Select, Part::AfterEnter);
                         }
-                        LIERO_MAIN_TC => {
+                        Some(MAIN_TC) => {
                             if enter!(cur, Use::Tc, Part::AfterEnter) {
                                 return Step::Close;
                             }
                         }
                         _ => {
-                            self.set_cur(LIERO_MENU_MAIN);
+                            self.set_cur(MenuKind::Main);
                             self.selected = s;
                         }
                     }
-                } else if cur == LIERO_MENU_SETTINGS {
+                } else if cur == MenuKind::Settings {
                     enter!(cur, Use::Ignore, Part::AfterEnter);
                 } else {
                     enter!(cur, Use::Select, Part::AfterEnter);
@@ -222,37 +226,37 @@ impl MenuScreen {
 
         if self.part != Part::AfterF3 {
             if app.test_key_once(SCANCODE_F1) {
-                self.set_cur(LIERO_MENU_MAIN);
+                self.set_cur(MenuKind::Main);
                 self.move_main_to(self.start_item);
-                self.selected = self.start_item;
+                self.selected = Some(self.start_item);
             }
             if app.test_key_once(SCANCODE_F2) {
-                self.move_main_to(LIERO_MAIN_ADVANCED);
+                self.move_main_to(MAIN_ADVANCED);
                 self.menus().open_hidden(app);
             }
             if app.test_key_once(SCANCODE_F3) {
-                self.set_cur(LIERO_MENU_MAIN);
-                self.move_main_to(LIERO_MAIN_REPLAYS);
-                enter!(LIERO_MENU_MAIN, Use::Select, Part::AfterF3);
+                self.set_cur(MenuKind::Main);
+                self.move_main_to(MAIN_REPLAYS);
+                enter!(MenuKind::Main, Use::Select, Part::AfterF3);
             }
         }
 
         if app.test_key_once(SCANCODE_F5) {
-            self.move_main_to(LIERO_MAIN_PLAYER1_SETTINGS);
+            self.move_main_to(MAIN_PLAYER1_SETTINGS);
             self.menus().player_settings(app, 0);
         }
         if app.test_key_once(SCANCODE_F6) {
-            self.move_main_to(LIERO_MAIN_PLAYER2_SETTINGS);
+            self.move_main_to(MAIN_PLAYER2_SETTINGS);
             self.menus().player_settings(app, 1);
         }
         if app.test_key_once(SCANCODE_F7) {
-            self.move_main_to(LIERO_MAIN_SETTINGS);
-            self.set_cur(LIERO_MENU_SETTINGS);
+            self.move_main_to(MAIN_SETTINGS);
+            self.set_cur(MenuKind::Settings);
         }
         if app.test_key_once(SCANCODE_F8) {
             // F8: the developers' random TC.
             if app.has_tc() {
-                crate::tc::liero_tc_randomize(&app.menu_tc(), host.random_seed());
+                app.menu_tc().borrow_mut().randomize(host.random_seed());
             }
         }
 
@@ -279,9 +283,9 @@ impl MenuScreen {
         Step::Done
     }
 
-    fn run_step(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
+    fn run_step(&mut self, app: &mut App, host: &Host) -> Tick {
         match self.step(app, host) {
-            Step::Close => Tick::close(self.selected),
+            Step::Close => Tick::close(self.selected.unwrap_or(-1)),
             Step::Opened(screen) => Tick::push(screen),
             Step::Done => {
                 host.menu_fade(app);
@@ -292,7 +296,7 @@ impl MenuScreen {
 }
 
 impl Screen for MenuScreen {
-    fn tick(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut App, host: &Host) -> Tick {
         // The pass an item stopped goes on; the screen that closed read the
         // events.
         if self.resumed {
@@ -307,38 +311,38 @@ impl Screen for MenuScreen {
 
         match self.phase {
             Phase::Start => {
-                crate::app_menus::clear_palettes(app);
+                crate::menu::draw::clear_palettes(app);
                 self.phase = Phase::Setup;
                 Tick::stay(true)
             }
             Phase::Setup => {
-                self.start_item = crate::app_menus::menu_start(app);
-                self.selected = -1;
+                self.start_item = crate::menu::draw::menu_start(app);
+                self.selected = None;
                 self.phase = Phase::Menu;
                 self.run_step(app, host)
             }
             Phase::Menu => {
-                if self.selected < 0 {
+                if self.selected.is_none() {
                     return self.run_step(app, host);
                 }
                 self.phase = Phase::FadeOut;
                 app.play.data.fade_value = 32;
-                crate::app_menus::menu_fade(app, true);
+                crate::menu::draw::menu_fade(app, true);
                 Tick::stay(true)
             }
             Phase::FadeOut => {
                 let v = &mut app.play.data.fade_value;
                 *v -= 1;
                 if *v > 0 {
-                    crate::app_menus::menu_fade(app, true);
+                    crate::menu::draw::menu_fade(app, true);
                     return Tick::stay(true);
                 }
-                Tick::close(self.selected)
+                Tick::close(self.selected.unwrap_or(-1))
             }
         }
     }
 
-    fn resume(&mut self, app: &mut LieroApp, host: &Host, result: i32) {
+    fn resume(&mut self, app: &mut App, host: &Host, result: i32) {
         let entered = self.menus().then(app, host, result);
         self.entered = entered;
         self.resumed = true;
@@ -346,15 +350,15 @@ impl Screen for MenuScreen {
 }
 
 /// The main menu screen.
-pub fn liero_menu_screen(menus: SharedMenus) -> BoxedScreen {
+pub fn menu_screen(menus: SharedMenus) -> BoxedScreen {
     Box::new(MenuScreen {
         menus,
         phase: Phase::Start,
         start_item: 0,
-        selected: -1,
+        selected: None,
         part: Part::Top,
         how: Use::Ignore,
-        entered: -1,
+        entered: None,
         resumed: false,
     })
 }

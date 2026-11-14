@@ -6,7 +6,7 @@
 //! heap in an order that depends on its shape, and that order picks the
 //! parent each cell keeps, which the AI follows to aim.
 
-use crate::material::LieroMaterial;
+use crate::material::Material;
 
 /// No cell: a null pointer in C++.
 pub const NO_CELL: u32 = u32::MAX;
@@ -66,7 +66,7 @@ pub struct LevelView<'a> {
     pub width: i32,
     pub height: i32,
     /// The TC's 256 materials.
-    pub materials: &'a [LieroMaterial],
+    pub materials: &'a [Material],
 }
 
 impl LevelView<'_> {
@@ -85,7 +85,7 @@ impl LevelView<'_> {
         self.data.get(idx as usize).copied().unwrap_or(0)
     }
 
-    pub fn material(&self, pixel: u8) -> LieroMaterial {
+    pub fn material(&self, pixel: u8) -> Material {
         self.materials[pixel as usize]
     }
 }

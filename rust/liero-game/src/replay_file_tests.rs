@@ -1,34 +1,35 @@
 use super::*;
 use crate::fs::Node;
-use crate::game_box::{liero_game_new, liero_game_viewport_count};
-use crate::level::LieroLevelBox;
-use crate::settings::{liero_settings_box_new, SharedSettings};
-use crate::tc::{LieroTc, LieroTcData, SharedTc};
-use crate::worm::LieroWormData;
+use crate::math::Fixed;
+
+use crate::level::LevelBox;
+use crate::settings::{new_settings, SharedSettings};
+use crate::tc::{SharedTc, Tc, TcData};
+use crate::worm::WormData;
 
 const NO_WASM: &str = "miniz_oxide's debug compressor builds its tables on the 64 KB wasm stack";
 
 /// A game for a replay, with what it records beside it.
 struct Setup {
-    game: Box<LieroGame>,
+    game: Box<Game>,
     settings: SharedSettings,
     _tc: SharedTc,
 }
 
 impl Setup {
     fn empty() -> Self {
-        let mut tc = LieroTcData::empty();
+        let mut tc = TcData::empty();
         tc.materials[5].flags = 7;
         // SAFETY: a new game, which the setup owns.
         let mut s = Setup {
-            game: unsafe { Box::from_raw(liero_game_new()) },
-            settings: liero_settings_box_new(),
-            _tc: LieroTc::of(tc),
+            game: Game::new(),
+            settings: new_settings(),
+            _tc: Tc::of(tc),
         };
-        s.game.set_context_data(
+        s.game.set_context(
             Some(s.settings.clone()),
             Some(s._tc.clone()),
-            crate::sfx::LieroSoundOut::NONE,
+            crate::sfx::SoundOut::NONE,
         );
         s
     }
@@ -43,27 +44,26 @@ impl Setup {
             let ws = crate::settings::new_worm_settings();
             ws.borrow_mut().data.name = format!("worm {i}").into_bytes();
             ws.borrow_mut().data.health = 100 + i;
-            let w = liero_game_new_worm(g, Some(ws));
+            let w = g.new_worm(Some(ws));
             let d = &mut g.worm_mut(w).data;
             d.index = i;
-            d.pos.x = 10 * (i + 1);
-            d.vel.y = -3;
-            liero_game_list_worm(g, Some(w));
+            d.pos.x = Fixed(10 * (i + 1));
+            d.vel.y = Fixed(-3);
+            g.list_worm(Some(w));
             worms.push(w);
         }
         g.worm_mut(worms[0]).data.ninjarope.anchor = Some(worms[1]);
         for i in 0..2 {
-            let r = LieroRect {
+            let r = Rect {
                 x1: 160 * i,
                 y1: 0,
                 x2: 160 * i + 158,
                 y2: 158,
             };
-            liero_game_add_viewport(g, r, i, 504, 350, LIERO_VIEWPORT_WORM, false).shake = 4 + i;
+            g.add_viewport(r, i, 504, 350, ViewportKind::Worm, false).shake = 4 + i;
         }
-        liero_game_add_viewport(
-            g,
-            LieroRect {
+        g.add_viewport(
+            Rect {
                 x1: 0,
                 y1: 0,
                 x2: 572,
@@ -72,23 +72,23 @@ impl Setup {
             0,
             504,
             350,
-            1,
+            crate::viewport::ViewportKind::Spectator,
             true,
         );
         g.data_mut().rand.x = 1234;
         s.settings.borrow_mut().data.lives = 9;
         s.level().resize(3, 2);
         s.level()
-            .set_pixels(&[1, 5, 2, 5, 3, 4], |_| crate::material::LieroMaterial::default());
+            .set_pixels(&[1, 5, 2, 5, 3, 4], |_| crate::material::Material::default());
         s.level().data_mut().origpal[5].g = 42;
         s
     }
 
-    fn level(&mut self) -> &mut LieroLevelBox {
+    fn level(&mut self) -> &mut LevelBox {
         self.game.level_box_mut()
     }
 
-    fn worm(&mut self, i: usize) -> &mut LieroWormData {
+    fn worm(&mut self, i: usize) -> &mut WormData {
         &mut self.game.worm_at(i).expect("no such worm").data
     }
 
@@ -107,13 +107,13 @@ fn node(path: &str) -> Node {
     Node::new(path.as_bytes())
 }
 
-fn ok(o: LieroReplayOutcome) {
-    assert_eq!(o.status, LieroReplayStatus::Ok);
+fn ok(o: ReplayOutcome) {
+    assert_eq!(o.status, ReplayStatus::Ok);
 }
 
 /// Records `s` and then the controls in `frames`, one tick each.
 fn record(path: &str, s: &mut Setup, frames: &[[u32; 2]]) {
-    let mut w = LieroReplayWriter::new(&node(path)).unwrap();
+    let mut w = ReplayWriter::new(&node(path)).unwrap();
     ok(w.begin(&mut s.game));
     for f in frames {
         for (i, &c) in f.iter().enumerate() {
@@ -127,14 +127,14 @@ fn record(path: &str, s: &mut Setup, frames: &[[u32; 2]]) {
 }
 
 /// A reader for `path` that has read the game into `s`.
-fn play(path: &str, s: &mut Setup) -> LieroReplayReader {
-    let mut r = LieroReplayReader::new(&node(path)).unwrap();
+fn play(path: &str, s: &mut Setup) -> ReplayReader {
+    let mut r = ReplayReader::new(&node(path)).unwrap();
     ok(r.begin(&mut s.game));
     r
 }
 
 /// Reads a frame, carrying the controls on as the game tick would.
-fn frame(r: &mut LieroReplayReader, s: &mut Setup) -> LieroReplayOutcome {
+fn frame(r: &mut ReplayReader, s: &mut Setup) -> ReplayOutcome {
     let o = r.frame(&mut s.game);
     for i in 0..s.worm_count() {
         let d = s.worm(i);
@@ -159,7 +159,7 @@ fn plays_back_the_game_it_recorded() {
         let w = g.worm_at(i).unwrap();
         assert_eq!(
             (w.data.index, w.data.pos.x, w.data.vel.y),
-            (i as i32, 10 * (i as i32 + 1), -3)
+            (i as i32, Fixed(10 * (i as i32 + 1)), Fixed(-3))
         );
         let ws = w.settings();
         assert_eq!(
@@ -171,10 +171,7 @@ fn plays_back_the_game_it_recorded() {
     let second = g.listed_ids()[1];
     assert_eq!(g.worm_at(0).unwrap().data.ninjarope.anchor, second);
     // The split-screen viewports, not the spectator one.
-    assert_eq!(
-        (liero_game_viewport_count(g, false), liero_game_viewport_count(g, true)),
-        (2, 0)
-    );
+    assert_eq!((g.viewport_count(false), g.viewport_count(true)), (2, 0));
     let vp = &g.split_viewports()[1];
     assert_eq!((vp.shake, vp.worm_idx, vp.rect.x1), (5, 1, 160));
     assert_eq!(g.data().rand.x, 1234);
@@ -215,7 +212,7 @@ fn writes_settings_changed_while_unfocused() {
     let p = path("settings");
     let mut s = Setup::new();
     {
-        let mut w = LieroReplayWriter::new(&node(&p)).unwrap();
+        let mut w = ReplayWriter::new(&node(&p)).unwrap();
         let g = &mut *s.game;
         ok(w.begin(g));
         w.frame(g);
@@ -250,35 +247,29 @@ fn reports_desyncs_and_short_files() {
     let mut t = Setup::empty();
     let mut r = play(&p, &mut t);
     ok(frame(&mut r, &mut t));
-    t.worm(1).vel.x += 1;
+    t.worm(1).vel.x += Fixed(1);
     let o = frame(&mut r, &mut t);
-    assert_eq!(
-        (o.status, o.message),
-        (LieroReplayStatus::CheckError, "Replay has desynced")
-    );
+    assert_eq!((o.status, o.message), (ReplayStatus::CheckError, "Replay has desynced"));
 
     // Cut short after the game: a read error at the end of what inflated.
     let data = inflate(&std::fs::read(&p).unwrap());
-    let mut r = LieroReplayReader::new(&node(&p)).unwrap();
+    let mut r = ReplayReader::new(&node(&p)).unwrap();
     let mut u = Setup::empty();
     ok(r.begin(&mut u.game));
     r.data.truncate(r.pos + 1);
     let o = frame(&mut r, &mut u);
-    assert_eq!(
-        (o.status, o.message),
-        (LieroReplayStatus::ReadError, "Read error in get()")
-    );
+    assert_eq!((o.status, o.message), (ReplayStatus::ReadError, "Read error in get()"));
     assert!(!data.error);
 
     // A game cut short leaves the game as it was.
-    let mut r = LieroReplayReader::new(&node(&p)).unwrap();
+    let mut r = ReplayReader::new(&node(&p)).unwrap();
     r.data.truncate(40);
     let mut u = Setup::empty();
     let o = r.begin(&mut u.game);
-    assert_eq!(o.status, LieroReplayStatus::ReadError);
+    assert_eq!(o.status, ReplayStatus::ReadError);
     assert_eq!(u.worm_count(), 0);
 
-    assert!(LieroReplayReader::new(&node("target/replay-file-tests/none.lrp")).is_none());
+    assert!(ReplayReader::new(&node("target/replay-file-tests/none.lrp")).is_none());
 }
 
 #[test]
@@ -290,11 +281,11 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
         for i in 2..4 {
             let ws = crate::settings::new_worm_settings();
             ws.borrow_mut().data.name = format!("worm {i}").into_bytes();
-            let w = liero_game_new_worm(g, Some(ws));
+            let w = g.new_worm(Some(ws));
             g.worm_mut(w).data.index = i;
-            liero_game_list_worm(g, Some(w));
+            g.list_worm(Some(w));
         }
-        let mut w = LieroReplayWriter::new(&node(&p)).unwrap();
+        let mut w = ReplayWriter::new(&node(&p)).unwrap();
         ok(w.begin(g));
         w.frame(g);
         w.unfocus(g);

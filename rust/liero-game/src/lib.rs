@@ -1,17 +1,20 @@
 //! The game, ported from C++ to Rust, with its web shell (`web`, built for
 //! `wasm32-unknown-unknown` by `tools/web/build.ts`) and the hash run.
 //!
-//! The modules still talk through the plain C functions (`liero_*`) that C++
-//! once called; phase 4 of PLAN.md turns them into Rust ones.
+//! The modules call each other as Rust; only the wasm exports keep the
+//! `liero_` names, as the web shell's API.
 
 // Every unsafe operation is in an `unsafe` block, even in an `unsafe fn`,
 // so they can be counted and removed (PLAN.md, phase 4).
 #![deny(unsafe_op_in_unsafe_fn)]
+// The pedantic lints that earn their keep: lossless casts are `From`, and
+// pointer casts keep their pointee type in view. The rest of
+// `clippy::pedantic` would fight the casts the game's arithmetic needs.
+#![warn(clippy::cast_lossless, clippy::ptr_as_ptr)]
 
 pub mod ai;
 pub mod app;
 pub mod app_files;
-pub mod app_menus;
 pub mod app_screens;
 pub mod boxes;
 pub mod controller;
@@ -25,14 +28,11 @@ pub mod game;
 pub mod game_box;
 pub mod gfx;
 pub mod hashrun;
-pub mod item;
 pub mod keys;
 pub mod level;
 pub mod material;
 pub mod math;
 pub mod menu;
-pub mod menu_screen;
-pub mod menus;
 pub mod object;
 pub mod objects;
 pub mod rand;
@@ -58,13 +58,9 @@ pub mod web;
 pub mod world;
 pub mod worm;
 
-use std::ffi::c_char;
-
-/// Name and version of this library as a NUL-terminated string, e.g.
-/// "liero-game 0.1.0". The web shell prints it at startup.
-pub fn liero_game_version() -> *const c_char {
-    concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
-}
+/// Name and version of this library, e.g. "liero-game 0.1.0". The web
+/// shell prints it at startup.
+pub const VERSION: &str = concat!("liero-game ", env!("CARGO_PKG_VERSION"));
 
 #[cfg(test)]
 mod test_util {
@@ -78,7 +74,7 @@ mod test_util {
         }
 
         pub fn add(&mut self, v: u32) {
-            self.add64(v as u64);
+            self.add64(u64::from(v));
         }
 
         pub fn add64(&mut self, v: u64) {
@@ -88,17 +84,5 @@ mod test_util {
         pub fn finish(&self) -> u64 {
             self.0
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ffi::CStr;
-
-    #[test]
-    fn version_is_nul_terminated() {
-        let s = unsafe { CStr::from_ptr(liero_game_version()) };
-        assert_eq!(s.to_str().unwrap(), concat!("liero-game ", env!("CARGO_PKG_VERSION")));
     }
 }

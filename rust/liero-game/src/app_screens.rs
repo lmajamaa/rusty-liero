@@ -2,38 +2,31 @@
 //! behind the main menu, then whatever the menu chose, and a game run by the
 //! controller until it stops. What the menu's choices do is here too
 //! (`restartApp` and `afterMenu`).
-//! The menus themselves are `menu_screen.rs`.
+//! The menus themselves are `menu::screen`.
 
-use crate::app::LieroApp;
-use crate::controllers::LieroController;
-use crate::controllers::{
-    liero_controller_draw, liero_controller_focus, liero_controller_is_replay, liero_controller_level,
-    liero_controller_run, liero_controller_take_opened, liero_controller_unfocus, liero_local_controller_new,
-};
-use crate::level::LieroLevelBox;
-use crate::menu_screen::liero_menu_screen;
-use crate::renderer::LieroRenderer;
+use crate::app::App;
+use crate::controllers::Controller;
+use crate::level::LevelBox;
+use crate::menu::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
+use crate::menu::screen::menu_screen;
+use crate::renderer::Renderer;
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
 /// What `after_menu` says to do.
-pub const LIERO_AFTER_MENU_QUIT: i32 = 0;
-pub const LIERO_AFTER_MENU_RESTART: i32 = 1;
-pub const LIERO_AFTER_MENU_PLAY: i32 = 2;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AfterMenu {
+    Quit,
+    Restart,
+    Play,
+}
 
-/// The main menu's items that start something (`MainMenu`).
-const MAIN_RESUME_GAME: i32 = 0;
-const MAIN_NEW_GAME: i32 = 1;
-const MAIN_QUIT: i32 = 6;
-const MAIN_REPLAY: i32 = 8;
-const MAIN_TC: i32 = 9;
-
-fn controller(a: &mut LieroApp) -> &mut crate::controllers::LieroController {
+fn controller(a: &mut App) -> &mut crate::controllers::Controller {
     a.controller.as_deref_mut().expect("no controller")
 }
 
 /// Runs `f` on the app's controller, which is taken out of the app while
 /// it runs.
-fn with_controller<R>(a: &mut LieroApp, f: impl FnOnce(&mut LieroController, &mut LieroApp) -> R) -> R {
+fn with_controller<R>(a: &mut App, f: impl FnOnce(&mut Controller, &mut App) -> R) -> R {
     let mut c = a.controller.take().expect("no controller");
     let r = f(&mut c, a);
     a.controller = Some(c);
@@ -41,13 +34,13 @@ fn with_controller<R>(a: &mut LieroApp, f: impl FnOnce(&mut LieroController, &mu
 }
 
 /// A new local controller with the menus' settings and TC.
-fn new_local(a: &mut LieroApp, host: &Host) -> Box<crate::controllers::LieroController> {
-    liero_local_controller_new(host, a.shared_settings(), a.menu_tc())
+fn new_local(a: &mut App, host: &Host) -> Box<crate::controllers::Controller> {
+    Controller::local(host, a.shared_settings(), a.menu_tc())
 }
 
 /// A level made from the menus' settings with the app's random numbers.
-fn new_level(a: &mut LieroApp) -> Box<LieroLevelBox> {
-    let mut level = LieroLevelBox::new();
+fn new_level(a: &mut App) -> Box<LevelBox> {
+    let mut level = LevelBox::new();
     let (tc, settings) = (a.menu_tc(), a.shared_settings());
     let tc = crate::tc::tc_data(&tc);
     level.generate_from_settings(&tc.level_common(), &tc.palette_colors, &settings.borrow(), &mut a.rand);
@@ -55,44 +48,38 @@ fn new_level(a: &mut LieroApp) -> Box<LieroLevelBox> {
 }
 
 /// Puts `level` in the controller's place, and the controller's there.
-fn swap_level(c: &mut crate::controllers::LieroController, level: &mut LieroLevelBox) {
-    let current = liero_controller_level(c);
-    // SAFETY: the controller's level is valid while it is.
-    std::mem::swap(unsafe { current.as_mut() }.expect("no level"), level);
+fn swap_level(c: &mut crate::controllers::Controller, level: &mut LevelBox) {
+    std::mem::swap(c.level().expect("no level"), level);
 }
 
 /// A new controller with a new level behind the menu (`restartApp`).
-fn restart(a: &mut LieroApp, host: &Host) {
+fn restart(a: &mut App, host: &Host) {
     a.controller = None;
     a.controller = Some(new_local(a, host));
     let mut level = new_level(a);
     swap_level(controller(a), &mut level);
-    let game = crate::controllers::liero_controller_game(controller(a));
-    // SAFETY: a local controller always has its game.
+    let (play, single): (*mut Renderer, *mut Renderer) = (&mut *a.play, &mut *a.single);
+    let game = controller(a).game().expect("a local controller has its game");
+    // SAFETY: the renderers are the app's own.
     unsafe {
-        crate::controllers::liero_game_focus(&mut *game, &mut *a.play);
-        crate::controllers::liero_game_focus(&mut *game, &mut *a.single);
+        game.focus(play);
+        game.focus(single);
     }
 }
 
 /// Does what the menu chose (`afterMenu`): quits, starts over with a new
 /// TC, or plays.
-fn after_menu(a: &mut LieroApp, host: &Host, selection: i32) -> i32 {
+fn after_menu(a: &mut App, host: &Host, selection: i32) -> AfterMenu {
     match selection {
         MAIN_NEW_GAME => {
             let mut new = new_local(a, host);
             let settings = a.shared_settings();
-            // SAFETY: the controller's level is valid while it is.
-            let old = a
-                .controller
-                .as_deref_mut()
-                .and_then(|c| unsafe { liero_controller_level(c).as_mut() })
-                .filter(|old| {
-                    let s = settings.borrow();
-                    !s.data.regenerate_level
-                        && s.data.random_level == old.data().old_random_level
-                        && s.data.level_file == old.old_level_file()
-                });
+            let old = a.controller.as_deref_mut().and_then(|c| c.level()).filter(|old| {
+                let s = settings.borrow();
+                !s.data.regenerate_level
+                    && s.data.random_level == old.data().old_random_level
+                    && s.data.level_file == old.old_level_file()
+            });
             match old {
                 Some(old) => {
                     // Take level and palette from old game
@@ -106,11 +93,11 @@ fn after_menu(a: &mut LieroApp, host: &Host, selection: i32) -> i32 {
             a.controller = Some(new);
         }
         MAIN_RESUME_GAME => {
-            if liero_controller_is_replay(controller(a)) {
+            if controller(a).is_replay() {
                 a.primary_single = true;
             }
         }
-        MAIN_QUIT => return LIERO_AFTER_MENU_QUIT,
+        MAIN_QUIT => return AfterMenu::Quit,
         MAIN_REPLAY => {
             if a.settings_mut().data.ext.single_screen_replay {
                 a.primary_single = true;
@@ -118,25 +105,25 @@ fn after_menu(a: &mut LieroApp, host: &Host, selection: i32) -> i32 {
         }
         MAIN_TC => {
             restart(a, host);
-            return LIERO_AFTER_MENU_RESTART;
+            return AfterMenu::Restart;
         }
         _ => {}
     }
-    LIERO_AFTER_MENU_PLAY
+    AfterMenu::Play
 }
 
 /// Draws the controller on both screens, counting a menu frame when
 /// `count`.
-fn draw(a: &mut LieroApp, count: bool) {
+fn draw(a: &mut App, count: bool) {
     a.play.clear();
     with_controller(a, |c, a| {
         // SAFETY: the renderers are the app's.
         unsafe {
-            let play: *mut LieroRenderer = &mut *a.play;
-            liero_controller_draw(c, a, play, false);
+            let play: *mut Renderer = &mut *a.play;
+            c.draw(a, play, false);
             a.single.clear();
-            let single: *mut LieroRenderer = &mut *a.single;
-            liero_controller_draw(c, a, single, true);
+            let single: *mut Renderer = &mut *a.single;
+            c.draw(a, single, true);
         }
     });
     if count {
@@ -162,13 +149,13 @@ struct GameScreen {
 }
 
 impl GameScreen {
-    fn opened(app: &mut LieroApp) -> Option<BoxedScreen> {
-        liero_controller_take_opened(controller(app))
+    fn opened(app: &mut App) -> Option<BoxedScreen> {
+        controller(app).take_opened()
     }
 }
 
 impl Screen for GameScreen {
-    fn tick(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut App, host: &Host) -> Tick {
         // Each tick reads the events that came with the frame before it,
         // unless a screen the controller opened just closed: it read them.
         if self.resumed {
@@ -179,7 +166,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Focus {
             // SAFETY: the controller is valid.
-            with_controller(app, |c, app| unsafe { liero_controller_focus(c, app, host) });
+            with_controller(app, |c, app| unsafe { c.focus(app, host) });
             self.next = Next::Process;
             if let Some(s) = Self::opened(app) {
                 return Tick::push(s);
@@ -188,7 +175,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Process {
             // SAFETY: the controller is valid.
-            self.next = if with_controller(app, |c, app| unsafe { liero_controller_run(c, app, host) }) {
+            self.next = if with_controller(app, |c, app| unsafe { c.process(app, host) }) {
                 Next::Draw
             } else {
                 Next::Finish
@@ -200,7 +187,7 @@ impl Screen for GameScreen {
 
         if self.next == Next::Finish {
             app.primary_single = false;
-            liero_controller_unfocus(controller(app));
+            controller(app).unfocus();
             app.clear_keys();
             return Tick::close(0);
         }
@@ -211,7 +198,7 @@ impl Screen for GameScreen {
         Tick::stay(true)
     }
 
-    fn resume(&mut self, _app: &mut LieroApp, _host: &Host, _result: i32) {
+    fn resume(&mut self, _app: &mut App, _host: &Host, _result: i32) {
         // What the controller opened needs nothing done after it.
         self.resumed = true;
     }
@@ -232,16 +219,16 @@ struct MainScreen {
 }
 
 impl Screen for MainScreen {
-    fn tick(&mut self, app: &mut LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut App, host: &Host) -> Tick {
         if self.open == Open::Nothing {
             restart(app, host);
         } else if self.open == Open::InMenu {
             match after_menu(app, host, self.selection) {
-                LIERO_AFTER_MENU_QUIT => {
+                AfterMenu::Quit => {
                     app.controller = None;
                     return Tick::close(0);
                 }
-                LIERO_AFTER_MENU_PLAY => {
+                AfterMenu::Play => {
                     self.open = Open::InGame;
                     return Tick::push(Box::new(GameScreen {
                         next: Next::Focus,
@@ -249,23 +236,23 @@ impl Screen for MainScreen {
                         resumed: false,
                     }));
                 }
-                _ => {}
+                AfterMenu::Restart => {}
             }
         }
 
         // The level, or the game left off, behind the menu.
         draw(app, false);
         self.open = Open::InMenu;
-        Tick::push(liero_menu_screen(app.shared_menus()))
+        Tick::push(menu_screen(app.shared_menus()))
     }
 
-    fn resume(&mut self, _app: &mut LieroApp, _host: &Host, result: i32) {
+    fn resume(&mut self, _app: &mut App, _host: &Host, result: i32) {
         self.selection = result;
     }
 }
 
 /// The app's first screen.
-pub fn liero_main_screen() -> BoxedScreen {
+pub fn main_screen() -> BoxedScreen {
     Box::new(MainScreen {
         open: Open::Nothing,
         selection: -1,

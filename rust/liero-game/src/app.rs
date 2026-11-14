@@ -4,29 +4,29 @@
 //! settings and TC, and the files (`app_files.rs`). The entry point (the
 //! web shell, or the hash run) owns it and lends it to the screens.
 
-use crate::controllers::LieroController;
-use crate::keys::LieroKeys;
-use crate::rand::{LieroRand, LIERO_RAND_DEFAULT_SEED};
-use crate::renderer::{LieroBitmapBox, LieroRenderer};
-use crate::settings::{LieroSettingsBox, SharedSettings};
-use crate::tc::{tc_data, LieroTcData, SharedTc};
+use crate::controllers::Controller;
+use crate::keys::Keys;
+use crate::rand::{Rand, RAND_DEFAULT_SEED};
+use crate::renderer::{BitmapBox, Renderer};
+use crate::settings::{SettingsBox, SharedSettings};
+use crate::tc::{tc_data, SharedTc, TcData};
 use std::cell::{Ref, RefMut};
 
-pub struct LieroApp {
+pub struct App {
     /// For things that don't affect the game: the menus, weapon selection
     /// and making levels (`gfx.rand`).
-    pub rand: LieroRand,
+    pub rand: Rand,
     /// Renders everything for actual play.
-    pub play: Box<LieroRenderer>,
+    pub play: Box<Renderer>,
     /// Renders everything on a single screen, for single screen replay and
     /// the spectator window.
-    pub single: Box<LieroRenderer>,
+    pub single: Box<Renderer>,
     /// The game on the play screen, frozen behind the menu.
-    pub frozen: Box<LieroBitmapBox>,
+    pub frozen: Box<BitmapBox>,
     /// The same on the spectator screen.
-    pub frozen_spectator: Box<LieroBitmapBox>,
+    pub frozen_spectator: Box<BitmapBox>,
     /// The DOS keys down (`gfx.dosKeys`).
-    pub keys: LieroKeys,
+    pub keys: Keys,
     /// Frames the menus have shown, which their colours cycle with.
     pub menu_cycles: u32,
     /// The window's double size (`Gfx::doubleRes`), on to start with.
@@ -43,9 +43,9 @@ pub struct LieroApp {
     /// The folders, the settings file and the TC chosen (`app_files.rs`).
     pub files: crate::app_files::Files,
     /// The menus, which the menu screen shares.
-    pub menus: Option<crate::menus::SharedMenus>,
+    pub menus: Option<crate::menu::menus::SharedMenus>,
     /// The match or replay being played, or behind the menu.
-    pub controller: Option<Box<LieroController>>,
+    pub controller: Option<Box<Controller>>,
     /// Whether the screen shows the single screen renderer, for a replay on
     /// one screen (`gfx.primaryRenderer`), rather than the play one.
     pub primary_single: bool,
@@ -54,14 +54,14 @@ pub struct LieroApp {
     pub save_settings_on_change: bool,
 }
 
-impl LieroApp {
+impl App {
     /// The menus' settings, to share with a game.
     pub fn shared_settings(&self) -> SharedSettings {
         self.settings.clone().expect("no menu settings")
     }
 }
 
-impl LieroApp {
+impl App {
     /// The menus' TC.
     pub fn menu_tc(&self) -> SharedTc {
         self.tc.clone().expect("no TC")
@@ -73,22 +73,22 @@ impl LieroApp {
     }
 
     /// The menus' TC's data. Panics if there's no TC.
-    pub(crate) fn tc_data(&self) -> Ref<'_, LieroTcData> {
+    pub(crate) fn tc_data(&self) -> Ref<'_, TcData> {
         tc_data(self.tc.as_ref().expect("no TC"))
     }
 
     /// The menus' settings. Panics if there are none, or if they're borrowed.
-    pub fn settings_mut(&self) -> RefMut<'_, LieroSettingsBox> {
+    pub fn settings_mut(&self) -> RefMut<'_, SettingsBox> {
         self.settings.as_ref().expect("no menu settings").borrow_mut()
     }
 
     /// The menus' TC's font.
-    pub(crate) fn font(&self) -> crate::text::LieroFont<'_> {
-        crate::text::LieroFont { chars: &self.font }
+    pub(crate) fn font(&self) -> crate::text::Font<'_> {
+        crate::text::Font { chars: &self.font }
     }
 
     /// The menus. Panics if there are none yet.
-    pub(crate) fn shared_menus(&self) -> crate::menus::SharedMenus {
+    pub(crate) fn shared_menus(&self) -> crate::menu::menus::SharedMenus {
         self.menus.clone().expect("no menus")
     }
 
@@ -99,24 +99,24 @@ impl LieroApp {
     }
 }
 
-impl Default for LieroApp {
+impl Default for App {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl LieroApp {
+impl App {
     /// An app with no settings, TC, menus or game yet.
     pub fn new() -> Self {
-        let mut rand = LieroRand { x: 0, c: 0 };
-        rand.seed(LIERO_RAND_DEFAULT_SEED);
-        LieroApp {
+        let mut rand = Rand { x: 0, c: 0 };
+        rand.seed(RAND_DEFAULT_SEED);
+        App {
             rand,
-            play: LieroRenderer::new(),
-            single: LieroRenderer::new(),
-            frozen: LieroBitmapBox::new(),
-            frozen_spectator: LieroBitmapBox::new(),
-            keys: LieroKeys::default(),
+            play: Renderer::new(),
+            single: Renderer::new(),
+            frozen: BitmapBox::new(),
+            frozen_spectator: BitmapBox::new(),
+            keys: Keys::default(),
             menu_cycles: 0,
             double_res: true,
             settings: None,
@@ -131,7 +131,7 @@ impl LieroApp {
     }
 }
 
-impl LieroApp {
+impl App {
     /// Whether an SDL key was pressed since it was last asked about, which
     /// it then forgets (`Gfx::testSDLKeyOnce`).
     pub fn test_key_once(&mut self, scancode: u32) -> bool {
@@ -153,37 +153,29 @@ impl LieroApp {
     }
 }
 
-/// The play renderer, or with `single`, the single screen one.
-pub fn liero_app_renderer(a: &mut LieroApp, single: bool) -> *mut LieroRenderer {
-    if single {
-        &mut *a.single
-    } else {
-        &mut *a.play
+impl App {
+    /// The play renderer, or with `single`, the single screen one.
+    pub fn renderer(&mut self, single: bool) -> &mut Renderer {
+        if single {
+            &mut self.single
+        } else {
+            &mut self.play
+        }
     }
-}
 
-/// The frozen play screen, or with `spectator`, the spectator one.
-pub fn liero_app_frozen(a: &mut LieroApp, spectator: bool) -> *mut LieroBitmapBox {
-    if spectator {
-        &mut *a.frozen_spectator
-    } else {
-        &mut *a.frozen
+    /// The frozen play screen, or with `spectator`, the spectator one.
+    pub fn frozen(&mut self, spectator: bool) -> &mut BitmapBox {
+        if spectator {
+            &mut self.frozen_spectator
+        } else {
+            &mut self.frozen
+        }
     }
-}
 
-/// Makes `s` (or none) the menus' settings.
-pub fn liero_app_set_settings(a: &mut LieroApp, s: Option<SharedSettings>) {
-    a.settings = s;
-}
-
-/// The renderer the screen shows.
-pub fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
-    liero_app_renderer(a, a.primary_single)
-}
-
-/// The menus the app draws.
-pub fn liero_app_set_menus(a: &mut LieroApp, menus: crate::menus::SharedMenus) {
-    a.menus = Some(menus);
+    /// The renderer the screen shows.
+    pub fn primary(&mut self) -> &mut Renderer {
+        self.renderer(self.primary_single)
+    }
 }
 
 #[cfg(test)]
@@ -192,8 +184,8 @@ mod tests {
 
     #[test]
     fn the_renderers_are_the_apps() {
-        let mut a = LieroApp::new();
-        assert!(std::ptr::eq(liero_app_renderer(&mut a, true), &*a.single));
-        assert!(std::ptr::eq(liero_app_frozen(&mut a, false), &*a.frozen));
+        let mut a = App::new();
+        assert!(std::ptr::eq(a.renderer(true), &*a.single));
+        assert!(std::ptr::eq(a.frozen(false), &*a.frozen));
     }
 }

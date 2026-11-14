@@ -19,15 +19,14 @@
 use super::game::add_screen;
 use super::games::tc_data;
 use super::{Fnv, Out};
-use crate::app::LieroApp;
-use crate::app_screens::liero_main_screen;
-use crate::controllers::liero_controller_on_key;
+use crate::app::App;
+use crate::app_screens::main_screen;
 use crate::fs::Node;
 use crate::keys::sdl_to_dos_keysym;
-use crate::menus::{liero_menus_load, liero_menus_reset};
-use crate::screen::{liero_app_push, liero_app_step, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack};
-use crate::settings::LieroSettingsBox;
-use crate::sfx::LieroSoundOut;
+
+use crate::screen::{Event, Host, Platform, ScreenStack, TypedKey};
+use crate::settings::SettingsBox;
+use crate::sfx::SoundOut;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -64,9 +63,9 @@ const SC_W: i32 = sc_letter(b'w');
 /// typing search reads.
 fn key_code(sc: i32) -> i32 {
     match sc {
-        SC_A..=SC_Z => b'a' as i32 + (sc - SC_A),
-        SC_1..=SC_9 => b'1' as i32 + (sc - SC_1),
-        SC_0 => b'0' as i32,
+        SC_A..=SC_Z => i32::from(b'a') + (sc - SC_A),
+        SC_1..=SC_9 => i32::from(b'1') + (sc - SC_1),
+        SC_0 => i32::from(b'0'),
         // SDL_SCANCODE_TO_KEYCODE
         _ => sc | 1 << 30,
     }
@@ -96,7 +95,7 @@ struct Driver {
     idles: u32,
     /// The keys pressed since the frame's events were last read
     /// (`Gfx::keyBuf`).
-    key_buf: Vec<LieroTypedKey>,
+    key_buf: Vec<TypedKey>,
     lines: Vec<String>,
     /// Why the run stopped early, which ends the screens.
     failed: Option<&'static str>,
@@ -122,12 +121,12 @@ fn next_event() -> Option<Ev> {
 
 /// `Gfx::processEvent`, giving the keys to the controller with
 /// `to_controller`. F11, which toggles fullscreen, never comes.
-fn process_event(a: &mut LieroApp, ev: Ev, to_controller: bool) {
+fn process_event(a: &mut App, ev: Ev, to_controller: bool) {
     let Ev::Key { down, scancode } = ev else { return };
     if down {
         driver(|d| {
             if d.key_buf.len() < 32 {
-                d.key_buf.push(LieroTypedKey {
+                d.key_buf.push(TypedKey {
                     sym: key_code(scancode),
                     scancode: scancode as u32,
                 });
@@ -138,13 +137,13 @@ fn process_event(a: &mut LieroApp, ev: Ev, to_controller: bool) {
     if dos != 0 && to_controller {
         if let Some(c) = a.controller.as_deref_mut() {
             // SAFETY: the app's controller is a live one.
-            unsafe { liero_controller_on_key(c, dos as i32, down) };
+            unsafe { c.on_key(dos as i32, down) };
         }
     }
 }
 
 /// `Gfx::process`: every event due, into the key states.
-fn process(a: &mut LieroApp, to_controller: bool) {
+fn process(a: &mut App, to_controller: bool) {
     driver(|d| d.key_buf.clear());
     while let Some(ev) = next_event() {
         process_event(a, ev, to_controller);
@@ -187,10 +186,10 @@ fn utc_text(t: i64) -> String {
 struct HashPlatform;
 
 impl Platform for HashPlatform {
-    fn poll_event(&self, app: &mut LieroApp) -> Option<LieroEvent> {
+    fn poll_event(&self, app: &mut App) -> Option<Event> {
         let ev = next_event()?;
         process_event(app, ev, false);
-        let mut e = LieroEvent::default();
+        let mut e = Event::default();
         match ev {
             Ev::Key { down, scancode } => {
                 e.key_down = down;
@@ -206,12 +205,12 @@ impl Platform for HashPlatform {
         Some(e)
     }
 
-    fn process(&self, app: &mut LieroApp) {
+    fn process(&self, app: &mut App) {
         process(app, false);
     }
 
     /// The frame's events, with their keys for the controller.
-    fn process_controller(&self, app: &mut LieroApp) {
+    fn process_controller(&self, app: &mut App) {
         process(app, true);
     }
 
@@ -219,7 +218,7 @@ impl Platform for HashPlatform {
         report_sound(id);
     }
 
-    fn typed_keys(&self) -> Vec<LieroTypedKey> {
+    fn typed_keys(&self) -> Vec<TypedKey> {
         driver(|d| d.key_buf.clone())
     }
 
@@ -244,16 +243,16 @@ impl Platform for HashPlatform {
         utc_text(t).into_bytes()
     }
 
-    fn sound(&self) -> LieroSoundOut {
+    fn sound(&self) -> SoundOut {
         // No mixer: the hash run has no sound.
-        LieroSoundOut {
+        SoundOut {
             mixer: std::ptr::null_mut(),
             report: Some(report_sound),
         }
     }
 
     /// A frame shown: the screen's pixels and palette.
-    fn show(&self, a: &LieroApp) {
+    fn show(&self, a: &App) {
         let r = if a.primary_single { &*a.single } else { &*a.play };
         let mut f = Fnv::default();
         add_screen(&mut f, r);
@@ -477,7 +476,7 @@ fn build_script(s: &mut Script) {
     s.wait(60);
 }
 
-pub fn hash_app(a: &mut LieroApp, out: &mut Out) {
+pub fn hash_app(a: &mut App, out: &mut Out) {
     // A config folder of its own, with a broken replay to fail on. The game
     // reads "/hashapp" as "./hashapp" (`super::on_disk`).
     let root = "/hashapp";
@@ -494,8 +493,8 @@ pub fn hash_app(a: &mut LieroApp, out: &mut Out) {
 
     // Fresh menus, as the game starts with: the menu checks before this one
     // leave items hidden and selected.
-    liero_menus_reset(&mut a.shared_menus().borrow_mut());
-    a.settings = Some(LieroSettingsBox::defaults());
+    a.shared_menus().borrow_mut().reset();
+    a.settings = Some(SettingsBox::defaults());
     let tc = super::tc::bundled();
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
@@ -511,7 +510,7 @@ pub fn hash_app(a: &mut LieroApp, out: &mut Out) {
     a.save_settings_on_change = true;
     a.settings_mut().data.ext.spectator_window = false;
     a.keys.clear();
-    liero_menus_load(&mut a.shared_menus().borrow_mut());
+    a.shared_menus().borrow_mut().load();
 
     let mut script = Script {
         steps: VecDeque::new(),
@@ -528,8 +527,8 @@ pub fn hash_app(a: &mut LieroApp, out: &mut Out) {
     let host = Host::new(platform);
 
     let mut stack = ScreenStack::new();
-    liero_app_push(&mut stack, liero_main_screen());
-    while liero_app_step(&mut stack, a, &host) && driver(|d| d.failed.is_none()) {}
+    stack.push(main_screen());
+    while stack.step(a, &host) && driver(|d| d.failed.is_none()) {}
     drop(stack);
 
     let d = DRIVER.take();

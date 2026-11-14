@@ -7,29 +7,29 @@
 /// a plain value inside `Game`, `Worm` and the other objects that own one:
 /// they are copied for the AI and written into replays.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LieroRand {
+pub struct Rand {
     pub x: u32,
     pub c: u32,
 }
 
 const MULTIPLIER: u64 = 2083801278;
 const INITIAL_CARRY: u32 = 9413207;
-pub const LIERO_RAND_DEFAULT_SEED: u32 = 0x1337;
+pub const RAND_DEFAULT_SEED: u32 = 0x1337;
 
-impl LieroRand {
+impl Rand {
     pub const fn new(seed: u32) -> Self {
-        LieroRand {
+        Rand {
             x: seed,
             c: INITIAL_CARRY,
         }
     }
 
     pub fn seed(&mut self, seed: u32) {
-        *self = LieroRand::new(seed);
+        *self = Rand::new(seed);
     }
 
     pub fn next_u32(&mut self) -> u32 {
-        let t = MULTIPLIER * self.x as u64 + self.c as u64;
+        let t = MULTIPLIER * u64::from(self.x) + u64::from(self.c);
         self.c = (t >> 32) as u32;
         self.x = t as u32;
         self.x
@@ -37,7 +37,7 @@ impl LieroRand {
 
     /// Number in [0, max).
     pub fn below(&mut self, max: u32) -> u32 {
-        ((self.next_u32() as u64 * max as u64) >> 32) as u32
+        ((u64::from(self.next_u32()) * u64::from(max)) >> 32) as u32
     }
 
     /// Number in [min, max). Needs min <= max; C++'s `Rand` checks that before
@@ -48,13 +48,13 @@ impl LieroRand {
 
     /// Number in [0, max).
     pub fn double_below(&mut self, max: f64) -> f64 {
-        self.next_u32() as f64 / 4294967296.0 * max
+        f64::from(self.next_u32()) / 4294967296.0 * max
     }
 }
 
-impl Default for LieroRand {
+impl Default for Rand {
     fn default() -> Self {
-        LieroRand::new(LIERO_RAND_DEFAULT_SEED)
+        Rand::new(RAND_DEFAULT_SEED)
     }
 }
 
@@ -66,8 +66,8 @@ mod tests {
     // The expected hashes are printed by reference/reference_values.cpp,
     // which runs the same loops through the original C++ code.
 
-    fn stream_hash(seed: u32, f: impl Fn(&mut LieroRand, u32) -> u32) -> u64 {
-        let mut r = LieroRand::new(seed);
+    fn stream_hash(seed: u32, f: impl Fn(&mut Rand, u32) -> u32) -> u64 {
+        let mut r = Rand::new(seed);
         let mut h = Fnv::new();
         for i in 0..1_000_000u32 {
             h.add(f(&mut r, i));
@@ -79,12 +79,12 @@ mod tests {
 
     #[test]
     fn default_state() {
-        assert_eq!(LieroRand::default(), LieroRand { x: 0x1337, c: 9413207 });
+        assert_eq!(Rand::default(), Rand { x: 0x1337, c: 9413207 });
     }
 
     #[test]
     fn next_matches_cpp() {
-        assert_eq!(stream_hash(LIERO_RAND_DEFAULT_SEED, |r, _| r.next_u32()), EXPECTED_NEXT);
+        assert_eq!(stream_hash(RAND_DEFAULT_SEED, |r, _| r.next_u32()), EXPECTED_NEXT);
         assert_eq!(stream_hash(0, |r, _| r.next_u32()), EXPECTED_NEXT_SEED0);
         assert_eq!(stream_hash(0xffff_ffff, |r, _| r.next_u32()), EXPECTED_NEXT_SEEDMAX);
     }
@@ -101,10 +101,10 @@ mod tests {
 
     #[test]
     fn double_below_matches_cpp() {
-        let mut r = LieroRand::new(4242);
+        let mut r = Rand::new(4242);
         let mut h = Fnv::new();
         for i in 0..100_000u32 {
-            h.add64(r.double_below(1.0 + i as f64 * 0.37).to_bits());
+            h.add64(r.double_below(1.0 + f64::from(i) * 0.37).to_bits());
         }
         assert_eq!(h.finish(), EXPECTED_DOUBLE);
     }

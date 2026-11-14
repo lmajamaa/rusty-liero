@@ -1,20 +1,20 @@
 use super::*;
-use crate::menus::LIERO_SELECTOR_TC;
+use crate::menu::menus::Selector;
 
 /// An empty folder for one test, and an app with default settings and its
 /// config folder there.
-fn set_up(name: &str) -> (LieroApp, String) {
+fn set_up(name: &str) -> (App, String) {
     let dir = format!("target/app-files-tests/{name}");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let mut a = LieroApp::new();
-    a.settings = Some(LieroSettingsBox::defaults());
+    let mut a = App::new();
+    a.settings = Some(SettingsBox::defaults());
     a.files.config = Node::new(dir.as_bytes());
     (a, dir)
 }
 
 /// The full path of `rel` in the config folder.
-fn in_config(a: &LieroApp, rel: &str) -> Vec<u8> {
+fn in_config(a: &App, rel: &str) -> Vec<u8> {
     join_path(a.files.config.full_path(), rel.as_bytes())
 }
 
@@ -26,7 +26,7 @@ fn source(root: &str, choice: Choice) -> AppFiles {
 }
 
 /// The bundled TC, as the app's.
-fn with_tc(a: &mut LieroApp) {
+fn with_tc(a: &mut App) {
     a.set_tc(Some(
         crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
     ));
@@ -62,10 +62,7 @@ fn loading_options_makes_new_settings_and_shows_their_file() {
     // A file that isn't there gives the defaults, and is still shown.
     let missing = Node::new(format!("{dir}/missing.cfg").as_bytes());
     assert!(!a.load_settings(Some(&missing), false));
-    assert_eq!(
-        a.settings_mut().data.lives,
-        LieroSettingsBox::defaults().borrow().data.lives
-    );
+    assert_eq!(a.settings_mut().data.lives, SettingsBox::defaults().borrow().data.lives);
     assert_eq!(settings_path(a), in_config(a, "missing.cfg"));
     // LIERO.DAT doesn't change which file is shown.
     a.load_settings(Some(&file), true);
@@ -139,7 +136,7 @@ fn the_selectors_start_where_the_game_left_off() {
     a.settings_mut().data.level_file = b"some/LEVEL.LEV".to_vec();
     with_tc(a);
 
-    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_LEVEL, 0);
+    let (spec, _, choice) = selector_spec(a, Selector::Level, 0);
     assert!(matches!(choice, Choice::Level));
     assert_eq!(
         (spec.filter.as_slice(), spec.select.as_slice(), spec.has_select),
@@ -147,26 +144,26 @@ fn the_selectors_start_where_the_game_left_off() {
     );
     assert!(spec.enter_sound && !spec.random_name.is_empty());
 
-    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_PROFILE, 1);
+    let (spec, _, choice) = selector_spec(a, Selector::Profile, 1);
     let Choice::Profile(ws) = choice else {
         panic!("not a profile")
     };
     assert!(std::rc::Rc::ptr_eq(&ws, &a.settings_mut().data.worms[1]));
     assert_eq!((spec.select, spec.has_select), (in_config(a, "Profiles"), true));
 
-    let (spec, _, _) = selector_spec(a, LIERO_SELECTOR_REPLAY, 0);
+    let (spec, _, _) = selector_spec(a, Selector::Replay, 0);
     assert!(!spec.has_select);
     assert_eq!(spec.fallback, in_config(a, "Replays"));
     a.files.prev_replay = b"x/last.lrp".to_vec();
-    let (spec, _, _) = selector_spec(a, LIERO_SELECTOR_REPLAY, 0);
+    let (spec, _, _) = selector_spec(a, Selector::Replay, 0);
     assert_eq!((spec.select.as_slice(), spec.has_select), (&b"x/last.lrp"[..], true));
 
-    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_OPTIONS, 0);
+    let (spec, _, choice) = selector_spec(a, Selector::Options, 0);
     assert!(matches!(choice, Choice::Options));
     assert_eq!((spec.filter.as_slice(), spec.has_select), (&b"CFG"[..], false));
 
     a.files.tc_root = Node::new(b"../../TC");
-    let (spec, root, choice) = selector_spec(a, LIERO_SELECTOR_TC, 0);
+    let (spec, root, choice) = selector_spec(a, Selector::Tc, 0);
     assert!(matches!(choice, Choice::Tc) && spec.tcs);
     assert_eq!(
         (spec.root.as_slice(), root.full_path()),
@@ -199,14 +196,9 @@ fn choosing_a_replay_plays_it_and_remembers_it() {
     std::fs::write(format!("{dir}/empty.lrp"), b"").unwrap();
     let mut s = source(dir, Choice::Replay);
     let full = format!("{dir}/empty.lrp");
-    assert_eq!(
-        s.choose(a, b"empty.lrp", full.as_bytes(), b"empty", false),
-        LIERO_MAIN_REPLAY
-    );
+    assert_eq!(s.choose(a, b"empty.lrp", full.as_bytes(), b"empty", false), MAIN_REPLAY);
     assert_eq!(a.files.prev_replay, full.into_bytes());
-    assert!(crate::controllers::liero_controller_is_replay(
-        a.controller.as_deref_mut().unwrap()
-    ));
+    assert!(a.controller.as_deref_mut().unwrap().is_replay());
     a.controller = None;
 }
 

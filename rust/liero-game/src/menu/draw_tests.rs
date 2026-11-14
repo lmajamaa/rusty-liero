@@ -1,26 +1,25 @@
 use super::*;
-use crate::controller::LIERO_STATE_GAME;
-use crate::controllers::{liero_controller_data, liero_local_controller_new};
+use crate::controller::State;
 use crate::fs::Node;
-use crate::menus::liero_menus_new;
-use crate::settings::liero_settings_box_new;
+use crate::menu::menus::Menus;
+use crate::settings::new_settings;
 
 /// An app with menus, the bundled TC, its screens sized, and a match that
 /// hasn't started, on a level of colour 7.
-fn set_up() -> LieroApp {
-    let mut app = LieroApp::new();
+fn set_up() -> App {
+    let mut app = App::new();
     let a = &mut app;
-    a.settings = Some(liero_settings_box_new());
+    a.settings = Some(new_settings());
     a.set_tc(Some(
         crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
     ));
-    let menus = liero_menus_new();
-    crate::menus::liero_menus_load(&mut menus.borrow_mut());
-    crate::app::liero_app_set_menus(a, menus);
+    let menus = Menus::shared();
+    menus.borrow_mut().load();
+    a.menus = Some(menus);
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    let mut c = liero_local_controller_new(&crate::screen::Host::none(), a.shared_settings(), a.menu_tc());
-    let level = unsafe { &mut *liero_controller_level(&mut c) };
+    let mut c = crate::controllers::Controller::local(&crate::screen::Host::none(), a.shared_settings(), a.menu_tc());
+    let level = c.level().expect("no level");
     level.resize(504, 350);
     level.set_pixels(&vec![7; 504 * 350], |_| Default::default());
     a.controller = Some(c);
@@ -57,10 +56,10 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
     let a = &mut set_up();
     a.frozen_spectator.copy_from(&a.single.bmp);
     let chars = a.font().chars.to_vec();
-    let font = crate::text::LieroFont { chars: &chars };
+    let font = crate::text::Font { chars: &chars };
     let (cx, cy) = (320, 100);
     // Drawing the same words again changes nothing; other words do.
-    let shows = |a: &mut LieroApp, words: &[u8]| {
+    let shows = |a: &mut App, words: &[u8]| {
         let before = a.single.bmp.pixels().to_vec();
         font.centered(&a.single.bmp.view(), words, cx, cy + 48, 7, 2);
         a.single.bmp.pixels() == before
@@ -69,7 +68,7 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
     draw_spectator_info(a);
     assert!(shows(a, b"SETUP") && !shows(a, b"PAUSED"));
 
-    unsafe { (*liero_controller_data(a.controller.as_deref_mut().unwrap())).state = LIERO_STATE_GAME };
+    a.controller.as_deref_mut().unwrap().data().state = State::Game;
     draw_spectator_info(a);
     assert!(shows(a, b"PAUSED") && !shows(a, b"SETUP"));
     a.controller = None;

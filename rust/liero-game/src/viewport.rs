@@ -4,34 +4,36 @@
 //! Results have to stay bit-identical to the C++ versions, which the frame
 //! hashes in `tools/hashrun` check.
 //!
-//! For each draw the game fills in a `LieroScene`: plain copies of the
+//! For each draw the game fills in a `Scene`: plain copies of the
 //! worms and objects in C++'s list order, the tables and sprites they are
 //! drawn with, and the texts, all borrowed for the draw. Everything that is
-//! drawn is decided from that. A viewport's own state is a `LieroViewport`.
+//! drawn is decided from that. A viewport's own state is a `Viewport`.
 
-use crate::ai::predictive::LieroAiTrace;
-use crate::game::{LieroHoldazone, LieroRect};
+use crate::ai::predictive::AiTrace;
+use crate::game::{Holdazone, Rect};
 use crate::gfx::{
-    liero_font_draw_text, liero_gfx_blit_fire_cone, liero_gfx_blit_image, liero_gfx_blit_image_no_key_colour,
-    liero_gfx_blit_image_r, liero_gfx_blit_image_trans, liero_gfx_blit_shadow_image, liero_gfx_draw_bar,
-    liero_gfx_draw_dashed_line_box, liero_gfx_draw_laser_sight, liero_gfx_draw_line, liero_gfx_draw_ninjarope,
-    liero_gfx_draw_shadow_line, liero_gfx_fill_rect, LieroBitmap,
+    blit_fire_cone, blit_image, blit_image_no_key_colour, blit_image_r, blit_image_trans, blit_shadow_image, draw_bar,
+    draw_dashed_line_box, draw_laser_sight, draw_line, draw_ninjarope, draw_shadow_line, draw_text, fill_rect, Bitmap,
 };
 use crate::level::LevelView;
-use crate::material::LieroMaterial;
-use crate::math::{cos_sin, ftoi, LieroIVec2};
-use crate::rand::LieroRand;
+use crate::material::Material;
+use crate::math::FVec2;
+use crate::math::{cos_sin, ftoi, IVec2};
+use crate::rand::Rand;
 use crate::text::{time_to_string, time_to_string_ex};
-use crate::worm::{
-    liero_worm_angle_frame, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL,
-    LIERO_GAME_SCALES_OF_JUSTICE,
-};
+use crate::weapon::ShotType;
+use crate::worm::{angle_frame, GameMode};
 use liero_data::model::FontChar;
 
-/// The viewport that follows one worm, in split screen.
-pub const LIERO_VIEWPORT_WORM: i32 = 0;
-/// The viewport that shows the whole level, in spectator mode.
-pub const LIERO_VIEWPORT_SPECTATOR: i32 = 1;
+/// What a viewport shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewportKind {
+    /// One worm, followed, in split screen (`Viewport`).
+    #[default]
+    Worm,
+    /// The whole level, in spectator mode (`SpectatorViewport`).
+    Spectator,
+}
 
 /// The fire cone's position for each direction and angle frame, relative to
 /// the worm sprite (`Common::fireConeOffset`).
@@ -45,7 +47,7 @@ const WORM_COLOUR_INDEXES: [i32; 2] = [0x58, 0x78];
 
 /// A viewport's state (C++'s `Viewport`).
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewport {
+pub struct Viewport {
     /// Top left of what is shown, in level coordinates.
     pub x: i32,
     pub y: i32,
@@ -59,19 +61,18 @@ pub struct LieroViewport {
     /// Where the kill message is, -8 when hidden.
     pub banner_y: i32,
     /// Where on screen the viewport is.
-    pub rect: LieroRect,
+    pub rect: Rect,
     /// Used for shaking and for the laser sight.
-    pub rand: LieroRand,
-    /// `LIERO_VIEWPORT_WORM`, or `LIERO_VIEWPORT_SPECTATOR` for a
-    /// `SpectatorViewport`, which a single-screen replay also shows in the
-    /// split-screen list.
-    pub kind: i32,
+    pub rand: Rand,
+    /// A spectator one is also shown in the split-screen list by a
+    /// single-screen replay.
+    pub kind: ViewportKind,
 }
 
 /// A set of sprites: `count` sprites of `width` x `height` pixels, one
 /// after the other.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroSpriteSet<'a> {
+pub struct Sprites<'a> {
     pub data: &'a [u8],
     pub width: i32,
     pub height: i32,
@@ -80,7 +81,7 @@ pub struct LieroSpriteSet<'a> {
 
 /// What viewports use of a weapon type.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewWeapon<'a> {
+pub struct ViewWeapon<'a> {
     pub name: &'a [u8],
     pub ammo: i32,
     pub loading_time: i32,
@@ -90,14 +91,14 @@ pub struct LieroViewWeapon<'a> {
     pub color_bullets: i32,
     pub fire_cone: i32,
     pub start_frame: i32,
-    pub shot_type: i32,
+    pub shot_type: Option<ShotType>,
     pub shadow: bool,
 }
 
 /// One of a worm's weapon slots.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewWormWeapon {
-    /// Index into `LieroScene::weapons`.
+pub struct ViewWormWeapon {
+    /// Index into `Scene::weapons`.
     pub weapon: i32,
     pub ammo: i32,
     pub loading_left: i32,
@@ -105,8 +106,8 @@ pub struct LieroViewWormWeapon {
 
 /// What viewports use of a worm.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewWorm<'a> {
-    pub pos: LieroIVec2,
+pub struct ViewWorm<'a> {
+    pub pos: FVec2,
     pub visible: bool,
     pub ready: bool,
     pub health: i32,
@@ -130,21 +131,21 @@ pub struct LieroViewWorm<'a> {
     pub aiming_angle: i32,
     pub make_sight_green: bool,
     pub rope_out: bool,
-    pub rope_pos: LieroIVec2,
+    pub rope_pos: FVec2,
     pub fire_cone: i32,
-    pub last_killed_by_idx: i32,
+    pub last_killed_by_idx: Option<i32>,
     pub current_weapon: i32,
-    pub weapons: [LieroViewWormWeapon; 5],
+    pub weapons: [ViewWormWeapon; 5],
     pub steerable_count: i32,
     pub steerable_sum_x: i32,
     pub steerable_sum_y: i32,
     /// Where the worm's predictive bot's plans went, with `aiTraces` on,
     /// drawn as debug output.
-    pub traces: &'a [LieroAiTrace],
+    pub traces: &'a [AiTrace],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewBonus {
+pub struct ViewBonus {
     pub x: i32,
     pub y: i32,
     pub timer: i32,
@@ -153,7 +154,7 @@ pub struct LieroViewBonus {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewSObject {
+pub struct ViewSObject {
     pub x: i32,
     pub y: i32,
     pub cur_frame: i32,
@@ -162,9 +163,9 @@ pub struct LieroViewSObject {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewWObject {
-    pub pos: LieroIVec2,
-    /// Index into `LieroScene::weapons`.
+pub struct ViewWObject {
+    pub pos: FVec2,
+    /// Index into `Scene::weapons`.
     pub weapon: i32,
     pub cur_frame: i32,
     /// Where the object is in C++'s list, which picks a name for weapon 34.
@@ -172,48 +173,48 @@ pub struct LieroViewWObject {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewNObject {
-    pub pos: LieroIVec2,
+pub struct ViewNObject {
+    pub pos: FVec2,
     pub cur_frame: i32,
     /// The type's `startFrame`.
     pub start_frame: i32,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewBObject {
-    pub pos: LieroIVec2,
+pub struct ViewBObject {
+    pub pos: FVec2,
     pub color: i32,
 }
 
 /// A split-screen viewport, for the kill messages that every viewport shows.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroViewportBanner {
+pub struct ViewportBanner {
     pub worm_idx: i32,
     pub banner_y: i32,
 }
 
 /// Everything a viewport draws. Lists are in C++'s order, which decides what
 /// is drawn on top.
-pub struct LieroScene<'a> {
+pub struct Scene<'a> {
     /// In the order of `Game::worms`; worm numbers are positions in it.
-    pub worms: &'a [LieroViewWorm<'a>],
+    pub worms: &'a [ViewWorm<'a>],
     /// `Common::weapons`.
-    pub weapons: &'a [LieroViewWeapon<'a>],
-    pub bonuses: &'a [LieroViewBonus],
-    pub sobjects: &'a [LieroViewSObject],
-    pub wobjects: &'a [LieroViewWObject],
-    pub nobjects: &'a [LieroViewNObject],
-    pub bobjects: &'a [LieroViewBObject],
+    pub weapons: &'a [ViewWeapon<'a>],
+    pub bonuses: &'a [ViewBonus],
+    pub sobjects: &'a [ViewSObject],
+    pub wobjects: &'a [ViewWObject],
+    pub nobjects: &'a [ViewNObject],
+    pub bobjects: &'a [ViewBObject],
     /// The split-screen viewports, `Game::viewports`.
-    pub viewports: &'a [LieroViewportBanner],
+    pub viewports: &'a [ViewportBanner],
 
-    pub small_sprites: LieroSpriteSet<'a>,
-    pub large_sprites: LieroSpriteSet<'a>,
-    pub worm_sprites: LieroSpriteSet<'a>,
-    pub fire_cone_sprites: LieroSpriteSet<'a>,
-    pub text_sprites: LieroSpriteSet<'a>,
+    pub small_sprites: Sprites<'a>,
+    pub large_sprites: Sprites<'a>,
+    pub worm_sprites: Sprites<'a>,
+    pub fire_cone_sprites: Sprites<'a>,
+    pub text_sprites: Sprites<'a>,
     pub font: &'a [FontChar],
-    pub materials: &'a [LieroMaterial; 256],
+    pub materials: &'a [Material; 256],
     pub level: LevelView<'a>,
     pub bonus_frames: [i32; 2],
 
@@ -226,11 +227,10 @@ pub struct LieroScene<'a> {
     pub committed_suicide_msg: &'a [u8],
 
     pub cycles: i32,
-    /// `LIERO_GAME_*`.
-    pub game_mode: i32,
-    pub holdazone: LieroHoldazone,
+    pub game_mode: Option<GameMode>,
+    pub holdazone: Holdazone,
     pub zone_capture_time: i32,
-    pub last_killed_idx: i32,
+    pub last_killed_idx: Option<i32>,
     pub got_changed: bool,
     pub shadow: bool,
     pub names_on_bonuses: bool,
@@ -266,7 +266,7 @@ fn minimap_color(index: i32) -> i32 {
     129 + index * 4
 }
 
-impl<'a> LieroSpriteSet<'a> {
+impl<'a> Sprites<'a> {
     /// Sprite `frame`, or None where C++ would have read outside the set.
     fn sprite(&self, frame: i32) -> Option<&'a [u8]> {
         (0..self.count)
@@ -276,15 +276,15 @@ impl<'a> LieroSpriteSet<'a> {
 }
 
 /// The scene as Rust reads it.
-struct Scene<'a> {
-    s: &'a LieroScene<'a>,
-    worms: &'a [LieroViewWorm<'a>],
-    weapons: &'a [LieroViewWeapon<'a>],
+struct Painter<'a> {
+    s: &'a Scene<'a>,
+    worms: &'a [ViewWorm<'a>],
+    weapons: &'a [ViewWeapon<'a>],
 }
 
-impl<'a> Scene<'a> {
-    fn new(s: &'a LieroScene<'a>) -> Self {
-        Scene {
+impl<'a> Painter<'a> {
+    fn new(s: &'a Scene<'a>) -> Self {
+        Painter {
             s,
             worms: s.worms,
             weapons: s.weapons,
@@ -292,32 +292,32 @@ impl<'a> Scene<'a> {
     }
 
     /// `Game::wormByIdx`.
-    fn worm(&self, idx: i32) -> Option<&'a LieroViewWorm<'a>> {
+    fn worm(&self, idx: i32) -> Option<&'a ViewWorm<'a>> {
         usize::try_from(idx).ok().and_then(|i| self.worms.get(i))
     }
 
-    fn weapon(&self, idx: i32) -> Option<&'a LieroViewWeapon<'a>> {
+    fn weapon(&self, idx: i32) -> Option<&'a ViewWeapon<'a>> {
         usize::try_from(idx).ok().and_then(|i| self.weapons.get(i))
     }
 
-    fn text(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32, color: i32) {
-        liero_font_draw_text(scr, self.s.font, text, x, y, color as u8, 1);
+    fn text(&self, scr: &Bitmap, text: &[u8], x: i32, y: i32, color: i32) {
+        draw_text(scr, self.s.font, text, x, y, color as u8, 1);
     }
 
     /// The text with a black shadow, as banners are drawn.
-    fn banner(&self, scr: &LieroBitmap, text: &[u8], x: i32, y: i32) {
+    fn banner(&self, scr: &Bitmap, text: &[u8], x: i32, y: i32) {
         self.text(scr, text, x + 1, y + 1, 0);
         self.text(scr, text, x, y, 50);
     }
 
     /// Capital letters from the small font, 4 pixels apart: `drawTextSmall`.
-    fn text_small(&self, scr: &LieroBitmap, text: &[u8], mut x: i32, y: i32) {
+    fn text_small(&self, scr: &Bitmap, text: &[u8], mut x: i32, y: i32) {
         let set = &self.s.text_sprites;
         for &ch in text {
             let c = ch.wrapping_sub(b'A');
             if c < 26 {
-                if let Some(mem) = set.sprite(c as i32) {
-                    liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
+                if let Some(mem) = set.sprite(i32::from(c)) {
+                    blit_image(scr, mem, x, y, set.width, set.height, set.width);
                 }
             }
             x += 4;
@@ -325,7 +325,7 @@ impl<'a> Scene<'a> {
     }
 
     /// The weapon's name in the small font, centred on x.
-    fn weapon_name(&self, scr: &LieroBitmap, weapon: i32, x: i32, y: i32) {
+    fn weapon_name(&self, scr: &Bitmap, weapon: i32, x: i32, y: i32) {
         if let Some(w) = self.weapon(weapon) {
             let name = w.name;
             let len = name.len() as i32 * 4;
@@ -333,23 +333,23 @@ impl<'a> Scene<'a> {
         }
     }
 
-    fn blit(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32) {
+    fn blit(&self, scr: &Bitmap, set: &Sprites, frame: i32, x: i32, y: i32) {
         if let Some(mem) = set.sprite(frame) {
-            liero_gfx_blit_image(scr, mem, x, y, set.width, set.height, set.width);
+            blit_image(scr, mem, x, y, set.width, set.height, set.width);
         }
     }
 
     // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
     #[allow(clippy::too_many_arguments)]
-    fn shadow(&self, scr: &LieroBitmap, set: &LieroSpriteSet, frame: i32, x: i32, y: i32, w: i32, h: i32) {
+    fn shadow(&self, scr: &Bitmap, set: &Sprites, frame: i32, x: i32, y: i32, w: i32, h: i32) {
         if let Some(mem) = set.sprite(frame) {
-            liero_gfx_blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);
+            blit_shadow_image(scr, self.s.materials, mem, x, y, w, h);
         }
     }
 
     /// Darkens the pixel at (x, y) if inside the clip rectangle and its
     /// material shows shadows.
-    fn shadow_pixel(&self, scr: &LieroBitmap, x: i32, y: i32) {
+    fn shadow_pixel(&self, scr: &Bitmap, x: i32, y: i32) {
         if scr.clip.contains(x, y) {
             let p = scr.get(x, y);
             if self.s.materials[p as usize].see_shadow() {
@@ -358,29 +358,29 @@ impl<'a> Scene<'a> {
         }
     }
 
-    fn pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) {
+    fn pixel(&self, scr: &Bitmap, x: i32, y: i32, color: i32) {
         if scr.clip.contains(x, y) {
             scr.set(x, y, color as u8);
         }
     }
 
     /// `getPixel(x, y) = color` without clipping, kept inside the buffer.
-    fn raw_pixel(&self, scr: &LieroBitmap, x: i32, y: i32, color: i32) {
+    fn raw_pixel(&self, scr: &Bitmap, x: i32, y: i32, color: i32) {
         scr.set(x, y, color as u8);
     }
 
     /// The life bar, ammo or loading bar and the kills, as both kinds of
     /// viewport draw them for a worm. `x` is where the stats start.
-    fn draw_stats(&self, scr: &LieroBitmap, worm: &LieroViewWorm, x: i32, reloading_y: i32) {
+    fn draw_stats(&self, scr: &Bitmap, worm: &ViewWorm, x: i32, reloading_y: i32) {
         let res_y = self.s.render_res_y;
         if worm.visible {
             let width = div(worm.health.wrapping_mul(100), worm.max_health);
-            liero_gfx_draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
+            draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
         } else {
             let width = 100 - (worm.killed_timer * 25) / 37;
             if width > 0 {
                 let width = width.min(100);
-                liero_gfx_draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
+                draw_bar(scr, x, res_y - 39, width, 2, (width / 10 + 234) as u8);
             }
         }
 
@@ -390,7 +390,7 @@ impl<'a> Scene<'a> {
             if ww.ammo > 0 {
                 let width = div(ww.ammo.wrapping_mul(100), weapon.map_or(0, |w| w.ammo));
                 if width > 0 {
-                    liero_gfx_draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
+                    draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
                 }
             }
         } else {
@@ -399,7 +399,7 @@ impl<'a> Scene<'a> {
                 _ => 100 - ww.loading_left.wrapping_mul(100),
             };
             if width > 0 {
-                liero_gfx_draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
+                draw_bar(scr, x, res_y - 34, width, 2, (width / 10 + 245) as u8);
             }
             if self.s.cycles % 20 > 10 && worm.visible {
                 self.text(scr, self.s.reloading, x, reloading_y, 50);
@@ -413,19 +413,11 @@ impl<'a> Scene<'a> {
 
     /// The worm's name, colour and the game time.
     /// `box_x` is where the colour's frame starts and `color_x` the colour.
-    fn draw_name_and_time(
-        &self,
-        scr: &LieroBitmap,
-        worm: &LieroViewWorm,
-        x: i32,
-        box_x: i32,
-        color_x: i32,
-        time_x: i32,
-    ) {
+    fn draw_name_and_time(&self, scr: &Bitmap, worm: &ViewWorm, x: i32, box_x: i32, color_x: i32, time_x: i32) {
         let res_y = self.s.render_res_y;
         self.text(scr, worm.name, x, res_y - 15, 7);
-        liero_gfx_fill_rect(scr, box_x, res_y - 8, 8, 8, 7);
-        liero_gfx_fill_rect(scr, color_x, res_y - 7, 6, 6, worm.color as u8);
+        fill_rect(scr, box_x, res_y - 8, 8, 8, 7);
+        fill_rect(scr, color_x, res_y - 7, 6, 6, worm.color as u8);
         let time = time_to_string_ex(self.s.cycles.wrapping_mul(14), false, true);
         self.text(scr, &time, time_x, res_y - 15, 7);
     }
@@ -433,28 +425,29 @@ impl<'a> Scene<'a> {
     /// Lives, or the Holdazone or Game of Tag timer, of worm `pos` (a position
     /// in the worm list). `scale` is the viewport's multiplier for the
     /// timer's position.
-    fn draw_game_mode(&self, scr: &LieroBitmap, pos: i32, x: i32, scale: i32) {
+    fn draw_game_mode(&self, scr: &Bitmap, pos: i32, x: i32, scale: i32) {
         const STATE_COLOURS: [[i32; 2]; 2] = [[6, 10], [79, 4]];
         let s = self.s;
         let Some(worm) = self.worm(pos) else { return };
-        let (holder, ahead): (i32, fn(i32, i32) -> bool) = match s.game_mode {
-            LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => {
+        let (holder, ahead): (Option<i32>, fn(i32, i32) -> bool) = match s.game_mode {
+            Some(GameMode::KillEmAll) | Some(GameMode::ScalesOfJustice) => {
                 let mut lives = s.lives.to_vec();
                 lives.extend_from_slice(worm.lives.to_string().as_bytes());
                 self.text(scr, &lives, x, s.render_res_y - 22, 6);
                 return;
             }
-            LIERO_GAME_HOLDAZONE => (s.holdazone.holder_idx, |other, mine| other <= mine),
-            LIERO_GAME_GAME_OF_TAG => (s.last_killed_idx, |other, mine| other >= mine),
+            Some(GameMode::Holdazone) => (s.holdazone.holder_idx, |other, mine| other <= mine),
+            Some(GameMode::GameOfTag) => (s.last_killed_idx, |other, mine| other >= mine),
             _ => return,
         };
 
-        let state = self
-            .worms
-            .iter()
-            .enumerate()
-            .any(|(i, w)| i as i32 != pos && ahead(w.timer, worm.timer)) as usize;
-        let color = STATE_COLOURS[(holder != worm.index) as usize][state];
+        let state = usize::from(
+            self.worms
+                .iter()
+                .enumerate()
+                .any(|(i, w)| i as i32 != pos && ahead(w.timer, worm.timer)),
+        );
+        let color = STATE_COLOURS[usize::from(holder != Some(worm.index))][state];
 
         // C++ calls drawText(scr, str, len, x, y, color) with these four
         // numbers, so 5 * scale is the length and the rest are shifted by one.
@@ -473,16 +466,16 @@ impl<'a> Scene<'a> {
     }
 
     /// The Holdazone zone's dashed outline.
-    fn draw_zone(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+    fn draw_zone(&self, scr: &Bitmap, offs: IVec2) {
         let z = &self.s.holdazone;
         let timing_out = z.timeout_left < 70 * 4;
         let color = if timing_out { 168 } else { 50 };
-        let contender_color = match self.worm(z.contender_idx) {
+        let contender_color = match z.contender_idx.and_then(|i| self.worm(i)) {
             Some(c) if timing_out => minimap_color(c.index),
             Some(c) => WORM_COLOUR_INDEXES[c.index as usize & 1] + 5,
             None => color,
         };
-        liero_gfx_draw_dashed_line_box(
+        draw_dashed_line_box(
             scr,
             z.rect.x1 + offs.x,
             z.rect.y1 + offs.y,
@@ -498,20 +491,20 @@ impl<'a> Scene<'a> {
 
     /// The worm's flickering outline where it will spawn, while Change is held
     /// before it has spawned.
-    fn draw_spawn_point(&self, scr: &LieroBitmap, worm: &LieroViewWorm, offs: LieroIVec2) {
+    fn draw_spawn_point(&self, scr: &Bitmap, worm: &ViewWorm, offs: IVec2) {
         if self.s.allow_viewing_spawn_point && worm.pressed_change {
             let set = &self.s.worm_sprites;
             let frame = worm.current_frame + worm.direction * 7 * 3 + worm.index * 2 * 7 * 3;
             if let Some(mem) = set.sprite(frame) {
-                let x = ftoi(worm.pos.x) - 7 + offs.x;
-                let y = ftoi(worm.pos.y) - 5 + offs.y;
-                liero_gfx_blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
+                let x = worm.pos.x.to_int() - 7 + offs.x;
+                let y = worm.pos.y.to_int() - 5 + offs.y;
+                blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
             }
         }
     }
 
     /// Bonuses, special objects, weapon objects and non-weapon objects.
-    fn draw_objects(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+    fn draw_objects(&self, scr: &Bitmap, offs: IVec2) {
         let s = self.s;
         let small = &s.small_sprites;
         let large = &s.large_sprites;
@@ -532,9 +525,9 @@ impl<'a> Scene<'a> {
         for o in s.sobjects {
             let frame = o.cur_frame + o.start_frame;
             if let Some(mem) = large.sprite(frame) {
-                liero_gfx_blit_image_r(scr, mem, o.x + offs.x, o.y + offs.y, 16, 16);
+                blit_image_r(scr, mem, o.x + offs.x, o.y + offs.y, 16, 16);
                 if s.shadow {
-                    liero_gfx_blit_shadow_image(scr, s.materials, mem, o.x + offs.x - 3, o.y + offs.y + 3, 16, 16);
+                    blit_shadow_image(scr, s.materials, mem, o.x + offs.x - 3, o.y + offs.y + 3, 16, 16);
                 }
             }
         }
@@ -543,14 +536,14 @@ impl<'a> Scene<'a> {
             let Some(w) = self.weapon(o.weapon) else { continue };
             if w.start_frame > -1 {
                 let mut cur_frame = o.cur_frame;
-                if w.shot_type == 2 {
+                if w.shot_type == Some(ShotType::Steerable) {
                     cur_frame = (cur_frame + 4) >> 3;
                     if cur_frame < 0 {
                         cur_frame = 16;
                     } else if cur_frame > 15 {
                         cur_frame -= 16;
                     }
-                } else if w.shot_type == 3 {
+                } else if w.shot_type == Some(ShotType::DType2) {
                     if cur_frame > 64 {
                         cur_frame -= 1;
                     }
@@ -558,16 +551,16 @@ impl<'a> Scene<'a> {
                     cur_frame = cur_frame.clamp(0, 12);
                 }
 
-                let x = ftoi(o.pos.x) - 3;
-                let y = ftoi(o.pos.y) - 3;
+                let x = o.pos.x.to_int() - 3;
+                let y = o.pos.y.to_int() - 3;
                 let frame = w.start_frame + cur_frame;
                 if s.shadow && w.shadow {
                     self.shadow(scr, small, frame, x - 3 + offs.x, y + 3 + offs.y, 7, 7);
                 }
                 self.blit(scr, small, frame, x + offs.x, y + offs.y);
             } else if o.cur_frame > 0 {
-                let x = ftoi(o.pos.x) + offs.x;
-                let y = ftoi(o.pos.y) + offs.y;
+                let x = o.pos.x.to_int() + offs.x;
+                let y = o.pos.y.to_int() + offs.y;
                 self.pixel(scr, x, y, o.cur_frame);
                 if s.shadow {
                     self.shadow_pixel(scr, x - 3, y + 3);
@@ -577,22 +570,22 @@ impl<'a> Scene<'a> {
             // TODO in C++: read from the EXE.
             if !s.rem_exp && o.weapon == 34 && s.names_on_bonuses && o.cur_frame == 0 && !s.weapons.is_empty() {
                 let name = o.slot % s.weapons.len() as i32;
-                self.weapon_name(scr, name, ftoi(o.pos.x) + offs.x, ftoi(o.pos.y) - 10 + offs.y);
+                self.weapon_name(scr, name, o.pos.x.to_int() + offs.x, o.pos.y.to_int() - 10 + offs.y);
             }
         }
 
         for o in s.nobjects {
             if o.start_frame > 0 {
-                let x = ftoi(o.pos.x) - 3;
-                let y = ftoi(o.pos.y) - 3;
+                let x = o.pos.x.to_int() - 3;
+                let y = o.pos.y.to_int() - 3;
                 let frame = o.start_frame + o.cur_frame;
                 if s.shadow {
                     self.shadow(scr, small, frame, x - 3 + offs.x, y + 3 + offs.y, 7, 7);
                 }
                 self.blit(scr, small, frame, x + offs.x, y + offs.y);
             } else if o.cur_frame > 1 {
-                let x = ftoi(o.pos.x) + offs.x;
-                let y = ftoi(o.pos.y) + offs.y;
+                let x = o.pos.x.to_int() + offs.x;
+                let y = o.pos.y.to_int() + offs.y;
                 self.pixel(scr, x, y, o.cur_frame);
                 if s.shadow {
                     self.shadow_pixel(scr, x - 3, y + 3);
@@ -603,13 +596,13 @@ impl<'a> Scene<'a> {
 
     /// Every worm with its laser sight, rope and fire cone, and the AIs'
     /// debug output.
-    fn draw_worms(&self, scr: &LieroBitmap, offs: LieroIVec2, rand: &mut LieroRand) {
+    fn draw_worms(&self, scr: &Bitmap, offs: IVec2, rand: &mut Rand) {
         let s = self.s;
         for w in self.worms.iter() {
             if w.visible {
-                let x = ftoi(w.pos.x) - 7 + offs.x;
-                let y = ftoi(w.pos.y) - 5 + offs.y;
-                let angle_frame = liero_worm_angle_frame(w.aiming_angle, w.direction);
+                let x = w.pos.x.to_int() - 7 + offs.x;
+                let y = w.pos.y.to_int() - 5 + offs.y;
+                let angle_frame = angle_frame(w.aiming_angle, w.direction);
                 let ww = &w.weapons[w.current_weapon as usize % 5];
                 let weapon = self.weapon(ww.weapon);
 
@@ -618,21 +611,21 @@ impl<'a> Scene<'a> {
                         let hx = w.hotspot_x + offs.x;
                         let hy = w.hotspot_y + offs.y;
                         if weapon.laser_sight {
-                            liero_gfx_draw_laser_sight(scr, rand, hx, hy, x + 7, y + 4);
+                            draw_laser_sight(scr, rand, hx, hy, x + 7, y + 4);
                         }
                         if ww.weapon == s.laser_weapon - 1 && w.pressed_fire {
-                            liero_gfx_draw_line(scr, hx, hy, x + 7, y + 4, weapon.color_bullets as u8);
+                            draw_line(scr, hx, hy, x + 7, y + 4, weapon.color_bullets as u8);
                         }
                     }
                 }
 
                 if w.rope_out {
-                    let rx = ftoi(w.rope_pos.x) + offs.x;
-                    let ry = ftoi(w.rope_pos.y) + offs.y;
-                    liero_gfx_draw_ninjarope(scr, s.nr_colour_begin, s.nr_colour_end, rx, ry, x + 7, y + 4);
+                    let rx = w.rope_pos.x.to_int() + offs.x;
+                    let ry = w.rope_pos.y.to_int() + offs.y;
+                    draw_ninjarope(scr, s.nr_colour_begin, s.nr_colour_end, rx, ry, x + 7, y + 4);
                     self.blit(scr, &s.large_sprites, 84, rx - 1, ry - 1);
                     if s.shadow {
-                        liero_gfx_draw_shadow_line(scr, s.materials, rx - 3, ry + 3, x + 7 - 3, y + 4 + 3);
+                        draw_shadow_line(scr, s.materials, rx - 3, ry + 3, x + 7 - 3, y + 4 + 3);
                         self.shadow(scr, &s.large_sprites, 84, rx - 4, ry + 2, 16, 16);
                     }
                 }
@@ -642,7 +635,7 @@ impl<'a> Scene<'a> {
                     let af = angle_frame.clamp(0, 6) as usize;
                     if let Some(mem) = s.fire_cone_sprites.sprite(angle_frame + w.direction * 7) {
                         let [ox, oy] = FIRE_CONE_OFFSET[dir][af];
-                        liero_gfx_blit_fire_cone(scr, w.fire_cone / 2, mem, ox + x, oy + y);
+                        blit_fire_cone(scr, w.fire_cone / 2, mem, ox + x, oy + y);
                     }
                 }
 
@@ -658,13 +651,13 @@ impl<'a> Scene<'a> {
     }
 
     /// The worm's sight, and its weapon's name while Change is held.
-    fn draw_sight(&self, scr: &LieroBitmap, worm: &LieroViewWorm, offs: LieroIVec2) {
+    fn draw_sight(&self, scr: &Bitmap, worm: &ViewWorm, offs: IVec2) {
         if !worm.visible {
             return;
         }
         let cs = cos_sin(ftoi(worm.aiming_angle) & 127);
-        let x = ftoi(worm.pos.x) - 1 + ftoi(cs.x.wrapping_mul(16)) + offs.x;
-        let y = ftoi(worm.pos.y) - 2 + ftoi(cs.y.wrapping_mul(16)) + offs.y;
+        let x = worm.pos.x.to_int() - 1 + (cs.x * 16).to_int() + offs.x;
+        let y = worm.pos.y.to_int() - 2 + (cs.y * 16).to_int() + offs.y;
         self.blit(
             scr,
             &self.s.small_sprites,
@@ -678,16 +671,16 @@ impl<'a> Scene<'a> {
             self.weapon_name(
                 scr,
                 ww.weapon,
-                ftoi(worm.pos.x) + 1 + offs.x,
-                ftoi(worm.pos.y) - 10 + offs.y,
+                worm.pos.x.to_int() + 1 + offs.x,
+                worm.pos.y.to_int() - 10 + offs.y,
             );
         }
     }
 
-    fn draw_bobjects(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+    fn draw_bobjects(&self, scr: &Bitmap, offs: IVec2) {
         for b in self.s.bobjects {
-            let x = ftoi(b.pos.x) + offs.x;
-            let y = ftoi(b.pos.y) + offs.y;
+            let x = b.pos.x.to_int() + offs.x;
+            let y = b.pos.y.to_int() + offs.y;
             self.pixel(scr, x, y, b.color);
             if self.s.shadow {
                 self.shadow_pixel(scr, x - 3, y + 3);
@@ -695,13 +688,13 @@ impl<'a> Scene<'a> {
         }
     }
 
-    fn draw_level(&self, scr: &LieroBitmap, offs: LieroIVec2) {
+    fn draw_level(&self, scr: &Bitmap, offs: IVec2) {
         let l = self.s.level;
-        liero_gfx_blit_image_no_key_colour(scr, l.data, offs.x, offs.y, l.width, l.height, l.width);
+        blit_image_no_key_colour(scr, l.data, offs.x, offs.y, l.width, l.height, l.width);
     }
 
     /// The split-screen viewport: `Viewport::draw`.
-    fn draw_worm_view(&self, vp: &mut LieroViewport, outer: &LieroBitmap, self_index: i32) {
+    fn draw_worm_view(&self, vp: &mut Viewport, outer: &Bitmap, self_index: i32) {
         let s = self.s;
         let scr = outer;
         let Some(worm) = self.worm(vp.worm_idx) else { return };
@@ -723,15 +716,15 @@ impl<'a> Scene<'a> {
         self.draw_game_mode(scr, vp.worm_idx, stats_x, multiplier);
 
         let r = vp.rect;
-        let view = LieroBitmap { clip: r, ..*scr };
+        let view = Bitmap { clip: r, ..*scr };
         let scr = &view;
-        let offs = LieroIVec2 {
+        let offs = IVec2 {
             x: r.x1 - vp.x,
             y: r.y1 - vp.y,
         };
 
         self.draw_level(scr, offs);
-        if s.game_mode == LIERO_GAME_HOLDAZONE {
+        if s.game_mode == Some(GameMode::Holdazone) {
             self.draw_zone(scr, offs);
         }
 
@@ -742,7 +735,7 @@ impl<'a> Scene<'a> {
             self.draw_spawn_point(scr, worm, offs);
         }
 
-        if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == LIERO_GAME_GAME_OF_TAG && s.got_changed {
+        if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == Some(GameMode::GameOfTag) && s.got_changed {
             self.banner(scr, s.youre_it, r.x1 + 2, vp.banner_y);
         }
 
@@ -750,7 +743,7 @@ impl<'a> Scene<'a> {
             let Some(other) = self.worm(v.worm_idx) else { continue };
             if i as i32 != self_index && other.health <= 0 && v.banner_y > -8 {
                 let mut msg = Vec::new();
-                if other.last_killed_by_idx == worm.index {
+                if other.last_killed_by_idx == Some(worm.index) {
                     msg.extend_from_slice(s.killed_msg);
                     msg.extend_from_slice(other.name);
                 } else {
@@ -772,7 +765,7 @@ impl<'a> Scene<'a> {
     }
 
     /// The minimap, drawn after the viewport outside its clip rectangle.
-    fn draw_minimap(&self, scr: &LieroBitmap, center_x: i32) {
+    fn draw_minimap(&self, scr: &Bitmap, center_x: i32) {
         let s = self.s;
         let map_x = center_x - 26;
         let map_y = s.render_res_y - 38;
@@ -782,18 +775,21 @@ impl<'a> Scene<'a> {
             if w.visible {
                 self.raw_pixel(
                     scr,
-                    ftoi(w.pos.x) / 10 + map_x,
-                    ftoi(w.pos.y) / 10 + map_y,
+                    w.pos.x.to_int() / 10 + map_x,
+                    w.pos.y.to_int() / 10 + map_y,
                     minimap_color(w.index),
                 );
             }
         }
 
         let z = &s.holdazone;
-        if s.game_mode == LIERO_GAME_HOLDAZONE && z.timeout_left > 0 {
+        if s.game_mode == Some(GameMode::Holdazone) && z.timeout_left > 0 {
             let x = (z.rect.x1 + z.rect.x2) / 2 / 10 + map_x;
             let y = (z.rect.y1 + z.rect.y2) / 2 / 10 + map_y;
-            let color = self.worm(z.holder_idx).map_or(168, |h| minimap_color(h.index));
+            let color = z
+                .holder_idx
+                .and_then(|i| self.worm(i))
+                .map_or(168, |h| minimap_color(h.index));
             for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
                 self.pixel(scr, x + dx, y + dy, color);
             }
@@ -801,12 +797,12 @@ impl<'a> Scene<'a> {
     }
 
     /// The spectator viewport: `SpectatorViewport::draw`.
-    fn draw_spectator_view(&self, vp: &mut LieroViewport, scr: &LieroBitmap) {
+    fn draw_spectator_view(&self, vp: &mut Viewport, scr: &Bitmap) {
         let s = self.s;
         let multiplier = s.render_res_x / 320;
         let center_x = s.render_res_x / 2;
         let r = vp.rect;
-        let offs = LieroIVec2 {
+        let offs = IVec2 {
             x: r.x1 - vp.x,
             y: r.y1 - vp.y,
         };
@@ -828,7 +824,7 @@ impl<'a> Scene<'a> {
                     if ww.ammo > 0 {
                         let width = div(ww.ammo.wrapping_mul(60), weapon.map_or(0, |w| w.ammo));
                         if width > 0 {
-                            liero_gfx_draw_bar(scr, list_x, y, width, 5, (width / 6 + 245) as u8);
+                            draw_bar(scr, list_x, y, width, 5, (width / 6 + 245) as u8);
                         }
                     }
                     let color = if worm.current_weapon == j as i32 { 187 } else { 185 };
@@ -842,7 +838,7 @@ impl<'a> Scene<'a> {
         }
 
         self.draw_level(scr, offs);
-        if s.game_mode == LIERO_GAME_HOLDAZONE {
+        if s.game_mode == Some(GameMode::Holdazone) {
             self.draw_zone(scr, offs);
         }
 
@@ -850,7 +846,7 @@ impl<'a> Scene<'a> {
             if !worm.visible && worm.killed_timer <= 0 && !worm.ready {
                 self.draw_spawn_point(scr, worm, offs);
             }
-            if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == LIERO_GAME_GAME_OF_TAG && s.got_changed {
+            if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == Some(GameMode::GameOfTag) && s.got_changed {
                 self.banner(scr, s.youre_it, r.x1 + 2, vp.banner_y);
             }
         }
@@ -858,12 +854,12 @@ impl<'a> Scene<'a> {
         for worm in self.worms {
             if worm.health <= 0 && vp.banner_y > -8 {
                 let mut msg = Vec::new();
-                if worm.last_killed_by_idx == worm.index {
+                if worm.last_killed_by_idx == Some(worm.index) {
                     msg.extend_from_slice(worm.name);
                     msg.extend_from_slice(s.committed_suicide_msg);
                 } else {
                     // C++ looks the killer up by position.
-                    if let Some(killer) = self.worm(worm.last_killed_by_idx) {
+                    if let Some(killer) = worm.last_killed_by_idx.and_then(|i| self.worm(i)) {
                         msg.extend_from_slice(killer.name);
                     }
                     msg.extend_from_slice(b" killed ");
@@ -882,13 +878,13 @@ impl<'a> Scene<'a> {
     }
 }
 
-impl LieroViewport {
+impl Viewport {
     /// C++'s `Viewport` constructor: a viewport at `rect` on screen,
     /// following worm `worm_idx` around a level of `level_width` x
     /// `level_height`.
-    pub fn new(rect: LieroRect, worm_idx: i32, level_width: i32, level_height: i32) -> Self {
+    pub fn new(rect: Rect, worm_idx: i32, level_width: i32, level_height: i32) -> Self {
         let (w, h) = (rect.x2 - rect.x1, rect.y2 - rect.y1);
-        LieroViewport {
+        Viewport {
             x: 0,
             y: 0,
             shake: 0,
@@ -899,8 +895,8 @@ impl LieroViewport {
             worm_idx,
             banner_y: -8,
             rect,
-            rand: LieroRand::default(),
-            kind: LIERO_VIEWPORT_WORM,
+            rand: Rand::default(),
+            kind: ViewportKind::Worm,
         }
     }
 
@@ -913,8 +909,8 @@ impl LieroViewport {
     fn scroll_to(&mut self, dest_x: i32, dest_y: i32, steps: i32) {
         for _ in 0..steps {
             let (tx, ty) = (dest_x - self.center_x, dest_y - self.center_y);
-            self.x += (self.x < tx) as i32 - (self.x > tx) as i32;
-            self.y += (self.y < ty) as i32 - (self.y > ty) as i32;
+            self.x += i32::from(self.x < tx) - i32::from(self.x > tx);
+            self.y += i32::from(self.y < ty) - i32::from(self.y > ty);
         }
     }
 
@@ -931,19 +927,19 @@ impl LieroViewport {
     }
 }
 
-/// Moves the camera one tick: `Viewport::process` for `LIERO_VIEWPORT_WORM`,
-/// `SpectatorViewport::process` for `LIERO_VIEWPORT_SPECTATOR`. `worms` are
+/// Moves the camera one tick: `Viewport::process` for a worm's viewport,
+/// `SpectatorViewport::process` for a spectator one. `worms` are
 /// in the order of `Game::worms`.
-pub fn liero_viewport_process(vp: &mut LieroViewport, kind: i32, worms: &[LieroViewWorm]) {
+pub fn process_viewport(vp: &mut Viewport, kind: ViewportKind, worms: &[ViewWorm]) {
     let worm = |i: i32| usize::try_from(i).ok().and_then(|i| worms.get(i));
 
-    if kind == LIERO_VIEWPORT_SPECTATOR {
+    if kind == ViewportKind::Spectator {
         // C++: "FIXME this is a bit broken". 150 is where killedTimer starts.
         if [0, 1].iter().any(|&i| worm(i).is_some_and(|w| w.killed_timer == 150)) {
             vp.banner_y = -8;
         }
     } else if let Some(w) = worm(vp.worm_idx) {
-        let (x, y) = (ftoi(w.pos.x), ftoi(w.pos.y));
+        let (x, y) = (w.pos.x.to_int(), w.pos.y.to_int());
         if w.killed_timer <= 0 {
             if !w.visible {
                 vp.scroll_to(x, y, 4);
@@ -968,7 +964,7 @@ pub fn liero_viewport_process(vp: &mut LieroViewport, kind: i32, worms: &[LieroV
 
 /// The positions a predictive bot's plans went through
 /// (`FollowAI::drawDebug`), with `Bitmap::setPixel`'s clipping.
-fn draw_traces(scr: &LieroBitmap, traces: &[LieroAiTrace], offs: LieroIVec2) {
+fn draw_traces(scr: &Bitmap, traces: &[AiTrace], offs: IVec2) {
     let clip = scr.clip;
     for t in traces {
         let (x, y) = (ftoi(t.x).wrapping_add(offs.x), ftoi(t.y).wrapping_add(offs.y));
@@ -979,12 +975,12 @@ fn draw_traces(scr: &LieroBitmap, traces: &[LieroAiTrace], offs: LieroIVec2) {
     }
 }
 
-/// Draws a viewport on `scr`: `Viewport::draw` for `LIERO_VIEWPORT_WORM`,
-/// `SpectatorViewport::draw` for `LIERO_VIEWPORT_SPECTATOR`. `self_index` is
+/// Draws a viewport on `scr`: `Viewport::draw` for a worm's viewport,
+/// `SpectatorViewport::draw` for a spectator one. `self_index` is
 /// a split-screen viewport's position in `scene.viewports`.
-pub fn liero_viewport_draw(vp: &mut LieroViewport, kind: i32, self_index: i32, scene: &LieroScene, scr: &LieroBitmap) {
-    let scene = Scene::new(scene);
-    if kind == LIERO_VIEWPORT_SPECTATOR {
+pub fn draw_viewport(vp: &mut Viewport, kind: ViewportKind, self_index: i32, scene: &Scene, scr: &Bitmap) {
+    let scene = Painter::new(scene);
+    if kind == ViewportKind::Spectator {
         scene.draw_spectator_view(vp, scr);
     } else {
         scene.draw_worm_view(vp, scr, self_index);
@@ -994,14 +990,11 @@ pub fn liero_viewport_draw(vp: &mut LieroViewport, kind: i32, self_index: i32, s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rand::LIERO_RAND_DEFAULT_SEED;
+    use crate::rand::RAND_DEFAULT_SEED;
 
-    fn worm(index: i32) -> LieroViewWorm<'static> {
-        LieroViewWorm {
-            pos: LieroIVec2 {
-                x: 100 << 16,
-                y: 80 << 16,
-            },
+    fn worm(index: i32) -> ViewWorm<'static> {
+        ViewWorm {
+            pos: crate::math::FVec2::new(crate::math::Fixed(100 << 16), crate::math::Fixed(80 << 16)),
             visible: true,
             ready: true,
             health: 100,
@@ -1023,11 +1016,11 @@ mod tests {
             aiming_angle: 32 << 16,
             make_sight_green: false,
             rope_out: false,
-            rope_pos: LieroIVec2::default(),
+            rope_pos: FVec2::default(),
             fire_cone: 0,
-            last_killed_by_idx: -1,
+            last_killed_by_idx: None,
             current_weapon: 0,
-            weapons: [LieroViewWormWeapon {
+            weapons: [ViewWormWeapon {
                 weapon: 0,
                 ammo: 0,
                 loading_left: 0,
@@ -1039,9 +1032,9 @@ mod tests {
         }
     }
 
-    fn viewport() -> LieroViewport {
-        LieroViewport::new(
-            LieroRect {
+    fn viewport() -> Viewport {
+        Viewport::new(
+            Rect {
                 x1: 0,
                 y1: 0,
                 x2: 158,
@@ -1062,9 +1055,9 @@ mod tests {
             (504 - 158, 350 - 158, 79, 79)
         );
         assert_eq!((vp.x, vp.y, vp.shake, vp.banner_y), (0, 0, 0, -8));
-        assert_eq!(vp.rand, LieroRand::new(LIERO_RAND_DEFAULT_SEED));
-        let mut a = LieroViewport::new(
-            LieroRect {
+        assert_eq!(vp.rand, Rand::new(RAND_DEFAULT_SEED));
+        let mut a = Viewport::new(
+            Rect {
                 x1: 160,
                 y1: 0,
                 x2: 318,
@@ -1084,8 +1077,8 @@ mod tests {
         assert_eq!((a.x, c.x), (12, 1), "the copy changes alone");
     }
 
-    fn process(vp: &mut LieroViewport, kind: i32, worms: &[LieroViewWorm]) {
-        liero_viewport_process(vp, kind, worms)
+    fn process(vp: &mut Viewport, kind: ViewportKind, worms: &[ViewWorm]) {
+        process_viewport(vp, kind, worms)
     }
 
     #[test]
@@ -1093,61 +1086,58 @@ mod tests {
         let mut vp = viewport();
         let mut w = worm(0);
 
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (100 - 79, 80 - 79));
 
         // Steerables are followed instead of the worm.
         w.steerable_count = 2;
         w.steerable_sum_x = 2 * 300;
         w.steerable_sum_y = 2 * 200;
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (300 - 79, 200 - 79));
 
         // Before spawning, the camera scrolls 4 pixels a tick.
         w.visible = false;
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (300 - 79 - 4, 200 - 79 - 4));
 
         // Kept inside the level.
         w.visible = true;
         w.steerable_count = 0;
-        w.pos = LieroIVec2 {
-            x: -5 << 16,
-            y: 1000 << 16,
-        };
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        w.pos = crate::math::FVec2::new(crate::math::Fixed(-5 << 16), crate::math::Fixed(1000 << 16));
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (0, vp.max_y));
 
         // Dying shows the kill banner.
         w.health = 0;
         w.killed_timer = 150;
         vp.banner_y = 2;
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!(vp.banner_y, -8);
     }
 
     #[test]
     fn traces_are_clipped() {
         let mut screen = [0u8; 10 * 10];
-        let scr = LieroBitmap {
+        let scr = Bitmap {
             pixels: std::cell::Cell::from_mut(&mut screen[..]).as_slice_of_cells(),
             w: 10,
             h: 10,
             pitch: 10,
-            clip: LieroRect {
+            clip: Rect {
                 x1: 2,
                 y1: 3,
                 x2: 6,
                 y2: 7,
             },
         };
-        let t = |x: i32, y: i32| LieroAiTrace {
+        let t = |x: i32, y: i32| AiTrace {
             x: x << 16,
             y: y << 16,
             color: 9,
         };
         let traces = [t(0, 4), t(1, 3), t(2, 3), t(5, 6), t(6, 6), t(5, 7), t(4, 2)];
-        draw_traces(&scr, &traces, LieroIVec2 { x: 1, y: 0 });
+        draw_traces(&scr, &traces, IVec2 { x: 1, y: 0 });
         let set: Vec<(usize, usize)> = (0..100).filter(|&i| screen[i] == 9).map(|i| (i % 10, i / 10)).collect();
         assert_eq!(set, vec![(2, 3), (3, 3)]);
     }
@@ -1158,20 +1148,20 @@ mod tests {
         vp.x = 50;
         vp.y = 60;
         let worms = [worm(0), worm(1)];
-        process(&mut vp, LIERO_VIEWPORT_SPECTATOR, &worms);
+        process(&mut vp, ViewportKind::Spectator, &worms);
         assert_eq!((vp.x, vp.y), (50, 60));
 
         vp.shake = 3 << 16;
-        let mut expect = LieroRand::new(LIERO_RAND_DEFAULT_SEED);
+        let mut expect = Rand::new(RAND_DEFAULT_SEED);
         let dx = expect.below(6) as i32 - 3;
         let dy = expect.below(6) as i32 - 3;
-        process(&mut vp, LIERO_VIEWPORT_SPECTATOR, &worms);
+        process(&mut vp, ViewportKind::Spectator, &worms);
         assert_eq!((vp.x, vp.y), (50 + dx, 60 + dy));
 
         let mut worms = worms;
         worms[1].killed_timer = 150;
         vp.banner_y = 0;
-        process(&mut vp, LIERO_VIEWPORT_SPECTATOR, &worms);
+        process(&mut vp, ViewportKind::Spectator, &worms);
         assert_eq!(vp.banner_y, -8);
     }
 
@@ -1180,22 +1170,22 @@ mod tests {
     /// 200 + letter, worm sprites of colour 50 and an empty font.
     struct TestScene {
         level: Vec<u8>,
-        materials: [LieroMaterial; 256],
+        materials: [Material; 256],
         small: Vec<u8>,
         text: Vec<u8>,
         worm_sprites: Vec<u8>,
         font: Vec<FontChar>,
-        weapons: Vec<LieroViewWeapon<'static>>,
-        worms: Vec<LieroViewWorm<'static>>,
-        bonuses: Vec<LieroViewBonus>,
-        wobjects: Vec<LieroViewWObject>,
+        weapons: Vec<ViewWeapon<'static>>,
+        worms: Vec<ViewWorm<'static>>,
+        bonuses: Vec<ViewBonus>,
+        wobjects: Vec<ViewWObject>,
         screen: Vec<u8>,
     }
 
     impl TestScene {
         fn new() -> Self {
             let sprites = |w: usize, n: usize, base: u8| (0..n).flat_map(|i| vec![base + i as u8; w * w]).collect();
-            let weapon = |name: &'static [u8]| LieroViewWeapon {
+            let weapon = |name: &'static [u8]| ViewWeapon {
                 name,
                 ammo: 10,
                 loading_time: 0,
@@ -1204,12 +1194,12 @@ mod tests {
                 color_bullets: 0,
                 fire_cone: 0,
                 start_frame: -1,
-                shot_type: 0,
+                shot_type: Some(ShotType::Normal),
                 shadow: false,
             };
             TestScene {
                 level: vec![1; 504 * 350],
-                materials: [LieroMaterial::default(); 256],
+                materials: [Material::default(); 256],
                 small: sprites(7, 50, 100),
                 text: sprites(4, 26, 200),
                 worm_sprites: vec![50; 16 * 16 * 84],
@@ -1228,16 +1218,16 @@ mod tests {
             }
         }
 
-        fn draw(&mut self, kind: i32, f: impl FnOnce(&mut LieroScene)) {
-            fn set(data: &[u8], w: i32) -> LieroSpriteSet<'_> {
-                LieroSpriteSet {
+        fn draw(&mut self, kind: ViewportKind, f: impl FnOnce(&mut Scene)) {
+            fn set(data: &[u8], w: i32) -> Sprites<'_> {
+                Sprites {
                     data,
                     width: w,
                     height: w,
                     count: (data.len() / (w * w) as usize) as i32,
                 }
             }
-            let mut scene = LieroScene {
+            let mut scene = Scene {
                 worms: &self.worms,
                 weapons: &self.weapons,
                 bonuses: &self.bonuses,
@@ -1267,10 +1257,10 @@ mod tests {
                 killed_msg: b"",
                 committed_suicide_msg: b"",
                 cycles: 1,
-                game_mode: LIERO_GAME_KILL_EM_ALL,
-                holdazone: LieroHoldazone::default(),
+                game_mode: Some(GameMode::KillEmAll),
+                holdazone: Holdazone::default(),
                 zone_capture_time: 1,
-                last_killed_idx: -1,
+                last_killed_idx: None,
                 got_changed: false,
                 shadow: false,
                 names_on_bonuses: false,
@@ -1289,19 +1279,19 @@ mod tests {
             f(&mut scene);
 
             let mut vp = viewport();
-            let scr = LieroBitmap {
+            let scr = Bitmap {
                 pixels: std::cell::Cell::from_mut(&mut self.screen[..]).as_slice_of_cells(),
                 w: 320,
                 h: 200,
                 pitch: 320,
-                clip: LieroRect {
+                clip: Rect {
                     x1: 0,
                     y1: 0,
                     x2: 320,
                     y2: 200,
                 },
             };
-            liero_viewport_draw(&mut vp, kind, 0, &scene, &scr);
+            draw_viewport(&mut vp, kind, 0, &scene, &scr);
         }
 
         fn px(&self, x: i32, y: i32) -> u8 {
@@ -1312,18 +1302,18 @@ mod tests {
     #[test]
     fn bonus_names_are_drawn_in_small_letters() {
         let mut t = TestScene::new();
-        t.bonuses.push(LieroViewBonus {
+        t.bonuses.push(ViewBonus {
             x: 60 << 16,
             y: 60 << 16,
             timer: 100,
             frame: 0,
             weapon: 0,
         });
-        t.draw(LIERO_VIEWPORT_WORM, |_| {});
+        t.draw(ViewportKind::Worm, |_| {});
         assert_eq!(t.px(57, 57), 100);
         assert_eq!(t.px(56, 50), 1, "no name unless names on bonuses");
 
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.names_on_bonuses = true);
+        t.draw(ViewportKind::Worm, |s| s.names_on_bonuses = true);
         // "AB" is 8 pixels wide, centred on x = 60, 10 pixels above.
         assert_eq!(t.px(56, 50), 200);
         assert_eq!(t.px(60, 50), 201);
@@ -1332,20 +1322,17 @@ mod tests {
     #[test]
     fn weapon_34_shows_a_name_picked_by_its_slot() {
         let mut t = TestScene::new();
-        t.wobjects.push(LieroViewWObject {
-            pos: LieroIVec2 {
-                x: 60 << 16,
-                y: 60 << 16,
-            },
+        t.wobjects.push(ViewWObject {
+            pos: crate::math::FVec2::new(crate::math::Fixed(60 << 16), crate::math::Fixed(60 << 16)),
             weapon: 34,
             cur_frame: 0,
             slot: 41,
         });
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.names_on_bonuses = true);
+        t.draw(ViewportKind::Worm, |s| s.names_on_bonuses = true);
         // Slot 41 of 40 weapons names weapon 1, "C", drawn from x = 60 - 2.
         assert_eq!(t.px(58, 50), 202);
 
-        t.draw(LIERO_VIEWPORT_SPECTATOR, |s| {
+        t.draw(ViewportKind::Spectator, |s| {
             s.names_on_bonuses = true;
             s.rem_exp = true;
         });
@@ -1359,10 +1346,10 @@ mod tests {
         t.worms[0].ready = false;
         t.worms[0].pressed_change = true;
         t.worms[1].visible = false;
-        t.draw(LIERO_VIEWPORT_WORM, |_| {});
+        t.draw(ViewportKind::Worm, |_| {});
         assert_eq!((t.px(93, 75), t.px(94, 75)), (1, 1), "not allowed");
 
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.allow_viewing_spawn_point = true);
+        t.draw(ViewportKind::Worm, |s| s.allow_viewing_spawn_point = true);
         // Every other pixel of the sprite at (100 - 7, 80 - 5), by cycles 1.
         assert_eq!((t.px(93, 75), t.px(94, 75)), (50, 1));
         assert_eq!((t.px(93, 76), t.px(94, 76)), (1, 50));
@@ -1372,10 +1359,10 @@ mod tests {
     fn replays_show_name_colour_and_time() {
         let mut t = TestScene::new();
         t.worms[0].stats_x = 10;
-        t.draw(LIERO_VIEWPORT_WORM, |_| {});
+        t.draw(ViewportKind::Worm, |_| {});
         assert_eq!(t.px(10, 192), 0);
 
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.is_replay = true);
+        t.draw(ViewportKind::Worm, |s| s.is_replay = true);
         assert_eq!(t.px(10, 192), 7);
         assert_eq!(t.px(11, 193), 9);
         assert_eq!(t.px(17, 199), 7);
@@ -1395,7 +1382,7 @@ mod tests {
         ];
         t.worms[0].index = 0;
         t.worms[0].timer = 61;
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.game_mode = LIERO_GAME_GAME_OF_TAG);
+        t.draw(ViewportKind::Worm, |s| s.game_mode = Some(GameMode::GameOfTag));
         // Five 8-pixel characters from x = 106 at y = 200 - 39.
         assert_ne!(t.px(106 + 4 * 8 + 3, 161 + 3), 0);
         assert_eq!(t.px(106 + 5 * 8 + 3, 161 + 3), 0);

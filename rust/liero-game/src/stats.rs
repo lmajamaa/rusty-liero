@@ -2,20 +2,18 @@
 //! collects during a game, and the stats screen drawn from it after the game
 //! (`src/game/controller/stats_presenter.cpp`).
 //!
-//! A game owns a `LieroStats`, and its tick records each event, with worms
+//! A game owns a `Stats`, and its tick records each event, with worms
 //! and weapons as indexes and the worms' state copied into
-//! `LieroStatsWorm`s. The AI's copies of a game record nothing.
+//! `StatsWorm`s. The AI's copies of a game record nothing.
 //!
 //! The counters are C++ `int`s, which wrap around here rather than being
 //! undefined.
 
 use crate::cpp_sort;
-use crate::gfx::{
-    liero_gfx_blit_image, liero_gfx_draw_graph, liero_gfx_draw_heatmap, liero_gfx_draw_rounded_box, LieroBitmap,
-};
+use crate::gfx::{blit_image, draw_graph, draw_heatmap, draw_rounded_box, Bitmap};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
-use crate::tc::{tc_data, LieroTcData, SharedTc};
-use crate::text::{time_to_string, time_to_string_ex, LieroFont};
+use crate::tc::{tc_data, SharedTc, TcData};
+use crate::text::{time_to_string, time_to_string_ex, Font};
 
 const WEAPON_COUNT: usize = 40;
 const WORM_COLOUR_INDEXES: [u8; 2] = [0x58, 0x78];
@@ -82,7 +80,7 @@ impl Heatmap {
 
 /// One worm's results with one weapon.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroWeaponStats {
+pub struct WeaponStats {
     /// Damage the weapon's shots could have done.
     pub potential_hp: i32,
     /// Damage done by each shot's first hit on the other worm.
@@ -95,8 +93,8 @@ pub struct LieroWeaponStats {
     pub index: i32,
 }
 
-impl LieroWeaponStats {
-    fn combine(&mut self, o: &LieroWeaponStats) {
+impl WeaponStats {
+    fn combine(&mut self, o: &WeaponStats) {
         self.potential_hits = self.potential_hits.wrapping_add(o.potential_hits);
         self.potential_hp = self.potential_hp.wrapping_add(o.potential_hp);
         self.actual_hits = self.actual_hits.wrapping_add(o.actual_hits);
@@ -108,7 +106,7 @@ impl LieroWeaponStats {
 /// A worm's damage taken during a frame, and its health then, counting the
 /// lives left.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroWormFrameStats {
+pub struct WormFrameStats {
     pub damage: i32,
     pub total_hp: i32,
 }
@@ -117,7 +115,7 @@ pub struct LieroWormFrameStats {
 pub struct WormStats {
     /// The frames of each spawn and death.
     pub life_spans: Vec<[i32; 2]>,
-    pub weapons: [LieroWeaponStats; WEAPON_COUNT],
+    pub weapons: [WeaponStats; WEAPON_COUNT],
     pub damage: i32,
     pub damage_dealt: i32,
     pub self_damage: i32,
@@ -125,7 +123,7 @@ pub struct WormStats {
     pub presence: Heatmap,
     pub weapon_change_good: i32,
     pub weapon_change_bad: i32,
-    pub frame_stats: Vec<LieroWormFrameStats>,
+    pub frame_stats: Vec<WormFrameStats>,
     /// The frame of the last spawn, or -1 while dead.
     pub spawn_time: i32,
     pub index: i32,
@@ -137,7 +135,7 @@ pub struct WormStats {
 
 impl WormStats {
     fn new(index: i32) -> Self {
-        let mut weapons = [LieroWeaponStats::default(); WEAPON_COUNT];
+        let mut weapons = [WeaponStats::default(); WEAPON_COUNT];
         for (i, w) in weapons.iter_mut().enumerate() {
             w.index = i as i32;
         }
@@ -171,7 +169,7 @@ impl WormStats {
 
 /// `NormalStatsRecorder`'s data.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LieroStats {
+pub struct Stats {
     pub frame: i32,
     pub worms: [WormStats; 2],
     /// Clock ticks at the start of the frame, and summed over frames. Only the
@@ -182,9 +180,9 @@ pub struct LieroStats {
     pub presence: Heatmap,
 }
 
-impl Default for LieroStats {
+impl Default for Stats {
     fn default() -> Self {
-        LieroStats {
+        Stats {
             frame: 0,
             worms: [WormStats::new(0), WormStats::new(1)],
             frame_start: 0,
@@ -197,7 +195,7 @@ impl Default for LieroStats {
 
 /// What the recorder reads from a worm, copied from C++'s `Worm`.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroStatsWorm {
+pub struct StatsWorm {
     pub index: i32,
     /// `ftoi(pos)`.
     pub x: i32,
@@ -218,8 +216,8 @@ pub struct LieroStatsWorm {
     pub loading_left: [i32; 5],
 }
 
-impl LieroStats {
-    fn weapon(&mut self, by: i32, weapon: i32) -> Option<&mut LieroWeaponStats> {
+impl Stats {
+    fn weapon(&mut self, by: i32, weapon: i32) -> Option<&mut WeaponStats> {
         if by < 0 || weapon < 0 {
             return None;
         }
@@ -292,7 +290,7 @@ impl LieroStats {
     }
 
     /// Starts a frame. `worms` are the game's worms, in order.
-    pub fn pre_tick(&mut self, ticks: u64, worms: &[LieroStatsWorm]) {
+    pub fn pre_tick(&mut self, ticks: u64, worms: &[StatsWorm]) {
         self.frame_start = ticks;
         for w in &mut self.worms {
             let worm = &worms[w.index as usize];
@@ -301,7 +299,7 @@ impl LieroStats {
             } else {
                 worm.max_health
             };
-            w.frame_stats.push(LieroWormFrameStats {
+            w.frame_stats.push(WormFrameStats {
                 damage: 0,
                 total_hp: worm.lives.wrapping_mul(worm.max_health).wrapping_add(h),
             });
@@ -310,7 +308,7 @@ impl LieroStats {
 
     /// Ends a frame: where the worms are, and whether each let a weapon
     /// reload while holding a loaded one it could have changed from.
-    pub fn tick(&mut self, ticks: u64, worms: &[LieroStatsWorm]) {
+    pub fn tick(&mut self, ticks: u64, worms: &[StatsWorm]) {
         self.process_time_total = self
             .process_time_total
             .wrapping_add(ticks.wrapping_sub(self.frame_start));
@@ -336,7 +334,7 @@ impl LieroStats {
     }
 
     /// Ends the game: closes the open lives and keeps each worm's result.
-    pub fn finish(&mut self, worms: &[LieroStatsWorm]) {
+    pub fn finish(&mut self, worms: &[StatsWorm]) {
         let frame = self.frame;
         for (w, gw) in self.worms.iter_mut().zip(worms) {
             if w.spawn_time >= 0 {
@@ -377,7 +375,7 @@ fn stretch(src: &[f64], len: usize) -> Vec<f64> {
             i += 1;
             cum -= len;
         }
-        *out = if c != 0 { sum / c as f64 } else { 0.0 };
+        *out = if c != 0 { sum / f64::from(c) } else { 0.0 };
     }
     v
 }
@@ -425,10 +423,8 @@ fn normalize(v: &mut [f64], limit: f64) {
     }
 }
 
-fn sort_weapon_stats(v: &mut [LieroWeaponStats]) {
-    cpp_sort::sort(v, &|a: &LieroWeaponStats, b: &LieroWeaponStats| {
-        a.actual_hp > b.actual_hp
-    });
+fn sort_weapon_stats(v: &mut [WeaponStats]) {
+    cpp_sort::sort(v, &|a: &WeaponStats, b: &WeaponStats| a.actual_hp > b.actual_hp);
 }
 
 /// `percent` from the presenter: "12.34%", or nothing when `den` is 0.
@@ -436,7 +432,7 @@ fn percent(nom: i32, den: i32) -> String {
     if den == 0 {
         String::new()
     } else {
-        format!("{:.2}%", nom as f64 * 100.0 / den as f64)
+        format!("{:.2}%", f64::from(nom) * 100.0 / f64::from(den))
     }
 }
 
@@ -447,20 +443,20 @@ fn time_frames(frames: i32) -> Vec<u8> {
 
 /// What the stats screen shows, worked out once: `StatsScreen`'s
 /// constructor.
-pub struct LieroStatsScreen {
-    combined: Vec<LieroWeaponStats>,
-    weapons: [Vec<LieroWeaponStats>; 2],
+pub struct StatsScreen {
+    combined: Vec<WeaponStats>,
+    weapons: [Vec<WeaponStats>; 2],
     worm_damages: [Vec<f64>; 2],
     total_hp_diff: Vec<f64>,
 }
 
-impl LieroStatsScreen {
-    pub fn new(stats: &LieroStats, render_res_x: i32) -> Self {
+impl StatsScreen {
+    pub fn new(stats: &Stats, render_res_x: i32) -> Self {
         let pane_width = render_res_x - 20;
         let graph_width = (pane_width - 20).max(0) as usize;
 
         let worm_damages = [0, 1].map(|i| {
-            let damage: Vec<f64> = stats.worms[i].frame_stats.iter().map(|f| f.damage as f64).collect();
+            let damage: Vec<f64> = stats.worms[i].frame_stats.iter().map(|f| f64::from(f.damage)).collect();
             let mut d = stretch(&damage, graph_width);
             cumulative(&mut d);
             normalize(&mut d, 50.0);
@@ -471,12 +467,12 @@ impl LieroStatsScreen {
         let diff: Vec<f64> = a
             .iter()
             .zip(b)
-            .map(|(a, b)| a.total_hp as f64 - b.total_hp as f64)
+            .map(|(a, b)| f64::from(a.total_hp) - f64::from(b.total_hp))
             .collect();
         let mut total_hp_diff = stretch(&diff, graph_width);
         normalize(&mut total_hp_diff, 100.0);
 
-        let mut combined: Vec<LieroWeaponStats> = (0..WEAPON_COUNT)
+        let mut combined: Vec<WeaponStats> = (0..WEAPON_COUNT)
             .map(|i| {
                 let mut ws = stats.worms[0].weapons[i];
                 ws.combine(&stats.worms[1].weapons[i]);
@@ -489,7 +485,7 @@ impl LieroStatsScreen {
             sort_weapon_stats(w);
         }
 
-        LieroStatsScreen {
+        StatsScreen {
             combined,
             weapons,
             worm_damages,
@@ -500,7 +496,7 @@ impl LieroStatsScreen {
 
 /// A sprite in the TC, `Sprite` in C++.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroSprite<'a> {
+pub struct Sprite<'a> {
     pub mem: &'a [u8],
     pub width: i32,
     pub height: i32,
@@ -509,10 +505,10 @@ pub struct LieroSprite<'a> {
 
 /// What the stats screen draws with, besides the stats.
 #[derive(Clone, Copy)]
-pub struct LieroStatsScene<'a> {
-    pub font: LieroFont<'a>,
+pub struct StatsScene<'a> {
+    pub font: Font<'a>,
     /// Each worm facing the middle: `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
-    pub worm_sprites: [LieroSprite<'a>; 2],
+    pub worm_sprites: [Sprite<'a>; 2],
     pub names: [&'a [u8]; 2],
     pub game_mode: i32,
     pub game_mode_name: &'a [u8],
@@ -537,9 +533,9 @@ const PANE_X: i32 = 10;
 /// `StatsRenderer`: lays the screen out from the top down, skipping what is
 /// outside the screen.
 struct Layout<'a> {
-    scr: &'a LieroBitmap<'a>,
-    scene: &'a LieroStatsScene<'a>,
-    stats: &'a LieroStats,
+    scr: &'a Bitmap<'a>,
+    scene: &'a StatsScene<'a>,
+    stats: &'a Stats,
     pane_width: i32,
     offs_x: i32,
     y: i32,
@@ -562,7 +558,7 @@ impl Layout<'_> {
 
     fn worm_sprite(&self, i: usize, x: i32, y: i32) {
         let s = self.scene.worm_sprites[i];
-        liero_gfx_blit_image(self.scr, s.mem, x, y, s.width, s.height, s.pitch);
+        blit_image(self.scr, s.mem, x, y, s.width, s.height, s.pitch);
     }
 
     fn name(&self, i: usize) -> &[u8] {
@@ -574,7 +570,7 @@ impl Layout<'_> {
         self.offs_x = n.wrapping_mul(res_x).wrapping_add(left_x);
         if self.offs_x >= -res_x && self.offs_x < res_x {
             self.y = top_y.wrapping_add(10);
-            liero_gfx_draw_rounded_box(self.scr, self.offs_x + PANE_X, self.y, 0, 2000, self.pane_width);
+            draw_rounded_box(self.scr, self.offs_x + PANE_X, self.y, 0, 2000, self.pane_width);
             self.y += 10;
             p(self);
         }
@@ -657,7 +653,7 @@ impl Layout<'_> {
         self.y += 5;
     }
 
-    fn weapon_stats(&mut self, list: &[LieroWeaponStats]) {
+    fn weapon_stats(&mut self, list: &[WeaponStats]) {
         for ws in list.iter().filter(|ws| ws.total_hp > 0) {
             let name = match usize::try_from(ws.index) {
                 Ok(i) if i < self.scene.weapons.len() => &self.scene.weapons[i].name[..],
@@ -690,7 +686,7 @@ impl Layout<'_> {
     fn graph(&mut self, data: &[f64], height: i32, color: u8, neg_color: u8, balanced: bool) {
         self.y += 2;
         self.hblock(height, |r| {
-            liero_gfx_draw_graph(r.scr, data, height, 20 + r.offs_x, r.y, color, neg_color, balanced);
+            draw_graph(r.scr, data, height, 20 + r.offs_x, r.y, color, neg_color, balanced);
         });
         self.y += 7;
     }
@@ -699,17 +695,17 @@ impl Layout<'_> {
         self.y += 2;
         self.hblock(hm.height, |r| {
             let x = PANE_X + r.pane_width / 2 - hm.width / 2 + r.offs_x;
-            liero_gfx_draw_heatmap(r.scr, x, r.y, &hm.map, hm.width, hm.height);
+            draw_heatmap(r.scr, x, r.y, &hm.map, hm.width, hm.height);
         });
         self.y += 7;
     }
 }
 
-impl LieroStatsScreen {
+impl StatsScreen {
     /// Draws the overall pane in the middle and each worm's pane beside it,
     /// `pane` screens to the right (-1 to 1, or between while moving) and
     /// scrolled `offset` pixels: `StatsScreen::draw`.
-    pub fn draw(&self, stats: &LieroStats, scene: &LieroStatsScene, scr: &LieroBitmap, pane: f64, offset: f64) {
+    pub fn draw(&self, stats: &Stats, scene: &StatsScene, scr: &Bitmap, pane: f64, offset: f64) {
         let mut r = Layout {
             scr,
             scene,
@@ -718,7 +714,7 @@ impl LieroStatsScreen {
             offs_x: 0,
             y: 0,
         };
-        let offs_x = (pane * -(scene.render_res_x as f64)).floor() as i32;
+        let offs_x = (pane * -f64::from(scene.render_res_x)).floor() as i32;
         let offs_y = offset as i32;
 
         r.pane(0, offs_x, offs_y, |r| {
@@ -786,40 +782,6 @@ impl LieroStatsScreen {
     }
 }
 
-pub fn liero_stats_damage_potential(s: &mut LieroStats, by: i32, weapon: i32, hp: i32) {
-    s.damage_potential(by, weapon, hp);
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn liero_stats_damage_dealt(
-    s: &mut LieroStats,
-    by: i32,
-    weapon: i32,
-    to: i32,
-    x: i32,
-    y: i32,
-    hp: i32,
-    has_hit: bool,
-) {
-    s.damage_dealt(by, weapon, to, x, y, hp, has_hit);
-}
-
-pub fn liero_stats_shot(s: &mut LieroStats, by: i32, weapon: i32) {
-    s.shot(by, weapon);
-}
-
-pub fn liero_stats_hit(s: &mut LieroStats, by: i32, weapon: i32, to: i32) {
-    s.hit(by, weapon, to);
-}
-
-pub fn liero_stats_after_spawn(s: &mut LieroStats, worm: i32) {
-    s.after_spawn(worm);
-}
-
-pub fn liero_stats_after_death(s: &mut LieroStats, worm: i32) {
-    s.after_death(worm);
-}
-
 const SCANCODE_RETURN: u32 = 40;
 const SCANCODE_ESCAPE: u32 = 41;
 const SCANCODE_RIGHT: u32 = 79;
@@ -828,7 +790,7 @@ const SCANCODE_DOWN: u32 = 81;
 const SCANCODE_UP: u32 = 82;
 
 /// What the stats screen shows of a game besides its stats: the first two
-/// worms' names and the game mode (`LIERO_GAME_*`).
+/// worms' names and the game mode (numbered as `GameMode`).
 #[derive(Clone, Debug)]
 pub(crate) struct StatsGame {
     pub names: [Vec<u8>; 2],
@@ -836,30 +798,30 @@ pub(crate) struct StatsGame {
 }
 
 /// The game modes' names on the stats screen (`Texts::gameModes`), by
-/// `LIERO_GAME_*`.
+/// Numbered as `GameMode`.
 const GAME_MODE_NAMES: [&str; 4] = ["Kill'em All", "Game of Tag", "Holdazone", "Scales of Justice"];
 
 /// What the stats screen draws `g` with, from `tc`, on a screen of
 /// `render_res_x` x `render_res_y` (`statsScene`).
 pub(crate) fn stats_scene<'a>(
-    tc: &'a LieroTcData,
+    tc: &'a TcData,
     g: &'a StatsGame,
     render_res_x: i32,
     render_res_y: i32,
-) -> LieroStatsScene<'a> {
+) -> StatsScene<'a> {
     let sprites = &tc.worm_sprites;
     // `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
     let sprite = |i: i32| {
         let frame = 2 + (if i == 0 { 1 } else { 0 }) * 7 * 3 + i * 2 * 7 * 3;
-        LieroSprite {
+        Sprite {
             mem: sprites.sprite(frame as usize),
             width: sprites.width as i32,
             height: sprites.height as i32,
             pitch: sprites.width as i32,
         }
     };
-    LieroStatsScene {
-        font: LieroFont { chars: &tc.model.font },
+    StatsScene {
+        font: Font { chars: &tc.model.font },
         worm_sprites: [sprite(0), sprite(1)],
         names: [&g.names[0], &g.names[1]],
         game_mode: g.game_mode,
@@ -874,8 +836,8 @@ pub(crate) fn stats_scene<'a>(
 /// The stats screen after a game, over its last frame: Up and Down scroll,
 /// Left and Right move between the panes, Enter or Escape closes it.
 struct StatsPresenter {
-    stats: LieroStats,
-    screen: LieroStatsScreen,
+    stats: Stats,
+    screen: StatsScreen,
     tc: SharedTc,
     game: StatsGame,
     render_res: (i32, i32),
@@ -889,7 +851,7 @@ struct StatsPresenter {
 }
 
 impl StatsPresenter {
-    fn draw(&mut self, scr: &LieroBitmap) {
+    fn draw(&mut self, scr: &Bitmap) {
         let tc = tc_data(&self.tc);
         let scene = stats_scene(&tc, &self.game, self.render_res.0, self.render_res.1);
         self.screen.draw(&self.stats, &scene, scr, self.pane, self.offset);
@@ -897,7 +859,7 @@ impl StatsPresenter {
 }
 
 /// Copies a bitmap's `w` x `h` pixels into or out of `buf`.
-fn copy_rows(scr: &LieroBitmap, buf: &mut Vec<u8>, save: bool) {
+fn copy_rows(scr: &Bitmap, buf: &mut Vec<u8>, save: bool) {
     let (w, h) = (scr.w.max(0) as usize, scr.h.max(0) as usize);
     buf.resize(w * h, 0);
     for y in 0..h {
@@ -913,7 +875,7 @@ fn copy_rows(scr: &LieroBitmap, buf: &mut Vec<u8>, save: bool) {
 }
 
 impl Screen for StatsPresenter {
-    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::App, host: &Host) -> Tick {
         if self.shown {
             host.process(app);
             if app.test_key(SCANCODE_DOWN) {
@@ -950,10 +912,10 @@ impl Screen for StatsPresenter {
 
 /// The stats screen for a copy of `stats`, drawn with `tc` on a screen of
 /// `render_res_x` x `render_res_y`, over what the screen shows now.
-pub(crate) fn liero_stats_presenter_screen(
-    app: &mut crate::app::LieroApp,
+pub(crate) fn stats_presenter_screen(
+    app: &mut crate::app::App,
     host: &Host,
-    stats: &LieroStats,
+    stats: &Stats,
     tc: SharedTc,
     game: StatsGame,
     render_res_x: i32,
@@ -966,7 +928,7 @@ pub(crate) fn liero_stats_presenter_screen(
     }
     Box::new(StatsPresenter {
         stats: stats.clone(),
-        screen: LieroStatsScreen::new(stats, render_res_x),
+        screen: StatsScreen::new(stats, render_res_x),
         tc,
         game,
         render_res: (render_res_x, render_res_y),
@@ -992,7 +954,7 @@ mod tests {
         let mut h = Fnv::new();
         let mut add = |s: String| {
             for b in s.bytes() {
-                h.add(b as u32);
+                h.add(u32::from(b));
             }
             h.add(0xffff_ffff);
         };
@@ -1055,8 +1017,8 @@ mod tests {
 
     #[test]
     fn events() {
-        let mut s = LieroStats::default();
-        let worm = |index, visible| LieroStatsWorm {
+        let mut s = Stats::default();
+        let worm = |index, visible| StatsWorm {
             index,
             visible,
             health: 80,
@@ -1128,12 +1090,12 @@ mod tests {
 
     #[test]
     fn screen_sorts_by_first_hit_damage() {
-        let mut s = LieroStats::default();
+        let mut s = Stats::default();
         s.worms[0].weapons[5].actual_hp = 10;
         s.worms[1].weapons[7].actual_hp = 30;
         s.worms[1].weapons[5].actual_hp = 15;
         s.worms[1].weapons[5].total_hp = 40;
-        let screen = LieroStatsScreen::new(&s, 320);
+        let screen = StatsScreen::new(&s, 320);
         assert_eq!(screen.combined[0].index, 7);
         assert_eq!(screen.combined[1].index, 5);
         assert_eq!(screen.combined[1].actual_hp, 25);

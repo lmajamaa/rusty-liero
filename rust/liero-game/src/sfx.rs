@@ -4,7 +4,7 @@
 //! The mixer has 8 channels and makes mono signed 16-bit samples. A sound is
 //! added at a frame time with an id (any pointer, only compared) and plays
 //! one sample per frame from that time, at a 4.12 fixed-point volume, until
-//! it ends or is stopped; a looping sound starts over. `liero_mixer_mix`
+//! it ends or is stopped; a looping sound starts over. `Mixer::mix`
 //! fills a buffer and advances the mixer's time; the web shell's audio node
 //! calls it (`web.rs`).
 //!
@@ -13,7 +13,7 @@
 //! audio node runs on the page's thread, so here the two never overlap.
 //!
 //! Quirks kept from the C mixer:
-//! - Stopping a channel doesn't clear its id, so `liero_mixer_is_playing`
+//! - Stopping a channel doesn't clear its id, so `Mixer::is_playing`
 //!   keeps finding a stopped sound until its channel is reused. (A looping
 //!   weapon sound that was stopped isn't restarted until then.)
 //! - Ids are looked up by the first channel with that id, active or not,
@@ -28,10 +28,10 @@
 use std::ffi::c_void;
 
 /// Number of channels; more sounds than this at once aren't played.
-pub const LIERO_MIXER_CHANNELS: usize = 8;
-/// Flags for `liero_mixer_add`.
-pub const LIERO_SOUND_NORMAL: u32 = 0;
-pub const LIERO_SOUND_LOOP: u32 = 1;
+pub const MIXER_CHANNELS: usize = 8;
+/// A channel's flags: a sound played once, or looping.
+const NORMAL: u32 = 0;
+const LOOP: u32 = 1;
 
 const INACTIVE: u32 = 0xffff_ffff;
 
@@ -43,10 +43,10 @@ pub fn samples_from_tc(data: &[u8], out: &mut [i16]) {
     let Some((&first, rest)) = data.split_first() else {
         return;
     };
-    let mut prev = (first as i8) as i32 * 30;
+    let mut prev = i32::from(first as i8) * 30;
     out[0] = prev as i16;
     for (j, &b) in rest.iter().enumerate() {
-        let cur = (b as i8) as i32 * 30;
+        let cur = i32::from(b as i8) * 30;
         out[1 + 2 * j] = ((prev + cur) / 2) as i16;
         out[2 + 2 * j] = cur as i16;
         prev = cur;
@@ -95,12 +95,12 @@ impl Channel {
         let scaler = (self.volumes & 0x1fff) as i32;
         for o in out.iter_mut().skip(rel_begin) {
             // An empty sound has nothing to read; C read past its end.
-            let s = sound.get((self.sound_pos >> 32) as usize).copied().unwrap_or(0) as i32;
-            let mixed = (*o as i32 + ((s * scaler) >> 12)).clamp(-32768, 32767);
+            let s = i32::from(sound.get((self.sound_pos >> 32) as usize).copied().unwrap_or(0));
+            let mixed = (i32::from(*o) + ((s * scaler) >> 12)).clamp(-32768, 32767);
             *o = mixed as i16;
             self.sound_pos = self.sound_pos.wrapping_add(self.stride);
             if (self.sound_pos >> 32) as u32 >= len {
-                if self.flags & LIERO_SOUND_LOOP != 0 {
+                if self.flags & LOOP != 0 {
                     self.sound_pos = 0;
                 } else {
                     return false;
@@ -113,12 +113,12 @@ impl Channel {
 
 /// The mixer's channels and time. Opaque to C++.
 #[derive(Clone, Debug, Default)]
-pub struct LieroMixer {
-    channels: [Channel; LIERO_MIXER_CHANNELS],
+pub struct Mixer {
+    channels: [Channel; MIXER_CHANNELS],
     base_frame: i32,
 }
 
-impl LieroMixer {
+impl Mixer {
     pub fn now(&self) -> i32 {
         self.base_frame
     }
@@ -133,12 +133,12 @@ impl LieroMixer {
     /// # Safety
     /// `sound` must point to `len` samples (or be anything with `len` 0)
     /// that stay alive while the channel plays them.
-    pub unsafe fn add(&mut self, sound: *const i16, len: usize, time: u32, id: usize, flags: u32) -> bool {
+    pub unsafe fn add(&mut self, sound: *const i16, len: usize, time: u32, id: usize, looping: bool) -> bool {
         match self.channels.iter().position(|c| c.flags == INACTIVE) {
             Some(i) => {
                 self.channels[i] = Channel {
                     id,
-                    flags,
+                    flags: if looping { LOOP } else { NORMAL },
                     sound,
                     len,
                     pos: time,
@@ -197,13 +197,13 @@ impl LieroMixer {
 /// Where a game's sounds go: a mixer, or none (`SoundPlayer`), and a
 /// function told of each sound started (the hash run's app driver).
 #[derive(Clone, Copy, Debug)]
-pub struct LieroSoundOut {
-    pub mixer: *mut LieroMixer,
+pub struct SoundOut {
+    pub mixer: *mut Mixer,
     pub report: Option<unsafe fn(sound: i32)>,
 }
 
-impl LieroSoundOut {
-    pub const NONE: LieroSoundOut = LieroSoundOut {
+impl SoundOut {
+    pub const NONE: SoundOut = SoundOut {
         mixer: std::ptr::null_mut(),
         report: None,
     };
@@ -213,7 +213,7 @@ impl LieroSoundOut {
     ///
     /// # Safety
     /// The mixer, if any, is valid, and `sound` is one of `tc`'s.
-    pub unsafe fn play(&self, tc: &crate::tc::LieroTcData, sound: i32, id: *mut c_void, loops: i32) {
+    pub unsafe fn play(&self, tc: &crate::tc::TcData, sound: i32, id: *mut c_void, loops: i32) {
         unsafe {
             if let Some(report) = self.report {
                 report(sound);
@@ -221,17 +221,7 @@ impl LieroSoundOut {
             if let Some(m) = self.mixer.as_mut() {
                 let s = &tc.samples[sound as usize];
                 let now = m.now() as u32;
-                m.add(
-                    s.as_ptr(),
-                    s.len(),
-                    now,
-                    id as usize,
-                    if loops != 0 {
-                        LIERO_SOUND_LOOP
-                    } else {
-                        LIERO_SOUND_NORMAL
-                    },
-                );
+                m.add(s.as_ptr(), s.len(), now, id as usize, loops != 0);
             }
         }
     }
@@ -261,8 +251,8 @@ mod tests {
         s.to_vec()
     }
 
-    fn add(m: &mut LieroMixer, s: &[i16], time: u32, id: usize, flags: u32) -> bool {
-        unsafe { m.add(s.as_ptr(), s.len(), time, id, flags) }
+    fn add(m: &mut Mixer, s: &[i16], time: u32, id: usize, looping: bool) -> bool {
+        unsafe { m.add(s.as_ptr(), s.len(), time, id, looping) }
     }
 
     fn from_tc(data: &[u8]) -> Vec<i16> {
@@ -271,7 +261,7 @@ mod tests {
         out
     }
 
-    fn mix(m: &mut LieroMixer, n: usize) -> Vec<i16> {
+    fn mix(m: &mut Mixer, n: usize) -> Vec<i16> {
         let mut out = vec![1234; n];
         m.mix(&mut out);
         out
@@ -290,8 +280,8 @@ mod tests {
     #[test]
     fn plays_once_at_its_time() {
         let s = sound(&[100, 200, 300]);
-        let mut m = LieroMixer::default();
-        assert!(add(&mut m, &s, 2, 7, LIERO_SOUND_NORMAL));
+        let mut m = Mixer::default();
+        assert!(add(&mut m, &s, 2, 7, false));
         assert!(m.is_playing(7));
         assert_eq!(mix(&mut m, 4), vec![0, 0, 100, 200]);
         assert_eq!(m.now(), 4);
@@ -303,17 +293,17 @@ mod tests {
     #[test]
     fn past_start_plays_from_the_beginning() {
         let s = sound(&[1, 2]);
-        let mut m = LieroMixer::default();
+        let mut m = Mixer::default();
         mix(&mut m, 10);
-        add(&mut m, &s, 3, 1, 0);
+        add(&mut m, &s, 3, 1, false);
         assert_eq!(mix(&mut m, 3), vec![1, 2, 0]);
     }
 
     #[test]
     fn far_future_waits() {
         let s = sound(&[9]);
-        let mut m = LieroMixer::default();
-        add(&mut m, &s, 5, 1, 0);
+        let mut m = Mixer::default();
+        add(&mut m, &s, 5, 1, false);
         assert_eq!(mix(&mut m, 5), vec![0; 5]);
         assert_eq!(mix(&mut m, 2), vec![9, 0]);
     }
@@ -321,8 +311,8 @@ mod tests {
     #[test]
     fn loops() {
         let s = sound(&[1, 2, 3]);
-        let mut m = LieroMixer::default();
-        add(&mut m, &s, 0, 1, LIERO_SOUND_LOOP);
+        let mut m = Mixer::default();
+        add(&mut m, &s, 0, 1, true);
         assert_eq!(mix(&mut m, 7), vec![1, 2, 3, 1, 2, 3, 1]);
         assert_eq!(mix(&mut m, 2), vec![2, 3]);
         m.stop(1);
@@ -332,9 +322,9 @@ mod tests {
     #[test]
     fn sound_out_stops_a_loop() {
         let s = sound(&[1, 2, 3]);
-        let mut m = LieroMixer::default();
-        add(&mut m, &s, 0, 1, LIERO_SOUND_LOOP);
-        let out = LieroSoundOut {
+        let mut m = Mixer::default();
+        add(&mut m, &s, 0, 1, true);
+        let out = SoundOut {
             mixer: &mut m,
             report: None,
         };
@@ -343,19 +333,19 @@ mod tests {
             out.stop(std::ptr::dangling_mut::<c_void>());
         }
         assert_eq!(mix(&mut m, 2), vec![0, 0]);
-        unsafe { LieroSoundOut::NONE.stop(std::ptr::dangling_mut::<c_void>()) };
-        assert!(unsafe { !LieroSoundOut::NONE.playing(std::ptr::dangling_mut::<c_void>()) });
+        unsafe { SoundOut::NONE.stop(std::ptr::dangling_mut::<c_void>()) };
+        assert!(unsafe { !SoundOut::NONE.playing(std::ptr::dangling_mut::<c_void>()) });
     }
 
     #[test]
     fn stopped_id_stays_until_reused() {
         let s = sound(&[1; 100]);
-        let mut m = LieroMixer::default();
-        add(&mut m, &s, 0, 5, LIERO_SOUND_LOOP);
+        let mut m = Mixer::default();
+        add(&mut m, &s, 0, 5, true);
         m.stop(5);
         mix(&mut m, 10);
         assert!(m.is_playing(5));
-        add(&mut m, &s, 0, 6, 0);
+        add(&mut m, &s, 0, 6, false);
         assert!(!m.is_playing(5));
         assert!(m.is_playing(6));
     }
@@ -363,14 +353,14 @@ mod tests {
     #[test]
     fn null_id_matches_unused_channels() {
         let s = sound(&[1; 4]);
-        let mut m = LieroMixer::default();
+        let mut m = Mixer::default();
         assert!(m.is_playing(0));
         for id in 1..=8 {
-            add(&mut m, &s, 0, id, 0);
+            add(&mut m, &s, 0, id, false);
         }
         assert!(!m.is_playing(0));
         // Every channel is busy.
-        assert!(!add(&mut m, &s, 0, 9, 0));
+        assert!(!add(&mut m, &s, 0, 9, false));
         mix(&mut m, 4);
         assert!(m.is_playing(0));
         assert!(!m.is_playing(1));
@@ -380,9 +370,9 @@ mod tests {
     fn repeated_id_takes_another_channel() {
         let a = sound(&[10; 2]);
         let b = sound(&[1; 4]);
-        let mut m = LieroMixer::default();
-        add(&mut m, &a, 0, 3, 0);
-        add(&mut m, &b, 0, 3, 0);
+        let mut m = Mixer::default();
+        add(&mut m, &a, 0, 3, false);
+        add(&mut m, &b, 0, 3, false);
         // Volume and stop act on the first.
         m.set_volume(3, 0.5);
         assert_eq!(mix(&mut m, 4), vec![6, 6, 1, 1]);
@@ -391,7 +381,7 @@ mod tests {
     #[test]
     fn volume() {
         let s = sound(&[1000, -1000, 32767, -32768]);
-        let mut m = LieroMixer::default();
+        let mut m = Mixer::default();
         for (v, want) in [
             (1.0, [1000, -1000, 32767, -32768]),
             (0.5, [500, -500, 16383, -16384]),
@@ -405,7 +395,7 @@ mod tests {
             (2.5, [500, -500, 16383, -16384]),
         ] {
             let now = m.now() as u32;
-            add(&mut m, &s, now, 1, 0);
+            add(&mut m, &s, now, 1, false);
             m.set_volume(1, v);
             assert_eq!(mix(&mut m, 4), want, "volume {v}");
         }
@@ -414,10 +404,10 @@ mod tests {
     #[test]
     fn clips() {
         let s = sound(&[30000, -30000, 20000]);
-        let mut m = LieroMixer::default();
-        add(&mut m, &s, 0, 1, 0);
-        add(&mut m, &s, 0, 2, 0);
-        add(&mut m, &s, 2, 3, 0);
+        let mut m = Mixer::default();
+        add(&mut m, &s, 0, 1, false);
+        add(&mut m, &s, 0, 2, false);
+        add(&mut m, &s, 2, 3, false);
         assert_eq!(mix(&mut m, 5), vec![32767, -32768, 32767, -30000, 20000]);
     }
 
@@ -425,9 +415,9 @@ mod tests {
     fn empty_sounds() {
         // An empty sound plays one silent frame. (C read a sample past its
         // end, and crashed on a TC sound that failed to load.)
-        let mut m = LieroMixer::default();
-        add(&mut m, &[], 0, 1, 0);
-        assert!(unsafe { m.add(std::ptr::null(), 0, 0, 2, LIERO_SOUND_LOOP) });
+        let mut m = Mixer::default();
+        add(&mut m, &[], 0, 1, false);
+        assert!(unsafe { m.add(std::ptr::null(), 0, 0, 2, true) });
         assert_eq!(mix(&mut m, 2), vec![0, 0]);
         assert!(!m.is_playing(1));
         // Looping, it keeps its channel.
@@ -437,11 +427,11 @@ mod tests {
     #[test]
     fn time_wraps() {
         let s = sound(&[7, 8]);
-        let mut m = LieroMixer {
+        let mut m = Mixer {
             base_frame: i32::MAX - 1,
             ..Default::default()
         };
-        add(&mut m, &s, (i32::MAX as u32) + 1, 1, 0);
+        add(&mut m, &s, (i32::MAX as u32) + 1, 1, false);
         assert_eq!(mix(&mut m, 4), vec![0, 0, 7, 8]);
         assert_eq!(m.now(), i32::MIN + 2);
     }

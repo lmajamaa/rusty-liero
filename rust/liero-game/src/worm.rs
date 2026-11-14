@@ -4,9 +4,10 @@
 //! The tick (`Worm::process`) is in `world/worm.rs`, where it can reach the
 //! rest of the game.
 
-use crate::math::{ftoi, LieroIVec2};
-use crate::object::LieroNinjarope;
-use crate::weapon::{LieroWormWeapon, LIERO_SELECTABLE_WEAPONS};
+use crate::math::FVec2;
+use crate::math::{ftoi, IVec2};
+use crate::object::Ninjarope;
+use crate::weapon::{WormWeapon, SELECTABLE_WEAPONS};
 
 /// Indices into `reacts`: how much terrain pushes the worm in each
 /// direction (`Worm::RFDown` and so on). RF_UP is ground below the worm.
@@ -15,34 +16,63 @@ pub(crate) const RF_LEFT: usize = 1;
 pub(crate) const RF_UP: usize = 2;
 pub(crate) const RF_RIGHT: usize = 3;
 
-/// Bits of `control_states` (`Worm::Control`).
-pub const LIERO_CONTROL_UP: u32 = 0;
-pub const LIERO_CONTROL_DOWN: u32 = 1;
-pub const LIERO_CONTROL_LEFT: u32 = 2;
-pub const LIERO_CONTROL_RIGHT: u32 = 3;
-pub const LIERO_CONTROL_FIRE: u32 = 4;
-pub const LIERO_CONTROL_CHANGE: u32 = 5;
-pub const LIERO_CONTROL_JUMP: u32 = 6;
+/// A worm's controls (`Worm::Control`), numbered by their bits in
+/// `control_states`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Control {
+    Up = 0,
+    Down = 1,
+    Left = 2,
+    Right = 3,
+    Fire = 4,
+    Change = 5,
+    Jump = 6,
+}
 
-/// `Settings::gameMode`.
-pub const LIERO_GAME_KILL_EM_ALL: i32 = 0;
-pub const LIERO_GAME_GAME_OF_TAG: i32 = 1;
-pub const LIERO_GAME_HOLDAZONE: i32 = 2;
-pub const LIERO_GAME_SCALES_OF_JUSTICE: i32 = 3;
+impl Control {
+    /// The control's bit in `control_states`.
+    pub const fn bit(self) -> u32 {
+        1 << self as u32
+    }
+}
+
+/// `Settings::gameMode`, numbered as the settings store it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameMode {
+    KillEmAll = 0,
+    GameOfTag = 1,
+    Holdazone = 2,
+    ScalesOfJustice = 3,
+}
+
+impl GameMode {
+    /// The mode numbered `n`, or none: C++ played a game with no mode's
+    /// rules for other numbers.
+    pub fn of(n: u32) -> Option<GameMode> {
+        [
+            GameMode::KillEmAll,
+            GameMode::GameOfTag,
+            GameMode::Holdazone,
+            GameMode::ScalesOfJustice,
+        ]
+        .get(n as usize)
+        .copied()
+    }
+}
 
 /// A worm of a game: its place among every worm the game has made
-/// (`LieroGame`'s pool), listed or not. Copies of the game keep the places.
+/// (`Game`'s pool), listed or not. Copies of the game keep the places.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WormId(pub u32);
 
 /// A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
-/// it (`liero_worm_data_new`), except its settings and AI.
+/// it (`WormData::default`), except its settings and AI.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroWormData {
-    pub pos: LieroIVec2,
-    pub vel: LieroIVec2,
+pub struct WormData {
+    pub pos: FVec2,
+    pub vel: FVec2,
     /// Where the respawn camera is, in pixels.
-    pub logic_respawn: LieroIVec2,
+    pub logic_respawn: IVec2,
     pub hotspot_x: i32,
     pub hotspot_y: i32,
     /// Fixed-point, 0 to 128.
@@ -66,19 +96,19 @@ pub struct LieroWormData {
     pub killed_timer: i32,
     pub current_frame: i32,
     pub flags: i32,
-    pub ninjarope: LieroNinjarope,
+    pub ninjarope: Ninjarope,
     pub current_weapon: i32,
-    pub last_killed_by_idx: i32,
+    pub last_killed_by_idx: Option<i32>,
     pub fire_cone: i32,
     pub leave_shell_timer: i32,
     /// 0 or 1.
     pub index: i32,
     /// Indexed by `RF_*`.
     pub reacts: [i32; 4],
-    pub weapons: [LieroWormWeapon; LIERO_SELECTABLE_WEAPONS],
+    pub weapons: [WormWeapon; SELECTABLE_WEAPONS],
     /// 0 is left, 1 is right.
     pub direction: i32,
-    /// One bit per `LIERO_CONTROL_*`: the controls the game sees, those of
+    /// One bit per `Control`: the controls the game sees, those of
     /// the last tick, and the ones the player holds (`LocalController`).
     pub control_states: u32,
     pub prev_control_states: u32,
@@ -90,14 +120,32 @@ pub struct LieroWormData {
     pub stats_x: i32,
 }
 
-impl Default for LieroWormData {
+impl WormData {
+    /// `Worm::pressed`.
+    pub fn pressed(&self, c: Control) -> bool {
+        self.control_states & c.bit() != 0
+    }
+
+    /// `Worm::release`.
+    pub fn release(&mut self, c: Control) {
+        self.control_states &= !c.bit();
+    }
+
+    /// `Worm::pressedOnce`: whether it was pressed, then clears it.
+    pub fn pressed_once(&mut self, c: Control) -> bool {
+        let p = self.pressed(c);
+        self.release(c);
+        p
+    }
+}
+
+impl Default for WormData {
     /// What C++'s `Worm()` set.
     fn default() -> Self {
-        let zero = LieroIVec2 { x: 0, y: 0 };
-        LieroWormData {
-            pos: zero,
-            vel: zero,
-            logic_respawn: zero,
+        WormData {
+            pos: FVec2::default(),
+            vel: FVec2::default(),
+            logic_respawn: IVec2::default(),
             hotspot_x: 0,
             hotspot_y: 0,
             aiming_angle: 0,
@@ -118,27 +166,27 @@ impl Default for LieroWormData {
             killed_timer: 150,
             current_frame: 0,
             flags: 0,
-            ninjarope: LieroNinjarope {
+            ninjarope: Ninjarope {
                 out: false,
                 attached: false,
                 anchor: None,
-                pos: zero,
-                vel: zero,
+                pos: FVec2::default(),
+                vel: FVec2::default(),
                 length: 0,
                 cur_len: 0,
             },
             current_weapon: 0,
-            last_killed_by_idx: -1,
+            last_killed_by_idx: None,
             fire_cone: 0,
             leave_shell_timer: 0,
             index: 0,
             reacts: [0; 4],
-            weapons: [LieroWormWeapon {
+            weapons: [WormWeapon {
                 kind: -1,
                 ammo: 0,
                 delay_left: 0,
                 loading_left: 0,
-            }; LIERO_SELECTABLE_WEAPONS],
+            }; SELECTABLE_WEAPONS],
             direction: 0,
             control_states: 0,
             prev_control_states: 0,
@@ -151,29 +199,9 @@ impl Default for LieroWormData {
     }
 }
 
-pub fn liero_worm_data_new() -> *mut LieroWormData {
-    Box::into_raw(Box::default())
-}
-
-/// # Safety
-/// `w` is valid.
-pub unsafe fn liero_worm_data_clone(w: &LieroWormData) -> *mut LieroWormData {
-    Box::into_raw(Box::new(*w))
-}
-
-/// # Safety
-/// `w` comes from `liero_worm_data_new` or `_clone`, and isn't used after.
-pub unsafe fn liero_worm_data_free(w: *mut LieroWormData) {
-    unsafe {
-        if !w.is_null() {
-            drop(Box::from_raw(w));
-        }
-    }
-}
-
 /// Constants for worms from the TC (`LC(...)` and `H[...]` in C++).
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroWormConstants {
+pub struct WormConstants {
     pub min_bounce_up: i32,
     pub min_bounce_down: i32,
     pub min_bounce_left: i32,
@@ -228,10 +256,9 @@ pub struct LieroWormConstants {
 }
 
 /// Everything else `Worm::process` reads from the game.
-pub struct LieroWormEnv {
+pub struct WormEnv {
     pub cycles: i32,
-    /// `LIERO_GAME_*`.
-    pub game_mode: i32,
+    pub game_mode: Option<GameMode>,
     /// Blood amount, in percent.
     pub blood: i32,
     /// Weapon loading time, in percent.
@@ -247,7 +274,7 @@ pub struct LieroWormEnv {
 
 /// The sprite frame for a worm aiming at `aiming_angle` (fixed-point) in
 /// `direction`, without the walking animation: `Worm::angleFrame`.
-pub fn liero_worm_angle_frame(aiming_angle: i32, direction: i32) -> i32 {
+pub fn angle_frame(aiming_angle: i32, direction: i32) -> i32 {
     let mut x = ftoi(aiming_angle) - 12;
 
     if direction != 0 {
@@ -265,7 +292,7 @@ pub fn liero_worm_angle_frame(aiming_angle: i32, direction: i32) -> i32 {
 }
 
 /// Clamps (x, y) to (0, 0) - (max_x, max_y): `limitXY`.
-pub(crate) fn limit_xy(p: &mut LieroIVec2, max_x: i32, max_y: i32) {
+pub(crate) fn limit_xy(p: &mut IVec2, max_x: i32, max_y: i32) {
     if p.x < 0 {
         p.x = 0;
     } else if p.x > max_x {
@@ -302,47 +329,45 @@ mod tests {
         }
         for angle in -10..140 {
             for dir in 0..2 {
-                assert_eq!(liero_worm_angle_frame(itof(angle), dir), cpp(itof(angle), dir));
+                assert_eq!(angle_frame(itof(angle), dir), cpp(itof(angle), dir));
             }
         }
-        assert_eq!(liero_worm_angle_frame(itof(32), 0), 2);
-        assert_eq!(liero_worm_angle_frame(itof(96), 1), 2);
+        assert_eq!(angle_frame(itof(32), 0), 2);
+        assert_eq!(angle_frame(itof(96), 1), 2);
     }
 
     #[test]
     fn new_worm_matches_cpp_and_copies_are_separate() {
-        unsafe {
-            let w = liero_worm_data_new();
+        {
+            let mut w = Box::<WormData>::default();
             // What C++'s Worm() set.
-            assert!((*w).ready && (*w).movable && !(*w).visible);
-            assert_eq!((*w).killed_timer, 150);
-            assert_eq!((*w).last_killed_by_idx, -1);
-            assert_eq!((*w).reacts, [0; 4]);
-            assert!((*w).ninjarope.anchor.is_none() && !(*w).ninjarope.out);
+            assert!(w.ready && w.movable && !w.visible);
+            assert_eq!(w.killed_timer, 150);
+            assert_eq!(w.last_killed_by_idx, None);
+            assert_eq!(w.reacts, [0; 4]);
+            assert!(w.ninjarope.anchor.is_none() && !w.ninjarope.out);
 
-            (*w).health = 75;
-            (*w).kills = 3;
-            (*w).flags = 2;
-            (*w).weapons[2].ammo = 9;
-            let c = liero_worm_data_clone(&*w);
+            w.health = 75;
+            w.kills = 3;
+            w.flags = 2;
+            w.weapons[2].ammo = 9;
+            let mut c = w.clone();
             // Every field is copied.
-            assert_eq!(format!("{:?}", *c), format!("{:?}", *w));
-            (*c).health = 1;
-            (*c).weapons[2].ammo = 0;
-            assert_eq!((*w).health, 75);
-            assert_eq!((*w).weapons[2].ammo, 9);
-            assert_eq!((*c).health, 1);
-            liero_worm_data_free(c);
-            liero_worm_data_free(w);
+            assert_eq!(format!("{:?}", c), format!("{:?}", w));
+            c.health = 1;
+            c.weapons[2].ammo = 0;
+            assert_eq!(w.health, 75);
+            assert_eq!(w.weapons[2].ammo, 9);
+            assert_eq!(c.health, 1);
         }
     }
 
     #[test]
     fn limit_xy_clamps() {
-        let mut p = LieroIVec2 { x: -3, y: 500 };
+        let mut p = IVec2 { x: -3, y: 500 };
         limit_xy(&mut p, 100, 200);
         assert_eq!((p.x, p.y), (0, 200));
-        let mut p = LieroIVec2 { x: 150, y: -1 };
+        let mut p = IVec2 { x: 150, y: -1 };
         limit_xy(&mut p, 100, 200);
         assert_eq!((p.x, p.y), (100, 0));
     }

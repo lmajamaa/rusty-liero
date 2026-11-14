@@ -23,21 +23,21 @@ impl World<'_> {
             return;
         }
 
-        r.pos = add(r.pos, r.vel);
-        let ipos = ftoi_vec(r.pos);
+        r.pos += r.vel;
+        let ipos = r.pos.to_int();
 
         // The first worm other than the owner that the rope hits.
         r.anchor = (0..self.worm_count())
             .find(|&w| w != i && self.spec_worm_hit(ipos.x, ipos.y, 1, w))
             .map(|w| self.g.worm_id(w));
 
-        let diff = sub(r.pos, self.worm(i).pos);
-        let force = LieroIVec2 {
-            x: diff.x.wrapping_shl(force_shl_x as u32) / force_div_x,
-            y: diff.y.wrapping_shl(force_shl_y as u32) / force_div_y,
+        let diff = r.pos - self.worm(i).pos;
+        let force = FVec2 {
+            x: Fixed(diff.x.0.wrapping_shl(force_shl_x as u32)) / force_div_x,
+            y: Fixed(diff.y.0.wrapping_shl(force_shl_y as u32)) / force_div_y,
         };
 
-        r.cur_len = (vector_length(ftoi(diff.x), ftoi(diff.y)) + 1).wrapping_shl(force_len_shl as u32);
+        r.cur_len = (vector_length(diff.x.to_int(), diff.y.to_int()) + 1).wrapping_shl(force_len_shl as u32);
 
         let hits_terrain = ipos.x <= 0
             || ipos.x >= width - 1
@@ -61,9 +61,9 @@ impl World<'_> {
                             self.create_nobject2(
                                 2,
                                 angle,
-                                LieroIVec2::default(),
+                                FVec2::default(),
                                 r.pos,
-                                pix as i32,
+                                i32::from(pix),
                                 index,
                                 FiredBy::NONE,
                             );
@@ -72,7 +72,7 @@ impl World<'_> {
                 }
             }
 
-            r.vel = LieroIVec2::default();
+            r.vel = FVec2::default();
         } else if let Some(anchor) = r.anchor {
             if !r.attached {
                 // TODO in C++: should this be separate from attaching to terrain?
@@ -83,7 +83,7 @@ impl World<'_> {
             // Another worm than the owner: `find` above skips it.
             let anchor = self.g.pool_worm_mut(anchor);
             if r.cur_len > r.length {
-                anchor.vel = sub(anchor.vel, div(force, r.cur_len));
+                anchor.vel -= force / r.cur_len;
             }
 
             r.vel = anchor.vel;
@@ -96,13 +96,13 @@ impl World<'_> {
         if r.attached {
             // cur_len can't be 0.
             if r.cur_len > r.length {
-                owner.vel = add(owner.vel, div(force, r.cur_len));
+                owner.vel += force / r.cur_len;
             }
         } else {
-            r.vel.y = r.vel.y.wrapping_add(gravity);
+            r.vel.y += Fixed(gravity);
 
             if r.cur_len > r.length {
-                r.vel = sub(r.vel, div(force, r.cur_len));
+                r.vel -= force / r.cur_len;
             }
         }
         owner.ninjarope = r;

@@ -11,17 +11,18 @@
 //! worm can appear inside another one, as its rope's anchor or as the worm
 //! that last killed it, before it appears in the game's list of worms.
 
-use crate::game::LieroRect;
-use crate::math::LieroIVec2;
-use crate::viewport::LieroViewport;
-use crate::worm::{LieroWormData, WormId};
+use crate::game::Rect;
+use crate::math::FVec2;
+use crate::math::IVec2;
+use crate::viewport::Viewport;
+use crate::worm::{WormData, WormId};
 use liero_data::settings::{self as data, ArchiveError, In, Out, ReadError, Settings, Source, WormSettings};
 use std::collections::HashMap;
 
 /// "LRPF".
 const MAGIC: u32 = u32::from_be_bytes(*b"LRPF");
 /// The newest version this reads, and the one the game writes.
-pub const LIERO_REPLAY_VERSION: i32 = data::REPLAY_VERSION;
+pub use data::REPLAY_VERSION;
 /// The checkpoint at the end of each worm.
 const CHECKPOINT: u32 = 0x1234_5678;
 /// Frames between checksums: 15 seconds.
@@ -36,11 +37,11 @@ const END: u8 = 0x83;
 /// Why a replay call failed.
 ///
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum LieroReplayStatus {
+pub enum ReplayStatus {
     Ok,
     /// The byte source failed; C++ rethrows what its reader threw.
     ReadError,
-    /// `gvl::archive_check_error`, with `liero_replay_result_message`.
+    /// `gvl::archive_check_error`, with its message.
     CheckError,
     /// A worm index past the game's worms, which `std::vector::at` threw
     /// `std::out_of_range` for.
@@ -71,7 +72,7 @@ impl From<ArchiveError> for ReplayError {
 
 /// A worm weapon's state.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroReplayWeapon {
+pub struct ReplayWeapon {
     pub ammo: i32,
     pub delay_left: i32,
     /// The weapon's index in the TC.
@@ -82,7 +83,7 @@ pub struct LieroReplayWeapon {
 /// What a replay stores of a `Worm`, in the archive's order. Worms refer to
 /// each other by their place in the list of worms passed or returned, or -1.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroReplayWorm {
+pub struct ReplayWorm {
     pub pos: [i32; 2],
     pub vel: [i32; 2],
     pub logic_respawn: [i32; 2],
@@ -120,7 +121,7 @@ pub struct LieroReplayWorm {
     pub leave_shell_timer: i32,
     pub index: i32,
     pub reacts: [i32; 4],
-    pub weapons: [LieroReplayWeapon; 5],
+    pub weapons: [ReplayWeapon; 5],
     pub direction: i32,
     pub control_states: u32,
     pub prev_control_states: u32,
@@ -128,7 +129,7 @@ pub struct LieroReplayWorm {
 
 /// What a replay stores of a `Viewport`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroReplayViewport {
+pub struct ReplayViewport {
     pub x: i32,
     pub y: i32,
     pub shake: i32,
@@ -145,7 +146,7 @@ pub struct LieroReplayViewport {
 /// The `Game` fields a replay stores, apart from the settings, worms,
 /// viewports and level.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroReplayGameFields {
+pub struct ReplayGameFields {
     pub cycles: i32,
     pub got_changed: bool,
     /// `lastKilledIdx`: a worm's `index`.
@@ -158,7 +159,7 @@ pub struct LieroReplayGameFields {
 /// A worm with its settings.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Worm {
-    pub fields: LieroReplayWorm,
+    pub fields: ReplayWorm,
     pub settings: WormSettings,
 }
 
@@ -175,13 +176,13 @@ pub struct Level {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Game {
     pub settings: Settings,
-    pub fields: LieroReplayGameFields,
+    pub fields: ReplayGameFields,
     /// Every worm, as places that `list` and the worms' references use.
     pub worms: Vec<Worm>,
     /// The game's worms in order. Reading can also give worms that are only
     /// referred to, or -1 where the list had none.
     pub list: Vec<i32>,
-    pub viewports: Vec<LieroReplayViewport>,
+    pub viewports: Vec<ReplayViewport>,
     pub level: Level,
 }
 
@@ -301,7 +302,7 @@ impl GameWriter<'_> {
         Ok(())
     }
 
-    fn viewport(&mut self, vp: LieroReplayViewport) -> Result<(), ReplayError> {
+    fn viewport(&mut self, vp: ReplayViewport) -> Result<(), ReplayError> {
         for v in [vp.x, vp.y, vp.shake, vp.max_x, vp.max_y, vp.center_x, vp.center_y] {
             self.i32(v);
         }
@@ -384,7 +385,7 @@ pub fn write_start(game: &mut Game, version: i32) -> (Vec<u8>, Result<(), Replay
 
 /// What a frame writes or reads of a worm, beside its settings.
 #[derive(Clone, Copy)]
-pub struct LieroReplayFrameWorm {
+pub struct ReplayFrameWorm {
     pub index: i32,
     pub control_states: u32,
     pub prev_control_states: u32,
@@ -412,7 +413,7 @@ pub fn write_frame(
     version: i32,
     settings: &mut Settings,
     settings_expired: bool,
-    worms: &mut [(LieroReplayFrameWorm, WormSettings)],
+    worms: &mut [(ReplayFrameWorm, WormSettings)],
     cycles: i32,
     checksum: u32,
 ) -> (Vec<u8>, bool, Vec<bool>) {
@@ -510,7 +511,7 @@ impl<S: Source + ?Sized> GameReader<'_, S> {
     }
 
     fn worm(&mut self) -> Result<Worm, ReplayError> {
-        let mut f = LieroReplayWorm {
+        let mut f = ReplayWorm {
             pos: self.pair()?,
             vel: self.pair()?,
             logic_respawn: self.pair()?,
@@ -569,8 +570,8 @@ impl<S: Source + ?Sized> GameReader<'_, S> {
         Ok(Worm { fields: f, settings })
     }
 
-    fn viewport(&mut self) -> Result<LieroReplayViewport, ReplayError> {
-        let mut vp = LieroReplayViewport {
+    fn viewport(&mut self) -> Result<ReplayViewport, ReplayError> {
+        let mut vp = ReplayViewport {
             x: self.i32()?,
             y: self.i32()?,
             shake: self.i32()?,
@@ -640,7 +641,7 @@ impl<S: Source + ?Sized> GameReader<'_, S> {
 fn empty_game() -> Game {
     Game {
         settings: Settings::default(),
-        fields: LieroReplayGameFields::default(),
+        fields: ReplayGameFields::default(),
         worms: Vec::new(),
         list: Vec::new(),
         viewports: Vec::new(),
@@ -661,7 +662,7 @@ pub fn read_start<S: Source + ?Sized>(src: &mut S) -> Result<(i32, Game), Replay
         return Err(ReplayError::Check("File does not appear to be a replay"));
     }
     let version = r.u8()? as i32;
-    if version > LIERO_REPLAY_VERSION {
+    if version > REPLAY_VERSION {
         return Err(ReplayError::Check("Replay version is too recent"));
     }
     let mut gr = GameReader {
@@ -692,7 +693,7 @@ pub fn read_frame<S: Source + ?Sized>(
     src: &mut S,
     version: i32,
     settings: &mut Settings,
-    worms: &mut [(LieroReplayFrameWorm, WormSettings)],
+    worms: &mut [(ReplayFrameWorm, WormSettings)],
     touched: &mut [bool],
 ) -> Result<FrameRead, ReplayError> {
     let mut r = In(src);
@@ -724,7 +725,7 @@ pub fn read_frame<S: Source + ?Sized>(
             0..=0x7f => {
                 for (i, (f, _)) in worms.iter_mut().enumerate() {
                     let state = if i == 0 { first } else { r.0.get()? };
-                    f.control_states = (state as u32 ^ f.prev_control_states) & 0x7f;
+                    f.control_states = (u32::from(state) ^ f.prev_control_states) & 0x7f;
                 }
                 return Ok(read);
             }
@@ -746,12 +747,12 @@ pub fn read_checksum<S: Source + ?Sized>(src: &mut S, cycles: i32, actual: u32) 
 
 /// A worm as replays hold it (`wormFields`). Its rope's anchor is the
 /// anchor's place among `ids`, the game's worms written, or -1.
-pub fn liero_replay_worm_of(worm: &LieroWormData, ids: &[WormId]) -> LieroReplayWorm {
+pub fn replay_worm_of(worm: &WormData, ids: &[WormId]) -> ReplayWorm {
     let anchor = worm.ninjarope.anchor;
     let rope = &worm.ninjarope;
-    LieroReplayWorm {
-        pos: [worm.pos.x, worm.pos.y],
-        vel: [worm.vel.x, worm.vel.y],
+    ReplayWorm {
+        pos: worm.pos.raw(),
+        vel: worm.vel.raw(),
         logic_respawn: [worm.logic_respawn.x, worm.logic_respawn.y],
         hotspot: [worm.hotspot_x, worm.hotspot_y],
         aiming_angle: worm.aiming_angle,
@@ -780,15 +781,15 @@ pub fn liero_replay_worm_of(worm: &LieroWormData, ids: &[WormId]) -> LieroReplay
         rope_cur_len: rope.cur_len,
         rope_length: rope.length,
         rope_out: rope.out,
-        rope_vel: [rope.vel.x, rope.vel.y],
-        rope_pos: [rope.pos.x, rope.pos.y],
+        rope_vel: rope.vel.raw(),
+        rope_pos: rope.pos.raw(),
         current_weapon: worm.current_weapon,
-        last_killed_by: worm.last_killed_by_idx,
+        last_killed_by: worm.last_killed_by_idx.unwrap_or(-1),
         fire_cone: worm.fire_cone,
         leave_shell_timer: worm.leave_shell_timer,
         index: worm.index,
         reacts: worm.reacts,
-        weapons: worm.weapons.map(|w| LieroReplayWeapon {
+        weapons: worm.weapons.map(|w| ReplayWeapon {
             ammo: w.ammo,
             delay_left: w.delay_left,
             weapon: w.kind,
@@ -802,16 +803,10 @@ pub fn liero_replay_worm_of(worm: &LieroWormData, ids: &[WormId]) -> LieroReplay
 
 /// Sets a worm from a replay's (`setWormFields`). Its rope's anchor is one
 /// of `all`, every worm the replay has. Weapons aren't checked, as in C++.
-pub fn liero_replay_worm_set(worm: &mut LieroWormData, f: &LieroReplayWorm, all: &[WormId]) {
-    worm.pos = LieroIVec2 {
-        x: f.pos[0],
-        y: f.pos[1],
-    };
-    worm.vel = LieroIVec2 {
-        x: f.vel[0],
-        y: f.vel[1],
-    };
-    worm.logic_respawn = LieroIVec2 {
+pub fn replay_worm_set(worm: &mut WormData, f: &ReplayWorm, all: &[WormId]) {
+    worm.pos = FVec2::from_raw(f.pos);
+    worm.vel = FVec2::from_raw(f.vel);
+    worm.logic_respawn = IVec2 {
         x: f.logic_respawn[0],
         y: f.logic_respawn[1],
     };
@@ -842,16 +837,10 @@ pub fn liero_replay_worm_set(worm: &mut LieroWormData, f: &LieroReplayWorm, all:
     rope.cur_len = f.rope_cur_len;
     rope.length = f.rope_length;
     rope.out = f.rope_out;
-    rope.vel = LieroIVec2 {
-        x: f.rope_vel[0],
-        y: f.rope_vel[1],
-    };
-    rope.pos = LieroIVec2 {
-        x: f.rope_pos[0],
-        y: f.rope_pos[1],
-    };
+    rope.vel = FVec2::from_raw(f.rope_vel);
+    rope.pos = FVec2::from_raw(f.rope_pos);
     worm.current_weapon = f.current_weapon;
-    worm.last_killed_by_idx = f.last_killed_by;
+    worm.last_killed_by_idx = Some(f.last_killed_by).filter(|&i| i >= 0);
     worm.fire_cone = f.fire_cone;
     worm.leave_shell_timer = f.leave_shell_timer;
     worm.index = f.index;
@@ -868,8 +857,8 @@ pub fn liero_replay_worm_set(worm: &mut LieroWormData, f: &LieroReplayWorm, all:
 }
 
 /// A split-screen viewport as replays hold it (`viewportFields`).
-pub fn liero_replay_viewport_of(vp: &LieroViewport) -> LieroReplayViewport {
-    LieroReplayViewport {
+pub fn replay_viewport_of(vp: &Viewport) -> ReplayViewport {
+    ReplayViewport {
         x: vp.x,
         y: vp.y,
         shake: vp.shake,
@@ -884,7 +873,7 @@ pub fn liero_replay_viewport_of(vp: &LieroViewport) -> LieroReplayViewport {
 }
 
 /// Sets a viewport from a replay's (`setViewportFields`).
-pub fn liero_replay_viewport_set(vp: &mut LieroViewport, f: &LieroReplayViewport) {
+pub fn replay_viewport_set(vp: &mut Viewport, f: &ReplayViewport) {
     vp.x = f.x;
     vp.y = f.y;
     vp.shake = f.shake;
@@ -894,7 +883,7 @@ pub fn liero_replay_viewport_set(vp: &mut LieroViewport, f: &LieroReplayViewport
     vp.center_y = f.center_y;
     vp.worm_idx = f.worm_idx;
     vp.banner_y = f.banner_y;
-    vp.rect = LieroRect {
+    vp.rect = Rect {
         x1: f.rect[0],
         y1: f.rect[1],
         x2: f.rect[2],
@@ -925,7 +914,7 @@ mod tests {
     }
 
     fn worm(index: i32) -> Worm {
-        let mut fields = LieroReplayWorm {
+        let mut fields = ReplayWorm {
             index,
             rope_anchor: -1,
             last_killed_by: -1,
@@ -949,7 +938,7 @@ mod tests {
         let mut g = empty_game();
         g.list = (0..worms.len() as i32).collect();
         g.worms = worms;
-        g.fields = LieroReplayGameFields {
+        g.fields = ReplayGameFields {
             cycles: 77,
             got_changed: true,
             last_killed: -1,
@@ -957,7 +946,7 @@ mod tests {
             rand_x: 0xdead_beef,
             rand_c: 42,
         };
-        g.viewports = vec![LieroReplayViewport {
+        g.viewports = vec![ReplayViewport {
             x: 5,
             worm_idx: 1,
             rect: [0, 0, 158, 158],
@@ -985,7 +974,7 @@ mod tests {
         let mut g = game(vec![worm(0), worm(1)]);
         g.worms[0].fields.rope_anchor = 1;
         g.worms[1].fields.last_killed_by = 0;
-        for version in 0..=LIERO_REPLAY_VERSION {
+        for version in 0..=REPLAY_VERSION {
             let mut written = g.clone();
             let (bytes, r) = write_start(&mut written, version);
             assert_eq!(r, Ok(()));
@@ -999,7 +988,7 @@ mod tests {
             // Older versions store less of the worms' settings.
             let fields = |g: &Game| g.worms.iter().map(|w| w.fields).collect::<Vec<_>>();
             assert_eq!(fields(&back), fields(&written));
-            if version == LIERO_REPLAY_VERSION {
+            if version == REPLAY_VERSION {
                 assert_eq!(back.worms, written.worms);
             }
             assert_eq!(
@@ -1019,7 +1008,7 @@ mod tests {
             n += 1;
             n
         };
-        let mut f = LieroReplayWorm {
+        let mut f = ReplayWorm {
             rope_anchor: -1,
             last_killed_by: -1,
             ..Default::default()
@@ -1047,7 +1036,7 @@ mod tests {
         f.index = next();
         f.reacts = [next(), next(), next(), next()];
         for w in &mut f.weapons {
-            *w = LieroReplayWeapon {
+            *w = ReplayWeapon {
                 ammo: next(),
                 delay_left: next(),
                 weapon: next(),
@@ -1065,9 +1054,9 @@ mod tests {
             fields: f,
             settings: WormSettings::default(),
         }]);
-        let (bytes, _) = write_start(&mut g, LIERO_REPLAY_VERSION);
+        let (bytes, _) = write_start(&mut g, REPLAY_VERSION);
         let settings = data::write_archive(&mut Settings::default()).len();
-        let worm_settings = data::write_worm(&mut WormSettings::default(), LIERO_REPLAY_VERSION).len();
+        let worm_settings = data::write_worm(&mut WormSettings::default(), REPLAY_VERSION).len();
         // Header, settings, cycles, got_changed, last killed (none), screen
         // flash, the generator, the list's 1 and the worm's number.
         let mut c = Cursor(&bytes[5 + settings + 4 + 1 + 4 + 4 + 8 + 1 + 4..]);
@@ -1101,7 +1090,7 @@ mod tests {
         // first, and the list refers to it by its new place.
         let mut g = game(vec![worm(0), worm(1)]);
         g.fields.last_killed = 1;
-        let (bytes, _) = write_start(&mut g.clone(), LIERO_REPLAY_VERSION);
+        let (bytes, _) = write_start(&mut g.clone(), REPLAY_VERSION);
         let (_, back) = read(&bytes).unwrap();
         assert_eq!(back.list, vec![1, 0]);
         assert_eq!(back.worms[0].fields.index, 1);
@@ -1116,7 +1105,7 @@ mod tests {
         g.worms[0].fields.last_killed_by = 0;
         g.worms[0].fields.rope_anchor = 0;
         g.viewports.clear();
-        let (bytes, _) = write_start(&mut g, LIERO_REPLAY_VERSION);
+        let (bytes, _) = write_start(&mut g, REPLAY_VERSION);
         let (_, back) = read(&bytes).unwrap();
         assert_eq!(back.worms.len(), 1);
         assert_eq!(back.worms[0].fields.last_killed_by, 0);
@@ -1128,7 +1117,7 @@ mod tests {
     fn a_worm_index_past_the_list_fails_after_what_was_written() {
         let mut g = game(vec![worm(0)]);
         g.fields.last_killed = 1;
-        let (bytes, r) = write_start(&mut g, LIERO_REPLAY_VERSION);
+        let (bytes, r) = write_start(&mut g, REPLAY_VERSION);
         assert_eq!(r, Err(ReplayError::OutOfRange));
         let settings = data::write_archive(&mut Settings::default());
         // Header, settings, cycles, got_changed.
@@ -1137,7 +1126,7 @@ mod tests {
 
     #[test]
     fn broken_starts_fail_like_the_cpp() {
-        let (bytes, _) = write_start(&mut game(vec![worm(0), worm(1)]), LIERO_REPLAY_VERSION);
+        let (bytes, _) = write_start(&mut game(vec![worm(0), worm(1)]), REPLAY_VERSION);
         let mut magic = bytes.clone();
         magic[0] = b'X';
         assert_eq!(
@@ -1163,12 +1152,12 @@ mod tests {
         );
     }
 
-    fn frame_worm(index: i32, state: u32, prev: u32, expired: bool) -> (LieroReplayFrameWorm, WormSettings) {
+    fn frame_worm(index: i32, state: u32, prev: u32, expired: bool) -> (ReplayFrameWorm, WormSettings) {
         let ws = WormSettings {
             name: format!("w{index}").into_bytes(),
             ..Default::default()
         };
-        let f = LieroReplayFrameWorm {
+        let f = ReplayFrameWorm {
             index,
             control_states: state,
             prev_control_states: prev,

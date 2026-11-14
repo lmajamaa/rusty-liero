@@ -11,11 +11,8 @@
 
 use super::path::{LevelView, PathLevel, NO_CELL};
 use crate::math::{ftoi, itof, vector_length};
-use crate::rand::LieroRand;
-
-/// Game modes, as `Settings::GameMode` numbers them.
-const GM_GAME_OF_TAG: u32 = 1;
-const GM_HOLDAZONE: u32 = 2;
+use crate::rand::Rand;
+use crate::worm::GameMode;
 
 /// Control bits, as `Worm::Control` numbers them.
 pub const UP: u32 = 0;
@@ -42,7 +39,7 @@ const PI: f64 = std::f64::consts::PI;
 
 /// A worm weapon, as the AI reads it.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroAiWeapon {
+pub struct AiWeapon {
     pub ammo: i32,
     pub delay_left: i32,
     pub loading_left: i32,
@@ -53,7 +50,7 @@ pub struct LieroAiWeapon {
 
 /// What the AI reads of a worm.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroAiWorm {
+pub struct AiWorm {
     pub index: i32,
     pub pos: [i32; 2],
     pub aiming_angle: i32,
@@ -65,7 +62,7 @@ pub struct LieroAiWorm {
     /// The health worms start with, from the worm's settings.
     pub settings_health: i32,
     pub current_weapon: i32,
-    pub weapons: [LieroAiWeapon; 5],
+    pub weapons: [AiWeapon; 5],
     pub rope_out: bool,
     pub steerable_count: i32,
     pub steerable_sum: [i32; 2],
@@ -74,14 +71,14 @@ pub struct LieroAiWorm {
 
 /// What the AI reads of a game.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroAiGame {
-    pub game_mode: u32,
-    pub holder_idx: i32,
-    pub contender_idx: i32,
+pub struct AiGame {
+    pub game_mode: Option<GameMode>,
+    pub holder_idx: Option<i32>,
+    pub contender_idx: Option<i32>,
     pub contender_frames: i32,
     /// The middle of the zone (`rect.center_x()` and `center_y()`).
     pub zone_center: [i32; 2],
-    pub last_killed_idx: i32,
+    pub last_killed_idx: Option<i32>,
     pub ai_frames: i32,
     pub ai_mutations: i32,
     pub ai_traces: bool,
@@ -96,9 +93,9 @@ pub trait Games {
     fn clone_game(&mut self, g: Self::G) -> Self::G;
     fn free_game(&mut self, g: Self::G);
     fn process_frame(&mut self, g: Self::G);
-    fn game(&mut self, g: Self::G) -> LieroAiGame;
+    fn game(&mut self, g: Self::G) -> AiGame;
     /// The worm at `place` in the game's list, which is its index.
-    fn worm(&mut self, g: Self::G, place: i32) -> LieroAiWorm;
+    fn worm(&mut self, g: Self::G, place: i32) -> AiWorm;
     fn set_controls(&mut self, g: Self::G, place: i32, controls: u32);
     fn level(&self, g: Self::G) -> LevelView<'_>;
 }
@@ -225,8 +222,8 @@ impl InputContext {
         }
 
         let other = games.worm(g, worm.index ^ 1);
-        self.facing_enemy = ((other.pos[0] > worm.pos[0]) as i32 == worm.direction) as i32;
-        self.ninjarope_out = worm.rope_out as i32;
+        self.facing_enemy = i32::from(i32::from(other.pos[0] > worm.pos[0]) == worm.direction);
+        self.ninjarope_out = i32::from(worm.rope_out);
         cs
     }
 }
@@ -392,7 +389,7 @@ impl TransModel {
     }
 
     /// A next state, with the row's weights as chances (`Model::random`).
-    fn random(&self, context: &InputContext, rand: &mut LieroRand) -> InputState {
+    fn random(&self, context: &InputContext, rand: &mut Rand) -> InputState {
         let v = &self.trans[context.pack()];
         let max = v.iter().fold(0.0, |a, &b| a + b);
         let mut el = rand.double_below(max);
@@ -417,7 +414,7 @@ fn max(a: f64, b: f64) -> f64 {
     }
 }
 
-fn total_health(w: &LieroAiWorm) -> f64 {
+fn total_health(w: &AiWorm) -> f64 {
     if w.lives == 0 {
         return -10000.0;
     }
@@ -425,39 +422,39 @@ fn total_health(w: &LieroAiWorm) -> f64 {
     if !w.visible {
         h = w.settings_health;
     }
-    w.lives as f64 * (w.settings_health as f64 * 5.0 / 4.0) + h as f64
+    f64::from(w.lives) * (f64::from(w.settings_health) * 5.0 / 4.0) + f64::from(h)
 }
 
-fn total_health_norm(w: &LieroAiWorm) -> f64 {
-    total_health(w) * 100.0 / w.settings_health as f64
+fn total_health_norm(w: &AiWorm) -> f64 {
+    total_health(w) * 100.0 / f64::from(w.settings_health)
 }
 
-fn total_ammo_worth(w: &LieroAiWorm) -> f64 {
+fn total_ammo_worth(w: &AiWorm) -> f64 {
     let mut worth = 0.0;
     for weap in &w.weapons {
         if weap.loading_left > 0 {
-            worth += 3.0 - (weap.loading_left as f64 * 3.0) / weap.loading_time as f64;
+            worth += 3.0 - (f64::from(weap.loading_left) * 3.0) / f64::from(weap.loading_time);
         } else {
-            worth += 3.0 + (weap.ammo as f64 * 3.0) / weap.max_ammo as f64;
+            worth += 3.0 + (f64::from(weap.ammo) * 3.0) / f64::from(weap.max_ammo);
         }
     }
     worth
 }
 
-fn ready_weapons(w: &LieroAiWorm) -> i32 {
+fn ready_weapons(w: &AiWorm) -> i32 {
     w.weapons
         .iter()
         .filter(|weap| weap.loading_left == 0 && weap.delay_left < 70)
         .count() as i32
 }
 
-fn worm_distance(from: &LieroAiWorm, to: &LieroAiWorm) -> i32 {
+fn worm_distance(from: &AiWorm, to: &AiWorm) -> i32 {
     vector_length(ftoi(to.pos[0]) - ftoi(from.pos[0]), ftoi(to.pos[1]) - ftoi(from.pos[1]))
 }
 
 /// An aiming angle, fixed point 0..128, in radians.
 fn langle_to_radians(langle: i32) -> f64 {
-    ((langle + itof(32)) & (itof(128) - 1)) as f64 * 0.04908738521234052 / 65536.0
+    f64::from((langle + itof(32)) & (itof(128) - 1)) * 0.04908738521234052 / 65536.0
 }
 
 fn normalized_langle(langle: i32) -> i32 {
@@ -480,9 +477,9 @@ fn radian_diff(a: f64, b: f64) -> f64 {
 }
 
 /// How far `from` aims from `to`, past a tolerance.
-fn aiming_diff_worms(from: &LieroAiWorm, to: &LieroAiWorm) -> f64 {
-    let xo = (to.pos[0] - from.pos[0]).abs() as f64;
-    let yo = (to.pos[1] - from.pos[1]) as f64;
+fn aiming_diff_worms(from: &AiWorm, to: &AiWorm) -> f64 {
+    let xo = f64::from((to.pos[0] - from.pos[0]).abs());
+    let yo = f64::from(to.pos[1] - from.pos[1]);
     let angle_to_target = if xo != 0.0 || yo != 0.0 { yo.atan2(xo) } else { 0.0 };
     let current_aim = langle_to_radians(normalized_langle(from.aiming_angle));
     let tolerance = PI / 8.0;
@@ -505,8 +502,8 @@ fn obstacle(level: &LevelView, x: f64, y: f64) -> i32 {
 
 /// Rock and dirt between two pixels, sampled every 2 pixels.
 fn obstacles_between(level: &LevelView, from: (i32, i32), to: (i32, i32)) -> i32 {
-    let org = (from.0 as f64, from.1 as f64);
-    let mut dir = (to.0 as f64, to.1 as f64);
+    let org = (f64::from(from.0), f64::from(from.1));
+    let mut dir = (f64::from(to.0), f64::from(to.1));
     dir.0 -= org.0;
     dir.1 -= org.1;
     let l = (dir.0 * dir.0 + dir.1 * dir.1).sqrt();
@@ -523,11 +520,11 @@ fn obstacles_between(level: &LevelView, from: (i32, i32), to: (i32, i32)) -> i32
 }
 
 /// The same between two worms, from their fixed-point positions.
-fn obstacles_worms(level: &LevelView, from: &LieroAiWorm, to: &LieroAiWorm) -> i32 {
-    let org_x = from.pos[0] as f64 / 65536.0;
-    let org_y = from.pos[1] as f64 / 65536.0;
-    let mut dir_x = (to.pos[0] - from.pos[0]) as f64 / 65536.0;
-    let mut dir_y = (to.pos[1] - from.pos[1]) as f64 / 65536.0;
+fn obstacles_worms(level: &LevelView, from: &AiWorm, to: &AiWorm) -> i32 {
+    let org_x = f64::from(from.pos[0]) / 65536.0;
+    let org_y = f64::from(from.pos[1]) / 65536.0;
+    let mut dir_x = f64::from(to.pos[0] - from.pos[0]) / 65536.0;
+    let mut dir_y = f64::from(to.pos[1] - from.pos[1]) / 65536.0;
     let l = (dir_x * dir_x + dir_y * dir_y).sqrt();
     dir_x /= l;
     dir_y /= l;
@@ -562,8 +559,8 @@ fn simple_ai<W: Games>(games: &mut W, g: W::G, place: i32, initial: u32) {
         set(&mut cs, FIRE, true);
     } else {
         let current_aim = langle_to_radians(normalized_langle(worm.aiming_angle));
-        let dir_x = (target.pos[0] - worm.pos[0]).abs() as f64;
-        let dir_y = (target.pos[1] - worm.pos[1]) as f64;
+        let dir_x = f64::from((target.pos[0] - worm.pos[0]).abs());
+        let dir_y = f64::from(target.pos[1] - worm.pos[1]);
         let angle_to_target = dir_y.atan2(dir_x);
         let tolerance = 2.0 * PI / 32.0;
         let aim_diff = radian_diff(angle_to_target, current_aim);
@@ -629,7 +626,7 @@ enum Mutation {
 
 /// A traced position, the copy's worm in fixed point, and its colour.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LieroAiTrace {
+pub struct AiTrace {
     pub x: i32,
     pub y: i32,
     pub color: u8,
@@ -640,12 +637,12 @@ pub struct LieroAiTrace {
 /// only code under `#if 0` read, so it's gone.
 #[derive(Clone)]
 pub struct FollowAi {
-    pub rand: LieroRand,
+    pub rand: Rand,
     pub frame: i32,
     pub current_context: InputContext,
     pub model: TransModel,
     pub evaluation_budget: i32,
-    pub evaluate_positions: Vec<LieroAiTrace>,
+    pub evaluate_positions: Vec<AiTrace>,
     pub cand_plan: Vec<CandPlan>,
     pub best: Option<usize>,
     pub testing: bool,
@@ -659,7 +656,7 @@ impl FollowAi {
     /// worm's AI `testing`, which tries changing to loading weapons.
     pub fn new(weights: Weights, candidates: usize, testing: bool) -> Self {
         FollowAi {
-            rand: LieroRand::default(),
+            rand: Rand::default(),
             frame: 0,
             current_context: InputContext::default(),
             model: TransModel::new(&weights),
@@ -681,7 +678,7 @@ impl FollowAi {
 
     /// How far the worm aims from where the path from its cell leads: the
     /// furthest of the next 15 cells it can see.
-    fn aiming_diff_path(&self, level: &LevelView, from: &LieroAiWorm, cell: Option<u32>) -> f64 {
+    fn aiming_diff_path(&self, level: &LevelView, from: &AiWorm, cell: Option<u32>) -> f64 {
         let cells = &self.dlevel.cells;
         let Some(cell) = cell.filter(|&c| cells[c as usize].parent != NO_CELL) else {
             return 1.0;
@@ -702,8 +699,8 @@ impl FollowAi {
             if (path.0 != orgl.0 && path.1 != orgl.1) && obstacles_between(level, orgl, path) > 4 {
                 break;
             }
-            dir_x = (path.0 - orgl.0).abs() as f64;
-            dir_y = (path.1 - orgl.1) as f64;
+            dir_x = f64::from((path.0 - orgl.0).abs());
+            dir_y = f64::from(path.1 - orgl.1);
         }
 
         let current_aim = langle_to_radians(normalized_langle(from.aiming_angle));
@@ -732,10 +729,10 @@ impl FollowAi {
                 optimal_dist = 50.0;
             }
             let g = self.dlevel.cells[c as usize].g;
-            let d = max((g as f64 / 256.0 - optimal_dist).abs() - 10.0, 0.0) * weights.distance;
+            let d = max((f64::from(g) / 256.0 - optimal_dist).abs() - 10.0, 0.0) * weights.distance;
             len *= psigmoid(d / 100.0);
         } else {
-            len += worm_distance(&me_w, &target_w) as f64 / 10.0;
+            len += f64::from(worm_distance(&me_w, &target_w)) / 10.0;
         }
 
         if me_org.steerable_count == 1 {
@@ -745,8 +742,8 @@ impl FollowAi {
                 let mg = self.dlevel.cells[missile_cell as usize].g;
                 let wg = self.dlevel.cells[wc as usize].g;
                 if mg < wg {
-                    let closer = wg as f64 - mg as f64;
-                    score += psigmoid(closer / wg as f64) * 100.0 * weights.missile;
+                    let closer = f64::from(wg) - f64::from(mg);
+                    score += psigmoid(closer / f64::from(wg)) * 100.0 * weights.missile;
                 }
             }
         }
@@ -756,7 +753,7 @@ impl FollowAi {
         score += me_health * weights.health * weights.defense;
         score -= target_health * weights.health;
 
-        if info.game_mode == GM_HOLDAZONE && info.holder_idx == me_w.index {
+        if info.game_mode == Some(GameMode::Holdazone) && info.holder_idx == Some(me_w.index) {
             score -= aiming_diff_worms(&me_w, &target_w) * 2.0 * weights.aim;
         } else {
             let aim_diff = self.aiming_diff_path(&games.level(g), &me_w, worm_cell);
@@ -765,11 +762,15 @@ impl FollowAi {
 
         score += total_ammo_worth(&me_w) * 2.0 * weights.ammo;
 
-        if info.game_mode == GM_HOLDAZONE {
-            let scale = if info.holder_idx != me_w.index { 1.0 } else { 1.0 / 4.0 };
+        if info.game_mode == Some(GameMode::Holdazone) {
+            let scale = if info.holder_idx != Some(me_w.index) {
+                1.0
+            } else {
+                1.0 / 4.0
+            };
             score -= len * scale;
-        } else if info.game_mode == GM_GAME_OF_TAG {
-            if info.last_killed_idx >= 0 && info.last_killed_idx != me_w.index {
+        } else if info.game_mode == Some(GameMode::GameOfTag) {
+            if info.last_killed_idx.is_some_and(|i| i != me_w.index) {
                 score += len;
             } else {
                 score -= len;
@@ -778,18 +779,18 @@ impl FollowAi {
             score -= len;
         }
 
-        if info.game_mode == GM_HOLDAZONE {
-            if info.holder_idx == me_w.index {
+        if info.game_mode == Some(GameMode::Holdazone) {
+            if info.holder_idx == Some(me_w.index) {
                 score += 50.0;
             }
-            if info.contender_idx == me_w.index {
-                score += info.contender_frames as f64 * 30.0 / 70.0;
+            if info.contender_idx == Some(me_w.index) {
+                score += f64::from(info.contender_frames) * 30.0 / 70.0;
             }
-            if info.holder_idx == target_w.index {
+            if info.holder_idx == Some(target_w.index) {
                 score -= 50.0;
             }
-            if info.contender_idx == target_w.index {
-                score -= info.contender_frames as f64 * 30.0 / 70.0;
+            if info.contender_idx == Some(target_w.index) {
+                score -= f64::from(info.contender_frames) * 30.0 / 70.0;
             }
         }
         score
@@ -848,7 +849,7 @@ impl FollowAi {
             match ms {
                 Mutation::Identity => {}
                 Mutation::Range(start, stop) => {
-                    if i as u64 >= start as u64 && (i as u64) < stop as u64 {
+                    if i as u64 >= u64::from(start) && (i as u64) < u64::from(stop) {
                         plan[i] = self.model.random(&context, &mut self.rand);
                     }
                 }
@@ -885,7 +886,7 @@ impl FollowAi {
             if ai_traces {
                 let t = 119 - (i * (119 - 104 + 1) / plan_size) as i32;
                 let w = games.worm(copy, me_copy);
-                self.evaluate_positions.push(LieroAiTrace {
+                self.evaluate_positions.push(AiTrace {
                     x: w.pos[0],
                     y: w.pos[1],
                     color: t as u8,
@@ -958,7 +959,7 @@ impl FollowAi {
         let info = games.game(org);
 
         let (mut tx, mut ty) = (ftoi(target_w.pos[0]), ftoi(target_w.pos[1]));
-        if info.game_mode == GM_HOLDAZONE {
+        if info.game_mode == Some(GameMode::Holdazone) {
             (tx, ty) = (info.zone_center[0], info.zone_center[1]);
         }
         self.dlevel.build(&games.level(org));

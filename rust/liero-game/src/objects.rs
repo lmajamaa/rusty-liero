@@ -1,6 +1,6 @@
 //! The game's object lists: bonuses, weapon objects (`WObject`), special
 //! objects (`SObject`: explosions and smoke), non-weapon objects (`NObject`:
-//! splinters and the like) and blood. Rust owns them, in `LieroGameData`.
+//! splinters and the like) and blood. Rust owns them, in `GameData`.
 //!
 //! The four fixed lists work like C++'s `ExactObjectList<T, N>`
 //! (`src/game/exactObjectList.hpp`): `N` slots and a sentinel slot that is
@@ -11,18 +11,18 @@
 //! The lists are 74 KB in all, more than the web build's 64 KB stack, so
 //! they are only ever made and copied on the heap.
 
-use crate::math::LieroIVec2;
-use crate::object::LieroBObject;
+use crate::math::FVec2;
+use crate::object::BObject;
 
 /// List sizes, as in `Game`'s typedefs.
-pub const LIERO_MAX_BONUSES: usize = 99;
-pub const LIERO_MAX_WOBJECTS: usize = 600;
-pub const LIERO_MAX_SOBJECTS: usize = 700;
-pub const LIERO_MAX_NOBJECTS: usize = 600;
+pub const MAX_BONUSES: usize = 99;
+pub const MAX_WOBJECTS: usize = 600;
+pub const MAX_SOBJECTS: usize = 700;
+pub const MAX_NOBJECTS: usize = 600;
 
 /// A bonus, laid out like C++'s `Bonus`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroBonus {
+pub struct Bonus {
     pub used: bool,
     pub x: i32,
     pub y: i32,
@@ -35,7 +35,7 @@ pub struct LieroBonus {
 
 /// A special object, laid out like C++'s `SObject`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroSObject {
+pub struct SObject {
     pub used: bool,
     pub x: i32,
     pub y: i32,
@@ -61,10 +61,10 @@ impl FiredBy {
 
 /// A weapon object, laid out like C++'s `WObject`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroWObject {
+pub struct WObject {
     pub used: bool,
-    pub pos: LieroIVec2,
-    pub vel: LieroIVec2,
+    pub pos: FVec2,
+    pub vel: FVec2,
     /// The weapon that fired it: its index in the TC's weapons.
     pub kind: i32,
     pub owner_idx: i32,
@@ -77,10 +77,10 @@ pub struct LieroWObject {
 
 /// A non-weapon object, laid out like C++'s `NObject`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroNObject {
+pub struct NObject {
     pub used: bool,
-    pub pos: LieroIVec2,
-    pub vel: LieroIVec2,
+    pub pos: FVec2,
+    pub vel: FVec2,
     pub time_left: i32,
     /// Its type: the index in the TC's non-weapon objects.
     pub kind: i32,
@@ -93,9 +93,9 @@ pub struct LieroNObject {
 
 /// `ExactObjectList<Bonus, 99>`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroBonusList {
-    pub arr: [LieroBonus; LIERO_MAX_BONUSES],
-    pub sentinel: LieroBonus,
+pub struct BonusList {
+    pub arr: [Bonus; MAX_BONUSES],
+    pub sentinel: Bonus,
     /// A set bit is a free slot.
     pub free_list: [u32; 4],
     pub count: usize,
@@ -103,27 +103,27 @@ pub struct LieroBonusList {
 
 /// `ExactObjectList<WObject, 600>`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroWObjectList {
-    pub arr: [LieroWObject; LIERO_MAX_WOBJECTS],
-    pub sentinel: LieroWObject,
+pub struct WObjectList {
+    pub arr: [WObject; MAX_WOBJECTS],
+    pub sentinel: WObject,
     pub free_list: [u32; 19],
     pub count: usize,
 }
 
 /// `ExactObjectList<SObject, 700>`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroSObjectList {
-    pub arr: [LieroSObject; LIERO_MAX_SOBJECTS],
-    pub sentinel: LieroSObject,
+pub struct SObjectList {
+    pub arr: [SObject; MAX_SOBJECTS],
+    pub sentinel: SObject,
     pub free_list: [u32; 22],
     pub count: usize,
 }
 
 /// `ExactObjectList<NObject, 600>`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroNObjectList {
-    pub arr: [LieroNObject; LIERO_MAX_NOBJECTS],
-    pub sentinel: LieroNObject,
+pub struct NObjectList {
+    pub arr: [NObject; MAX_NOBJECTS],
+    pub sentinel: NObject,
     pub free_list: [u32; 19],
     pub count: usize,
 }
@@ -170,7 +170,7 @@ macro_rules! clear_list {
     };
 }
 
-clear_list!(LieroBonusList, LieroWObjectList, LieroSObjectList, LieroNObjectList);
+clear_list!(BonusList, WObjectList, SObjectList, NObjectList);
 
 /// A list `Cursor` can walk: slots by index, with the sentinel, which is
 /// always used, at `LIMIT`.
@@ -240,10 +240,10 @@ macro_rules! exact_list {
     };
 }
 
-exact_list!(LieroBonusList, LIERO_MAX_BONUSES);
-exact_list!(LieroWObjectList, LIERO_MAX_WOBJECTS);
-exact_list!(LieroSObjectList, LIERO_MAX_SOBJECTS);
-exact_list!(LieroNObjectList, LIERO_MAX_NOBJECTS);
+exact_list!(BonusList, MAX_BONUSES);
+exact_list!(WObjectList, MAX_WOBJECTS);
+exact_list!(SObjectList, MAX_SOBJECTS);
+exact_list!(NObjectList, MAX_NOBJECTS);
 
 /// `ExactObjectList::range` as an index: the slots in use, first to last,
 /// stopping at the sentinel. Each step reads the list afresh, so objects
@@ -269,7 +269,7 @@ impl Cursor {
     }
 }
 
-impl LieroBonusList {
+impl BonusList {
     /// Clears the list, with every bonus as C++'s `Bonus()` made it.
     pub(crate) fn init(&mut self) {
         for b in self.arr.iter_mut() {
@@ -284,16 +284,16 @@ impl LieroBonusList {
 /// The blood particles, C++'s `BObjectList`: `arr` holds the list's
 /// limit of particles, and the first `count` are in use.
 #[derive(Clone, Debug)]
-pub struct LieroBObjectList {
-    pub arr: Vec<LieroBObject>,
+pub struct BObjectList {
+    pub arr: Vec<BObject>,
     pub count: usize,
 }
 
-impl LieroBObjectList {
+impl BObjectList {
     /// A list of `limit` particles, none in use.
     pub(crate) fn new(limit: usize) -> Self {
-        LieroBObjectList {
-            arr: vec![LieroBObject::default(); limit],
+        BObjectList {
+            arr: vec![BObject::default(); limit],
             count: 0,
         }
     }
@@ -304,20 +304,20 @@ impl LieroBObjectList {
     }
 
     /// The particles in use.
-    pub(crate) fn used(&self) -> &[LieroBObject] {
+    pub(crate) fn used(&self) -> &[BObject] {
         &self.arr[..self.count]
     }
 
     /// `FastObjectList::resize`: keeps the first particles, and new ones
     /// are zero.
     pub(crate) fn resize(&mut self, limit: usize) {
-        self.arr.resize(limit, LieroBObject::default());
+        self.arr.resize(limit, BObject::default());
         self.count = self.count.min(limit);
     }
 
     /// `BloodList::newObjectReuse`: a new particle, or the last one when
     /// the list is full.
-    pub(crate) fn new_object_reuse(&mut self) -> &mut LieroBObject {
+    pub(crate) fn new_object_reuse(&mut self) -> &mut BObject {
         if self.count == self.limit() {
             return &mut self.arr[self.count - 1];
         }
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn cleared_lists_match_cpp() {
-        let mut l: Box<LieroWObjectList> = unsafe { zeroed_box().assume_init() };
+        let mut l: Box<WObjectList> = unsafe { zeroed_box().assume_init() };
         l.clear();
         assert_eq!(l.count, 0);
         assert!(l.sentinel.used && l.used() == 0);
@@ -346,7 +346,7 @@ mod tests {
         assert!(l.free_list[..18].iter().all(|&w| w == !0));
         assert_eq!(l.free_list[18], (1 << (600 - 18 * 32)) - 1);
 
-        let mut b: Box<LieroBonusList> = unsafe { zeroed_box().assume_init() };
+        let mut b: Box<BonusList> = unsafe { zeroed_box().assume_init() };
         b.init();
         assert!(b.arr.iter().all(|b| b.frame == -1 && b.weapon == 0 && !b.used));
         assert_eq!(b.free_list[3], (1 << (99 - 3 * 32)) - 1);
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn lists_hand_out_the_lowest_free_slot_and_reuse_the_last_when_full() {
-        let mut l: Box<LieroSObjectList> = unsafe { zeroed_box().assume_init() };
+        let mut l: Box<SObjectList> = unsafe { zeroed_box().assume_init() };
         l.clear();
         let (a, b, c) = (l.new_object(), l.new_object(), l.new_object());
         assert_eq!((a, b, c), (Some(0), Some(1), Some(2)));
@@ -363,17 +363,17 @@ mod tests {
         assert_eq!(l.count, 2);
         assert_eq!(l.new_object(), Some(1));
 
-        for _ in 3..LIERO_MAX_SOBJECTS {
+        for _ in 3..MAX_SOBJECTS {
             assert!(l.new_object().is_some());
         }
         assert_eq!(l.new_object(), None);
-        assert_eq!(l.new_object_reuse(), LIERO_MAX_SOBJECTS - 1);
-        assert_eq!(l.count, LIERO_MAX_SOBJECTS);
+        assert_eq!(l.new_object_reuse(), MAX_SOBJECTS - 1);
+        assert_eq!(l.count, MAX_SOBJECTS);
     }
 
     #[test]
     fn cursors_skip_free_slots_and_survive_freeing_the_current_one() {
-        let mut l: Box<LieroBonusList> = unsafe { zeroed_box().assume_init() };
+        let mut l: Box<BonusList> = unsafe { zeroed_box().assume_init() };
         l.init();
         for _ in 0..5 {
             l.new_object();
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn blood_reuses_the_last_particle_when_full() {
-        let mut l = LieroBObjectList::new(2);
+        let mut l = BObjectList::new(2);
         l.new_object_reuse().color = 1;
         l.new_object_reuse().color = 2;
         l.new_object_reuse().color = 3;
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn blood_list_resizes_and_copies() {
-        let mut l = LieroBObjectList::new(1);
+        let mut l = BObjectList::new(1);
         assert_eq!((l.limit(), l.count), (1, 0));
         l.resize(4);
         l.arr[2].color = 7;

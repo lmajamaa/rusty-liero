@@ -2,12 +2,12 @@
 //! the app: starting it from the command line's folders, saving the
 //! settings at the end, the window's settings, and a sound for the menus.
 
-use crate::app::LieroApp;
+use crate::app::App;
 use crate::fs::Node;
-use crate::settings::LieroSettingsBox;
-use crate::sfx::{LieroMixer, LieroSoundOut};
+use crate::settings::{SettingsBox, SharedSettings};
+use crate::sfx::{Mixer, SoundOut};
 
-impl LieroApp {
+impl App {
     /// Starts the app as `main` did: the config folder `config` (empty for
     /// the current one) and the folder of TCs `tc_root` (empty for TC in
     /// the config folder); the settings from liero.cfg, else LIERO.DAT,
@@ -26,7 +26,7 @@ impl LieroApp {
         if !self.load_settings(Some(&cfg), false)
             && !self.load_settings(Some(&self.files.config.go(b"LIERO.DAT")), true)
         {
-            self.settings = Some(LieroSettingsBox::defaults());
+            self.settings = Some(SettingsBox::defaults());
             if !self.save_settings(&cfg) {
                 return Err(format!("Could not write {}", String::from_utf8_lossy(cfg.full_path())));
             }
@@ -60,57 +60,38 @@ impl LieroApp {
     }
 }
 
-pub fn liero_shell_fullscreen(a: &LieroApp) -> bool {
-    a.settings
-        .as_ref()
-        .expect("no menu settings")
-        .borrow()
-        .data
-        .ext
-        .fullscreen
-}
+impl App {
+    fn menu_settings(&self) -> &SharedSettings {
+        self.settings.as_ref().expect("no menu settings")
+    }
 
-pub fn liero_shell_set_fullscreen(a: &mut LieroApp, on: bool) {
-    a.settings
-        .as_ref()
-        .expect("no menu settings")
-        .borrow_mut()
-        .data
-        .ext
-        .fullscreen = on;
-}
+    pub fn fullscreen(&self) -> bool {
+        self.menu_settings().borrow().data.ext.fullscreen
+    }
 
-pub fn liero_shell_spectator_window(a: &LieroApp) -> bool {
-    a.settings
-        .as_ref()
-        .expect("no menu settings")
-        .borrow()
-        .data
-        .ext
-        .spectator_window
-}
+    pub fn set_fullscreen(&mut self, on: bool) {
+        self.menu_settings().borrow_mut().data.ext.fullscreen = on;
+    }
 
-pub fn liero_shell_set_spectator_window(a: &mut LieroApp, on: bool) {
-    a.settings
-        .as_ref()
-        .expect("no menu settings")
-        .borrow_mut()
-        .data
-        .ext
-        .spectator_window = on;
-}
+    pub fn spectator_window(&self) -> bool {
+        self.menu_settings().borrow().data.ext.spectator_window
+    }
 
-/// Plays the menus' TC's `sound` on `mixer`, if there is one.
-///
-/// # Safety
-/// `mixer` is valid or null.
-pub unsafe fn liero_shell_play_sound(a: &LieroApp, mixer: *mut LieroMixer, sound: i32) {
-    unsafe {
+    pub fn set_spectator_window(&mut self, on: bool) {
+        self.menu_settings().borrow_mut().data.ext.spectator_window = on;
+    }
+
+    /// Plays the menus' TC's `sound` on `mixer`, if there is one.
+    ///
+    /// # Safety
+    /// `mixer` is valid or null.
+    pub unsafe fn play_menu_sound(&self, mixer: *mut Mixer, sound: i32) {
         if mixer.is_null() {
             return;
         }
-        let tc = a.menu_tc();
-        LieroSoundOut { mixer, report: None }.play(&crate::tc::tc_data(&tc), sound, std::ptr::null_mut(), 0);
+        let tc = self.menu_tc();
+        // SAFETY: the caller's mixer.
+        unsafe { SoundOut { mixer, report: None }.play(&crate::tc::tc_data(&tc), sound, std::ptr::null_mut(), 0) };
     }
 }
 
@@ -134,11 +115,11 @@ mod tests {
     #[test]
     fn start_writes_the_defaults_and_loads_the_tc() {
         let dir = folder("defaults");
-        let a = &mut LieroApp::new();
+        let a = &mut App::new();
         a.start(dir.as_bytes(), b"../../TC", b"").unwrap();
         assert_eq!(
             read(&format!("{dir}/liero.cfg")),
-            LieroSettingsBox::defaults().borrow().text()
+            SettingsBox::defaults().borrow().text()
         );
         assert_eq!(a.files.config.full_path(), format!("./{dir}").as_bytes());
         assert_eq!(a.settings_mut().data.ext.tc, b"openliero");
@@ -148,8 +129,8 @@ mod tests {
     #[test]
     fn start_reads_liero_cfg_and_keeps_it() {
         let dir = folder("read");
-        let a = &mut LieroApp::new();
-        a.settings = Some(LieroSettingsBox::defaults());
+        let a = &mut App::new();
+        a.settings = Some(SettingsBox::defaults());
         a.settings_mut().data.lives = 7;
         let text = a.settings_mut().text();
         std::fs::write(format!("{dir}/liero.cfg"), &text).unwrap();
@@ -163,7 +144,7 @@ mod tests {
     #[test]
     fn start_takes_the_tc_and_root_given() {
         let dir = folder("tc");
-        let a = &mut LieroApp::new();
+        let a = &mut App::new();
         // The TC folder in the config folder, by default: none here.
         assert!(a
             .start(dir.as_bytes(), b"", b"")
@@ -180,7 +161,7 @@ mod tests {
         a.start(dir.as_bytes(), b"../../TC", b"openliero").unwrap();
         assert_eq!(
             read(&format!("{dir}/liero.cfg")),
-            LieroSettingsBox::defaults().borrow().text()
+            SettingsBox::defaults().borrow().text()
         );
     }
 
@@ -189,7 +170,7 @@ mod tests {
         // A folder in its place: it can't be read or written.
         let dir = folder("unwritable");
         std::fs::create_dir(format!("{dir}/liero.cfg")).unwrap();
-        let a = &mut LieroApp::new();
+        let a = &mut App::new();
         let e = a.start(dir.as_bytes(), b"../../TC", b"").unwrap_err();
         assert_eq!(e, format!("Could not write ./{dir}/liero.cfg"));
     }
@@ -197,7 +178,7 @@ mod tests {
     #[test]
     fn start_marks_the_settings_saved_if_the_menu_saves_them() {
         let dir = folder("mark");
-        let a = &mut LieroApp::new();
+        let a = &mut App::new();
         a.save_settings_on_change = true;
         a.start(dir.as_bytes(), b"../../TC", b"").unwrap();
         std::fs::remove_file(format!("{dir}/liero.cfg")).unwrap();
@@ -211,7 +192,7 @@ mod tests {
     #[test]
     fn save_settings_writes_liero_cfg() {
         let dir = folder("save");
-        let a = &mut LieroApp::new();
+        let a = &mut App::new();
         a.start(dir.as_bytes(), b"../../TC", b"").unwrap();
         a.settings_mut().data.lives = 9;
         a.save_settings_at_end().unwrap();
@@ -227,15 +208,15 @@ mod tests {
 
     #[test]
     fn window_settings() {
-        let a = &mut LieroApp::new();
-        a.settings = Some(LieroSettingsBox::defaults());
-        liero_shell_set_fullscreen(a, true);
-        liero_shell_set_spectator_window(a, false);
-        assert!(liero_shell_fullscreen(a) && a.settings_mut().data.ext.fullscreen);
-        assert!(!liero_shell_spectator_window(a));
-        liero_shell_set_fullscreen(a, false);
-        liero_shell_set_spectator_window(a, true);
-        assert!(!liero_shell_fullscreen(a));
-        assert!(liero_shell_spectator_window(a) && a.settings_mut().data.ext.spectator_window);
+        let a = &mut App::new();
+        a.settings = Some(SettingsBox::defaults());
+        a.set_fullscreen(true);
+        a.set_spectator_window(false);
+        assert!(a.fullscreen() && a.settings_mut().data.ext.fullscreen);
+        assert!(!a.spectator_window());
+        a.set_fullscreen(false);
+        a.set_spectator_window(true);
+        assert!(!a.fullscreen());
+        assert!(a.spectator_window() && a.settings_mut().data.ext.spectator_window);
     }
 }

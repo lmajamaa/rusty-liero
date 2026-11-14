@@ -8,38 +8,9 @@
 //! and hit worms directly.
 
 use crate::level::{Common, Level};
-use crate::math::{ftoi, itof, LieroIVec2};
-use crate::objects::{LieroBonus, LieroSObject};
-use crate::rand::LieroRand;
-
-pub(crate) fn add(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
-    LieroIVec2 {
-        x: a.x.wrapping_add(b.x),
-        y: a.y.wrapping_add(b.y),
-    }
-}
-
-pub(crate) fn sub(a: LieroIVec2, b: LieroIVec2) -> LieroIVec2 {
-    LieroIVec2 {
-        x: a.x.wrapping_sub(b.x),
-        y: a.y.wrapping_sub(b.y),
-    }
-}
-
-/// Divides both components, rounding towards zero like C++.
-pub(crate) fn div(a: LieroIVec2, d: i32) -> LieroIVec2 {
-    LieroIVec2 {
-        x: a.x.wrapping_div(d),
-        y: a.y.wrapping_div(d),
-    }
-}
-
-pub(crate) fn ftoi_vec(v: LieroIVec2) -> LieroIVec2 {
-    LieroIVec2 {
-        x: ftoi(v.x),
-        y: ftoi(v.y),
-    }
-}
+use crate::math::{ftoi, FVec2, Fixed, IVec2};
+use crate::objects::{Bonus, SObject};
+use crate::rand::Rand;
 
 /// Like C++'s `Level::inside`: negative coordinates wrap to large unsigned
 /// values and fail.
@@ -49,18 +20,18 @@ pub(crate) fn inside(level: &Level, x: i32, y: i32) -> bool {
 
 /// A blood particle, laid out like C++'s `BObject`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LieroBObject {
-    pub pos: LieroIVec2,
-    pub vel: LieroIVec2,
+pub struct BObject {
+    pub pos: FVec2,
+    pub vel: FVec2,
     pub color: i32,
 }
 
-impl LieroBObject {
+impl BObject {
     /// Moves the particle one tick. Returns false when it left the level or
     /// landed and coloured a pixel, so C++ frees it.
-    pub fn process(&mut self, level: &mut Level, common: &Common, rand: &mut LieroRand, gravity: i32) -> bool {
-        self.pos = add(self.pos, self.vel);
-        let ipos = ftoi_vec(self.pos);
+    pub fn process(&mut self, level: &mut Level, common: &Common, rand: &mut Rand, gravity: i32) -> bool {
+        self.pos += self.vel;
+        let ipos = self.pos.to_int();
 
         if !inside(level, ipos.x, ipos.y) {
             return false;
@@ -70,7 +41,7 @@ impl LieroBObject {
         let m = level.mat(ipos.x, ipos.y);
 
         if m.background() {
-            self.vel.y = self.vel.y.wrapping_add(gravity);
+            self.vel.y += Fixed(gravity);
         }
 
         // The colours of blood and of worms. TODO in C++: read from the EXE.
@@ -92,17 +63,17 @@ impl LieroBObject {
 
 /// Constants for bonuses, from the TC (`LC(Bonus...)` in C++).
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LieroBonusConstants {
+pub struct BonusConstants {
     pub gravity: i32,
     pub bounce_mul: i32,
     pub bounce_div: i32,
 }
 
-impl LieroBonus {
+impl Bonus {
     /// Moves the bonus box one tick: falling, bouncing on the ground and
     /// counting down `timer`. Returns true when the timer ran out, so C++
     /// explodes it. `x` must be inside the level.
-    pub fn process(&mut self, level: &Level, constants: &LieroBonusConstants) -> bool {
+    pub fn process(&mut self, level: &Level, constants: &BonusConstants) -> bool {
         let lv = level;
 
         self.y = self.y.wrapping_add(self.vel_y);
@@ -129,7 +100,7 @@ impl LieroBonus {
     }
 }
 
-impl LieroSObject {
+impl SObject {
     /// Advances the explosion's animation one tick. Returns true when the
     /// animation is over, so C++ frees the object.
     pub fn animate(&mut self, type_anim_delay: i32, num_frames: i32) -> bool {
@@ -155,16 +126,16 @@ fn in_blast(px: i32, py: i32, x: i32, y: i32, range: i32) -> bool {
 /// `SObjectType::create` does. A worm already moving at 2 pixels per tick or
 /// more on an axis isn't pushed on that axis. Returns false when the worm is
 /// out of range; otherwise sets `power_sum`, which sets the damage.
-pub fn liero_explosion_push_worm(
-    pos: LieroIVec2,
-    vel: &mut LieroIVec2,
+pub fn explosion_push_worm(
+    pos: FVec2,
+    vel: &mut FVec2,
     x: i32,
     y: i32,
     range: i32,
     blow_away: i32,
     power_sum: &mut i32,
 ) -> bool {
-    let (wix, wiy) = (ftoi(pos.x), ftoi(pos.y));
+    let IVec2 { x: wix, y: wiy } = pos.to_int();
     if !in_blast(wix, wiy, x, y, range) {
         return false;
     }
@@ -174,26 +145,18 @@ pub fn liero_explosion_push_worm(
     let mut sum = power;
 
     // TODO in C++: read from the EXE.
-    if vel.x.abs() < itof(2) {
-        let push = blow_away.wrapping_mul(power);
-        vel.x = if delta > 0 {
-            vel.x.wrapping_add(push)
-        } else {
-            vel.x.wrapping_sub(push)
-        };
+    if vel.x.abs() < Fixed::from_int(2) {
+        let push = Fixed(blow_away.wrapping_mul(power));
+        vel.x = if delta > 0 { vel.x + push } else { vel.x - push };
     }
 
     let delta = wiy - y;
     let power = range - delta.abs();
     sum = (sum + power) / 2;
 
-    if vel.y.abs() < itof(2) {
-        let push = blow_away.wrapping_mul(power);
-        vel.y = if delta > 0 {
-            vel.y.wrapping_add(push)
-        } else {
-            vel.y.wrapping_sub(push)
-        };
+    if vel.y.abs() < Fixed::from_int(2) {
+        let push = Fixed(blow_away.wrapping_mul(power));
+        vel.y = if delta > 0 { vel.y + push } else { vel.y - push };
     }
 
     *power_sum = sum;
@@ -201,7 +164,7 @@ pub fn liero_explosion_push_worm(
 }
 
 /// The damage an explosion does to a worm, from `power_sum`.
-pub fn liero_explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
+pub fn explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
     let z = damage.wrapping_mul(power_sum);
     if range != 0 {
         z / range
@@ -212,15 +175,8 @@ pub fn liero_explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
 
 /// Pushes an object that explosions affect away from an explosion at
 /// (x, y). Returns whether it was in range (for chain explosions).
-pub fn liero_explosion_push_object(
-    pos: LieroIVec2,
-    vel: &mut LieroIVec2,
-    x: i32,
-    y: i32,
-    range: i32,
-    blow_away: i32,
-) -> bool {
-    let ipos = ftoi_vec(pos);
+pub fn explosion_push_object(pos: FVec2, vel: &mut FVec2, x: i32, y: i32, range: i32, blow_away: i32) -> bool {
+    let ipos = pos.to_int();
     if !in_blast(ipos.x, ipos.y, x, y, range) {
         return false;
     }
@@ -229,11 +185,11 @@ pub fn liero_explosion_push_object(
         let delta = p - c;
         let power = range - delta.abs();
         if power > 0 {
-            let push = blow_away.wrapping_mul(power);
+            let push = Fixed(blow_away.wrapping_mul(power));
             if delta > 0 {
-                *v = v.wrapping_add(push);
+                *v += push;
             } else if delta < 0 {
-                *v = v.wrapping_sub(push);
+                *v -= push;
             }
         }
     }
@@ -242,13 +198,13 @@ pub fn liero_explosion_push_object(
 
 /// The ninja rope, laid out like C++'s `Ninjarope`.
 #[derive(Clone, Copy, Debug)]
-pub struct LieroNinjarope {
+pub struct Ninjarope {
     pub out: bool,
     pub attached: bool,
     /// The worm the rope is attached to, if any.
     pub anchor: Option<crate::worm::WormId>,
-    pub pos: LieroIVec2,
-    pub vel: LieroIVec2,
+    pub pos: FVec2,
+    pub vel: FVec2,
     pub length: i32,
     pub cur_len: i32,
 }
@@ -256,10 +212,11 @@ pub struct LieroNinjarope {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::math::itof;
 
     #[test]
     fn sobject_animation_ends_after_last_frame() {
-        let mut o = LieroSObject {
+        let mut o = SObject {
             used: true,
             x: 0,
             y: 0,
@@ -277,54 +234,33 @@ mod tests {
 
     #[test]
     fn explosion_pushes_worm_away_and_sets_power() {
-        let mut vel = LieroIVec2::default();
+        let mut vel = FVec2::default();
         let mut sum = 0;
-        let pos = LieroIVec2 {
-            x: itof(13),
-            y: itof(8),
-        };
-        assert!(liero_explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
+        let pos = FVec2::new(Fixed(itof(13)), Fixed(itof(8)));
+        assert!(explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
         // power 3 on x, 4 on y; y pushed up since the worm is above.
-        assert_eq!(vel, LieroIVec2 { x: 300, y: -400 });
+        assert_eq!(vel, FVec2::new(Fixed(300), Fixed(-400)));
         assert_eq!(sum, 3);
-        assert_eq!(liero_explosion_damage(10, sum, 6), 5);
+        assert_eq!(explosion_damage(10, sum, 6), 5);
 
-        let far = LieroIVec2 {
-            x: itof(16),
-            y: itof(10),
-        };
-        assert!(!liero_explosion_push_worm(far, &mut vel, 10, 10, 6, 100, &mut sum));
+        let far = FVec2::new(Fixed(itof(16)), Fixed(itof(10)));
+        assert!(!explosion_push_worm(far, &mut vel, 10, 10, 6, 100, &mut sum));
     }
 
     #[test]
     fn fast_worm_is_not_pushed() {
-        let mut vel = LieroIVec2 {
-            x: itof(2),
-            y: -itof(3),
-        };
+        let mut vel = FVec2::new(Fixed(itof(2)), Fixed(-itof(3)));
         let mut sum = 0;
-        let pos = LieroIVec2 {
-            x: itof(9),
-            y: itof(12),
-        };
-        assert!(liero_explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
-        assert_eq!(
-            vel,
-            LieroIVec2 {
-                x: itof(2),
-                y: -itof(3)
-            }
-        );
+        let pos = FVec2::new(Fixed(itof(9)), Fixed(itof(12)));
+        assert!(explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
+        assert_eq!(vel, FVec2::new(Fixed(itof(2)), Fixed(-itof(3))));
     }
 
     #[test]
     fn object_at_centre_is_not_pushed() {
-        let mut vel = LieroIVec2::default();
-        let pos = LieroIVec2 {
-            x: itof(10),
-            y: itof(12),
-        };
-        assert!(liero_explosion_push_object(pos, &mut vel, 10, 10, 6, 30));
-        assert_eq!(vel, LieroIVec2 { x: 0, y: 30 * 4 });
+        let mut vel = FVec2::default();
+        let pos = FVec2::new(Fixed(itof(10)), Fixed(itof(12)));
+        assert!(explosion_push_object(pos, &mut vel, 10, 10, 6, 30));
+        assert_eq!(vel, FVec2::new(Fixed(0), Fixed(30 * 4)));
     }
 }
