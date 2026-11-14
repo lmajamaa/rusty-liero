@@ -30,23 +30,24 @@ use crate::keys::{
 use crate::rand::LieroRand;
 use crate::settings::LieroSettingsBox;
 use crate::sfx::{LieroMixer, LieroSoundOut, LIERO_SOUND_LOOP, LIERO_SOUND_NORMAL};
-use crate::tc::{LieroTcSound, SharedTc};
+use crate::tc::SharedTc;
 
-fn sounds(tc: &SharedTc) -> std::cell::Ref<'_, [LieroTcSound]> {
-    std::cell::Ref::map(tc_data(tc), |d| &d.sounds[..])
-}
-
-fn samples(s: &LieroTcSound) -> &[i16] {
-    &s.samples
+/// Each of the TC's sounds' samples, or `None` for one the game can't play.
+fn sounds(d: &crate::tc::LieroTcData) -> impl Iterator<Item = Option<&[i16]>> {
+    d.model
+        .sounds
+        .iter()
+        .zip(&d.samples)
+        .map(|(s, samples)| s.data.as_ref().map(|_| &samples[..]))
 }
 
 fn hash_samples(out: &mut Out, tc: &SharedTc) {
-    for (i, s) in sounds(tc).iter().enumerate() {
+    for (i, s) in sounds(&tc_data(tc)).enumerate() {
         let mut f = Fnv::default();
-        f.bool(s.valid);
-        if s.valid {
-            f.u32(s.samples.len() as u32);
-            samples(s).iter().for_each(|&v| f.i32(v.into()));
+        f.bool(s.is_some());
+        if let Some(s) = s {
+            f.u32(s.len() as u32);
+            s.iter().for_each(|&v| f.i32(v.into()));
         }
         out.hash("sfx-sample", i as i64, f);
     }
@@ -58,8 +59,8 @@ fn hash_buffer(f: &mut Fnv, buf: &[i16]) {
 }
 
 fn mixer_script(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
-    let all = sounds(tc);
-    let mut sounds: Vec<&[i16]> = all.iter().filter(|s| s.valid).map(samples).collect();
+    let d = tc_data(tc);
+    let mut sounds: Vec<&[i16]> = sounds(&d).flatten().collect();
     // A full-scale square wave, which clips as soon as two play at once.
     let square: Vec<i16> = (0..300)
         .map(|i| if (i / 25) % 2 == 1 { 32767 } else { -32768 })

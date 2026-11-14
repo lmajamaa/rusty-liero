@@ -219,11 +219,11 @@ impl LieroSoundOut {
                 report(sound);
             }
             if let Some(m) = self.mixer.as_mut() {
-                let s = &tc.sounds[sound as usize];
+                let s = &tc.samples[sound as usize];
                 let now = m.now() as u32;
                 m.add(
-                    s.samples.as_ptr(),
-                    s.samples.len(),
+                    s.as_ptr(),
+                    s.len(),
                     now,
                     id as usize,
                     if loops != 0 {

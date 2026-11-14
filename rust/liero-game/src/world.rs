@@ -438,7 +438,10 @@ impl<'a> World<'a> {
             return false;
         }
 
-        let sprite = self.tc.worm_sprites.frame(w.current_frame + w.direction * 7 * 3);
+        let sprite = self
+            .tc
+            .worm_sprites
+            .sprite((w.current_frame + w.direction * 7 * 3) as usize);
 
         let delta_x = x - ftoi(w.pos.x) + 7;
         let delta_y = y - ftoi(w.pos.y) + 5;

@@ -39,7 +39,7 @@ pub struct LieroApp {
     tc: Option<SharedTc>,
     /// The TC's font, which F8 doesn't change, for drawing with while
     /// nothing borrows the TC.
-    font: Vec<crate::gfx::LieroFontChar>,
+    font: Vec<liero_data::model::FontChar>,
     /// The folders, the settings file and the TC chosen (`app_files.rs`).
     pub files: crate::app_files::Files,
     /// The menus, which the menu screen shares.
@@ -94,7 +94,7 @@ impl LieroApp {
 
     /// Makes `tc` (or none) the menus' TC.
     pub fn set_tc(&mut self, tc: Option<SharedTc>) {
-        self.font = tc.as_ref().map_or(Vec::new(), |t| tc_data(t).font.to_vec());
+        self.font = tc.as_ref().map_or(Vec::new(), |t| tc_data(t).model.font.clone());
         self.tc = tc;
     }
 }

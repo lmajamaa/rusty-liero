@@ -852,14 +852,14 @@ pub(crate) fn stats_scene<'a>(
     let sprite = |i: i32| {
         let frame = 2 + (if i == 0 { 1 } else { 0 }) * 7 * 3 + i * 2 * 7 * 3;
         LieroSprite {
-            mem: sprites.frame(frame),
-            width: sprites.width,
-            height: sprites.height,
-            pitch: sprites.width,
+            mem: sprites.sprite(frame as usize),
+            width: sprites.width as i32,
+            height: sprites.height as i32,
+            pitch: sprites.width as i32,
         }
     };
     LieroStatsScene {
-        font: LieroFont { chars: &tc.font },
+        font: LieroFont { chars: &tc.model.font },
         worm_sprites: [sprite(0), sprite(1)],
         names: [&g.names[0], &g.names[1]],
         game_mode: g.game_mode,

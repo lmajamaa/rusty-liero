@@ -8,6 +8,7 @@
 //! of it was passed. Images are slices; reads outside them panic, where C++
 //! read other memory. Writes to the screen are kept inside its buffer.
 
+use liero_data::model::FontChar;
 use std::cell::Cell;
 use std::collections::BTreeMap;
 
@@ -35,14 +36,6 @@ pub struct LieroColor {
     pub g: u8,
     pub b: u8,
     pub unused: u8,
-}
-
-/// One character of the bitmap font, laid out like `Font::Char`: 7 x 8
-/// pixels, non-zero where the character is, and how far to move after it.
-#[derive(Clone, Copy, Debug)]
-pub struct LieroFontChar {
-    pub data: [u8; 56],
-    pub width: i32,
 }
 
 impl<'a> LieroBitmap<'a> {
@@ -682,7 +675,7 @@ pub fn liero_palette_set_worm_colour(pal: &mut LieroPalette, i: i32, color: i32,
 /// Draws character `c` in `color`, `size` times as big: `Font::drawChar`.
 /// Clipping is for the unscaled size, as in C++.
 #[allow(clippy::too_many_arguments)]
-pub fn liero_font_draw_char(scr: &LieroBitmap, chars: &[LieroFontChar], c: u8, x: i32, y: i32, color: u8, size: i32) {
+pub fn liero_font_draw_char(scr: &LieroBitmap, chars: &[FontChar], c: u8, x: i32, y: i32, color: u8, size: i32) {
     // C++ checks the character after drawText subtracted 2. Keep that.
     if !(2..252).contains(&c) || c as usize >= chars.len() {
         return;
@@ -714,7 +707,7 @@ pub fn liero_font_draw_char(scr: &LieroBitmap, chars: &[LieroFontChar], c: u8, x
 #[allow(clippy::too_many_arguments)]
 pub fn liero_font_draw_text(
     scr: &LieroBitmap,
-    chars: &[LieroFontChar],
+    chars: &[FontChar],
     text: &[u8],
     mut x: i32,
     mut y: i32,
@@ -729,18 +722,18 @@ pub fn liero_font_draw_text(
         } else if (2..252).contains(&c) {
             let c = c - 2;
             liero_font_draw_char(scr, chars, c, x, y, color, size);
-            x += chars[c as usize].width * size;
+            x += chars[c as usize].width as i32 * size;
         }
     }
 }
 
 /// The width of `text`, its widest line if there are several, and its
 /// height: `Font::getDims`.
-pub fn liero_font_get_dims(chars: &[LieroFontChar], text: &[u8]) -> (i32, i32) {
+pub fn liero_font_get_dims(chars: &[FontChar], text: &[u8]) -> (i32, i32) {
     let (mut width, mut max_width, mut max_height) = (0, 0, 8);
     for &c in text {
         if (2..252).contains(&c) {
-            width += chars[c as usize - 2].width;
+            width += chars[c as usize - 2].width as i32;
         } else if c == 0 {
             max_width = max_width.max(width);
             width = 0;
@@ -893,7 +886,7 @@ mod tests {
     #[test]
     fn font_draws_and_measures() {
         let mut chars = vec![
-            LieroFontChar {
+            FontChar {
                 data: [0; 56],
                 width: 4
             };

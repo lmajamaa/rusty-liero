@@ -4,7 +4,8 @@
 
 use super::{Fnv, Out};
 use crate::fs::Node;
-use crate::tc::{load_checked, LieroTcData, LieroTcSprites, SharedTc, LIERO_TC_FONT_CHARS};
+use crate::tc::{load_checked, LieroTcData, SharedTc};
+use liero_data::model::SpriteSet;
 use liero_data::save;
 
 /// The TC the hash run uses.
@@ -13,15 +14,14 @@ pub(super) fn bundled() -> SharedTc {
 }
 
 /// A sprite set as `addSprites` hashes it.
-fn add_sprites(h: &mut Fnv, s: &LieroTcSprites) {
+fn add_sprites(h: &mut Fnv, s: &SpriteSet) {
     let size = s.width * s.height;
-    h.i32(s.width);
-    h.i32(s.height);
-    h.i32(size);
-    h.i32(s.count);
-    let bytes = size as usize * s.count as usize;
-    h.u32(bytes as u32);
-    h.bytes(s.pixels());
+    h.i32(s.width as i32);
+    h.i32(s.height as i32);
+    h.i32(size as i32);
+    h.i32(s.count as i32);
+    h.u32((size * s.count) as u32);
+    h.bytes(&s.data);
 }
 
 pub fn hash_tc(out: &mut Out) {
@@ -51,20 +51,20 @@ pub fn hash_tc(out: &mut Out) {
         out.hash("tc-sobject", i as i64, h);
     }
 
-    let sounds = &d.sounds;
-    for (i, s) in sounds.iter().enumerate() {
+    for (i, s) in m.sounds.iter().enumerate() {
+        let data = s.data.as_deref().unwrap_or(&[]);
         let mut h = Fnv::default();
-        h.bytes(&s.name);
-        h.u32(s.data.len() as u32);
-        h.bytes(&s.data);
-        h.bool(s.valid);
+        h.bytes(s.name.as_bytes());
+        h.u32(data.len() as u32);
+        h.bytes(data);
+        h.bool(s.data.is_some());
         out.hash("tc-sound", i as i64, h);
     }
 
     let mut h = Fnv::default();
-    add_sprites(&mut h, &d.small_sprites);
-    add_sprites(&mut h, &d.large_sprites);
-    add_sprites(&mut h, &d.text_sprites);
+    add_sprites(&mut h, &m.small_sprites);
+    add_sprites(&mut h, &m.large_sprites);
+    add_sprites(&mut h, &m.text_sprites);
     for c in &d.palette_colors {
         for v in [c.r, c.g, c.b, c.unused] {
             h.u32(u32::from(v));
@@ -73,10 +73,10 @@ pub fn hash_tc(out: &mut Out) {
     out.hash("tc-sprites", 0, h);
 
     let mut h = Fnv::default();
-    h.u32(LIERO_TC_FONT_CHARS as u32);
-    for c in &d.font {
+    h.u32(m.font.len() as u32);
+    for c in &m.font {
         h.bytes(&c.data);
-        h.i32(c.width);
+        h.i32(c.width as i32);
     }
     out.hash("tc-font", 0, h);
 

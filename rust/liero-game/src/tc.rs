@@ -9,86 +9,37 @@ use crate::fs::Node;
 use crate::gfx::LieroColor;
 use crate::rand::LieroRand;
 use crate::sfx::samples_from_tc;
+use liero_data::model::SpriteSet;
 use liero_data::model::{self, Common};
 use liero_data::Error;
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
-
-#[derive(Default)]
-pub struct LieroTcSound {
-    pub name: Vec<u8>,
-    /// Signed 8-bit samples.
-    pub data: Vec<u8>,
-    /// False when the WAV file had another format: the game has no sound.
-    pub valid: bool,
-    /// The 16-bit samples the mixer plays, twice as many as `data`
-    /// (`SfxSample::createSound`). The TC's sounds are never changed after
-    /// loading, so they stay put while a sound plays.
-    pub samples: Vec<i16>,
-}
-
-/// A TC's sprites: `count` of `width` x `height` pixels, one after the
-/// other.
-#[derive(Default)]
-pub struct LieroTcSprites {
-    data: Vec<u8>,
-    pub width: i32,
-    pub height: i32,
-    pub count: i32,
-}
-
-/// Characters in the font (`Font::chars`).
-pub const LIERO_TC_FONT_CHARS: usize = 250;
 
 /// A loaded TC: the model as `liero_data` reads it, and what the game
 /// works out from it.
 pub struct LieroTcData {
     /// The TC as loaded, with F8's changes.
     pub model: Common,
-    pub sounds: Vec<LieroTcSound>,
+    /// Each of the model's sounds as the 16-bit samples the mixer plays,
+    /// twice as many as the model's (`SfxSample::createSound`), and none
+    /// for a sound the game can't play. The TC's sounds are never changed
+    /// after loading, so they stay put while a sound plays.
+    pub samples: Vec<Vec<i16>>,
     /// The model's palette as the game's `Palette` holds it
     /// (`Common::exepal`).
     pub palette_colors: [LieroColor; 256],
     pub materials: [crate::material::LieroMaterial; 256],
-    pub small_sprites: LieroTcSprites,
-    pub large_sprites: LieroTcSprites,
-    pub text_sprites: LieroTcSprites,
-    pub font: [crate::gfx::LieroFontChar; LIERO_TC_FONT_CHARS],
     /// Precomputed: weapon indexes sorted by name, and the worm and fire cone
     /// sprites facing both ways (`Common::precompute`).
     pub weap_order: Vec<i32>,
-    pub worm_sprites: LieroTcSprites,
-    pub fire_cone_sprites: LieroTcSprites,
+    pub worm_sprites: SpriteSet,
+    pub fire_cone_sprites: SpriteSet,
 }
 
 /// A loaded TC, or the error that stopped loading it.
 pub struct LieroTc {
     error: String,
     data: Option<Box<LieroTcData>>,
-}
-
-impl LieroTcSprites {
-    /// Every sprite's pixels.
-    pub fn pixels(&self) -> &[u8] {
-        &self.data
-    }
-
-    /// Sprite `frame`'s pixels. Panics on a frame there isn't.
-    pub fn frame(&self, frame: i32) -> &[u8] {
-        assert!(0 <= frame && frame < self.count, "no sprite {frame}");
-        let size = (self.width * self.height) as usize;
-        &self.pixels()[frame as usize * size..][..size]
-    }
-}
-
-fn sprites(s: &model::SpriteSet) -> LieroTcSprites {
-    let len = s.width * s.height * s.count;
-    LieroTcSprites {
-        data: s.data[..len].to_vec(),
-        width: s.width as i32,
-        height: s.height as i32,
-        count: s.count as i32,
-    }
 }
 
 /// Weapon indexes sorted by name, as bytes. (The C++ used `std::sort`, which
@@ -163,49 +114,29 @@ impl LieroTc {
         }
         let mut tc = LieroTc::failed(String::new());
         let c = &common;
-        let sounds: Vec<_> = c
+        let samples = c
             .sounds
             .iter()
             .map(|s| {
                 let data = s.data.as_deref().unwrap_or(&[]);
                 let mut samples = vec![0i16; data.len() * 2];
                 samples_from_tc(data, &mut samples);
-                LieroTcSound {
-                    name: s.name.as_bytes().to_vec(),
-                    data: data.to_vec(),
-                    valid: s.data.is_some(),
-                    samples,
-                }
+                samples
             })
             .collect();
 
-        let font = std::array::from_fn(|i| match c.font.get(i) {
-            Some(ch) => crate::gfx::LieroFontChar {
-                data: ch.data,
-                width: ch.width as i32,
-            },
-            None => crate::gfx::LieroFontChar {
-                data: [0; 56],
-                width: 0,
-            },
-        });
-
         let data = LieroTcData {
-            sounds,
+            samples,
             palette_colors: c.palette.map(|[r, g, b]| LieroColor { r, g, b, unused: 0 }),
             materials: c.materials.map(|flags| crate::material::LieroMaterial { flags }),
-            small_sprites: sprites(&c.small_sprites),
-            large_sprites: sprites(&c.large_sprites),
-            text_sprites: sprites(&c.text_sprites),
-            font,
             weap_order: weapon_order(&c.weapons),
-            worm_sprites: LieroTcSprites {
+            worm_sprites: SpriteSet {
                 data: worm_sprites(&c.large_sprites),
                 width: 16,
                 height: 16,
                 count: 2 * 2 * 21,
             },
-            fire_cone_sprites: LieroTcSprites {
+            fire_cone_sprites: SpriteSet {
                 data: fire_cone_sprites(&c.large_sprites),
                 width: 16,
                 height: 16,
@@ -229,11 +160,8 @@ impl LieroTcData {
         unsafe {
             let p = tc.as_mut_ptr();
             std::ptr::addr_of_mut!((*p).model).write(empty_model());
-            std::ptr::addr_of_mut!((*p).sounds).write(Vec::new());
+            std::ptr::addr_of_mut!((*p).samples).write(Vec::new());
             std::ptr::addr_of_mut!((*p).weap_order).write(Vec::new());
-            std::ptr::addr_of_mut!((*p).small_sprites).write(Default::default());
-            std::ptr::addr_of_mut!((*p).large_sprites).write(Default::default());
-            std::ptr::addr_of_mut!((*p).text_sprites).write(Default::default());
             std::ptr::addr_of_mut!((*p).worm_sprites).write(Default::default());
             std::ptr::addr_of_mut!((*p).fire_cone_sprites).write(Default::default());
             tc.assume_init()
@@ -245,7 +173,7 @@ impl LieroTcData {
         crate::level::Common {
             materials: &self.materials,
             textures: &self.model.textures,
-            large_sprites: self.large_sprites.pixels(),
+            large_sprites: &self.model.large_sprites.data,
         }
     }
 }
@@ -262,9 +190,9 @@ impl LieroTc {
         let mut r = LieroRand::new(14);
         let sobjects = d.model.sobjects.len() as u32;
         let nobjects = d.model.nobjects.len() as u32;
-        let sounds = d.sounds.len() as u32;
-        let small = d.small_sprites.count as u32;
-        let large = d.large_sprites.count as u32;
+        let sounds = d.model.sounds.len() as u32;
+        let small = d.model.small_sprites.count as u32;
+        let large = d.model.large_sprites.count as u32;
 
         let mut order: Vec<usize> = (0..d.model.nobjects.len()).collect();
         let mut shuffle = LieroRand::new(shuffle_seed);
@@ -688,10 +616,8 @@ mod tests {
         assert!(b.borrow().error.is_empty(), "{}", b.borrow().error);
         let (da, db) = (tc_data(&a), tc_data(&b));
         assert_eq!(da.model.weapons.len(), db.model.weapons.len());
-        assert_eq!(da.sounds.len(), db.sounds.len());
-        for (sa, sb) in da.sounds.iter().zip(&db.sounds) {
-            assert_eq!((sa.valid, sa.data.len()), (sb.valid, sb.data.len()));
-        }
+        assert!(da.model.sounds == db.model.sounds);
+        assert_eq!(da.samples, db.samples);
     }
 
     #[test]
@@ -702,7 +628,7 @@ mod tests {
         assert!(tc.borrow().error.is_empty(), "{}", tc.borrow().error);
         let data = tc_data(&tc);
         assert_eq!(data.model.weapons.len(), 40);
-        assert_eq!(data.font[b'A' as usize].width, 5);
+        assert_eq!(data.model.font[b'A' as usize].width, 5);
 
         assert!(load_checked(&node).is_ok());
         assert_eq!(

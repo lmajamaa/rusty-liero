@@ -531,7 +531,7 @@ unsafe fn game_env(game: &LieroGame, rand: &mut LieroRand) -> LieroWeapselEnv {
 
 /// The TC's font.
 pub(crate) fn tc_font(tc: &LieroTcData) -> LieroFont<'_> {
-    LieroFont { chars: &tc.font }
+    LieroFont { chars: &tc.model.font }
 }
 
 /// The part of a path after the last slash (`getLeaf`).

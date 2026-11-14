@@ -115,7 +115,7 @@ pub struct Texture {
 }
 
 /// Square sprites stored one after another, each row-major.
-#[derive(PartialEq)]
+#[derive(Default, PartialEq)]
 pub struct SpriteSet {
     pub width: usize,
     pub height: usize,
@@ -124,13 +124,20 @@ pub struct SpriteSet {
 }
 
 impl SpriteSet {
+    /// Sprite `frame`'s pixels. Panics on a frame there isn't.
+    pub fn sprite(&self, frame: usize) -> &[u8] {
+        assert!(frame < self.count, "no sprite {frame}");
+        let size = self.width * self.height;
+        &self.data[frame * size..(frame + 1) * size]
+    }
+
     pub fn sprite_mut(&mut self, frame: usize) -> &mut [u8] {
         let size = self.width * self.height;
         &mut self.data[frame * size..(frame + 1) * size]
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FontChar {
     /// 7x8 pixels, row-major. Read from a TC folder, set pixels are 8.
     pub data: [u8; 56],

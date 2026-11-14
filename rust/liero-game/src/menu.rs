@@ -1194,11 +1194,11 @@ mod tests {
     #[test]
     fn centered_menus_center_each_item() {
         use crate::game::LieroRect;
-        use crate::gfx::LieroFontChar;
+        use liero_data::model::FontChar;
 
         unsafe fn no_overlay(_: *mut c_void, _: i32, _: i32, _: i32, _: bool, _: bool) {}
         let chars = vec![
-            LieroFontChar {
+            FontChar {
                 data: [1; 56],
                 width: 8
             };
