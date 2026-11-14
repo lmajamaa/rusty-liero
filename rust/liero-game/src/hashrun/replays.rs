@@ -216,7 +216,7 @@ fn play_back(
         LIERO_VIEWPORT_WORM,
         false,
     );
-    let blood = game.settings_box().data.blood_particle_max;
+    let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
     // SAFETY: the renderer is a live one.
     unsafe { liero_game_focus(game, renderer) };
@@ -356,7 +356,7 @@ struct SettingsChange {
 /// Starts a bot game as the bot games do and runs it `ticks` ticks.
 fn bot_game(a: &mut LieroApp, tc: &SharedTc, seed: u32, game_mode: u32, ticks: i32) -> Box<LieroGame> {
     let mut game = set_up_game(a, tc, seed, game_mode, None);
-    let blood = game.settings_box().data.blood_particle_max;
+    let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
     for _ in 0..ticks {
         bot_tick(&mut game);
@@ -385,7 +385,7 @@ fn record_game(
     let mut game = if start_tick == 0 {
         let mut game = set_up_game(a, tc, seed, game_mode, None);
         assert!(thrown(&writer.begin(&mut game)).is_none(), "the replay didn't begin");
-        let blood = game.settings_box().data.blood_particle_max;
+        let blood = game.settings_box().data.ext.blood_particle_max;
         game.start(blood);
         game
     } else {
@@ -405,7 +405,7 @@ fn record_game(
                 s.blood = c.blood;
             }
             if let Some(name) = c.worm_name {
-                game.worm_at(1).expect("no second worm").settings_mut().name = name.as_bytes().to_vec();
+                game.worm_at(1).expect("no second worm").settings_mut().data.name = name.as_bytes().to_vec();
             }
             writer.focus(&mut game);
         }

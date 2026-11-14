@@ -377,7 +377,7 @@ pub unsafe fn liero_weapsel_finalize(
             worm.current_weapon = 0; // It was 1 in OpenLiero A1
             for (ww, &n) in worm.weapons.iter_mut().zip(numbers) {
                 let w = tc.weapon_order()[(n as usize).wrapping_sub(1)];
-                let t = &tc.weapons[w as usize];
+                let t = &tc.model.weapons[w as usize];
                 ww.kind = w;
                 ww.ammo = t.ammo;
                 ww.delay_left = 0;
@@ -521,7 +521,7 @@ unsafe fn game_env(game: &LieroGame, rand: &mut LieroRand) -> LieroWeapselEnv {
         LieroWeapselEnv {
             weap_table: game.settings_box().data.weap_table.as_ptr(),
             weap_order: tc.weap_order.as_ptr(),
-            weapon_count: tc.weapons.len() as i32,
+            weapon_count: tc.model.weapons.len() as i32,
             rand,
             tc,
             sound: game.sound(),
@@ -531,7 +531,7 @@ unsafe fn game_env(game: &LieroGame, rand: &mut LieroRand) -> LieroWeapselEnv {
 
 /// The TC's font.
 pub(crate) fn tc_font(tc: &LieroTcData) -> LieroFont<'_> {
-    LieroFont { chars: &tc.font }
+    LieroFont { chars: &tc.model.font }
 }
 
 /// The part of a path after the last slash (`getLeaf`).
@@ -572,7 +572,7 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) ->
     unsafe {
         let g: *mut LieroGame = game;
         let tc = &*game.tc_ptr();
-        let select = game.settings_box().data.select_bot_weapons;
+        let select = game.settings_box().data.ext.select_bot_weapons;
         let viewports: Vec<(i32, i32, i32)> = game
             .split_viewports()
             .iter()
@@ -594,8 +594,8 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) ->
                 worm,
                 weapons: ws.data.weapons.as_mut_ptr(),
                 name: LieroStr {
-                    ptr: ws.name.as_ptr(),
-                    len: ws.name.len(),
+                    ptr: ws.data.name.as_ptr(),
+                    len: ws.data.name.len(),
                 },
                 color: ws.data.color,
                 center_x,
@@ -604,7 +604,7 @@ pub unsafe fn liero_weapsel_start(game: &mut LieroGame, rand: &mut LieroRand) ->
                 ready: bot && select != 1,
             });
         }
-        let names: Vec<LieroStr> = tc.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
+        let names: Vec<LieroStr> = tc.model.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
         let spec = LieroWeapselSpec {
             worms: worms.as_ptr(),
             worm_count: worms.len() as i32,
@@ -688,22 +688,22 @@ pub unsafe fn liero_weapsel_draw_game(
         let menu_settings = a.shared_settings();
         // The game's settings can be the menus' own, so one at a time.
         let line = || {
-            let game_file = (*g).settings_box().level_file.clone();
-            let menu_file = menu_settings.borrow().level_file.clone();
+            let game_file = (*g).settings_box().data.level_file.clone();
+            let menu_file = menu_settings.borrow().data.level_file.clone();
             level_line(tc, &game_file, &menu_file)
         };
         if spectators {
             let (cx, cy) = ((*r).data.render_res_x / 2, (*r).data.render_res_y / 4);
             if !ws.cached_spectator {
                 let scr = (*r).bmp.view();
-                let w = game.settings_box().worms.clone();
+                let w = game.settings_box().data.worms.clone();
                 let w = [w[0].borrow(), w[1].borrow()];
                 liero_menu_draw_versus(
                     &scr,
                     &font,
                     LieroStr::of(&line()),
-                    LieroStr::of(&w[0].name),
-                    LieroStr::of(&w[1].name),
+                    LieroStr::of(&w[0].data.name),
+                    LieroStr::of(&w[1].data.name),
                     w[0].data.color,
                     w[1].data.color,
                     cx,
@@ -749,13 +749,15 @@ pub unsafe fn liero_weapsel_draw_game(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tc::LieroTcWeapon;
+    use liero_data::model::Weapon;
 
     #[test]
     fn the_level_line_names_the_menus_level_file() {
-        let texts = liero_data::exe::TEXTS.iter().map(|t| t.0.as_bytes().to_vec()).collect();
         let mut tc = LieroTcData::empty();
-        tc.texts = texts;
+        tc.model.texts = liero_data::exe::TEXTS
+            .iter()
+            .map(|&(n, _)| (n, n.as_bytes().to_vec()))
+            .collect();
         assert_eq!(level_line(&tc, b"", b"a/b.lev"), b"LevelRandom");
         assert_eq!(level_line(&tc, b"x", b"C:\\lev/a.b.lev"), b"LevelIs1a.bLevelIs2");
         assert_eq!(level_line(&tc, b"x", b"dir.d\\name"), b"LevelIs1nameLevelIs2");
@@ -833,13 +835,12 @@ mod tests {
 
     /// A TC with `n` weapons, each with ammo 10 + its index.
     /// Boxed: it is too big for the wasm tests' stack.
-    fn tc(mut weapons: Vec<LieroTcWeapon>, order: &[i32]) -> Box<LieroTcData> {
+    fn tc(mut weapons: Vec<Weapon>, order: &[i32]) -> Box<LieroTcData> {
         for (i, w) in weapons.iter_mut().enumerate() {
-            w.id = i as i32;
             w.ammo = 10 + i as i32;
         }
         let mut tc = LieroTcData::empty();
-        tc.weapons = weapons;
+        tc.model.weapons = weapons;
         tc.weap_order = order.to_vec();
         tc
     }
@@ -847,7 +848,7 @@ mod tests {
     #[test]
     fn menus_play_sounds_and_set_the_worm() {
         let order: Vec<i32> = (0..40).collect();
-        let weapons: Vec<LieroTcWeapon> = (0..40).map(|_| LieroTcWeapon::default()).collect();
+        let weapons: Vec<Weapon> = (0..40).map(|_| Weapon::default()).collect();
         let tc = tc(weapons, &order);
         let table = [0u32; 40];
         let mut rand = LieroRand::new(1);
@@ -908,7 +909,7 @@ mod tests {
     #[test]
     fn finalize_loads_the_weapons_and_releases_the_controls() {
         let order: Vec<i32> = (0..10).rev().collect();
-        let weapons: Vec<LieroTcWeapon> = (0..10).map(|_| LieroTcWeapon::default()).collect();
+        let weapons: Vec<Weapon> = (0..10).map(|_| Weapon::default()).collect();
         let tc = tc(weapons, &order);
         let mut worm = LieroWormData {
             current_weapon: 3,

@@ -509,7 +509,7 @@ pub fn hash_app(a: &mut LieroApp, out: &mut Out) {
     a.primary_single = false;
     // As in the browser, where the lines were recorded.
     a.save_settings_on_change = true;
-    a.settings_mut().data.spectator_window = false;
+    a.settings_mut().data.ext.spectator_window = false;
     a.keys.clear();
     liero_menus_load(&mut a.shared_menus().borrow_mut());
 

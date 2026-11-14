@@ -32,7 +32,7 @@ impl LieroApp {
             }
         }
         if !tc.is_empty() {
-            self.settings_mut().tc = tc.to_vec();
+            self.settings_mut().data.ext.tc = tc.to_vec();
         }
         if self.save_settings_on_change {
             // What liero.cfg holds now, so the menu only writes it on a
@@ -40,7 +40,7 @@ impl LieroApp {
             self.mark_settings_saved();
         }
 
-        let node = self.files.tc_root.go(&self.settings_mut().tc);
+        let node = self.files.tc_root.go(&self.settings_mut().data.ext.tc);
         let loaded = crate::tc::load_checked(&node)?;
         self.set_tc(Some(loaded));
         let tc = self.menu_tc();
@@ -61,7 +61,13 @@ impl LieroApp {
 }
 
 pub fn liero_shell_fullscreen(a: &LieroApp) -> bool {
-    a.settings.as_ref().expect("no menu settings").borrow().data.fullscreen
+    a.settings
+        .as_ref()
+        .expect("no menu settings")
+        .borrow()
+        .data
+        .ext
+        .fullscreen
 }
 
 pub fn liero_shell_set_fullscreen(a: &mut LieroApp, on: bool) {
@@ -70,6 +76,7 @@ pub fn liero_shell_set_fullscreen(a: &mut LieroApp, on: bool) {
         .expect("no menu settings")
         .borrow_mut()
         .data
+        .ext
         .fullscreen = on;
 }
 
@@ -79,6 +86,7 @@ pub fn liero_shell_spectator_window(a: &LieroApp) -> bool {
         .expect("no menu settings")
         .borrow()
         .data
+        .ext
         .spectator_window
 }
 
@@ -88,6 +96,7 @@ pub fn liero_shell_set_spectator_window(a: &mut LieroApp, on: bool) {
         .expect("no menu settings")
         .borrow_mut()
         .data
+        .ext
         .spectator_window = on;
 }
 
@@ -132,7 +141,7 @@ mod tests {
             LieroSettingsBox::defaults().borrow().text()
         );
         assert_eq!(a.files.config.full_path(), format!("./{dir}").as_bytes());
-        assert_eq!(a.settings_mut().tc, b"openliero");
+        assert_eq!(a.settings_mut().data.ext.tc, b"openliero");
         assert!(a.has_tc());
     }
 
@@ -167,7 +176,7 @@ mod tests {
             .unwrap_err()
             .starts_with("Could not load the TC"));
         assert_eq!(a.files.tc_root.full_path(), b"./../../TC");
-        assert_eq!(a.settings_mut().tc, b"nothing");
+        assert_eq!(a.settings_mut().data.ext.tc, b"nothing");
         a.start(dir.as_bytes(), b"../../TC", b"openliero").unwrap();
         assert_eq!(
             read(&format!("{dir}/liero.cfg")),
@@ -222,11 +231,11 @@ mod tests {
         a.settings = Some(LieroSettingsBox::defaults());
         liero_shell_set_fullscreen(a, true);
         liero_shell_set_spectator_window(a, false);
-        assert!(liero_shell_fullscreen(a) && a.settings_mut().data.fullscreen);
+        assert!(liero_shell_fullscreen(a) && a.settings_mut().data.ext.fullscreen);
         assert!(!liero_shell_spectator_window(a));
         liero_shell_set_fullscreen(a, false);
         liero_shell_set_spectator_window(a, true);
         assert!(!liero_shell_fullscreen(a));
-        assert!(liero_shell_spectator_window(a) && a.settings_mut().data.spectator_window);
+        assert!(liero_shell_spectator_window(a) && a.settings_mut().data.ext.spectator_window);
     }
 }

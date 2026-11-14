@@ -13,8 +13,8 @@ fn tc() -> SharedTc {
 /// A local match with the worms named `names`, on a level of its own.
 fn local(tc: SharedTc, names: [&str; 2]) -> Box<LieroController> {
     let settings = liero_settings_box_new();
-    for (w, name) in settings.borrow().worms.iter().zip(names) {
-        w.borrow_mut().name = name.as_bytes().to_vec();
+    for (w, name) in settings.borrow().data.worms.iter().zip(names) {
+        w.borrow_mut().data.name = name.as_bytes().to_vec();
     }
     let mut c = liero_local_controller_new(&Host::none(), settings, tc);
     c.game().unwrap().level_box_mut().resize(504, 350);
@@ -83,8 +83,8 @@ fn the_stats_screen_shows_each_worm_facing_the_middle() {
         let tc = game.tc_data();
         let s = crate::stats::stats_scene(&tc, &g, 320, 200);
         let sprites = &tc.worm_sprites;
-        assert_eq!(s.worm_sprites[0].mem, sprites.frame(23));
-        assert_eq!(s.worm_sprites[1].mem, sprites.frame(44));
+        assert_eq!(s.worm_sprites[0].mem, sprites.sprite(23));
+        assert_eq!(s.worm_sprites[1].mem, sprites.sprite(44));
         assert_eq!(s.names, [&b"left"[..], &b"right"[..]]);
         assert_eq!((s.game_mode, s.game_mode_name), (2, &b"Holdazone"[..]));
     }
@@ -108,7 +108,7 @@ fn r_rewinds_a_replay_to_its_start() {
                 ww.kind = i as i32;
             }
         }
-        let blood = game.settings_box().data.blood_particle_max;
+        let blood = game.settings_box().data.ext.blood_particle_max;
         game.start(blood);
         let mut w = crate::replay_file::LieroReplayWriter::new(&node).unwrap();
         assert_eq!(w.begin(game).status, LieroReplayStatus::Ok);
@@ -172,8 +172,16 @@ fn the_game_fades_in_to_fully_shown() {
 fn f8_changes_the_tc_of_the_game_behind_the_menu() {
     let tc = tc();
     let mut c = local(tc.clone(), ["a", "b"]);
-    let ammo =
-        |c: &mut LieroController| -> Vec<i32> { c.game().unwrap().tc_data().weapons.iter().map(|w| w.ammo).collect() };
+    let ammo = |c: &mut LieroController| -> Vec<i32> {
+        c.game()
+            .unwrap()
+            .tc_data()
+            .model
+            .weapons
+            .iter()
+            .map(|w| w.ammo)
+            .collect()
+    };
     let before = ammo(&mut c);
     crate::tc::liero_tc_randomize(&tc, 0);
     let after = ammo(&mut c);
@@ -181,6 +189,7 @@ fn f8_changes_the_tc_of_the_game_behind_the_menu() {
     assert_eq!(
         after,
         crate::tc::tc_data(&tc)
+            .model
             .weapons
             .iter()
             .map(|w| w.ammo)

@@ -6,13 +6,14 @@ use crate::ai::LieroWormAi;
 use crate::game::{LieroGameData, LieroGameSettings};
 use crate::gfx::LieroBitmap;
 use crate::level::LevelView;
-use crate::tc::{c, h, s, LieroTcData, LieroTcSprites};
+use crate::tc::{c, h, s, LieroTcData};
 use crate::viewport::{
     liero_viewport_draw, liero_viewport_process, LieroScene, LieroSpriteSet, LieroViewBObject, LieroViewBonus,
     LieroViewNObject, LieroViewSObject, LieroViewWObject, LieroViewWeapon, LieroViewWorm, LieroViewWormWeapon,
     LieroViewport, LieroViewportBanner,
 };
 use crate::worm::{LieroWormData, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE};
+use liero_data::model::SpriteSet;
 
 /// What a draw needs besides the game: the settings the tick doesn't use,
 /// and the screen.
@@ -37,12 +38,12 @@ pub(crate) struct WormLooks<'a> {
     pub color: i32,
 }
 
-fn sprites(s: &LieroTcSprites) -> LieroSpriteSet<'_> {
+fn sprites(s: &SpriteSet) -> LieroSpriteSet<'_> {
     LieroSpriteSet {
-        data: s.pixels(),
-        width: s.width,
-        height: s.height,
-        count: s.count,
+        data: &s.data,
+        width: s.width as i32,
+        height: s.height as i32,
+        count: s.count as i32,
     }
 }
 
@@ -165,15 +166,15 @@ fn scene<'a>(
         bobjects: &l.bobjects,
         viewports: banners,
 
-        small_sprites: sprites(&tc.small_sprites),
-        large_sprites: sprites(&tc.large_sprites),
+        small_sprites: sprites(&tc.model.small_sprites),
+        large_sprites: sprites(&tc.model.large_sprites),
         worm_sprites: sprites(&tc.worm_sprites),
         fire_cone_sprites: sprites(&tc.fire_cone_sprites),
-        text_sprites: sprites(&tc.text_sprites),
-        font: &tc.font,
+        text_sprites: sprites(&tc.model.text_sprites),
+        font: &tc.model.font,
         materials: &tc.materials,
         level: src.level,
-        bonus_frames: tc.bonus_frames,
+        bonus_frames: tc.model.bonus_frames,
 
         reloading: tc.text(s("Reloading")),
         kills: tc.text(s("Kills")),
@@ -219,7 +220,7 @@ struct Lists<'a> {
 
 fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
     let (tc, d, settings) = (src.tc, src.data, src.settings);
-    let weapons: Vec<LieroViewWeapon> = (tc.weapons.iter())
+    let weapons: Vec<LieroViewWeapon> = (tc.model.weapons.iter())
         .map(|w| {
             let t = settings.loading_time.wrapping_mul(w.loading_time) / 100;
             LieroViewWeapon {
@@ -258,7 +259,7 @@ fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
             x: o.x,
             y: o.y,
             cur_frame: o.cur_frame,
-            start_frame: tc.sobjects[o.id as usize].start_frame,
+            start_frame: tc.model.sobjects[o.id as usize].start_frame,
         })
         .collect();
     let wobjects: Vec<LieroViewWObject> = d
@@ -282,7 +283,7 @@ fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
         .map(|o| LieroViewNObject {
             pos: o.pos,
             cur_frame: o.cur_frame,
-            start_frame: tc.nobjects[o.kind as usize].start_frame,
+            start_frame: tc.model.nobjects[o.kind as usize].start_frame,
         })
         .collect();
     let bobjects: Vec<LieroViewBObject> = d
@@ -308,8 +309,8 @@ fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
 mod tests {
     use super::*;
     use crate::game::LieroRect;
-    use crate::tc::{LieroTcNObject, LieroTcSObject, LieroTcWeapon};
     use crate::viewport::LIERO_VIEWPORT_SPECTATOR;
+    use liero_data::model::{NObject, SObject, Weapon};
 
     fn defaults<T: Default>(n: usize) -> Vec<T> {
         (0..n).map(|_| T::default()).collect()
@@ -317,19 +318,18 @@ mod tests {
 
     /// A TC of three weapons, two sobject types and one nobject type.
     fn tc() -> Box<LieroTcData> {
-        let mut weapons: Vec<LieroTcWeapon> = defaults(3);
-        for (i, (w, t)) in weapons.iter_mut().zip([0, 1, 250]).enumerate() {
-            w.id = i as i32;
+        let mut weapons: Vec<Weapon> = defaults(3);
+        for (w, t) in weapons.iter_mut().zip([0, 1, 250]) {
             w.loading_time = t;
         }
-        let mut sobjects: Vec<LieroTcSObject> = defaults(2);
+        let mut sobjects: Vec<SObject> = defaults(2);
         sobjects[1].start_frame = 40;
-        let mut nobjects: Vec<LieroTcNObject> = defaults(1);
+        let mut nobjects: Vec<NObject> = defaults(1);
         nobjects[0].start_frame = 30;
         let mut tc = LieroTcData::empty();
-        tc.weapons = weapons;
-        tc.sobjects = sobjects;
-        tc.nobjects = nobjects;
+        tc.model.weapons = weapons;
+        tc.model.sobjects = sobjects;
+        tc.model.nobjects = nobjects;
         tc
     }
 
@@ -385,7 +385,7 @@ mod tests {
         let mut worms = two_worms();
         worms[1].control_states = 1 << LIERO_CONTROL_FIRE;
         worms[0].weapons[2].kind = 2;
-        let data = crate::settings::LieroSettingsBox::defaults().borrow().data;
+        let data = crate::settings::LieroSettingsBox::defaults().borrow().data.clone();
         let mut settings = crate::game_box::game_settings(&data, None);
         settings.loading_time = 50;
         let src = SceneSource {

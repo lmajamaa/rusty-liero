@@ -7,7 +7,7 @@ use crate::settings::liero_settings_box_new;
 /// A TC's level tables: colour 0 is background, 5 dirt, the rest nothing.
 struct Tables {
     materials: [LieroMaterial; 256],
-    textures: [LieroTexture; LIERO_TEXTURE_COUNT],
+    textures: [Texture; LIERO_TEXTURE_COUNT],
     sprites: Vec<u8>,
 }
 
@@ -16,7 +16,7 @@ impl Tables {
         let mut materials = [LieroMaterial::default(); 256];
         materials[5].flags = LIERO_MATERIAL_DIRT;
         materials[0].flags = LIERO_MATERIAL_BACKGROUND;
-        let mut textures = [LieroTexture::default(); LIERO_TEXTURE_COUNT];
+        let mut textures = [Texture::default(); LIERO_TEXTURE_COUNT];
         for t in textures.iter_mut() {
             t.r_frame = 1;
         }
@@ -117,19 +117,19 @@ fn the_settings_level_file_gets_lev_added_and_falls_back_to_random() {
         let mut s = shared.borrow_mut();
         s.data.random_level = false;
         s.data.shadow = false;
-        s.level_file = format!("{dir}/MAP").into_bytes();
+        s.data.level_file = format!("{dir}/MAP").into_bytes();
         let mut l = LieroLevelBox::new();
         let mut rand = LieroRand::new(3);
         l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
         assert!(l.pixels().iter().all(|&p| p == 5));
         assert_eq!(
             (l.data().old_random_level, l.old_level_file()),
-            (false, s.level_file.as_slice())
+            (false, s.data.level_file.as_slice())
         );
         assert_eq!(rand, LieroRand::new(3));
 
         // A file that isn't there makes a random level.
-        s.level_file = format!("{dir}/NONE").into_bytes();
+        s.data.level_file = format!("{dir}/NONE").into_bytes();
         l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
         assert_ne!(rand, LieroRand::new(3));
         assert!(l.pixels().iter().any(|&p| p != 5));
@@ -137,7 +137,7 @@ fn the_settings_level_file_gets_lev_added_and_falls_back_to_random() {
         // Shadows go on a loaded level too: the bottom row's background
         // becomes floor.
         std::fs::write(format!("{dir}/BG.LEV"), vec![0; PIXELS]).unwrap();
-        s.level_file = format!("{dir}/BG.LEV").into_bytes();
+        s.data.level_file = format!("{dir}/BG.LEV").into_bytes();
         l.generate_from_settings(&t.common(), &exepal(), &s, &mut rand);
         assert_eq!(l.pixels()[PIXELS - 1], 0);
         s.data.shadow = true;

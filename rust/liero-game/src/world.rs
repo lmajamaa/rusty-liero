@@ -29,12 +29,13 @@ use crate::stats::{
     liero_stats_after_death, liero_stats_after_spawn, liero_stats_damage_dealt, liero_stats_damage_potential,
     liero_stats_hit, liero_stats_shot, LieroStats,
 };
-use crate::tc::{c, h, LieroTcData, LieroTcNObject, LieroTcSObject, LieroTcWeapon};
+use crate::tc::{c, h, LieroTcData};
 use crate::viewport::LieroViewport;
 use crate::weapon::{LieroWeapon, LieroWormWeapon};
 use crate::worm::{
     LieroWormConstants, LieroWormData, LieroWormEnv, WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
 };
+use liero_data::model::{NObject, SObject, Weapon};
 
 mod nobject;
 mod rope;
@@ -44,10 +45,10 @@ mod worm;
 /// `Settings::wormAnimTab`.
 const WORM_ANIM_TAB: [i32; 4] = [0, 7, 0, 14];
 
-/// The parts of a TC weapon that `weapon.rs` uses (C++'s `toRust`).
-pub(crate) fn weapon_view(w: &LieroTcWeapon) -> LieroWeapon {
+/// The parts of TC weapon `id`, `w`, that `weapon.rs` uses (C++'s `toRust`).
+pub(crate) fn weapon_view(id: i32, w: &Weapon) -> LieroWeapon {
     LieroWeapon {
-        id: w.id,
+        id,
         detect_distance: w.detect_distance,
         affect_by_worm: w.affect_by_worm,
         blow_away: w.blow_away,
@@ -139,26 +140,26 @@ impl<'a> World<'a> {
     }
 
     fn constant(&self, i: usize) -> i32 {
-        self.tc.constants[i]
+        self.tc.constant(i)
     }
 
     fn hack(&self, i: usize) -> bool {
-        self.tc.hacks[i]
+        self.tc.hack(i)
     }
 
-    fn weapon(&self, i: i32) -> &'a LieroTcWeapon {
+    fn weapon(&self, i: i32) -> &'a Weapon {
         assert!(0 <= i, "no weapon {i}");
-        &self.tc.weapons[i as usize]
+        &self.tc.model.weapons[i as usize]
     }
 
-    fn nobject_type(&self, i: i32) -> &'a LieroTcNObject {
+    fn nobject_type(&self, i: i32) -> &'a NObject {
         assert!(0 <= i, "no object type {i}");
-        &self.tc.nobjects[i as usize]
+        &self.tc.model.nobjects[i as usize]
     }
 
-    fn sobject_type(&self, i: i32) -> &'a LieroTcSObject {
+    fn sobject_type(&self, i: i32) -> &'a SObject {
         assert!(0 <= i, "no object type {i}");
-        &self.tc.sobjects[i as usize]
+        &self.tc.model.sobjects[i as usize]
     }
 
     fn rand(&mut self, max: u32) -> u32 {
@@ -310,7 +311,7 @@ impl<'a> World<'a> {
         }
 
         let obj = &mut self.g.data.sobjects.arr[slot];
-        obj.id = t.id;
+        obj.id = kind;
         obj.x = x - 8;
         obj.y = y - 8;
         obj.cur_frame = 0;
@@ -362,7 +363,7 @@ impl<'a> World<'a> {
             let mut wr = Cursor::default();
             while let Some(n) = wr.next(&self.g.data.wobjects) {
                 let i = &mut self.g.data.wobjects.arr[n];
-                let weapon = &self.tc.weapons[i.kind as usize];
+                let weapon = &self.tc.model.weapons[i.kind as usize];
 
                 if weapon.affect_by_explosions
                     && liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away)
@@ -375,7 +376,7 @@ impl<'a> World<'a> {
             let mut nr = Cursor::default();
             while let Some(n) = nr.next(&self.g.data.nobjects) {
                 let i = &mut self.g.data.nobjects.arr[n];
-                let nt = &self.tc.nobjects[i.kind as usize];
+                let nt = &self.tc.model.nobjects[i.kind as usize];
                 if nt.affect_by_explosions {
                     liero_explosion_push_object(i.pos, &mut i.vel, x, y, t.detect_range, obj_blow_away);
                 }
@@ -437,7 +438,10 @@ impl<'a> World<'a> {
             return false;
         }
 
-        let sprite = self.tc.worm_sprites.frame(w.current_frame + w.direction * 7 * 3);
+        let sprite = self
+            .tc
+            .worm_sprites
+            .sprite((w.current_frame + w.direction * 7 * 3) as usize);
 
         let delta_x = x - ftoi(w.pos.x) + 7;
         let delta_y = y - ftoi(w.pos.y) + 5;
@@ -492,7 +496,7 @@ impl<'a> World<'a> {
 
         if self.g.data.bonuses.arr[slot].process(&self.g.level, &k) {
             let b = self.g.data.bonuses.arr[slot];
-            let kind = self.tc.bonus_sobjects[b.frame as usize];
+            let kind = self.tc.model.bonus_sobjects[b.frame as usize];
             self.create_sobject(kind, ix, ftoi(b.y), 0, FiredBy::NONE, None);
             // The explosion may have freed it.
             if self.g.data.bonuses.arr[slot].used {

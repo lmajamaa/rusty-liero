@@ -7,13 +7,13 @@
 //!
 //! Rust owns the level (`LieroLevelBox`): its pixels and materials, palette
 //! and where it came from. C++'s `Level` refers to its fields, and hands
-//! Rust the [`LieroLevel`] view of the pixels for each call, together with a
-//! [`LieroLevelCommon`] view of the TC's tables in `Common`.
+//! Rust the [`LieroLevel`] view of the pixels for each call.
 
 use crate::gfx::{LieroBitmap, LieroColor};
 use crate::material::LieroMaterial;
 use crate::math::LieroIVec2;
 use crate::rand::LieroRand;
+use liero_data::model::Texture;
 
 /// Width and height of the large sprites (stones, dirt textures...).
 pub const LIERO_LARGE_SPRITE_SIZE: i32 = 16;
@@ -29,20 +29,6 @@ const SPRITE_PIXELS: usize = (LIERO_LARGE_SPRITE_SIZE * LIERO_LARGE_SPRITE_SIZE)
 /// bottom-left and bottom-right quarters. Was `stoneTab` in `common.cpp`.
 const STONE_TAB: [[i32; 4]; 3] = [[98, 60, 61, 62], [63, 75, 85, 86], [89, 90, 97, 96]];
 
-/// A dirt effect: how explosions and digging change the terrain. C++ uses it
-/// as `Texture` in `Common::textures`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LieroTexture {
-    /// Draws dirt onto background instead of removing dirt.
-    pub n_draw_back: bool,
-    /// Large sprite used as the mask.
-    pub m_frame: i32,
-    /// First large sprite used as the dirt texture...
-    pub s_frame: i32,
-    /// ...of this many, picked at random.
-    pub r_frame: i32,
-}
-
 /// View of a C++ `Level`'s pixels: `data` holds the palette index of each
 /// pixel and `materials` its material, both `width * height` long, row by
 /// row.
@@ -52,18 +38,6 @@ pub struct LieroLevel {
     pub materials: *mut LieroMaterial,
     pub width: i32,
     pub height: i32,
-}
-
-/// View of the TC's tables in C++'s `Common` that level code reads.
-#[derive(Debug)]
-pub struct LieroLevelCommon {
-    /// 256 materials, one per palette index.
-    pub materials: *const LieroMaterial,
-    /// `LIERO_TEXTURE_COUNT` dirt effects.
-    pub textures: *const LieroTexture,
-    /// `large_sprite_count` sprites of 16 x 16 palette indices.
-    pub large_sprites: *const u8,
-    pub large_sprite_count: i32,
 }
 
 /// The level as Rust works on it.
@@ -92,7 +66,7 @@ impl LevelView<'_> {
 /// The TC's tables as Rust works on them.
 pub struct Common<'a> {
     pub materials: &'a [LieroMaterial; 256],
-    pub textures: &'a [LieroTexture; LIERO_TEXTURE_COUNT],
+    pub textures: &'a [Texture; LIERO_TEXTURE_COUNT],
     pub large_sprites: &'a [u8],
 }
 
@@ -662,23 +636,6 @@ impl LieroLevel {
     }
 }
 
-impl LieroLevelCommon {
-    /// # Safety
-    /// The pointers must point to tables of the documented sizes.
-    pub unsafe fn get(&self) -> Common<'_> {
-        unsafe {
-            Common {
-                materials: &*(self.materials as *const [LieroMaterial; 256]),
-                textures: &*(self.textures as *const [LieroTexture; LIERO_TEXTURE_COUNT]),
-                large_sprites: slice(
-                    self.large_sprites,
-                    self.large_sprite_count.max(0) as usize * SPRITE_PIXELS,
-                ),
-            }
-        }
-    }
-}
-
 /// See `Level::draw_miniature`.
 fn draw_miniature(data: &[u8], width: i32, height: i32, scr: &LieroBitmap, map_x: i32, map_y: i32, step: i32) {
     let mut my = step / 2;
@@ -877,19 +834,19 @@ impl LieroLevelBox {
         let s = &settings.data;
         let mut loaded = false;
         if !s.random_level {
-            let mut path = settings.level_file.clone();
+            let mut path = settings.data.level_file.clone();
             if !path.contains(&b'.') {
                 path.extend_from_slice(b".LEV");
             }
             if let Some(bytes) = crate::fs::Node::new(&path).read() {
-                loaded = self.load(common, exepal, s.load_powerlevel_palette, &bytes);
+                loaded = self.load(common, exepal, s.ext.load_powerlevel_palette, &bytes);
             }
         }
         if !loaded {
             self.generate_random(common, exepal, rand);
         }
         self.data.old_random_level = s.random_level;
-        self.old_level_file.clone_from(&settings.level_file);
+        self.old_level_file.clone_from(&settings.data.level_file);
         if s.shadow {
             self.level().make_shadow(common);
         }
@@ -959,7 +916,7 @@ mod tests {
     /// transparent pixels and many of the mask values 1, 2, 6 and 10.
     struct TestCommon {
         materials: [LieroMaterial; 256],
-        textures: [LieroTexture; LIERO_TEXTURE_COUNT],
+        textures: [Texture; LIERO_TEXTURE_COUNT],
         large_sprites: Vec<u8>,
     }
 
@@ -974,7 +931,7 @@ mod tests {
                 }
                 m.flags = f;
             }
-            let mut textures = [LieroTexture::default(); LIERO_TEXTURE_COUNT];
+            let mut textures = [Texture::default(); LIERO_TEXTURE_COUNT];
             for t in textures.iter_mut() {
                 t.n_draw_back = r.below(2) == 1;
                 t.m_frame = r.below(110) as i32;

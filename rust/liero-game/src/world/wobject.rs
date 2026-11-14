@@ -21,7 +21,7 @@ impl<'a> World<'a> {
     }
 
     /// The weapon of weapon object `slot`.
-    fn wobj_weapon(&self, slot: usize) -> &'a LieroTcWeapon {
+    fn wobj_weapon(&self, slot: usize) -> &'a Weapon {
         self.weapon(self.wobj(slot).kind)
     }
 
@@ -33,7 +33,7 @@ impl<'a> World<'a> {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn fire_weapon(
         &mut self,
-        kind: &LieroTcWeapon,
+        kind: i32,
         angle: i32,
         vel: LieroIVec2,
         speed: i32,
@@ -42,9 +42,10 @@ impl<'a> World<'a> {
         ww: FiredBy,
     ) {
         let slot = self.g.data.wobjects.new_object_reuse();
+        let t = self.weapon(kind);
 
         self.update_wobj(slot, |o| {
-            o.kind = kind.id;
+            o.kind = kind;
             o.pos = pos;
             o.owner_idx = owner_idx;
 
@@ -53,10 +54,10 @@ impl<'a> World<'a> {
             o.has_hit = false;
         });
 
-        self.damage_potential(owner_idx, ww, kind.hit_damage);
+        self.damage_potential(owner_idx, ww, t.hit_damage);
         self.shot(owner_idx, ww);
 
-        let launch = weapon_view(kind).launch(&mut self.g.data.rand, angle, vel, speed);
+        let launch = weapon_view(kind, t).launch(&mut self.g.data.rand, angle, vel, speed);
         self.update_wobj(slot, |o| {
             o.vel = launch.vel;
             o.cur_frame = launch.cur_frame;
@@ -74,7 +75,7 @@ impl<'a> World<'a> {
 
         // A freed slot keeps its object until a new one takes it, and only
         // a worm firing makes weapon objects.
-        let w = weapon_view(self.wobj_weapon(slot));
+        let w = weapon_view(self.wobj(slot).kind, self.wobj_weapon(slot));
         let (x, y) = (pos.x, pos.y);
 
         if w.create_on_exp >= 0 {
@@ -142,7 +143,7 @@ impl<'a> World<'a> {
             self.update_wobj(slot, |o| o.time_left = 0);
         }
 
-        let w = weapon_view(kind);
+        let w = weapon_view(index, kind);
         let (width, height) = (self.g.level.width, self.g.level.height);
         let cycles = self.cycles();
         let larpa_vel_div = self.constant(c("SplinterLarpaVelDiv"));

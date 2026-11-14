@@ -1,7 +1,8 @@
 //! Text helpers shared by the HUD and menus: strings from C++, the time
 //! formats from `text.cpp` and drawing with the game font.
 
-use crate::gfx::{liero_font_draw_char, liero_font_draw_text, liero_font_get_dims, LieroBitmap, LieroFontChar};
+use crate::gfx::{liero_font_draw_char, liero_font_draw_text, liero_font_get_dims, LieroBitmap};
+use liero_data::model::FontChar;
 
 /// Text from C++: `len` bytes from `ptr`.
 #[derive(Clone, Copy, Debug)]
@@ -75,7 +76,7 @@ pub fn time_to_string_ex(mut ms: i32, force_hours: bool, force_minutes: bool) ->
 /// The game font, `Font` in C++.
 #[derive(Clone, Copy, Debug)]
 pub struct LieroFont<'a> {
-    pub chars: &'a [LieroFontChar],
+    pub chars: &'a [FontChar],
 }
 
 impl LieroFont<'_> {

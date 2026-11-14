@@ -14,7 +14,7 @@ use crate::gfx::{
     liero_gfx_blit_image, liero_gfx_draw_graph, liero_gfx_draw_heatmap, liero_gfx_draw_rounded_box, LieroBitmap,
 };
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
-use crate::tc::{tc_data, LieroTcData, LieroTcWeapon, SharedTc};
+use crate::tc::{tc_data, LieroTcData, SharedTc};
 use crate::text::{time_to_string, time_to_string_ex, LieroFont};
 
 const WEAPON_COUNT: usize = 40;
@@ -517,7 +517,7 @@ pub struct LieroStatsScene<'a> {
     pub game_mode: i32,
     pub game_mode_name: &'a [u8],
     /// The TC's weapons, for their names, by index.
-    pub weapons: &'a [LieroTcWeapon],
+    pub weapons: &'a [liero_data::model::Weapon],
     pub render_res_x: i32,
     pub render_res_y: i32,
     /// `gvl::hires_ticks_per_sec()`, for the AI's processing time.
@@ -852,19 +852,19 @@ pub(crate) fn stats_scene<'a>(
     let sprite = |i: i32| {
         let frame = 2 + (if i == 0 { 1 } else { 0 }) * 7 * 3 + i * 2 * 7 * 3;
         LieroSprite {
-            mem: sprites.frame(frame),
-            width: sprites.width,
-            height: sprites.height,
-            pitch: sprites.width,
+            mem: sprites.sprite(frame as usize),
+            width: sprites.width as i32,
+            height: sprites.height as i32,
+            pitch: sprites.width as i32,
         }
     };
     LieroStatsScene {
-        font: LieroFont { chars: &tc.font },
+        font: LieroFont { chars: &tc.model.font },
         worm_sprites: [sprite(0), sprite(1)],
         names: [&g.names[0], &g.names[1]],
         game_mode: g.game_mode,
         game_mode_name: GAME_MODE_NAMES[g.game_mode as usize].as_bytes(),
-        weapons: &tc.weapons,
+        weapons: &tc.model.weapons,
         render_res_x,
         render_res_y,
         ticks_per_sec: 1_000_000_000,

@@ -81,10 +81,10 @@ fn run_ai_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, c: &AiConfig, int
     let mut game = set_up_game(a, tc, c.seed, c.game_mode, c.weapons);
     {
         let s = &mut game.settings_box().data;
-        s.ai_frames = c.ai_frames;
-        s.ai_mutations = c.ai_mutations;
-        s.ai_parallels = c.ai_parallels;
-        s.ai_traces = c.ai_traces;
+        s.ext.ai_frames = c.ai_frames;
+        s.ext.ai_mutations = c.ai_mutations;
+        s.ext.ai_parallels = c.ai_parallels;
+        s.ext.ai_traces = c.ai_traces;
     }
 
     // As the app makes them for controller 2.
@@ -96,7 +96,7 @@ fn run_ai_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, c: &AiConfig, int
         liero_worm_ai_rand(w.ai_mut().expect("a bot")).seed(c.seed.wrapping_mul(31).wrapping_add(i as u32));
     }
 
-    let blood = game.settings_box().data.blood_particle_max;
+    let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
 
     let mut split = LieroRenderer::new();

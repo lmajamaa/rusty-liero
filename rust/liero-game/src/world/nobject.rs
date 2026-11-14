@@ -21,7 +21,7 @@ impl<'a> World<'a> {
     }
 
     /// The type of non-weapon object `slot`.
-    fn nobj_type(&self, slot: usize) -> &'a LieroTcNObject {
+    fn nobj_type(&self, slot: usize) -> &'a NObject {
         self.nobject_type(self.nobj(slot).kind)
     }
 
@@ -295,7 +295,11 @@ impl<'a> World<'a> {
     /// shadow corrected.
     fn nobj_draw_on_map(&mut self, slot: usize, x: i32, y: i32) {
         let t = self.nobj_type(slot);
-        let sprite = self.tc.small_sprites.frame(t.start_frame + self.nobj(slot).cur_frame);
+        let sprite = self
+            .tc
+            .model
+            .small_sprites
+            .sprite((t.start_frame + self.nobj(slot).cur_frame) as usize);
         let level = &mut self.g.level;
         let common = self.tc.level_common();
         level.blit_image(&common, sprite, x, y, 7, 7);

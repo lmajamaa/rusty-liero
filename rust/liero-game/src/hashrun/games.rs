@@ -18,7 +18,7 @@ use crate::replay_file::LieroReplayWriter;
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
 use crate::stats::{stats_scene, LieroStatsScreen};
-use crate::tc::{LieroTcData, LieroTcWeapon, SharedTc};
+use crate::tc::{LieroTcData, SharedTc};
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{liero_weapsel_finish, liero_weapsel_free, liero_weapsel_start};
 
@@ -156,11 +156,11 @@ pub(super) use crate::tc::tc_data;
 
 /// The menu positions of the named weapons.
 fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
-    let (weapons, order) = (&d.weapons, &d.weap_order);
+    let (weapons, order) = (&d.model.weapons, &d.weap_order);
     names.map(|name| {
         // The last of the same name, as the C++ loop left it.
         let found = order.iter().rposition(|&w| {
-            let w: &LieroTcWeapon = &weapons[w as usize];
+            let w: &liero_data::model::Weapon = &weapons[w as usize];
             w.name == name.as_bytes()
         });
         found.unwrap_or_else(|| panic!("No weapon called {name} in the TC")) as u32 + 1
@@ -187,7 +187,7 @@ pub(super) fn set_up_game(
     let settings = LieroSettingsBox::defaults();
     let mut s = settings.borrow_mut();
     s.data.game_mode = game_mode;
-    for ws in &s.worms {
+    for ws in &s.data.worms {
         let mut ws = ws.borrow_mut();
         // The original bot
         ws.data.controller = 1;
@@ -197,8 +197,8 @@ pub(super) fn set_up_game(
     }
     // 0 gives bots random weapons; 2 keeps the ones set above. (The
     // default, 1, would keep the menu's default weapons: all bazookas.)
-    s.data.select_bot_weapons = if weapons.is_some() { 2 } else { 0 };
-    let worms = s.worms.clone();
+    s.data.ext.select_bot_weapons = if weapons.is_some() { 2 } else { 0 };
+    let worms = s.data.worms.clone();
     drop(s);
 
     // Everything random comes from these seeds. Weapon selection and the
@@ -317,7 +317,7 @@ fn run_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, config: &RunConfig, 
         "the replay didn't begin"
     );
 
-    let blood = game.settings_box().data.blood_particle_max;
+    let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
 
     // Drawing doesn't change the game, so the game hashes don't depend on it.

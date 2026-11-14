@@ -114,18 +114,18 @@ pub(crate) fn draw_spectator_info(a: &mut LieroApp) {
     let (cx, cy) = (a.single.data.render_res_x / 2, a.single.data.render_res_y / 4);
     a.single.bmp.copy_from(&a.frozen_spectator);
     let s = a.settings_mut();
-    let line = level_line(&a.tc_data(), &s.level_file, &s.level_file);
+    let line = level_line(&a.tc_data(), &s.data.level_file, &s.data.level_file);
     let scr = a.single.bmp.view();
     let font = a.font();
-    let w = [s.worms[0].borrow(), s.worms[1].borrow()];
+    let w = [s.data.worms[0].borrow(), s.data.worms[1].borrow()];
     // SAFETY: the bitmap, font and texts are valid.
     unsafe {
         liero_menu_draw_versus(
             &scr,
             &font,
             LieroStr::of(&line),
-            LieroStr::of(&w[0].name),
-            LieroStr::of(&w[1].name),
+            LieroStr::of(&w[0].data.name),
+            LieroStr::of(&w[1].data.name),
             w[0].data.color,
             w[1].data.color,
             cx,
@@ -172,7 +172,7 @@ fn palette(r: &mut LieroRenderer, cycles: u32, s: &crate::settings::LieroSetting
     let d = &mut r.data;
     d.pal = d.origpal;
     liero_palette_rotate_from(&mut d.pal, &d.origpal, 168, 174, cycles);
-    for (i, w) in s.worms.iter().enumerate() {
+    for (i, w) in s.data.worms.iter().enumerate() {
         let w = w.borrow();
         liero_palette_set_worm_colour(&mut d.pal, i as i32, w.data.color, &w.data.rgb);
     }

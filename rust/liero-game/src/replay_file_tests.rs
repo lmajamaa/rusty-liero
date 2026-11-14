@@ -41,7 +41,7 @@ impl Setup {
         let mut worms = Vec::new();
         for i in 0..2 {
             let ws = crate::settings::new_worm_settings();
-            ws.borrow_mut().name = format!("worm {i}").into_bytes();
+            ws.borrow_mut().data.name = format!("worm {i}").into_bytes();
             ws.borrow_mut().data.health = 100 + i;
             let w = liero_game_new_worm(g, Some(ws));
             let d = &mut g.worm_mut(w).data;
@@ -163,7 +163,7 @@ fn plays_back_the_game_it_recorded() {
         );
         let ws = w.settings();
         assert_eq!(
-            (ws.name.clone(), ws.data.health),
+            (ws.data.name.clone(), ws.data.health),
             (format!("worm {i}").into_bytes(), 100 + i as i32)
         );
     }
@@ -289,7 +289,7 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
         let g = &mut *s.game;
         for i in 2..4 {
             let ws = crate::settings::new_worm_settings();
-            ws.borrow_mut().name = format!("worm {i}").into_bytes();
+            ws.borrow_mut().data.name = format!("worm {i}").into_bytes();
             let w = liero_game_new_worm(g, Some(ws));
             g.worm_mut(w).data.index = i;
             liero_game_list_worm(g, Some(w));
@@ -298,7 +298,7 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
         ok(w.begin(g));
         w.frame(g);
         w.unfocus(g);
-        g.worm_at(2).unwrap().settings_mut().name = b"renamed".to_vec();
+        g.worm_at(2).unwrap().settings_mut().data.name = b"renamed".to_vec();
         w.focus(g);
         w.frame(g);
         // Written once.
@@ -307,7 +307,7 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
 
     let mut t = Setup::empty();
     let mut r = play(&p, &mut t);
-    let name = |t: &mut Setup, i| t.game.worm_at(i).unwrap().settings().name.clone();
+    let name = |t: &mut Setup, i| t.game.worm_at(i).unwrap().settings().data.name.clone();
     assert!(!frame(&mut r, &mut t).settings_changed);
     assert_eq!(name(&mut t, 2), b"worm 2");
     let o = frame(&mut r, &mut t);

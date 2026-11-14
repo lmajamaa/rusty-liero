@@ -211,7 +211,7 @@ impl LieroGame {
     pub(crate) fn stats_game(&mut self) -> crate::stats::StatsGame {
         let name = |g: &mut Self, i| {
             let w = g.worm_at(i).expect("an empty place among the game's worms");
-            w.settings().name.clone()
+            w.settings().data.name.clone()
         };
         crate::stats::StatsGame {
             names: [name(self, 0), name(self, 1)],
@@ -274,9 +274,9 @@ impl LieroGame {
         let ai = {
             let d = &self.settings_box().data;
             crate::ai::sim::LieroAiSettings {
-                frames: d.ai_frames,
-                mutations: d.ai_mutations,
-                traces: d.ai_traces,
+                frames: d.ext.ai_frames,
+                mutations: d.ext.ai_mutations,
+                traces: d.ext.ai_traces,
             }
         };
         // SAFETY: the view is the game's own.
@@ -352,7 +352,7 @@ impl LieroGame {
         crate::gfx::liero_game_palette(
             &mut rd.pal,
             &rd.origpal,
-            &tc.color_anim,
+            &tc.model.color_anim,
             data.cycles,
             rd.fade_value,
             data.screen_flash,
@@ -453,7 +453,7 @@ fn view_worms<'a>(ws: &'a [(&'a LieroWorm, Ref<'a, LieroWormSettingsBox>)]) -> V
         .map(|(w, s)| {
             let looks = WormLooks {
                 max_health: s.data.health,
-                name: &s.name,
+                name: &s.data.name,
                 color: s.data.color,
             };
             crate::scene::view_worm(&w.data, looks, w.ai())
@@ -463,14 +463,14 @@ fn view_worms<'a>(ws: &'a [(&'a LieroWorm, Ref<'a, LieroWormSettingsBox>)]) -> V
 
 /// What drawing a viewport takes of the settings and the renderer.
 fn draw_settings(
-    s: &crate::settings::LieroSettingsData,
+    s: &crate::settings::GameSettings,
     r: &LieroRendererData,
     state: i32,
     is_replay: bool,
 ) -> LieroDrawSettings {
     LieroDrawSettings {
         names_on_bonuses: s.names_on_bonuses,
-        allow_viewing_spawn_point: s.allow_viewing_spawn_point,
+        allow_viewing_spawn_point: s.ext.allow_viewing_spawn_point,
         map: s.map,
         render_res_x: r.render_res_x,
         render_res_y: r.render_res_y,
@@ -647,8 +647,8 @@ pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
                 (
                     s.data.health,
                     LieroStr {
-                        ptr: s.name.as_ptr(),
-                        len: s.name.len(),
+                        ptr: s.data.name.as_ptr(),
+                        len: s.data.name.len(),
                     },
                     s.data.color,
                 )
@@ -704,20 +704,19 @@ pub fn liero_game_view_settings(v: &LieroGameView) -> *const LieroGameSettings {
 
 /// What the rules take of the settings and the TC (`GameView`). With no
 /// TC, as in tests, the TC's parts are zero.
-pub(crate) fn game_settings(s: &crate::settings::LieroSettingsData, tc: Option<&LieroTcData>) -> LieroGameSettings {
+pub(crate) fn game_settings(s: &crate::settings::GameSettings, tc: Option<&LieroTcData>) -> LieroGameSettings {
     use crate::tc::{c, h};
     let constant = |name| tc.map_or(0, |tc| tc.constant(c(name)));
     let hack = |name| tc.is_some_and(|tc| tc.hack(h(name)));
-    let t = tc.map_or([0; 4], |tc| tc.bonus_rand_timer);
     LieroGameSettings {
         game_mode: s.game_mode as i32,
         max_bonuses: s.max_bonuses,
         time_to_lose: s.time_to_lose,
-        zone_timeout: s.zone_timeout,
+        zone_timeout: s.ext.zone_timeout,
         zone_capture_time: 70,
         weap_table: s.weap_table.as_ptr(),
-        weapon_count: tc.map_or(0, |tc| tc.weapons.len() as i32),
-        bonus_rand_timer: [[t[0], t[1]], [t[2], t[3]]],
+        weapon_count: tc.map_or(0, |tc| tc.model.weapons.len() as i32),
+        bonus_rand_timer: tc.map_or([[0; 2]; 2], |tc| tc.model.bonus_rand_timer),
         bonus_spawn_rect_x: constant("BonusSpawnRectX"),
         bonus_spawn_rect_y: constant("BonusSpawnRectY"),
         bonus_spawn_rect_w: constant("BonusSpawnRectW"),
@@ -758,7 +757,7 @@ mod tests {
     fn settings(health: i32, name: &str) -> SharedWormSettings {
         let s = new_worm_settings();
         s.borrow_mut().data.health = health;
-        s.borrow_mut().name = name.as_bytes().to_vec();
+        s.borrow_mut().data.name = name.as_bytes().to_vec();
         s
     }
 
@@ -942,16 +941,19 @@ mod tests {
 
     #[test]
     fn the_rules_take_the_tcs_constants_hacks_and_bonus_timers() {
-        use crate::tc::{c, h};
-        let constants: Vec<i32> = (0..liero_data::exe::CONSTANT_ORDER.len() as i32)
-            .map(|i| 1000 + i)
-            .collect();
+        use crate::tc::c;
+        let order = liero_data::exe::CONSTANT_ORDER;
+        let hacks = |on: Option<&str>| {
+            liero_data::exe::HACKS
+                .iter()
+                .map(|&(n, _)| (n, Some(n) == on))
+                .collect()
+        };
         let mut tc = LieroTcData::empty();
-        tc.constants = constants;
-        tc.bonus_rand_timer = [1, 2, 3, 4];
-        // SAFETY: all zeroes is a valid weapon.
-        tc.weapons = (0..40).map(|_| crate::tc::LieroTcWeapon::default()).collect();
-        tc.hacks = vec![false; liero_data::exe::HACKS.len()];
+        tc.model.constants = order.iter().zip(1000..).map(|(&n, v)| (n, v)).collect();
+        tc.model.bonus_rand_timer = [[1, 2], [3, 4]];
+        tc.model.weapons = (0..40).map(|_| liero_data::model::Weapon::default()).collect();
+        tc.model.hacks = hacks(None);
         let s = crate::settings::liero_settings_box_new();
         s.borrow_mut().data.max_bonuses = 6;
         s.borrow_mut().data.load_change = true;
@@ -971,9 +973,7 @@ mod tests {
         // Each hack sets only its own field.
         let names = ["BonusSpawnRect", "BonusOnlyHealth", "BonusOnlyWeapon", "BonusDisable"];
         for (i, name) in names.iter().enumerate() {
-            let mut hacks = vec![false; liero_data::exe::HACKS.len()];
-            hacks[h(name)] = true;
-            tc.hacks = hacks;
+            tc.model.hacks = hacks(Some(name));
             let g = game_settings(&s.borrow().data, Some(&tc));
             let got = [
                 g.bonus_spawn_rect,
@@ -1004,7 +1004,7 @@ mod tests {
                 (d.render_res_x, d.render_res_y, d.state_game, d.is_replay),
                 (640, 400, true, true)
             );
-            (s.names_on_bonuses, s.allow_viewing_spawn_point, s.map) = (false, true, true);
+            (s.names_on_bonuses, s.ext.allow_viewing_spawn_point, s.map) = (false, true, true);
             let d = draw_settings(s, &r.data, LIERO_STATE_GAME_ENDED, false);
             assert_eq!(
                 (d.names_on_bonuses, d.allow_viewing_spawn_point, d.map),

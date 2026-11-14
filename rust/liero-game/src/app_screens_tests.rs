@@ -44,10 +44,10 @@ fn resuming_a_replay_shows_the_single_screen() {
 
     // A replay chosen in the menu, as the settings say.
     a.primary_single = false;
-    a.settings_mut().data.single_screen_replay = false;
+    a.settings_mut().data.ext.single_screen_replay = false;
     assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
     assert!(!a.primary_single);
-    a.settings_mut().data.single_screen_replay = true;
+    a.settings_mut().data.ext.single_screen_replay = true;
     assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
     assert!(a.primary_single);
     a.controller = None;

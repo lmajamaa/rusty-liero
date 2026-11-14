@@ -15,7 +15,7 @@ use crate::gfx::{
     liero_font_draw_text, liero_gfx_blit_fire_cone, liero_gfx_blit_image, liero_gfx_blit_image_no_key_colour,
     liero_gfx_blit_image_r, liero_gfx_blit_image_trans, liero_gfx_blit_shadow_image, liero_gfx_draw_bar,
     liero_gfx_draw_dashed_line_box, liero_gfx_draw_laser_sight, liero_gfx_draw_line, liero_gfx_draw_ninjarope,
-    liero_gfx_draw_shadow_line, liero_gfx_fill_rect, LieroBitmap, LieroFontChar,
+    liero_gfx_draw_shadow_line, liero_gfx_fill_rect, LieroBitmap,
 };
 use crate::level::LevelView;
 use crate::material::LieroMaterial;
@@ -26,6 +26,7 @@ use crate::worm::{
     liero_worm_angle_frame, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL,
     LIERO_GAME_SCALES_OF_JUSTICE,
 };
+use liero_data::model::FontChar;
 
 /// The viewport that follows one worm, in split screen.
 pub const LIERO_VIEWPORT_WORM: i32 = 0;
@@ -211,7 +212,7 @@ pub struct LieroScene<'a> {
     pub worm_sprites: LieroSpriteSet<'a>,
     pub fire_cone_sprites: LieroSpriteSet<'a>,
     pub text_sprites: LieroSpriteSet<'a>,
-    pub font: &'a [LieroFontChar],
+    pub font: &'a [FontChar],
     pub materials: &'a [LieroMaterial; 256],
     pub level: LevelView<'a>,
     pub bonus_frames: [i32; 2],
@@ -1183,7 +1184,7 @@ mod tests {
         small: Vec<u8>,
         text: Vec<u8>,
         worm_sprites: Vec<u8>,
-        font: Vec<LieroFontChar>,
+        font: Vec<FontChar>,
         weapons: Vec<LieroViewWeapon<'static>>,
         worms: Vec<LieroViewWorm<'static>>,
         bonuses: Vec<LieroViewBonus>,
@@ -1213,7 +1214,7 @@ mod tests {
                 text: sprites(4, 26, 200),
                 worm_sprites: vec![50; 16 * 16 * 84],
                 font: vec![
-                    LieroFontChar {
+                    FontChar {
                         data: [0; 56],
                         width: 8
                     };
@@ -1386,7 +1387,7 @@ mod tests {
         // only line breaks are drawn.
         let mut t = TestScene::new();
         t.font = vec![
-            LieroFontChar {
+            FontChar {
                 data: [1; 56],
                 width: 8
             };

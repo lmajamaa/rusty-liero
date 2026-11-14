@@ -36,8 +36,8 @@ pub fn hash_level_files(out: &mut Out) {
             let settings = LieroSettingsBox::defaults();
             let mut s = settings.borrow_mut();
             s.data.random_level = false;
-            s.level_file = path.clone().into_bytes();
-            s.data.load_powerlevel_palette = with_palette != 0;
+            s.data.level_file = path.clone().into_bytes();
+            s.data.ext.load_powerlevel_palette = with_palette != 0;
 
             let mut rand = LieroRand::new(1234 + i as u32);
             let mut lev = LieroLevelBox::new();
