@@ -37,12 +37,12 @@ fn loading_options_makes_new_settings_and_shows_their_file() {
     let (a, dir) = &mut set_up("load");
     let file = Node::new(format!("{dir}/setup.cfg").as_bytes());
     a.settings_mut().data.lives = 7;
-    a.settings_mut().worms[0].borrow_mut().name = b"NEW".to_vec();
+    a.settings_mut().worms[0].borrow_mut().data.name = b"NEW".to_vec();
     assert!(a.save_settings(&file));
 
     a.files.settings_node = Node::default();
     a.settings_mut().data.lives = 3;
-    a.settings_mut().worms[0].borrow_mut().name = b"OLD".to_vec();
+    a.settings_mut().worms[0].borrow_mut().data.name = b"OLD".to_vec();
     // A game's worms keep the settings they had.
     let old_box = a.settings.clone().unwrap();
     let old_worm = a.settings_mut().worms[0].clone();
@@ -55,7 +55,7 @@ fn loading_options_makes_new_settings_and_shows_their_file() {
 
     assert!(!std::rc::Rc::ptr_eq(a.settings.as_ref().unwrap(), &old_box));
     assert_eq!(a.settings_mut().data.lives, 7);
-    assert_eq!(old_worm.borrow().name, b"OLD");
+    assert_eq!(old_worm.borrow().data.name, b"OLD");
     assert_eq!(old_box.borrow().data.lives, 3);
     assert_eq!(settings_path(a), in_config(a, "sub/other.cfg"));
 
@@ -105,20 +105,20 @@ fn choosing_a_level_sets_its_full_path_or_random() {
 #[test]
 fn a_profile_saved_as_a_name_loads_back() {
     let (a, dir) = &mut set_up("profile");
-    a.settings_mut().worms[1].borrow_mut().name = b"SAVED".to_vec();
+    a.settings_mut().worms[1].borrow_mut().data.name = b"SAVED".to_vec();
     a.settings_mut().worms[1].borrow_mut().data.health = 77;
     save_profile_as(a, 1, b"mine");
     assert!(std::fs::metadata(format!("{dir}/Profiles/mine.lpf")).is_ok());
 
-    a.settings_mut().worms[1].borrow_mut().name = b"OTHER".to_vec();
+    a.settings_mut().worms[1].borrow_mut().data.name = b"OTHER".to_vec();
     a.settings_mut().worms[1].borrow_mut().data.health = 5;
     let ws = a.settings_mut().worms[1].clone();
     let mut s = source(dir, Choice::Profile(ws));
     s.choose(a, b"Profiles/mine.lpf", b"", b"mine", false);
-    assert_eq!(a.settings_mut().worms[1].borrow_mut().name, b"SAVED");
+    assert_eq!(a.settings_mut().worms[1].borrow_mut().data.name, b"SAVED");
     assert_eq!(a.settings_mut().worms[1].borrow_mut().data.health, 77);
     // Player 0's are left alone.
-    assert_ne!(a.settings_mut().worms[0].borrow_mut().name, b"SAVED");
+    assert_ne!(a.settings_mut().worms[0].borrow_mut().data.name, b"SAVED");
 }
 
 #[test]

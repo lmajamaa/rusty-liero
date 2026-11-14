@@ -621,19 +621,6 @@ pub struct LieroSettingsData {
     pub screen_sync: bool,
 }
 
-/// The plain fields of a worm's settings.
-#[derive(Clone, Copy, Default)]
-pub struct LieroWormSettingsData {
-    pub health: i32,
-    pub controller: u32,
-    pub controls: [u32; LIERO_MAX_CONTROL],
-    pub weapons: [u32; 5],
-    pub rgb: [i32; 3],
-    pub random_name: bool,
-    pub color: i32,
-    pub controls_ex: [u32; LIERO_MAX_CONTROL_EX],
-}
-
 /// The game's settings, with a reference to each player's worm settings,
 /// which the game's worms share. A clone shares them too, as C++'s
 /// `Settings::clone` did.
@@ -783,11 +770,9 @@ fn data_settings(b: &LieroSettingsBox) -> Settings {
     unsafe { settings_from(&v) }
 }
 
-/// A worm's settings (`WormSettings`).
-#[derive(Default)]
+/// A worm's settings (`WormSettings`), and where they were last kept.
 pub struct LieroWormSettingsBox {
-    pub data: LieroWormSettingsData,
-    pub name: Vec<u8>,
+    pub data: WormSettings,
     /// The profile they were last loaded from or saved to, if any. A clone
     /// starts without one, as a new `WormSettings` did.
     pub profile: Option<crate::fs::Node>,
@@ -796,35 +781,11 @@ pub struct LieroWormSettingsBox {
 impl LieroWormSettingsBox {
     /// The settings as the archives read and write them.
     pub(crate) fn worm(&self) -> WormSettings {
-        let d = &self.data;
-        let view = LieroWormSettings {
-            health: d.health,
-            controller: d.controller,
-            controls: d.controls,
-            weapons: d.weapons,
-            name: str(&self.name),
-            rgb: d.rgb,
-            random_name: d.random_name,
-            color: d.color,
-            controls_ex: d.controls_ex,
-        };
-        // SAFETY: the name is this box's.
-        unsafe { worm_from(&view) }
+        self.data.clone()
     }
 
     pub(crate) fn set_worm(&mut self, w: &WormSettings) {
-        let v = worm_view(w);
-        self.data = LieroWormSettingsData {
-            health: v.health,
-            controller: v.controller,
-            controls: v.controls,
-            weapons: v.weapons,
-            rgb: v.rgb,
-            random_name: v.random_name,
-            color: v.color,
-            controls_ex: v.controls_ex,
-        };
-        self.name = w.name.clone();
+        self.data = w.clone();
     }
 
     /// The profile's file, if there is one (a null node isn't one).
@@ -845,8 +806,28 @@ impl LieroWormSettingsBox {
 impl Clone for LieroWormSettingsBox {
     fn clone(&self) -> Self {
         LieroWormSettingsBox {
-            data: self.data,
-            name: self.name.clone(),
+            data: self.data.clone(),
+            profile: None,
+        }
+    }
+}
+
+/// Every field zero or empty, as a new C++ `WormSettings` box was before
+/// the defaults were set.
+impl Default for LieroWormSettingsBox {
+    fn default() -> Self {
+        LieroWormSettingsBox {
+            data: WormSettings {
+                health: 0,
+                controller: 0,
+                controls: [0; LIERO_MAX_CONTROL],
+                weapons: [0; 5],
+                name: Vec::new(),
+                rgb: [0; 3],
+                random_name: false,
+                color: 0,
+                controls_ex: [0; LIERO_MAX_CONTROL_EX],
+            },
             profile: None,
         }
     }
@@ -964,9 +945,9 @@ mod box_tests {
     fn worm_name_and_fields() {
         let w = new_worm_settings();
         w.borrow_mut().data.health = 7;
-        w.borrow_mut().name = b"BOT A".to_vec();
+        w.borrow_mut().data.name = b"BOT A".to_vec();
         let c = clone_worm_settings(&w.borrow());
-        assert_eq!(c.borrow().name, b"BOT A");
+        assert_eq!(c.borrow().data.name, b"BOT A");
         assert_eq!(c.borrow().data.health, 7);
     }
 
@@ -982,7 +963,7 @@ mod box_tests {
             let mut w = w;
             let w = &mut w;
             assert!(!w.save_to_profile(), "no profile to save over");
-            w.name = b"WORMY".to_vec();
+            w.data.name = b"WORMY".to_vec();
             w.data.health = 50;
             w.data.color = 3;
 
@@ -998,7 +979,7 @@ mod box_tests {
             assert!(liero_worm_settings_box_load_profile(w, Some(&node), &mut status));
             assert!(matches!(status, LieroSettingsStatus::Ok));
             assert_eq!(
-                (w.data.health, w.data.color, &w.name[..]),
+                (w.data.health, w.data.color, &w.data.name[..]),
                 (50, 9, &b"WORMY"[..]),
                 "the colour stays"
             );

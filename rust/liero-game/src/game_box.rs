@@ -211,7 +211,7 @@ impl LieroGame {
     pub(crate) fn stats_game(&mut self) -> crate::stats::StatsGame {
         let name = |g: &mut Self, i| {
             let w = g.worm_at(i).expect("an empty place among the game's worms");
-            w.settings().name.clone()
+            w.settings().data.name.clone()
         };
         crate::stats::StatsGame {
             names: [name(self, 0), name(self, 1)],
@@ -453,7 +453,7 @@ fn view_worms<'a>(ws: &'a [(&'a LieroWorm, Ref<'a, LieroWormSettingsBox>)]) -> V
         .map(|(w, s)| {
             let looks = WormLooks {
                 max_health: s.data.health,
-                name: &s.name,
+                name: &s.data.name,
                 color: s.data.color,
             };
             crate::scene::view_worm(&w.data, looks, w.ai())
@@ -647,8 +647,8 @@ pub fn liero_game_view_new(g: &mut LieroGame) -> *mut LieroGameView {
                 (
                     s.data.health,
                     LieroStr {
-                        ptr: s.name.as_ptr(),
-                        len: s.name.len(),
+                        ptr: s.data.name.as_ptr(),
+                        len: s.data.name.len(),
                     },
                     s.data.color,
                 )
@@ -757,7 +757,7 @@ mod tests {
     fn settings(health: i32, name: &str) -> SharedWormSettings {
         let s = new_worm_settings();
         s.borrow_mut().data.health = health;
-        s.borrow_mut().name = name.as_bytes().to_vec();
+        s.borrow_mut().data.name = name.as_bytes().to_vec();
         s
     }
 

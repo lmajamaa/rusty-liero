@@ -327,7 +327,7 @@ fn run_menus(a: &mut LieroApp, out: &mut Out) {
     a.files.settings_node = Node::new(b"config/LIERO.CFG");
     for (i, ws) in a.settings_mut().worms.iter().enumerate() {
         let mut ws = ws.borrow_mut();
-        ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
+        ws.data.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
         for (j, control) in ws.data.controls.iter_mut().enumerate().take(7) {
             *control = (2 + j * 5 + i) as u32;
@@ -556,8 +556,8 @@ fn run_boxes(a: &mut LieroApp, out: &mut Out) {
     let mut f = Fnv::default();
     a.single.clear();
     let names = [
-        defaults.borrow().worms[0].borrow().name.clone(),
-        defaults.borrow().worms[1].borrow().name.clone(),
+        defaults.borrow().worms[0].borrow().data.name.clone(),
+        defaults.borrow().worms[1].borrow().data.name.clone(),
     ];
     let names: [&[u8]; 2] = [&names[0], &names[1]];
     draw_versus_info(a, &a.single.bmp, b"A", b"x/A.lev", names, default_colors, 320, 100);
@@ -585,7 +585,7 @@ fn run_weapon_selection(
     }
     for (i, ws) in s.worms.iter().enumerate() {
         let mut ws = ws.borrow_mut();
-        ws.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
+        ws.data.name = if i == 0 { b"LEFTY".to_vec() } else { b"RIGHTY".to_vec() };
         ws.data.color = if i == 0 { 32 } else { 41 };
         ws.data.controller = if i == 1 { controller1 } else { 0 };
         for weapon in ws.data.weapons.iter_mut().take(5) {

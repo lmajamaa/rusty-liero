@@ -14,7 +14,7 @@ fn tc() -> SharedTc {
 fn local(tc: SharedTc, names: [&str; 2]) -> Box<LieroController> {
     let settings = liero_settings_box_new();
     for (w, name) in settings.borrow().worms.iter().zip(names) {
-        w.borrow_mut().name = name.as_bytes().to_vec();
+        w.borrow_mut().data.name = name.as_bytes().to_vec();
     }
     let mut c = liero_local_controller_new(&Host::none(), settings, tc);
     c.game().unwrap().level_box_mut().resize(504, 350);

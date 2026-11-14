@@ -405,7 +405,7 @@ fn record_game(
                 s.blood = c.blood;
             }
             if let Some(name) = c.worm_name {
-                game.worm_at(1).expect("no second worm").settings_mut().name = name.as_bytes().to_vec();
+                game.worm_at(1).expect("no second worm").settings_mut().data.name = name.as_bytes().to_vec();
             }
             writer.focus(&mut game);
         }

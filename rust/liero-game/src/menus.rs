@@ -545,7 +545,7 @@ impl LieroMenus {
                 self.set_value(kind, i, key_name(k));
             }
             Behavior::WormName => {
-                let name = self.with_worm(app, |w| w.name.clone());
+                let name = self.with_worm(app, |w| w.data.name.clone());
                 self.set_value(kind, i, name);
             }
             Behavior::ProfileSave { save_as: false } => {
@@ -775,7 +775,7 @@ impl LieroMenus {
                 match self.value_position(kind, i) {
                     None => None,
                     Some((x, y)) => {
-                        let name = self.with_worm(app, |w| w.name.clone());
+                        let name = self.with_worm(app, |w| w.data.name.clone());
                         Some(self.input(kind, Then::WormName { item: i as i32 }, &name, 20, x, y, false))
                     }
                 }
@@ -886,7 +886,7 @@ impl LieroMenus {
             }
             Then::WormName { item } => {
                 if ok {
-                    self.with_worm(app, |w| w.name = typed);
+                    self.with_worm(app, |w| w.data.name = typed);
                 }
                 // An empty name stays empty: `Settings::generateName` does
                 // nothing.

@@ -120,7 +120,14 @@ unsafe fn replay_name(host: &Host, game: &mut LieroGame) -> Vec<u8> {
         if i > 0 {
             name.push(b'-');
         }
-        name.extend(w.settings().name.iter().take(4).filter(|c| c.is_ascii_alphanumeric()));
+        name.extend(
+            w.settings()
+                .data
+                .name
+                .iter()
+                .take(4)
+                .filter(|c| c.is_ascii_alphanumeric()),
+        );
     }
     name.extend_from_slice(b".lrp");
     name
