@@ -35,9 +35,9 @@ impl<'a> World<'a> {
         &mut self,
         kind: i32,
         angle: i32,
-        vel: IVec2,
+        vel: FVec2,
         speed: i32,
-        pos: IVec2,
+        pos: FVec2,
         owner_idx: i32,
         ww: FiredBy,
     ) {
@@ -76,11 +76,11 @@ impl<'a> World<'a> {
         // A freed slot keeps its object until a new one takes it, and only
         // a worm firing makes weapon objects.
         let w = weapon_view(self.wobj(slot).kind, self.wobj_weapon(slot));
-        let (x, y) = (pos.x, pos.y);
+        let IVec2 { x: ix, y: iy } = pos.to_int();
 
         if w.create_on_exp >= 0 {
             let fired_by = self.wobj(slot).fired_by;
-            self.create_sobject(w.create_on_exp, ftoi(x), ftoi(y), cause_idx, fired_by, Some(slot));
+            self.create_sobject(w.create_on_exp, ix, iy, cause_idx, fired_by, Some(slot));
         }
 
         if w.explo_sound >= 0 {
@@ -95,7 +95,7 @@ impl<'a> World<'a> {
                 self.create_nobject2(
                     w.splinter_type,
                     angle,
-                    IVec2::default(),
+                    FVec2::default(),
                     pos,
                     w.splinter_colour - color_sub,
                     cause_idx,
@@ -116,7 +116,6 @@ impl<'a> World<'a> {
         }
 
         if w.dirt_effect >= 0 {
-            let (ix, iy) = (ftoi(x), ftoi(y));
             self.dirt_effect(w.dirt_effect, ix - 7, iy - 7, [ix - 10, iy - 10, ix + 11, iy + 11]);
         }
     }
@@ -125,7 +124,7 @@ impl<'a> World<'a> {
     /// like it.
     fn wobj_create_sobject(&mut self, slot: usize, kind: i32) {
         let o = self.wobj(slot);
-        self.create_sobject(kind, ftoi(o.pos.x), ftoi(o.pos.y), o.owner_idx, o.fired_by, None);
+        self.create_sobject(kind, o.pos.x.to_int(), o.pos.y.to_int(), o.owner_idx, o.fired_by, None);
     }
 
     /// `WObject::process`.
@@ -155,45 +154,45 @@ impl<'a> World<'a> {
             let mut do_explode = false;
             let mut do_remove = false;
 
-            self.update_wobj(slot, |o| o.pos = add(o.pos, o.vel));
+            self.update_wobj(slot, |o| o.pos += o.vel);
 
             if w.shot_type == Some(ShotType::Steerable) {
                 let dir = cos_sin(self.wobj(slot).cur_frame);
-                let mut new_vel = mul_div(dir, w.speed, 100);
+                let mut new_vel = dir * w.speed / 100;
 
                 // Whether the owner is steering: visible and holding up.
                 let owner = self.worm(owner_idx);
                 if owner.visible && owner.pressed(Control::Up) {
-                    new_vel = add(new_vel, mul_div(dir, w.add_speed, 100));
+                    new_vel += dir * w.add_speed / 100;
                 }
 
-                self.update_wobj(slot, |o| o.vel = div(add(mul_div(o.vel, 8, 1), new_vel), 9));
+                self.update_wobj(slot, |o| o.vel = (o.vel * 8 + new_vel) / 9);
             } else if w.shot_type == Some(ShotType::DType2) {
                 self.update_wobj(slot, |o| {
-                    o.vel = add(o.vel, mul_div(cos_sin(o.cur_frame), w.add_speed, 100));
+                    o.vel += cos_sin(o.cur_frame) * w.add_speed / 100;
                 });
 
                 if w.distribution != 0 {
                     let dx = self.spread(w.distribution);
-                    self.update_wobj(slot, |o| o.vel.x = o.vel.x.wrapping_add(dx));
+                    self.update_wobj(slot, |o| o.vel.x += Fixed(dx));
                     let dy = self.spread(w.distribution);
-                    self.update_wobj(slot, |o| o.vel.y = o.vel.y.wrapping_add(dy));
+                    self.update_wobj(slot, |o| o.vel.y += Fixed(dy));
                 }
             }
 
             if w.bounce > 0 {
                 let o = self.wobj(slot);
-                let ipos = ftoi_vec(o.pos);
-                let inew_pos = ftoi_vec(add(o.pos, o.vel));
+                let ipos = o.pos.to_int();
+                let inew_pos = (o.pos + o.vel).to_int();
 
                 // TODO in C++: read the 4/5 from the EXE.
                 if self.blocked(inew_pos.x, ipos.y) {
                     self.update_wobj(slot, |o| {
                         if w.bounce != 100 {
-                            o.vel.x = o.vel.x.wrapping_neg().wrapping_mul(w.bounce) / 100;
-                            o.vel.y = o.vel.y.wrapping_mul(4) / 5;
+                            o.vel.x = -o.vel.x * w.bounce / 100;
+                            o.vel.y = o.vel.y * 4 / 5;
                         } else {
-                            o.vel.x = o.vel.x.wrapping_neg();
+                            o.vel.x = -o.vel.x;
                         }
                     });
                 }
@@ -201,17 +200,17 @@ impl<'a> World<'a> {
                 if self.blocked(ipos.x, inew_pos.y) {
                     self.update_wobj(slot, |o| {
                         if w.bounce != 100 {
-                            o.vel.y = o.vel.y.wrapping_neg().wrapping_mul(w.bounce) / 100;
-                            o.vel.x = o.vel.x.wrapping_mul(4) / 5;
+                            o.vel.y = -o.vel.y * w.bounce / 100;
+                            o.vel.x = o.vel.x * 4 / 5;
                         } else {
-                            o.vel.y = o.vel.y.wrapping_neg();
+                            o.vel.y = -o.vel.y;
                         }
                     });
                 }
             }
 
             if w.mult_speed != 100 {
-                self.update_wobj(slot, |o| o.vel = mul_div(o.vel, w.mult_speed, 100));
+                self.update_wobj(slot, |o| o.vel = o.vel * w.mult_speed / 100);
             }
 
             if w.obj_trail_type >= 0 && cycles % w.obj_trail_delay == 0 {
@@ -221,35 +220,35 @@ impl<'a> World<'a> {
             if w.part_trail_obj >= 0 && cycles % w.part_trail_delay == 0 {
                 if w.part_trail_type == 1 {
                     let o = self.wobj(slot);
-                    let vel = div(o.vel, larpa_vel_div);
+                    let vel = o.vel / larpa_vel_div;
                     self.create_nobject1(w.part_trail_obj, vel, o.pos, 0, o.owner_idx, o.fired_by);
                 } else {
                     let angle = self.rand(128) as i32;
                     let o = self.wobj(slot);
-                    let vel = div(o.vel, crackler_vel_div);
+                    let vel = o.vel / crackler_vel_div;
                     self.create_nobject2(w.part_trail_obj, angle, vel, o.pos, 0, o.owner_idx, o.fired_by);
                 }
             }
 
             if w.collide_with_objects {
-                self.push_objects(slot, mul_div(self.wobj(slot).vel, w.blow_away, 100));
+                self.push_objects(slot, self.wobj(slot).vel * w.blow_away / 100);
             }
 
             let o = self.wobj(slot);
-            let inew_pos = ftoi_vec(add(o.pos, o.vel));
+            let inew_pos = (o.pos + o.vel).to_int();
 
             self.update_wobj(slot, |o| {
                 if inew_pos.x < 0 {
-                    o.pos.x = 0;
+                    o.pos.x = Fixed::ZERO;
                 }
                 if inew_pos.y < 0 {
-                    o.pos.y = 0;
+                    o.pos.y = Fixed::ZERO;
                 }
                 if inew_pos.x >= width {
-                    o.pos.x = itof(width - 1);
+                    o.pos.x = Fixed::from_int(width - 1);
                 }
                 if inew_pos.y >= height {
-                    o.pos.y = itof(height - 1);
+                    o.pos.y = Fixed::from_int(height - 1);
                 }
             });
 
@@ -258,24 +257,24 @@ impl<'a> World<'a> {
                     if w.expl_ground {
                         do_explode = true;
                     } else {
-                        self.update_wobj(slot, |o| o.vel = IVec2::default());
+                        self.update_wobj(slot, |o| o.vel = FVec2::default());
                     }
                 }
             } else {
                 self.update_wobj(slot, |o| {
                     // The original tested gravity first, which doesn't seem like a
                     // gain.
-                    o.vel.y = o.vel.y.wrapping_add(w.gravity);
+                    o.vel.y += Fixed(w.gravity);
 
                     if w.num_frames > 0 && (cycles & 7) == 0 {
                         // Without loop_anim the frames always run forwards; with
                         // it they follow the direction of travel.
-                        if !w.loop_anim || o.vel.x > 0 {
+                        if !w.loop_anim || o.vel.x > Fixed::ZERO {
                             o.cur_frame += 1;
                             if o.cur_frame > w.num_frames {
                                 o.cur_frame = 0;
                             }
-                        } else if o.vel.x < 0 {
+                        } else if o.vel.x < Fixed::ZERO {
                             o.cur_frame -= 1;
                             if o.cur_frame < 0 {
                                 o.cur_frame = w.num_frames;
@@ -316,7 +315,7 @@ impl<'a> World<'a> {
 
     /// Adds `impulse` to the objects within 2 pixels of weapon object
     /// `slot`, but the weapon objects of its weapon and owner.
-    fn push_objects(&mut self, slot: usize, impulse: IVec2) {
+    fn push_objects(&mut self, slot: usize, impulse: FVec2) {
         let o = self.wobj(slot);
         let (pos, kind, owner) = (o.pos, o.kind, o.owner_idx);
 
@@ -325,7 +324,7 @@ impl<'a> World<'a> {
         while let Some(n) = wr.next(l) {
             let i = &mut l.arr[n];
             if (i.kind != kind || i.owner_idx != owner) && near(pos, i.pos) {
-                i.vel = add(i.vel, impulse);
+                i.vel += impulse;
             }
         }
 
@@ -334,7 +333,7 @@ impl<'a> World<'a> {
         while let Some(n) = nr.next(l) {
             let i = &mut l.arr[n];
             if near(pos, i.pos) {
-                i.vel = add(i.vel, impulse);
+                i.vel += impulse;
             }
         }
     }
@@ -350,10 +349,10 @@ impl<'a> World<'a> {
             let o = self.wobj(slot);
 
             if (w.hit_damage != 0 || w.blow_away != 0 || w.blood_on_hit != 0 || w.worm_collide)
-                && self.spec_worm_hit(ftoi(o.pos.x), ftoi(o.pos.y), w.detect_distance, i)
+                && self.spec_worm_hit(o.pos.x.to_int(), o.pos.y.to_int(), w.detect_distance, i)
             {
                 let worm = self.g.worm_mut(i);
-                worm.vel = add(worm.vel, mul_div(o.vel, w.blow_away, 100));
+                worm.vel += o.vel * w.blow_away / 100;
 
                 self.g.damage(i, w.hit_damage, o.owner_idx);
                 let o = self.wobj(slot);
@@ -369,7 +368,7 @@ impl<'a> World<'a> {
                     let angle = self.rand(128) as i32;
                     let o = self.wobj(slot);
                     let index = self.worm(i).index;
-                    self.create_nobject2(6, angle, div(o.vel, 3), o.pos, 0, index, o.fired_by);
+                    self.create_nobject2(6, angle, o.vel / 3, o.pos, 0, index, o.fired_by);
                 }
 
                 if w.hit_damage > 0 && self.worm(i).health > 0 && self.rand(3) == 0 {
@@ -389,8 +388,8 @@ impl<'a> World<'a> {
     }
 }
 
-/// Whether integer `p` is within 2 pixels of fixed-point `q` on both axes,
-/// as C++ compared them.
-fn near(pos: IVec2, q: IVec2) -> bool {
-    pos.x >= q.x - itof(2) && pos.x <= q.x + itof(2) && pos.y >= q.y - itof(2) && pos.y <= q.y + itof(2)
+/// Whether `pos` is within 2 pixels of `q` on both axes.
+fn near(pos: FVec2, q: FVec2) -> bool {
+    let two = Fixed::from_int(2);
+    pos.x >= q.x - two && pos.x <= q.x + two && pos.y >= q.y - two && pos.y <= q.y + two
 }

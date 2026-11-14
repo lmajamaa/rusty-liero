@@ -9,7 +9,6 @@
 //! borrow them, through `Game`, for the call.
 
 use crate::level::{slice, Level, RawLevel};
-use crate::math::ftoi;
 use crate::objects::{zeroed_box, BObjectList, BonusList, NObjectList, SObjectList, WObjectList};
 use crate::rand::Rand;
 use crate::sfx::SoundOut;
@@ -223,8 +222,8 @@ pub(crate) fn stats_worm(w: &WormData, max_health: i32) -> StatsWorm {
     use crate::worm::Control;
     StatsWorm {
         index: w.index,
-        x: ftoi(w.pos.x),
-        y: ftoi(w.pos.y),
+        x: w.pos.x.to_int(),
+        y: w.pos.y.to_int(),
         visible: w.visible,
         health: w.health,
         lives: w.lives,
@@ -475,7 +474,7 @@ impl Rules<'_> {
 
         for i in 0..self.worm_count() {
             let w = self.worm(i);
-            if w.visible && self.data.holdazone.rect.contains(ftoi(w.pos.x), ftoi(w.pos.y)) {
+            if w.visible && self.data.holdazone.rect.contains(w.pos.x.to_int(), w.pos.y.to_int()) {
                 contender_idx = Some(w.index);
                 contenders += 1;
             }

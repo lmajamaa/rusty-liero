@@ -119,7 +119,7 @@ pub fn process(rand: &mut Rand, worm: &DumbAiWorm, others: &[[i32; 2]], k: &[[i3
     let mut dir = 1;
     while dir < 128 {
         let c = cos_sin(dir);
-        if (c.x - delta[0]).abs() < 0xC00 && (c.y - delta[1]).abs() < 0xC00 {
+        if (c.x.0 - delta[0]).abs() < 0xC00 && (c.y.0 - delta[1]).abs() < 0xC00 {
             break;
         }
         dir += 1;

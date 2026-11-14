@@ -7,17 +7,8 @@
 //! and lasers (`WObject::process` and `WObject::blowUpObject`) in
 //! `world/wobject.rs`.
 
-use crate::math::{cos_sin, IVec2};
-use crate::object::add;
+use crate::math::{cos_sin, FVec2, Fixed};
 use crate::rand::Rand;
-
-/// `v * m / d` on both components, rounding towards zero like C++.
-fn mul_div(v: IVec2, m: i32, d: i32) -> IVec2 {
-    IVec2 {
-        x: v.x.wrapping_mul(m) / d,
-        y: v.y.wrapping_mul(m) / d,
-    }
-}
 
 /// `Weapon::shotType`, numbered as the TC stores it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,7 +98,7 @@ pub const SELECTABLE_WEAPONS: usize = 5;
 /// How a new weapon object starts, from `Weapon::fire`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Launch {
-    pub vel: IVec2,
+    pub vel: FVec2,
     pub cur_frame: i32,
     pub time_left: i32,
 }
@@ -126,13 +117,13 @@ impl WeaponView {
 
     /// Velocity, first frame and fuse of a shot fired at `angle` (0 to 127)
     /// with `speed` (percent) and the shooter's `vel`.
-    pub fn launch(&self, rand: &mut Rand, angle: i32, vel: IVec2, speed: i32) -> Launch {
-        let mut v = add(mul_div(cos_sin(angle), speed, 100), vel);
+    pub fn launch(&self, rand: &mut Rand, angle: i32, vel: FVec2, speed: i32) -> Launch {
+        let mut v = cos_sin(angle) * speed / 100 + vel;
 
         if self.distribution != 0 {
             let d = self.distribution;
-            v.x = v.x.wrapping_add(rand.below((d * 2) as u32) as i32 - d);
-            v.y = v.y.wrapping_add(rand.below((d * 2) as u32) as i32 - d);
+            v.x += Fixed(rand.below((d * 2) as u32) as i32 - d);
+            v.y += Fixed(rand.below((d * 2) as u32) as i32 - d);
         }
 
         let cur_frame = if self.start_frame >= 0 {
@@ -196,9 +187,9 @@ mod tests {
     fn launch_aims_along_the_table_and_adds_velocity() {
         let mut rand = Rand::new(1);
         let mut copy = rand;
-        let l = weapon().launch(&mut rand, 32, IVec2 { x: 5, y: 7 }, 200);
+        let l = weapon().launch(&mut rand, 32, FVec2::new(Fixed(5), Fixed(7)), 200);
         // Entry 32 is (-65536, 0); only the colour uses the RNG here.
-        assert_eq!(l.vel, IVec2 { x: -131072 + 5, y: 7 });
+        assert_eq!(l.vel, FVec2::new(Fixed(-131072 + 5), Fixed(7)));
         assert_eq!(l.cur_frame, 40 - copy.below(2) as i32);
         assert_eq!(l.time_left, 0);
     }
@@ -213,7 +204,7 @@ mod tests {
         let mut rand = Rand::new(1);
         let frames: Vec<i32> = [0, 12, 20, 64, 65, 127]
             .iter()
-            .map(|&a| w.launch(&mut rand, a, IVec2::default(), 100).cur_frame)
+            .map(|&a| w.launch(&mut rand, a, FVec2::default(), 100).cur_frame)
             .collect();
         assert_eq!(frames, [0, 0, 1, 6, 6, 12]);
     }

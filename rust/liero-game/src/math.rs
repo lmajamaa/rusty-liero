@@ -2,15 +2,170 @@
 //! `src/game/math.hpp` and `math.cpp`. Results have to stay bit-identical to
 //! the C++ versions, which the game's physics depends on.
 
-/// 16.16 fixed-point number, like C++'s `fixed`.
-pub type Fixed = i32;
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Shr, Sub, SubAssign};
 
-pub const fn itof(v: i32) -> Fixed {
+/// A 16.16 fixed-point number, like C++'s `fixed`. Its arithmetic wraps,
+/// as C++'s `int` did on the platforms the game ran on, so that physics
+/// gives the same numbers in debug builds too.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct Fixed(pub i32);
+
+impl Fixed {
+    pub const ZERO: Fixed = Fixed(0);
+
+    /// The whole number `v` (`itof`).
+    pub const fn from_int(v: i32) -> Fixed {
+        Fixed(itof(v))
+    }
+
+    /// The whole part, rounded down (`ftoi`).
+    pub const fn to_int(self) -> i32 {
+        ftoi(self.0)
+    }
+
+    pub const fn abs(self) -> Fixed {
+        Fixed(self.0.wrapping_abs())
+    }
+}
+
+/// A whole number as a raw 16.16 one.
+pub const fn itof(v: i32) -> i32 {
     v << 16
 }
 
-pub const fn ftoi(v: Fixed) -> i32 {
+/// The whole part of a raw 16.16 number, rounded down.
+pub const fn ftoi(v: i32) -> i32 {
     v >> 16
+}
+
+impl Add for Fixed {
+    type Output = Fixed;
+    fn add(self, o: Fixed) -> Fixed {
+        Fixed(self.0.wrapping_add(o.0))
+    }
+}
+
+impl Sub for Fixed {
+    type Output = Fixed;
+    fn sub(self, o: Fixed) -> Fixed {
+        Fixed(self.0.wrapping_sub(o.0))
+    }
+}
+
+impl Neg for Fixed {
+    type Output = Fixed;
+    fn neg(self) -> Fixed {
+        Fixed(self.0.wrapping_neg())
+    }
+}
+
+impl AddAssign for Fixed {
+    fn add_assign(&mut self, o: Fixed) {
+        *self = *self + o;
+    }
+}
+
+impl SubAssign for Fixed {
+    fn sub_assign(&mut self, o: Fixed) {
+        *self = *self - o;
+    }
+}
+
+/// Scaling by a whole number.
+impl Mul<i32> for Fixed {
+    type Output = Fixed;
+    fn mul(self, k: i32) -> Fixed {
+        Fixed(self.0.wrapping_mul(k))
+    }
+}
+
+/// Division by a whole number, rounding towards zero.
+impl Div<i32> for Fixed {
+    type Output = Fixed;
+    fn div(self, k: i32) -> Fixed {
+        Fixed(self.0.wrapping_div(k))
+    }
+}
+
+impl Shr<i32> for Fixed {
+    type Output = Fixed;
+    fn shr(self, n: i32) -> Fixed {
+        Fixed(self.0 >> n)
+    }
+}
+
+/// Two fixed-point numbers: a position or a velocity (C++'s `fixedvec`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct FVec2 {
+    pub x: Fixed,
+    pub y: Fixed,
+}
+
+impl FVec2 {
+    pub const fn new(x: Fixed, y: Fixed) -> FVec2 {
+        FVec2 { x, y }
+    }
+
+    /// The raw numbers, as replays, the bots and the hashes store them.
+    pub const fn raw(self) -> [i32; 2] {
+        [self.x.0, self.y.0]
+    }
+
+    pub const fn from_raw([x, y]: [i32; 2]) -> FVec2 {
+        FVec2 {
+            x: Fixed(x),
+            y: Fixed(y),
+        }
+    }
+
+    /// The whole-pixel position (`ftoi` of each).
+    pub const fn to_int(self) -> IVec2 {
+        IVec2 {
+            x: self.x.to_int(),
+            y: self.y.to_int(),
+        }
+    }
+}
+
+impl Add for FVec2 {
+    type Output = FVec2;
+    fn add(self, o: FVec2) -> FVec2 {
+        FVec2::new(self.x + o.x, self.y + o.y)
+    }
+}
+
+impl Sub for FVec2 {
+    type Output = FVec2;
+    fn sub(self, o: FVec2) -> FVec2 {
+        FVec2::new(self.x - o.x, self.y - o.y)
+    }
+}
+
+impl AddAssign for FVec2 {
+    fn add_assign(&mut self, o: FVec2) {
+        *self = *self + o;
+    }
+}
+
+impl SubAssign for FVec2 {
+    fn sub_assign(&mut self, o: FVec2) {
+        *self = *self - o;
+    }
+}
+
+impl Mul<i32> for FVec2 {
+    type Output = FVec2;
+    fn mul(self, k: i32) -> FVec2 {
+        FVec2::new(self.x * k, self.y * k)
+    }
+}
+
+impl Div<i32> for FVec2 {
+    type Output = FVec2;
+    fn div(self, k: i32) -> FVec2 {
+        FVec2::new(self.x / k, self.y / k)
+    }
 }
 
 /// Two ints, laid out like C++'s `gvl::ivec2` / `fixedvec`.
@@ -21,8 +176,8 @@ pub struct IVec2 {
 }
 
 /// Entry `angle` (0 to 127) of the cos/sin table, which is computed once.
-pub fn cos_sin(angle: i32) -> IVec2 {
-    static TABLE: std::sync::OnceLock<[IVec2; COS_SIN_ENTRIES]> = std::sync::OnceLock::new();
+pub fn cos_sin(angle: i32) -> FVec2 {
+    static TABLE: std::sync::OnceLock<[FVec2; COS_SIN_ENTRIES]> = std::sync::OnceLock::new();
     TABLE.get_or_init(cos_sin_table)[angle as usize]
 }
 
@@ -86,8 +241,8 @@ impl Fp {
 /// The 16.16 fixed-point table of directions, one per 1/128 of a turn, in
 /// C++'s `cossinTable` layout: x is -sin and y is cos of the angle. Computed with integer maths only, so it comes
 /// out the same on every platform.
-pub fn cos_sin_table() -> [IVec2; COS_SIN_ENTRIES] {
-    let mut table = [IVec2::default(); COS_SIN_ENTRIES];
+pub fn cos_sin_table() -> [FVec2; COS_SIN_ENTRIES] {
+    let mut table = [FVec2::default(); COS_SIN_ENTRIES];
     let scale_bits = 28;
     let scale: i32 = 13176795; // (2pi / 128) << scale_bits
 
@@ -121,7 +276,7 @@ pub fn cos_sin_table() -> [IVec2; COS_SIN_ENTRIES] {
         let shift = 60 - 16;
         rf = rf.wrapping_add(1i64 << (shift - 1)); // Correct rounding
 
-        let r = (rf >> shift) as i32;
+        let r = Fixed((rf >> shift) as i32);
         table[i].x = r;
         table[(i + 32) & 0x7f].y = r;
     }
@@ -170,12 +325,12 @@ mod tests {
     fn cos_sin_table_matches_cpp() {
         let table = cos_sin_table();
         // x is -sin and y is cos of the angle.
-        assert_eq!(table[0], IVec2 { x: 0, y: 65536 });
-        assert_eq!(table[32], IVec2 { x: -65536, y: 0 });
+        assert_eq!(table[0], FVec2::new(Fixed(0), Fixed(65536)));
+        assert_eq!(table[32], FVec2::new(Fixed(-65536), Fixed(0)));
         let mut h = Fnv::new();
         for v in table {
-            h.add(v.x as u32);
-            h.add(v.y as u32);
+            h.add(v.x.0 as u32);
+            h.add(v.y.0 as u32);
         }
         assert_eq!(h.finish(), EXPECTED_COS_SIN);
     }

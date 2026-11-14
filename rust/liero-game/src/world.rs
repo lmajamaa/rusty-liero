@@ -17,11 +17,9 @@ use std::ptr::null_mut;
 
 use crate::game::{BonusState, GameFields, GameHooks, Rect, RuleSettings, Rules};
 use crate::level::slice;
-use crate::math::{cos_sin, ftoi, itof, vector_length, IVec2};
+use crate::math::{cos_sin, ftoi, itof, vector_length, FVec2, Fixed, IVec2};
 use crate::object::BObject;
-use crate::object::{
-    add, div, explosion_damage, explosion_push_object, explosion_push_worm, ftoi_vec, inside, sub, BonusConstants,
-};
+use crate::object::{explosion_damage, explosion_push_object, explosion_push_worm, inside, BonusConstants};
 use crate::objects::{Cursor, FiredBy, NObject, WObject};
 use crate::sfx::SoundOut;
 use crate::stats::Stats;
@@ -85,14 +83,6 @@ pub(crate) fn weapon_view(id: i32, w: &Weapon) -> WeaponView {
         part_trail_delay: w.part_trail_delay,
         loop_sound: w.loop_sound,
         laser_sight: w.laser_sight,
-    }
-}
-
-/// `v * m / d` on both components, rounding towards zero like C++.
-fn mul_div(v: IVec2, m: i32, d: i32) -> IVec2 {
-    IVec2 {
-        x: v.x.wrapping_mul(m) / d,
-        y: v.y.wrapping_mul(m) / d,
     }
 }
 
@@ -228,7 +218,7 @@ impl<'a> World<'a> {
             let pos = self.worm(to).pos;
             let w = self.weapon_index(weapon);
             let s = self.stats.as_deref_mut().unwrap();
-            s.damage_dealt(by, w, to, ftoi(pos.x), ftoi(pos.y), hp, has_hit);
+            s.damage_dealt(by, w, to, pos.x.to_int(), pos.y.to_int(), hp, has_hit);
         }
     }
 
@@ -277,7 +267,7 @@ impl<'a> World<'a> {
     // Creating objects.
 
     /// `Game::createBObject`.
-    fn create_bobject(&mut self, pos: IVec2, vel: IVec2) {
+    fn create_bobject(&mut self, pos: FVec2, vel: FVec2) {
         // Taking the slot uses no random numbers, so the colour can come first.
         let n = self.constant(c("NumBloodColours")) as u32;
         let color = self.rand(n) as i32 + self.constant(c("FirstBloodColour"));
@@ -342,7 +332,7 @@ impl<'a> World<'a> {
                         for _ in 0..blood_amount.max(0) {
                             let angle = self.rand(128) as i32;
                             let w = self.worm(i);
-                            let (vel, pos, index) = (div(w.vel, 3), w.pos, w.index);
+                            let (vel, pos, index) = (w.vel / 3, w.pos, w.index);
                             self.create_nobject2(6, angle, vel, pos, 0, index, fired_by);
                         }
 
@@ -394,11 +384,8 @@ impl<'a> World<'a> {
                         self.create_nobject2(
                             2,
                             angle,
-                            IVec2::default(),
-                            IVec2 {
-                                x: itof(cx),
-                                y: itof(cy),
-                            },
+                            FVec2::default(),
+                            FVec2::new(Fixed::from_int(cx), Fixed::from_int(cy)),
                             i32::from(pix),
                             owner_idx,
                             fired_by,
@@ -438,8 +425,8 @@ impl<'a> World<'a> {
             .worm_sprites
             .sprite((w.current_frame + w.direction * 7 * 3) as usize);
 
-        let delta_x = x - ftoi(w.pos.x) + 7;
-        let delta_y = y - ftoi(w.pos.y) + 5;
+        let delta_x = x - w.pos.x.to_int() + 7;
+        let delta_y = y - w.pos.y.to_int() + 5;
 
         let x1 = (delta_x - dist).max(0);
         let y1 = (delta_y - dist).max(0);

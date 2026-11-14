@@ -84,8 +84,8 @@ struct Worm<'w, 'a> {
 
 impl Worm<'_, '_> {
     fields! {
-        pos, set_pos: IVec2;
-        vel, set_vel: IVec2;
+        pos, set_pos: FVec2;
+        vel, set_vel: FVec2;
         logic_respawn, set_logic_respawn: IVec2;
         hotspot_x, set_hotspot_x: i32;
         hotspot_y, set_hotspot_y: i32;
@@ -214,12 +214,12 @@ impl Worm<'_, '_> {
         self.world.play(sound, null_mut(), 0);
     }
 
-    fn create_nobject1(&mut self, kind: i32, vel: IVec2, pos: IVec2) {
+    fn create_nobject1(&mut self, kind: i32, vel: FVec2, pos: FVec2) {
         let index = self.index();
         self.world.create_nobject1(kind, vel, pos, 0, index, FiredBy::NONE);
     }
 
-    fn create_nobject2(&mut self, kind: i32, angle: i32, vel: IVec2, pos: IVec2) {
+    fn create_nobject2(&mut self, kind: i32, angle: i32, vel: FVec2, pos: FVec2) {
         let index = self.index();
         self.world
             .create_nobject2(kind, angle, vel, pos, 0, index, FiredBy::NONE);
@@ -325,10 +325,8 @@ impl Worm<'_, '_> {
 
         self.set_fire_cone(w.fire_cone);
 
-        let firing = sub(
-            add(mul_div(cos_sin(angle), w.detect_distance + 5, 1), self.pos()),
-            IVec2 { x: 0, y: itof(1) },
-        );
+        let firing =
+            cos_sin(angle) * (w.detect_distance + 5) + self.pos() - FVec2::new(Fixed::ZERO, Fixed::from_int(1));
 
         if w.leave_shells > 0 && self.rand(w.leave_shells as u32) == 0 {
             self.set_leave_shell_timer(w.leave_shell_delay);
@@ -337,13 +335,13 @@ impl Worm<'_, '_> {
         self.launch_sound();
 
         let mut speed = w.speed;
-        let mut firing_vel = IVec2::default();
+        let mut firing_vel = FVec2::default();
 
         if w.affect_by_worm {
             if speed < 100 {
                 speed = 100;
             }
-            firing_vel = mul_div(self.vel(), 100, speed);
+            firing_vel = self.vel() * 100 / speed;
         }
 
         for _ in 0..w.parts.max(0) {
@@ -359,7 +357,7 @@ impl Worm<'_, '_> {
             recoil -= 256;
         }
 
-        self.set_vel(sub(self.vel(), mul_div(cos_sin(angle), recoil, 100)));
+        self.set_vel(self.vel() - cos_sin(angle) * recoil / 100);
     }
 
     fn calculate_reaction_force(&mut self, new_x: i32, new_y: i32, dir: usize) {
@@ -377,24 +375,28 @@ impl Worm<'_, '_> {
         let mut vel = self.vel();
 
         if self.react(RF_UP) > 0 {
-            vel.x = vel.x.wrapping_mul(k.worm_fric_mult) / k.worm_fric_div;
+            vel.x = vel.x * k.worm_fric_mult / k.worm_fric_div;
             self.set_vel(vel);
         }
 
-        let abs_x = vel.x.wrapping_abs();
-        let abs_y = vel.y.wrapping_abs();
+        let abs_x = vel.x.abs();
+        let abs_y = vel.y.abs();
 
-        let rh = self.react(if vel.x >= 0 { RF_LEFT } else { RF_RIGHT });
-        let rv = self.react(if vel.y >= 0 { RF_UP } else { RF_DOWN });
-        let mbh = if vel.x > 0 {
+        let rh = self.react(if vel.x >= Fixed::ZERO { RF_LEFT } else { RF_RIGHT });
+        let rv = self.react(if vel.y >= Fixed::ZERO { RF_UP } else { RF_DOWN });
+        let mbh = if vel.x > Fixed::ZERO {
             k.min_bounce_right
         } else {
             -k.min_bounce_left
         };
-        let mbv = if vel.y > 0 { k.min_bounce_down } else { -k.min_bounce_up };
+        let mbv = if vel.y > Fixed::ZERO {
+            k.min_bounce_down
+        } else {
+            -k.min_bounce_up
+        };
 
-        if vel.x != 0 && rh != 0 {
-            if abs_x > mbh {
+        if vel.x != Fixed::ZERO && rh != 0 {
+            if abs_x > Fixed(mbh) {
                 if k.fall_damage {
                     self.set_health(self.health() - k.fall_damage_right);
                 } else {
@@ -404,13 +406,13 @@ impl Worm<'_, '_> {
                 vel.x = -vel.x / 3;
             } else {
                 vel = self.vel();
-                vel.x = 0;
+                vel.x = Fixed::ZERO;
             }
             self.set_vel(vel);
         }
 
-        if vel.y != 0 && rv != 0 {
-            if abs_y > mbv {
+        if vel.y != Fixed::ZERO && rv != 0 {
+            if abs_y > Fixed(mbv) {
                 if k.fall_damage {
                     self.set_health(self.health() - k.fall_damage_down);
                 } else {
@@ -420,22 +422,22 @@ impl Worm<'_, '_> {
                 vel.y = -vel.y / 3;
             } else {
                 vel = self.vel();
-                vel.y = 0;
+                vel.y = Fixed::ZERO;
             }
             self.set_vel(vel);
         }
 
         if self.react(RF_UP) == 0 {
-            vel.y = vel.y.wrapping_add(k.worm_gravity);
+            vel.y += Fixed(k.worm_gravity);
             self.set_vel(vel);
         }
 
         let mut pos = self.pos();
-        if self.react(if vel.x >= 0 { RF_LEFT } else { RF_RIGHT }) < 2 {
-            pos.x = pos.x.wrapping_add(vel.x);
+        if self.react(if vel.x >= Fixed::ZERO { RF_LEFT } else { RF_RIGHT }) < 2 {
+            pos.x += vel.x;
         }
-        if self.react(if vel.y >= 0 { RF_UP } else { RF_DOWN }) < 2 {
-            pos.y = pos.y.wrapping_add(vel.y);
+        if self.react(if vel.y >= Fixed::ZERO { RF_UP } else { RF_DOWN }) < 2 {
+            pos.y += vel.y;
         }
         self.set_pos(pos);
     }
@@ -444,8 +446,8 @@ impl Worm<'_, '_> {
     fn calculate_reaction_forces(&mut self) {
         let k = self.k;
         let (width, height) = self.level_size();
-        let mut next = add(self.pos(), self.vel());
-        let mut inext = ftoi_vec(next);
+        let mut next = self.pos() + self.vel();
+        let mut inext = next.to_int();
 
         for i in 0..4 {
             self.calculate_reaction_force(inext.x, inext.y, i);
@@ -462,7 +464,7 @@ impl Worm<'_, '_> {
             } else if k.worm_float {
                 if inext.y > k.worm_float_level {
                     let mut vel = self.vel();
-                    vel.y = vel.y.wrapping_sub(k.worm_float_power);
+                    vel.y -= Fixed(k.worm_float_power);
                     self.set_vel(vel);
                 }
             } else if inext.y > height - 6 {
@@ -475,10 +477,10 @@ impl Worm<'_, '_> {
         for (low, high, step) in [(RF_DOWN, RF_UP, -1), (RF_UP, RF_DOWN, 1)] {
             if self.react(low) < 2 && self.react(high) > 0 && (self.react(RF_LEFT) > 0 || self.react(RF_RIGHT) > 0) {
                 let mut pos = self.pos();
-                pos.y = pos.y.wrapping_add(itof(step));
+                pos.y += Fixed::from_int(step);
                 self.set_pos(pos);
-                next.y = pos.y.wrapping_add(self.vel().y);
-                inext.y = ftoi(next.y);
+                next.y = pos.y + self.vel().y;
+                inext.y = next.y.to_int();
 
                 self.calculate_reaction_force(inext.x, inext.y, RF_LEFT);
                 self.calculate_reaction_force(inext.x, inext.y, RF_RIGHT);
@@ -488,7 +490,7 @@ impl Worm<'_, '_> {
 
     fn pick_up_bonuses(&mut self) {
         let k = self.k;
-        let ipos = ftoi_vec(self.pos());
+        let ipos = self.pos().to_int();
 
         self.bonuses = Cursor::default();
         while let Some(b) = self.bonus_next() {
@@ -557,8 +559,8 @@ impl Worm<'_, '_> {
             });
             self.set_movable(false);
 
-            self.set_steerable_sum_x(self.steerable_sum_x() + ftoi(pos.x));
-            self.set_steerable_sum_y(self.steerable_sum_y() + ftoi(pos.y));
+            self.set_steerable_sum_x(self.steerable_sum_x() + pos.x.to_int());
+            self.set_steerable_sum_y(self.steerable_sum_y() + pos.y.to_int());
             self.set_steerable_count(self.steerable_count() + 1);
         }
     }
@@ -648,9 +650,9 @@ impl Worm<'_, '_> {
                 let dir = cos_sin(ftoi(self.aiming_angle()));
                 let r = self.rope_mut();
                 r.pos = pos;
-                r.vel = IVec2 {
-                    x: dir.x.wrapping_shl(k.nr_throw_vel_x as u32),
-                    y: dir.y.wrapping_shl(k.nr_throw_vel_y as u32),
+                r.vel = FVec2 {
+                    x: Fixed(dir.x.0.wrapping_shl(k.nr_throw_vel_x as u32)),
+                    y: Fixed(dir.y.0.wrapping_shl(k.nr_throw_vel_y as u32)),
                 };
 
                 r.length = k.nr_initial_length;
@@ -663,7 +665,7 @@ impl Worm<'_, '_> {
 
             if (self.react(RF_UP) > 0 || k.air_jump) && (self.able_to_jump() || k.multi_jump) {
                 let mut vel = self.vel();
-                vel.y = vel.y.wrapping_sub(k.jump_force);
+                vel.y -= Fixed(k.jump_force);
                 self.set_vel(vel);
                 self.set_able_to_jump(false);
             }
@@ -719,7 +721,7 @@ impl Worm<'_, '_> {
             if self.leave_shell_timer() <= 0 {
                 let vel_y = -(self.rand(20000) as i32);
                 let vel_x = self.rand(16000) as i32 - 8000;
-                self.create_nobject1(7, IVec2 { x: vel_x, y: vel_y }, self.pos());
+                self.create_nobject1(7, FVec2::new(Fixed(vel_x), Fixed(vel_y)), self.pos());
             }
         }
     }
@@ -735,29 +737,30 @@ impl Worm<'_, '_> {
 
         let dir = cos_sin(ftoi(self.aiming_angle()));
         let pos = self.pos();
-        let mut temp = IVec2 {
-            x: pos.x.wrapping_add(dir.x.wrapping_mul(6)),
-            y: pos.y.wrapping_add(dir.y.wrapping_mul(6)).wrapping_sub(itof(1)),
+        let mut temp = FVec2 {
+            x: pos.x + dir.x * 6,
+            y: pos.y + dir.y * 6 - Fixed::from_int(1),
         };
 
         loop {
-            temp = add(temp, dir);
-            let hit = self.world.worm_hit(ftoi(temp.x), ftoi(temp.y), 0, self.i);
+            temp += dir;
+            let it = temp.to_int();
+            let hit = self.world.worm_hit(it.x, it.y, 0, self.i);
             self.set_make_sight_green(hit);
 
-            let go_on = temp.x >= 0
-                && temp.y >= 0
-                && temp.x < itof(width)
-                && temp.y < itof(height)
-                && self.mat(ftoi(temp.x), ftoi(temp.y)).background()
+            let go_on = temp.x >= Fixed::ZERO
+                && temp.y >= Fixed::ZERO
+                && temp.x < Fixed::from_int(width)
+                && temp.y < Fixed::from_int(height)
+                && self.mat(it.x, it.y).background()
                 && !hit;
             if !go_on {
                 break;
             }
         }
 
-        self.set_hotspot_x(ftoi(temp.x));
-        self.set_hotspot_y(ftoi(temp.y));
+        self.set_hotspot_x(temp.x.to_int());
+        self.set_hotspot_y(temp.y.to_int());
     }
 
     fn process_weapon_change(&mut self) {
@@ -779,8 +782,8 @@ impl Worm<'_, '_> {
                     self.set_current_weapon((self.current_weapon() + step) % n);
 
                     let pos = self.pos();
-                    self.set_hotspot_x(ftoi(pos.x));
-                    self.set_hotspot_y(ftoi(pos.y));
+                    self.set_hotspot_x(pos.x.to_int());
+                    self.set_hotspot_y(pos.y.to_int());
                 }
             }
         }
@@ -788,18 +791,15 @@ impl Worm<'_, '_> {
 
     fn dig(&mut self) {
         let dir = cos_sin(ftoi(self.aiming_angle()));
-        let twice = IVec2 {
-            x: dir.x.wrapping_mul(2),
-            y: dir.y.wrapping_mul(2),
-        };
+        let twice = dir * 2;
 
-        let mut dig_pos = sub(add(twice, self.pos()), IVec2 { x: itof(7), y: itof(7) });
+        let mut dig_pos = twice + self.pos() - FVec2::new(Fixed::from_int(7), Fixed::from_int(7));
 
         for i in 0..2 {
             if i == 1 {
-                dig_pos = add(dig_pos, twice);
+                dig_pos += twice;
             }
-            let p = ftoi_vec(dig_pos);
+            let p = dig_pos.to_int();
             self.draw_dirt_effect(7, p.x, p.y);
             self.correct_shadow(p.x - 3, p.y - 3, p.x + 18, p.y + 18);
         }
@@ -817,8 +817,8 @@ impl Worm<'_, '_> {
 
         if left && !right {
             let mut vel = self.vel();
-            if vel.x > k.max_vel_left {
-                vel.x = vel.x.wrapping_sub(k.walk_vel_left);
+            if vel.x > Fixed(k.max_vel_left) {
+                vel.x -= Fixed(k.walk_vel_left);
                 self.set_vel(vel);
             }
 
@@ -835,8 +835,8 @@ impl Worm<'_, '_> {
 
         if !left && right {
             let mut vel = self.vel();
-            if vel.x < k.max_vel_right {
-                vel.x = vel.x.wrapping_add(k.walk_vel_right);
+            if vel.x < Fixed(k.max_vel_right) {
+                vel.x += Fixed(k.walk_vel_right);
                 self.set_vel(vel);
             }
 
@@ -932,13 +932,13 @@ impl Worm<'_, '_> {
         if max > 1 {
             for _ in 1..=max {
                 let angle = self.rand(128) as i32;
-                self.create_nobject2(6, angle, div(self.vel(), 3), self.pos());
+                self.create_nobject2(6, angle, self.vel() / 3, self.pos());
             }
         }
 
         for i in (7..=105).step_by(14) {
             let angle = i + self.rand(14) as i32;
-            self.create_nobject2(self.index(), angle, div(self.vel(), 3), self.pos());
+            self.create_nobject2(self.index(), angle, self.vel() / 3, self.pos());
         }
 
         if let Some(s) = self.world.stats() {
@@ -1030,25 +1030,28 @@ impl Worm<'_, '_> {
         let k = self.k;
         let (_, height) = self.level_size();
 
-        let temp = ftoi_vec(self.pos());
-        self.set_logic_respawn(sub(temp, IVec2 { x: 80, y: 80 }));
+        let temp = self.pos().to_int();
+        self.set_logic_respawn(IVec2 {
+            x: temp.x.wrapping_sub(80),
+            y: temp.y.wrapping_sub(80),
+        });
 
         let mut enemy = temp;
         // When there are exactly two worms, the other one.
         if self.world.worm_count() == 2 {
-            enemy = ftoi_vec(self.world.worm(self.index() ^ 1).pos);
+            enemy = self.world.worm(self.index() ^ 1).pos.to_int();
         }
 
         let mut trials = 0;
         loop {
             let x = (k.worm_spawn_rect_x as u32).wrapping_add(self.rand(k.worm_spawn_rect_w as u32)) as i32;
             let y = (k.worm_spawn_rect_y as u32).wrapping_add(self.rand(k.worm_spawn_rect_h as u32)) as i32;
-            let mut pos = IVec2 { x: itof(x), y: itof(y) };
+            let mut pos = FVec2::new(Fixed::from_int(x), Fixed::from_int(y));
 
             // The original didn't have + 4 in both, which seems to be done
             // in the exe and makes sense.
-            while ftoi(pos.y) + 4 < height && self.mat(ftoi(pos.x), ftoi(pos.y) + 4).background() {
-                pos.y += itof(1);
+            while pos.y.to_int() + 4 < height && self.mat(pos.x.to_int(), pos.y.to_int() + 4).background() {
+                pos.y += Fixed::from_int(1);
             }
             self.set_pos(pos);
 
@@ -1056,7 +1059,7 @@ impl Worm<'_, '_> {
             if trials >= 50000 {
                 break;
             }
-            if self.check_respawn_position(enemy, temp, ftoi(pos.x), ftoi(pos.y)) {
+            if self.check_respawn_position(enemy, temp, pos.x.to_int(), pos.y.to_int()) {
                 break;
             }
         }
@@ -1066,7 +1069,7 @@ impl Worm<'_, '_> {
 
     fn do_respawning(&mut self) {
         let (width, height) = self.level_size();
-        let ipos = ftoi_vec(self.pos());
+        let ipos = self.pos().to_int();
         let mut lr = self.logic_respawn();
 
         for _ in 0..4 {
@@ -1104,7 +1107,7 @@ impl Worm<'_, '_> {
 
         self.set_visible(true);
         self.set_fire_cone(0);
-        self.set_vel(IVec2::default());
+        self.set_vel(FVec2::default());
         if self.env.game_mode != Some(GameMode::ScalesOfJustice) {
             self.set_health(self.max_health);
         }

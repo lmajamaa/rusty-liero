@@ -196,7 +196,7 @@ impl Games for Sims {
             let w = &*g.worm(place);
             AiWorm {
                 index: w.index,
-                pos: [w.pos.x, w.pos.y],
+                pos: w.pos.raw(),
                 aiming_angle: w.aiming_angle,
                 direction: w.direction,
                 visible: w.visible,
@@ -280,7 +280,7 @@ pub unsafe fn process_dumb(rand: &mut Rand, fields: &GameFields, place: i32) -> 
         let w = &tc.model.weapons[me.weapons[me.current_weapon as usize].kind as usize];
 
         let worm = DumbAiWorm {
-            pos: [me.pos.x, me.pos.y],
+            pos: me.pos.raw(),
             visible: me.visible,
             aiming_angle: me.aiming_angle,
             direction: me.direction,
@@ -298,7 +298,7 @@ pub unsafe fn process_dumb(rand: &mut Rand, fields: &GameFields, place: i32) -> 
             .iter()
             .enumerate()
             .filter(|&(i, _)| i != place as usize)
-            .map(|(_, o)| [(*o.data).pos.x, (*o.data).pos.y])
+            .map(|(_, o)| (*o.data).pos.raw())
             .collect();
 
         let k = &(*fields.tc).model.ai_params;

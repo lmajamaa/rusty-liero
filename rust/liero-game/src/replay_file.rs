@@ -76,7 +76,7 @@ fn game_checksum(game: &Game) -> u32 {
         .iter()
         .map(|&id| {
             let d = &game.worm(id).data;
-            [d.pos.x, d.pos.y, d.vel.x, d.vel.y]
+            [d.pos.x.0, d.pos.y.0, d.vel.x.0, d.vel.y.0]
         })
         .collect();
     checksum(game.data().rand.x, &worms)

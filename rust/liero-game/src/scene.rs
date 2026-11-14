@@ -429,10 +429,7 @@ mod tests {
     fn viewports_are_processed_by_kind() {
         let mut worms = two_worms();
         worms[0].visible = true;
-        worms[0].pos = crate::math::IVec2 {
-            x: 300 << 16,
-            y: 200 << 16,
-        };
+        worms[0].pos = crate::math::FVec2::new(crate::math::Fixed(300 << 16), crate::math::Fixed(200 << 16));
         let mut vps = [viewport(0), viewport(1), viewport(0)];
         vps[2].kind = ViewportKind::Spectator;
         let before = (vps[2].x, vps[2].y);

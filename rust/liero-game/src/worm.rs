@@ -4,6 +4,7 @@
 //! The tick (`Worm::process`) is in `world/worm.rs`, where it can reach the
 //! rest of the game.
 
+use crate::math::FVec2;
 use crate::math::{ftoi, IVec2};
 use crate::object::Ninjarope;
 use crate::weapon::{WormWeapon, SELECTABLE_WEAPONS};
@@ -68,8 +69,8 @@ pub struct WormId(pub u32);
 /// it (`WormData::default`), except its settings and AI.
 #[derive(Clone, Copy, Debug)]
 pub struct WormData {
-    pub pos: IVec2,
-    pub vel: IVec2,
+    pub pos: FVec2,
+    pub vel: FVec2,
     /// Where the respawn camera is, in pixels.
     pub logic_respawn: IVec2,
     pub hotspot_x: i32,
@@ -141,11 +142,10 @@ impl WormData {
 impl Default for WormData {
     /// What C++'s `Worm()` set.
     fn default() -> Self {
-        let zero = IVec2 { x: 0, y: 0 };
         WormData {
-            pos: zero,
-            vel: zero,
-            logic_respawn: zero,
+            pos: FVec2::default(),
+            vel: FVec2::default(),
+            logic_respawn: IVec2::default(),
             hotspot_x: 0,
             hotspot_y: 0,
             aiming_angle: 0,
@@ -170,8 +170,8 @@ impl Default for WormData {
                 out: false,
                 attached: false,
                 anchor: None,
-                pos: zero,
-                vel: zero,
+                pos: FVec2::default(),
+                vel: FVec2::default(),
                 length: 0,
                 cur_len: 0,
             },

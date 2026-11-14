@@ -41,8 +41,8 @@ impl<'a> World<'a> {
     pub(super) fn create_nobject(
         &mut self,
         kind: i32,
-        vel: IVec2,
-        pos: IVec2,
+        vel: FVec2,
+        pos: FVec2,
         color: i32,
         owner_idx: i32,
         fired_by: FiredBy,
@@ -87,8 +87,8 @@ impl<'a> World<'a> {
     pub(super) fn create_nobject1(
         &mut self,
         kind: i32,
-        mut vel: IVec2,
-        pos: IVec2,
+        mut vel: FVec2,
+        pos: FVec2,
         color: i32,
         owner_idx: i32,
         fired_by: FiredBy,
@@ -96,12 +96,8 @@ impl<'a> World<'a> {
         let t = self.nobject_type(kind);
         let d = t.distribution;
         if d != 0 {
-            vel.x = vel
-                .x
-                .wrapping_add(d.wrapping_sub(self.rand(d.wrapping_mul(2) as u32) as i32));
-            vel.y = vel
-                .y
-                .wrapping_add(d.wrapping_sub(self.rand(d.wrapping_mul(2) as u32) as i32));
+            vel.x += Fixed(d.wrapping_sub(self.rand(d.wrapping_mul(2) as u32) as i32));
+            vel.y += Fixed(d.wrapping_sub(self.rand(d.wrapping_mul(2) as u32) as i32));
         }
         self.create_nobject(kind, vel, pos, color, owner_idx, fired_by);
     }
@@ -112,8 +108,8 @@ impl<'a> World<'a> {
         &mut self,
         kind: i32,
         angle: i32,
-        mut vel: IVec2,
-        pos: IVec2,
+        mut vel: FVec2,
+        pos: FVec2,
         color: i32,
         owner_idx: i32,
         fired_by: FiredBy,
@@ -121,28 +117,24 @@ impl<'a> World<'a> {
         let t = self.nobject_type(kind);
         let real_speed = t.speed.wrapping_sub(self.rand(t.speed_v as u32) as i32);
 
-        vel = add(vel, mul_div(cos_sin(angle), real_speed, 100));
+        vel += cos_sin(angle) * real_speed / 100;
 
         // TODO in C++: !REPLAYS Make the distributions use the same code
         let d = t.distribution;
         if d != 0 {
-            vel.x = vel
-                .x
-                .wrapping_add((self.rand(d.wrapping_mul(2) as u32) as i32).wrapping_sub(d));
-            vel.y = vel
-                .y
-                .wrapping_add((self.rand(d.wrapping_mul(2) as u32) as i32).wrapping_sub(d));
+            vel.x += Fixed((self.rand(d.wrapping_mul(2) as u32) as i32).wrapping_sub(d));
+            vel.y += Fixed((self.rand(d.wrapping_mul(2) as u32) as i32).wrapping_sub(d));
         }
 
         let slot = self.create_nobject(kind, vel, pos, color, owner_idx, fired_by);
-        self.update_nobj(slot, |o| o.pos = add(o.pos, o.vel));
+        self.update_nobj(slot, |o| o.pos += o.vel);
     }
 
     /// An explosion or smoke of `kind` at the object's position, owned
     /// like it.
     fn nobj_create_sobject(&mut self, slot: usize, kind: i32) {
         let o = self.nobj(slot);
-        self.create_sobject(kind, ftoi(o.pos.x), ftoi(o.pos.y), o.owner_idx, o.fired_by, None);
+        self.create_sobject(kind, o.pos.x.to_int(), o.pos.y.to_int(), o.owner_idx, o.fired_by, None);
     }
 
     /// `NObject::process`.
@@ -154,20 +146,20 @@ impl<'a> World<'a> {
         let mut do_explode = false;
 
         let o = self.update_nobj(slot, |o| {
-            o.pos = add(o.pos, o.vel);
+            o.pos += o.vel;
             *o
         });
 
-        let mut inew_pos = ftoi_vec(add(o.pos, o.vel));
-        let ipos = ftoi_vec(o.pos);
+        let mut inew_pos = (o.pos + o.vel).to_int();
+        let ipos = o.pos.to_int();
 
         if t.bounce > 0 {
             if self.blocked(inew_pos.x, ipos.y) {
                 self.update_nobj(slot, |o| {
-                    o.vel = IVec2 {
-                        x: o.vel.x.wrapping_neg().wrapping_mul(t.bounce) / 100,
+                    o.vel = FVec2 {
+                        x: -o.vel.x * t.bounce / 100,
                         // TODO in C++: read from the EXE.
-                        y: o.vel.y.wrapping_mul(4) / 5,
+                        y: o.vel.y * 4 / 5,
                     }
                 });
                 bounced = true;
@@ -175,9 +167,9 @@ impl<'a> World<'a> {
 
             if self.blocked(ipos.x, inew_pos.y) {
                 self.update_nobj(slot, |o| {
-                    o.vel = IVec2 {
-                        x: o.vel.x.wrapping_mul(4) / 5,
-                        y: o.vel.y.wrapping_neg().wrapping_mul(t.bounce) / 100,
+                    o.vel = FVec2 {
+                        x: o.vel.x * 4 / 5,
+                        y: -o.vel.y * t.bounce / 100,
                     }
                 });
                 bounced = true;
@@ -187,30 +179,30 @@ impl<'a> World<'a> {
         if t.blood_trail && t.blood_trail_delay > 0 && self.cycles() % t.blood_trail_delay == 0 {
             let o = self.nobj(slot);
             // TODO in C++: read from the EXE.
-            self.create_bobject(o.pos, div(o.vel, 4));
+            self.create_bobject(o.pos, o.vel / 4);
         }
 
         // Yes, again.
         let o = self.nobj(slot);
-        inew_pos = ftoi_vec(add(o.pos, o.vel));
+        inew_pos = (o.pos + o.vel).to_int();
 
         self.update_nobj(slot, |o| {
             if inew_pos.x < 0 {
-                o.pos.x = 0;
+                o.pos.x = Fixed::ZERO;
             }
             if inew_pos.y < 0 {
-                o.pos.y = 0;
+                o.pos.y = Fixed::ZERO;
             }
             if inew_pos.x >= width {
-                o.pos.x = itof(width);
+                o.pos.x = Fixed::from_int(width);
             }
             if inew_pos.y >= height {
-                o.pos.y = itof(height);
+                o.pos.y = Fixed::from_int(height);
             }
         });
 
         if self.blocked(inew_pos.x, inew_pos.y) {
-            self.update_nobj(slot, |o| o.vel = IVec2::default());
+            self.update_nobj(slot, |o| o.vel = FVec2::default());
 
             if t.expl_ground {
                 if t.start_frame > 0 && t.draw_on_map {
@@ -225,16 +217,16 @@ impl<'a> World<'a> {
                 self.nobj_create_sobject(slot, t.leave_obj);
             }
 
-            self.update_nobj(slot, |o| o.vel.y = o.vel.y.wrapping_add(t.gravity));
+            self.update_nobj(slot, |o| o.vel.y += Fixed(t.gravity));
         }
 
         // TODO in C++: read the 7 from the EXE.
         if t.num_frames > 0 && (self.cycles() & 7) == 0 {
             self.update_nobj(slot, |o| {
-                if o.vel.x > 0 {
+                if o.vel.x > Fixed::ZERO {
                     let f = o.cur_frame + 1;
                     o.cur_frame = if f > t.num_frames { 0 } else { f };
-                } else if o.vel.x < 0 {
+                } else if o.vel.x < Fixed::ZERO {
                     let f = o.cur_frame - 1;
                     o.cur_frame = if f < 0 { t.num_frames } else { f };
                 }
@@ -261,7 +253,7 @@ impl<'a> World<'a> {
             }
 
             if t.dirt_effect >= 0 {
-                let p = ftoi_vec(self.nobj(slot).pos);
+                let p = self.nobj(slot).pos.to_int();
                 self.dirt_effect(
                     t.dirt_effect,
                     p.x - 7,
@@ -277,7 +269,7 @@ impl<'a> World<'a> {
                 self.create_nobject2(
                     t.splinter_type,
                     angle,
-                    IVec2::default(),
+                    FVec2::default(),
                     o.pos,
                     t.splinter_colour - color_sub,
                     o.owner_idx,
@@ -319,9 +311,9 @@ impl<'a> World<'a> {
         for i in 0..self.worm_count() {
             let o = self.nobj(slot);
 
-            if self.spec_worm_hit(ftoi(o.pos.x), ftoi(o.pos.y), t.detect_distance, i) {
+            if self.spec_worm_hit(o.pos.x.to_int(), o.pos.y.to_int(), t.detect_distance, i) {
                 let w = self.g.worm_mut(i);
-                w.vel = add(w.vel, mul_div(o.vel, t.blow_away, 100));
+                w.vel += o.vel * t.blow_away / 100;
 
                 self.g.damage(i, t.hit_damage, o.owner_idx);
 
@@ -338,7 +330,7 @@ impl<'a> World<'a> {
                 for _ in 0..blood.max(0) {
                     let angle = self.rand(128) as i32;
                     let o = self.nobj(slot);
-                    self.create_nobject2(6, angle, div(o.vel, 3), o.pos, 0, o.owner_idx, FiredBy::NONE);
+                    self.create_nobject2(6, angle, o.vel / 3, o.pos, 0, o.owner_idx, FiredBy::NONE);
                 }
 
                 if t.worm_explode {

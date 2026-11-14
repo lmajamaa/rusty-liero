@@ -8,38 +8,9 @@
 //! and hit worms directly.
 
 use crate::level::{Common, Level};
-use crate::math::{ftoi, itof, IVec2};
+use crate::math::{ftoi, FVec2, Fixed, IVec2};
 use crate::objects::{Bonus, SObject};
 use crate::rand::Rand;
-
-pub(crate) fn add(a: IVec2, b: IVec2) -> IVec2 {
-    IVec2 {
-        x: a.x.wrapping_add(b.x),
-        y: a.y.wrapping_add(b.y),
-    }
-}
-
-pub(crate) fn sub(a: IVec2, b: IVec2) -> IVec2 {
-    IVec2 {
-        x: a.x.wrapping_sub(b.x),
-        y: a.y.wrapping_sub(b.y),
-    }
-}
-
-/// Divides both components, rounding towards zero like C++.
-pub(crate) fn div(a: IVec2, d: i32) -> IVec2 {
-    IVec2 {
-        x: a.x.wrapping_div(d),
-        y: a.y.wrapping_div(d),
-    }
-}
-
-pub(crate) fn ftoi_vec(v: IVec2) -> IVec2 {
-    IVec2 {
-        x: ftoi(v.x),
-        y: ftoi(v.y),
-    }
-}
 
 /// Like C++'s `Level::inside`: negative coordinates wrap to large unsigned
 /// values and fail.
@@ -50,8 +21,8 @@ pub(crate) fn inside(level: &Level, x: i32, y: i32) -> bool {
 /// A blood particle, laid out like C++'s `BObject`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BObject {
-    pub pos: IVec2,
-    pub vel: IVec2,
+    pub pos: FVec2,
+    pub vel: FVec2,
     pub color: i32,
 }
 
@@ -59,8 +30,8 @@ impl BObject {
     /// Moves the particle one tick. Returns false when it left the level or
     /// landed and coloured a pixel, so C++ frees it.
     pub fn process(&mut self, level: &mut Level, common: &Common, rand: &mut Rand, gravity: i32) -> bool {
-        self.pos = add(self.pos, self.vel);
-        let ipos = ftoi_vec(self.pos);
+        self.pos += self.vel;
+        let ipos = self.pos.to_int();
 
         if !inside(level, ipos.x, ipos.y) {
             return false;
@@ -70,7 +41,7 @@ impl BObject {
         let m = level.mat(ipos.x, ipos.y);
 
         if m.background() {
-            self.vel.y = self.vel.y.wrapping_add(gravity);
+            self.vel.y += Fixed(gravity);
         }
 
         // The colours of blood and of worms. TODO in C++: read from the EXE.
@@ -156,15 +127,15 @@ fn in_blast(px: i32, py: i32, x: i32, y: i32, range: i32) -> bool {
 /// more on an axis isn't pushed on that axis. Returns false when the worm is
 /// out of range; otherwise sets `power_sum`, which sets the damage.
 pub fn explosion_push_worm(
-    pos: IVec2,
-    vel: &mut IVec2,
+    pos: FVec2,
+    vel: &mut FVec2,
     x: i32,
     y: i32,
     range: i32,
     blow_away: i32,
     power_sum: &mut i32,
 ) -> bool {
-    let (wix, wiy) = (ftoi(pos.x), ftoi(pos.y));
+    let IVec2 { x: wix, y: wiy } = pos.to_int();
     if !in_blast(wix, wiy, x, y, range) {
         return false;
     }
@@ -174,26 +145,18 @@ pub fn explosion_push_worm(
     let mut sum = power;
 
     // TODO in C++: read from the EXE.
-    if vel.x.abs() < itof(2) {
-        let push = blow_away.wrapping_mul(power);
-        vel.x = if delta > 0 {
-            vel.x.wrapping_add(push)
-        } else {
-            vel.x.wrapping_sub(push)
-        };
+    if vel.x.abs() < Fixed::from_int(2) {
+        let push = Fixed(blow_away.wrapping_mul(power));
+        vel.x = if delta > 0 { vel.x + push } else { vel.x - push };
     }
 
     let delta = wiy - y;
     let power = range - delta.abs();
     sum = (sum + power) / 2;
 
-    if vel.y.abs() < itof(2) {
-        let push = blow_away.wrapping_mul(power);
-        vel.y = if delta > 0 {
-            vel.y.wrapping_add(push)
-        } else {
-            vel.y.wrapping_sub(push)
-        };
+    if vel.y.abs() < Fixed::from_int(2) {
+        let push = Fixed(blow_away.wrapping_mul(power));
+        vel.y = if delta > 0 { vel.y + push } else { vel.y - push };
     }
 
     *power_sum = sum;
@@ -212,8 +175,8 @@ pub fn explosion_damage(damage: i32, power_sum: i32, range: i32) -> i32 {
 
 /// Pushes an object that explosions affect away from an explosion at
 /// (x, y). Returns whether it was in range (for chain explosions).
-pub fn explosion_push_object(pos: IVec2, vel: &mut IVec2, x: i32, y: i32, range: i32, blow_away: i32) -> bool {
-    let ipos = ftoi_vec(pos);
+pub fn explosion_push_object(pos: FVec2, vel: &mut FVec2, x: i32, y: i32, range: i32, blow_away: i32) -> bool {
+    let ipos = pos.to_int();
     if !in_blast(ipos.x, ipos.y, x, y, range) {
         return false;
     }
@@ -222,11 +185,11 @@ pub fn explosion_push_object(pos: IVec2, vel: &mut IVec2, x: i32, y: i32, range:
         let delta = p - c;
         let power = range - delta.abs();
         if power > 0 {
-            let push = blow_away.wrapping_mul(power);
+            let push = Fixed(blow_away.wrapping_mul(power));
             if delta > 0 {
-                *v = v.wrapping_add(push);
+                *v += push;
             } else if delta < 0 {
-                *v = v.wrapping_sub(push);
+                *v -= push;
             }
         }
     }
@@ -240,8 +203,8 @@ pub struct Ninjarope {
     pub attached: bool,
     /// The worm the rope is attached to, if any.
     pub anchor: Option<crate::worm::WormId>,
-    pub pos: IVec2,
-    pub vel: IVec2,
+    pub pos: FVec2,
+    pub vel: FVec2,
     pub length: i32,
     pub cur_len: i32,
 }
@@ -249,6 +212,7 @@ pub struct Ninjarope {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::math::itof;
 
     #[test]
     fn sobject_animation_ends_after_last_frame() {
@@ -270,54 +234,33 @@ mod tests {
 
     #[test]
     fn explosion_pushes_worm_away_and_sets_power() {
-        let mut vel = IVec2::default();
+        let mut vel = FVec2::default();
         let mut sum = 0;
-        let pos = IVec2 {
-            x: itof(13),
-            y: itof(8),
-        };
+        let pos = FVec2::new(Fixed(itof(13)), Fixed(itof(8)));
         assert!(explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
         // power 3 on x, 4 on y; y pushed up since the worm is above.
-        assert_eq!(vel, IVec2 { x: 300, y: -400 });
+        assert_eq!(vel, FVec2::new(Fixed(300), Fixed(-400)));
         assert_eq!(sum, 3);
         assert_eq!(explosion_damage(10, sum, 6), 5);
 
-        let far = IVec2 {
-            x: itof(16),
-            y: itof(10),
-        };
+        let far = FVec2::new(Fixed(itof(16)), Fixed(itof(10)));
         assert!(!explosion_push_worm(far, &mut vel, 10, 10, 6, 100, &mut sum));
     }
 
     #[test]
     fn fast_worm_is_not_pushed() {
-        let mut vel = IVec2 {
-            x: itof(2),
-            y: -itof(3),
-        };
+        let mut vel = FVec2::new(Fixed(itof(2)), Fixed(-itof(3)));
         let mut sum = 0;
-        let pos = IVec2 {
-            x: itof(9),
-            y: itof(12),
-        };
+        let pos = FVec2::new(Fixed(itof(9)), Fixed(itof(12)));
         assert!(explosion_push_worm(pos, &mut vel, 10, 10, 6, 100, &mut sum));
-        assert_eq!(
-            vel,
-            IVec2 {
-                x: itof(2),
-                y: -itof(3)
-            }
-        );
+        assert_eq!(vel, FVec2::new(Fixed(itof(2)), Fixed(-itof(3))));
     }
 
     #[test]
     fn object_at_centre_is_not_pushed() {
-        let mut vel = IVec2::default();
-        let pos = IVec2 {
-            x: itof(10),
-            y: itof(12),
-        };
+        let mut vel = FVec2::default();
+        let pos = FVec2::new(Fixed(itof(10)), Fixed(itof(12)));
         assert!(explosion_push_object(pos, &mut vel, 10, 10, 6, 30));
-        assert_eq!(vel, IVec2 { x: 0, y: 30 * 4 });
+        assert_eq!(vel, FVec2::new(Fixed(0), Fixed(30 * 4)));
     }
 }

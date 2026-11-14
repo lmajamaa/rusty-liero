@@ -17,6 +17,7 @@ use crate::gfx::{
 };
 use crate::level::LevelView;
 use crate::material::Material;
+use crate::math::FVec2;
 use crate::math::{cos_sin, ftoi, IVec2};
 use crate::rand::Rand;
 use crate::text::{time_to_string, time_to_string_ex};
@@ -106,7 +107,7 @@ pub struct ViewWormWeapon {
 /// What viewports use of a worm.
 #[derive(Clone, Copy, Debug)]
 pub struct ViewWorm<'a> {
-    pub pos: IVec2,
+    pub pos: FVec2,
     pub visible: bool,
     pub ready: bool,
     pub health: i32,
@@ -130,7 +131,7 @@ pub struct ViewWorm<'a> {
     pub aiming_angle: i32,
     pub make_sight_green: bool,
     pub rope_out: bool,
-    pub rope_pos: IVec2,
+    pub rope_pos: FVec2,
     pub fire_cone: i32,
     pub last_killed_by_idx: Option<i32>,
     pub current_weapon: i32,
@@ -163,7 +164,7 @@ pub struct ViewSObject {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ViewWObject {
-    pub pos: IVec2,
+    pub pos: FVec2,
     /// Index into `Scene::weapons`.
     pub weapon: i32,
     pub cur_frame: i32,
@@ -173,7 +174,7 @@ pub struct ViewWObject {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ViewNObject {
-    pub pos: IVec2,
+    pub pos: FVec2,
     pub cur_frame: i32,
     /// The type's `startFrame`.
     pub start_frame: i32,
@@ -181,7 +182,7 @@ pub struct ViewNObject {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ViewBObject {
-    pub pos: IVec2,
+    pub pos: FVec2,
     pub color: i32,
 }
 
@@ -495,8 +496,8 @@ impl<'a> Painter<'a> {
             let set = &self.s.worm_sprites;
             let frame = worm.current_frame + worm.direction * 7 * 3 + worm.index * 2 * 7 * 3;
             if let Some(mem) = set.sprite(frame) {
-                let x = ftoi(worm.pos.x) - 7 + offs.x;
-                let y = ftoi(worm.pos.y) - 5 + offs.y;
+                let x = worm.pos.x.to_int() - 7 + offs.x;
+                let y = worm.pos.y.to_int() - 5 + offs.y;
                 blit_image_trans(scr, mem, x, y, set.width, set.height, set.width, self.s.cycles);
             }
         }
@@ -550,16 +551,16 @@ impl<'a> Painter<'a> {
                     cur_frame = cur_frame.clamp(0, 12);
                 }
 
-                let x = ftoi(o.pos.x) - 3;
-                let y = ftoi(o.pos.y) - 3;
+                let x = o.pos.x.to_int() - 3;
+                let y = o.pos.y.to_int() - 3;
                 let frame = w.start_frame + cur_frame;
                 if s.shadow && w.shadow {
                     self.shadow(scr, small, frame, x - 3 + offs.x, y + 3 + offs.y, 7, 7);
                 }
                 self.blit(scr, small, frame, x + offs.x, y + offs.y);
             } else if o.cur_frame > 0 {
-                let x = ftoi(o.pos.x) + offs.x;
-                let y = ftoi(o.pos.y) + offs.y;
+                let x = o.pos.x.to_int() + offs.x;
+                let y = o.pos.y.to_int() + offs.y;
                 self.pixel(scr, x, y, o.cur_frame);
                 if s.shadow {
                     self.shadow_pixel(scr, x - 3, y + 3);
@@ -569,22 +570,22 @@ impl<'a> Painter<'a> {
             // TODO in C++: read from the EXE.
             if !s.rem_exp && o.weapon == 34 && s.names_on_bonuses && o.cur_frame == 0 && !s.weapons.is_empty() {
                 let name = o.slot % s.weapons.len() as i32;
-                self.weapon_name(scr, name, ftoi(o.pos.x) + offs.x, ftoi(o.pos.y) - 10 + offs.y);
+                self.weapon_name(scr, name, o.pos.x.to_int() + offs.x, o.pos.y.to_int() - 10 + offs.y);
             }
         }
 
         for o in s.nobjects {
             if o.start_frame > 0 {
-                let x = ftoi(o.pos.x) - 3;
-                let y = ftoi(o.pos.y) - 3;
+                let x = o.pos.x.to_int() - 3;
+                let y = o.pos.y.to_int() - 3;
                 let frame = o.start_frame + o.cur_frame;
                 if s.shadow {
                     self.shadow(scr, small, frame, x - 3 + offs.x, y + 3 + offs.y, 7, 7);
                 }
                 self.blit(scr, small, frame, x + offs.x, y + offs.y);
             } else if o.cur_frame > 1 {
-                let x = ftoi(o.pos.x) + offs.x;
-                let y = ftoi(o.pos.y) + offs.y;
+                let x = o.pos.x.to_int() + offs.x;
+                let y = o.pos.y.to_int() + offs.y;
                 self.pixel(scr, x, y, o.cur_frame);
                 if s.shadow {
                     self.shadow_pixel(scr, x - 3, y + 3);
@@ -599,8 +600,8 @@ impl<'a> Painter<'a> {
         let s = self.s;
         for w in self.worms.iter() {
             if w.visible {
-                let x = ftoi(w.pos.x) - 7 + offs.x;
-                let y = ftoi(w.pos.y) - 5 + offs.y;
+                let x = w.pos.x.to_int() - 7 + offs.x;
+                let y = w.pos.y.to_int() - 5 + offs.y;
                 let angle_frame = angle_frame(w.aiming_angle, w.direction);
                 let ww = &w.weapons[w.current_weapon as usize % 5];
                 let weapon = self.weapon(ww.weapon);
@@ -619,8 +620,8 @@ impl<'a> Painter<'a> {
                 }
 
                 if w.rope_out {
-                    let rx = ftoi(w.rope_pos.x) + offs.x;
-                    let ry = ftoi(w.rope_pos.y) + offs.y;
+                    let rx = w.rope_pos.x.to_int() + offs.x;
+                    let ry = w.rope_pos.y.to_int() + offs.y;
                     draw_ninjarope(scr, s.nr_colour_begin, s.nr_colour_end, rx, ry, x + 7, y + 4);
                     self.blit(scr, &s.large_sprites, 84, rx - 1, ry - 1);
                     if s.shadow {
@@ -655,8 +656,8 @@ impl<'a> Painter<'a> {
             return;
         }
         let cs = cos_sin(ftoi(worm.aiming_angle) & 127);
-        let x = ftoi(worm.pos.x) - 1 + ftoi(cs.x.wrapping_mul(16)) + offs.x;
-        let y = ftoi(worm.pos.y) - 2 + ftoi(cs.y.wrapping_mul(16)) + offs.y;
+        let x = worm.pos.x.to_int() - 1 + (cs.x * 16).to_int() + offs.x;
+        let y = worm.pos.y.to_int() - 2 + (cs.y * 16).to_int() + offs.y;
         self.blit(
             scr,
             &self.s.small_sprites,
@@ -670,16 +671,16 @@ impl<'a> Painter<'a> {
             self.weapon_name(
                 scr,
                 ww.weapon,
-                ftoi(worm.pos.x) + 1 + offs.x,
-                ftoi(worm.pos.y) - 10 + offs.y,
+                worm.pos.x.to_int() + 1 + offs.x,
+                worm.pos.y.to_int() - 10 + offs.y,
             );
         }
     }
 
     fn draw_bobjects(&self, scr: &Bitmap, offs: IVec2) {
         for b in self.s.bobjects {
-            let x = ftoi(b.pos.x) + offs.x;
-            let y = ftoi(b.pos.y) + offs.y;
+            let x = b.pos.x.to_int() + offs.x;
+            let y = b.pos.y.to_int() + offs.y;
             self.pixel(scr, x, y, b.color);
             if self.s.shadow {
                 self.shadow_pixel(scr, x - 3, y + 3);
@@ -774,8 +775,8 @@ impl<'a> Painter<'a> {
             if w.visible {
                 self.raw_pixel(
                     scr,
-                    ftoi(w.pos.x) / 10 + map_x,
-                    ftoi(w.pos.y) / 10 + map_y,
+                    w.pos.x.to_int() / 10 + map_x,
+                    w.pos.y.to_int() / 10 + map_y,
                     minimap_color(w.index),
                 );
             }
@@ -938,7 +939,7 @@ pub fn process_viewport(vp: &mut Viewport, kind: ViewportKind, worms: &[ViewWorm
             vp.banner_y = -8;
         }
     } else if let Some(w) = worm(vp.worm_idx) {
-        let (x, y) = (ftoi(w.pos.x), ftoi(w.pos.y));
+        let (x, y) = (w.pos.x.to_int(), w.pos.y.to_int());
         if w.killed_timer <= 0 {
             if !w.visible {
                 vp.scroll_to(x, y, 4);
@@ -993,10 +994,7 @@ mod tests {
 
     fn worm(index: i32) -> ViewWorm<'static> {
         ViewWorm {
-            pos: IVec2 {
-                x: 100 << 16,
-                y: 80 << 16,
-            },
+            pos: crate::math::FVec2::new(crate::math::Fixed(100 << 16), crate::math::Fixed(80 << 16)),
             visible: true,
             ready: true,
             health: 100,
@@ -1018,7 +1016,7 @@ mod tests {
             aiming_angle: 32 << 16,
             make_sight_green: false,
             rope_out: false,
-            rope_pos: IVec2::default(),
+            rope_pos: FVec2::default(),
             fire_cone: 0,
             last_killed_by_idx: None,
             current_weapon: 0,
@@ -1106,10 +1104,7 @@ mod tests {
         // Kept inside the level.
         w.visible = true;
         w.steerable_count = 0;
-        w.pos = IVec2 {
-            x: -5 << 16,
-            y: 1000 << 16,
-        };
+        w.pos = crate::math::FVec2::new(crate::math::Fixed(-5 << 16), crate::math::Fixed(1000 << 16));
         process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (0, vp.max_y));
 
@@ -1328,10 +1323,7 @@ mod tests {
     fn weapon_34_shows_a_name_picked_by_its_slot() {
         let mut t = TestScene::new();
         t.wobjects.push(ViewWObject {
-            pos: IVec2 {
-                x: 60 << 16,
-                y: 60 << 16,
-            },
+            pos: crate::math::FVec2::new(crate::math::Fixed(60 << 16), crate::math::Fixed(60 << 16)),
             weapon: 34,
             cur_frame: 0,
             slot: 41,

@@ -12,6 +12,7 @@
 //! that last killed it, before it appears in the game's list of worms.
 
 use crate::game::Rect;
+use crate::math::FVec2;
 use crate::math::IVec2;
 use crate::viewport::Viewport;
 use crate::worm::{WormData, WormId};
@@ -750,8 +751,8 @@ pub fn replay_worm_of(worm: &WormData, ids: &[WormId]) -> ReplayWorm {
     let anchor = worm.ninjarope.anchor;
     let rope = &worm.ninjarope;
     ReplayWorm {
-        pos: [worm.pos.x, worm.pos.y],
-        vel: [worm.vel.x, worm.vel.y],
+        pos: worm.pos.raw(),
+        vel: worm.vel.raw(),
         logic_respawn: [worm.logic_respawn.x, worm.logic_respawn.y],
         hotspot: [worm.hotspot_x, worm.hotspot_y],
         aiming_angle: worm.aiming_angle,
@@ -780,8 +781,8 @@ pub fn replay_worm_of(worm: &WormData, ids: &[WormId]) -> ReplayWorm {
         rope_cur_len: rope.cur_len,
         rope_length: rope.length,
         rope_out: rope.out,
-        rope_vel: [rope.vel.x, rope.vel.y],
-        rope_pos: [rope.pos.x, rope.pos.y],
+        rope_vel: rope.vel.raw(),
+        rope_pos: rope.pos.raw(),
         current_weapon: worm.current_weapon,
         last_killed_by: worm.last_killed_by_idx.unwrap_or(-1),
         fire_cone: worm.fire_cone,
@@ -803,14 +804,8 @@ pub fn replay_worm_of(worm: &WormData, ids: &[WormId]) -> ReplayWorm {
 /// Sets a worm from a replay's (`setWormFields`). Its rope's anchor is one
 /// of `all`, every worm the replay has. Weapons aren't checked, as in C++.
 pub fn replay_worm_set(worm: &mut WormData, f: &ReplayWorm, all: &[WormId]) {
-    worm.pos = IVec2 {
-        x: f.pos[0],
-        y: f.pos[1],
-    };
-    worm.vel = IVec2 {
-        x: f.vel[0],
-        y: f.vel[1],
-    };
+    worm.pos = FVec2::from_raw(f.pos);
+    worm.vel = FVec2::from_raw(f.vel);
     worm.logic_respawn = IVec2 {
         x: f.logic_respawn[0],
         y: f.logic_respawn[1],
@@ -842,14 +837,8 @@ pub fn replay_worm_set(worm: &mut WormData, f: &ReplayWorm, all: &[WormId]) {
     rope.cur_len = f.rope_cur_len;
     rope.length = f.rope_length;
     rope.out = f.rope_out;
-    rope.vel = IVec2 {
-        x: f.rope_vel[0],
-        y: f.rope_vel[1],
-    };
-    rope.pos = IVec2 {
-        x: f.rope_pos[0],
-        y: f.rope_pos[1],
-    };
+    rope.vel = FVec2::from_raw(f.rope_vel);
+    rope.pos = FVec2::from_raw(f.rope_pos);
     worm.current_weapon = f.current_weapon;
     worm.last_killed_by_idx = Some(f.last_killed_by).filter(|&i| i >= 0);
     worm.fire_cone = f.fire_cone;

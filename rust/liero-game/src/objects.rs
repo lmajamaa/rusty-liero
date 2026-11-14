@@ -11,7 +11,7 @@
 //! The lists are 74 KB in all, more than the web build's 64 KB stack, so
 //! they are only ever made and copied on the heap.
 
-use crate::math::IVec2;
+use crate::math::FVec2;
 use crate::object::BObject;
 
 /// List sizes, as in `Game`'s typedefs.
@@ -63,8 +63,8 @@ impl FiredBy {
 #[derive(Clone, Copy, Debug)]
 pub struct WObject {
     pub used: bool,
-    pub pos: IVec2,
-    pub vel: IVec2,
+    pub pos: FVec2,
+    pub vel: FVec2,
     /// The weapon that fired it: its index in the TC's weapons.
     pub kind: i32,
     pub owner_idx: i32,
@@ -79,8 +79,8 @@ pub struct WObject {
 #[derive(Clone, Copy, Debug)]
 pub struct NObject {
     pub used: bool,
-    pub pos: IVec2,
-    pub vel: IVec2,
+    pub pos: FVec2,
+    pub vel: FVec2,
     pub time_left: i32,
     /// Its type: the index in the TC's non-weapon objects.
     pub kind: i32,

@@ -1,5 +1,6 @@
 use super::*;
 use crate::fs::Node;
+use crate::math::Fixed;
 
 use crate::level::LevelBox;
 use crate::settings::{new_settings, SharedSettings};
@@ -46,8 +47,8 @@ impl Setup {
             let w = g.new_worm(Some(ws));
             let d = &mut g.worm_mut(w).data;
             d.index = i;
-            d.pos.x = 10 * (i + 1);
-            d.vel.y = -3;
+            d.pos.x = Fixed(10 * (i + 1));
+            d.vel.y = Fixed(-3);
             g.list_worm(Some(w));
             worms.push(w);
         }
@@ -158,7 +159,7 @@ fn plays_back_the_game_it_recorded() {
         let w = g.worm_at(i).unwrap();
         assert_eq!(
             (w.data.index, w.data.pos.x, w.data.vel.y),
-            (i as i32, 10 * (i as i32 + 1), -3)
+            (i as i32, Fixed(10 * (i as i32 + 1)), Fixed(-3))
         );
         let ws = w.settings();
         assert_eq!(
@@ -246,7 +247,7 @@ fn reports_desyncs_and_short_files() {
     let mut t = Setup::empty();
     let mut r = play(&p, &mut t);
     ok(frame(&mut r, &mut t));
-    t.worm(1).vel.x += 1;
+    t.worm(1).vel.x += Fixed(1);
     let o = frame(&mut r, &mut t);
     assert_eq!((o.status, o.message), (ReplayStatus::CheckError, "Replay has desynced"));
 

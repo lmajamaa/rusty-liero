@@ -4,14 +4,15 @@
 use super::Fnv;
 use crate::controller::State;
 use crate::game_box::{Game, Worm};
-use crate::math::IVec2;
+use crate::math::FVec2;
 use crate::renderer::Renderer;
 use crate::stats::{Heatmap, Stats};
 
 impl Fnv {
-    fn vec(&mut self, v: IVec2) {
-        self.i32(v.x);
-        self.i32(v.y);
+    fn vec(&mut self, v: FVec2) {
+        let [x, y] = v.raw();
+        self.i32(x);
+        self.i32(y);
     }
 }
 
@@ -25,7 +26,8 @@ fn hash_worm(f: &mut Fnv, w: &Worm, anchor_index: i32) {
     let w = &w.data;
     f.vec(w.pos);
     f.vec(w.vel);
-    f.vec(w.logic_respawn);
+    f.i32(w.logic_respawn.x);
+    f.i32(w.logic_respawn.y);
     f.i32(w.hotspot_x);
     f.i32(w.hotspot_y);
     f.i32(w.aiming_angle);
