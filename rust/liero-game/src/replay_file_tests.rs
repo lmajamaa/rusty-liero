@@ -2,7 +2,7 @@ use super::*;
 use crate::fs::Node;
 
 use crate::level::LevelBox;
-use crate::settings::{liero_settings_box_new, SharedSettings};
+use crate::settings::{new_settings, SharedSettings};
 use crate::tc::{SharedTc, Tc, TcData};
 use crate::worm::WormData;
 
@@ -22,7 +22,7 @@ impl Setup {
         // SAFETY: a new game, which the setup owns.
         let mut s = Setup {
             game: Game::new(),
-            settings: liero_settings_box_new(),
+            settings: new_settings(),
             _tc: Tc::of(tc),
         };
         s.game.set_context(

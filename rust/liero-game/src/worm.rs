@@ -36,7 +36,7 @@ pub const LIERO_GAME_SCALES_OF_JUSTICE: i32 = 3;
 pub struct WormId(pub u32);
 
 /// A worm's state. Rust owns it, and the fields of C++'s `Worm` refer to
-/// it (`liero_worm_data_new`), except its settings and AI.
+/// it (`WormData::default`), except its settings and AI.
 #[derive(Clone, Copy, Debug)]
 pub struct WormData {
     pub pos: IVec2,
@@ -147,26 +147,6 @@ impl Default for WormData {
             steerable_sum_y: 0,
             steerable_count: 0,
             stats_x: 0,
-        }
-    }
-}
-
-pub fn liero_worm_data_new() -> *mut WormData {
-    Box::into_raw(Box::default())
-}
-
-/// # Safety
-/// `w` is valid.
-pub unsafe fn liero_worm_data_clone(w: &WormData) -> *mut WormData {
-    Box::into_raw(Box::new(*w))
-}
-
-/// # Safety
-/// `w` comes from `liero_worm_data_new` or `_clone`, and isn't used after.
-pub unsafe fn liero_worm_data_free(w: *mut WormData) {
-    unsafe {
-        if !w.is_null() {
-            drop(Box::from_raw(w));
         }
     }
 }
@@ -311,29 +291,27 @@ mod tests {
 
     #[test]
     fn new_worm_matches_cpp_and_copies_are_separate() {
-        unsafe {
-            let w = liero_worm_data_new();
+        {
+            let mut w = Box::<WormData>::default();
             // What C++'s Worm() set.
-            assert!((*w).ready && (*w).movable && !(*w).visible);
-            assert_eq!((*w).killed_timer, 150);
-            assert_eq!((*w).last_killed_by_idx, -1);
-            assert_eq!((*w).reacts, [0; 4]);
-            assert!((*w).ninjarope.anchor.is_none() && !(*w).ninjarope.out);
+            assert!(w.ready && w.movable && !w.visible);
+            assert_eq!(w.killed_timer, 150);
+            assert_eq!(w.last_killed_by_idx, -1);
+            assert_eq!(w.reacts, [0; 4]);
+            assert!(w.ninjarope.anchor.is_none() && !w.ninjarope.out);
 
-            (*w).health = 75;
-            (*w).kills = 3;
-            (*w).flags = 2;
-            (*w).weapons[2].ammo = 9;
-            let c = liero_worm_data_clone(&*w);
+            w.health = 75;
+            w.kills = 3;
+            w.flags = 2;
+            w.weapons[2].ammo = 9;
+            let mut c = w.clone();
             // Every field is copied.
-            assert_eq!(format!("{:?}", *c), format!("{:?}", *w));
-            (*c).health = 1;
-            (*c).weapons[2].ammo = 0;
-            assert_eq!((*w).health, 75);
-            assert_eq!((*w).weapons[2].ammo, 9);
-            assert_eq!((*c).health, 1);
-            liero_worm_data_free(c);
-            liero_worm_data_free(w);
+            assert_eq!(format!("{:?}", c), format!("{:?}", w));
+            c.health = 1;
+            c.weapons[2].ammo = 0;
+            assert_eq!(w.health, 75);
+            assert_eq!(w.weapons[2].ammo, 9);
+            assert_eq!(c.health, 1);
         }
     }
 

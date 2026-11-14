@@ -1060,7 +1060,7 @@ mod tests {
     /// The menus with their items, and an app with new settings.
     fn menus() -> (Menus, App) {
         let mut a = App::new();
-        a.settings = Some(crate::settings::liero_settings_box_new());
+        a.settings = Some(crate::settings::new_settings());
         a.files.settings_node = crate::fs::Node::new(b"config/LIERO.CFG");
         a.double_res = false;
         a.menu_cycles = 0;

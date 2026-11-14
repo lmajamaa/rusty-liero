@@ -305,12 +305,6 @@ impl Tc {
     }
 }
 
-/// F8's random TC (`Tc::randomize`), in place: the games that share
-/// the TC, as one behind the menu does, play with it too, as in C++.
-pub fn liero_tc_randomize(tc: &RefCell<Tc>, shuffle_seed: u32) {
-    tc.borrow_mut().randomize(shuffle_seed);
-}
-
 /// Loads the TC in `node`, each file at its path inside it (`/` between
 /// folders).
 fn load(node: &Node) -> Tc {
@@ -333,7 +327,7 @@ pub type SharedTc = Rc<RefCell<Tc>>;
 
 /// Loads the TC in `node` (`Common::load`). Always returns a TC; its
 /// `error` says whether loading failed.
-pub fn liero_tc_load(node: &Node) -> SharedTc {
+pub fn load_shared(node: &Node) -> SharedTc {
     Rc::new(RefCell::new(load(node)))
 }
 
@@ -612,7 +606,7 @@ mod tests {
 
         let from_folder = Node::new(b"../../TC/openliero");
         let from_zip = Node::new(format!("{dir}/openliero").as_bytes());
-        let (a, b) = (liero_tc_load(&from_folder), liero_tc_load(&from_zip));
+        let (a, b) = (load_shared(&from_folder), load_shared(&from_zip));
         assert!(b.borrow().error.is_empty(), "{}", b.borrow().error);
         let (da, db) = (tc_data(&a), tc_data(&b));
         assert_eq!(da.model.weapons.len(), db.model.weapons.len());
@@ -624,7 +618,7 @@ mod tests {
     fn loads_from_a_node_and_reports_errors() {
         // Relative to the crate, where the tests run.
         let node = Node::new(b"../../TC/openliero");
-        let tc = liero_tc_load(&node);
+        let tc = load_shared(&node);
         assert!(tc.borrow().error.is_empty(), "{}", tc.borrow().error);
         let data = tc_data(&tc);
         assert_eq!(data.model.weapons.len(), 40);
@@ -637,7 +631,7 @@ mod tests {
         );
 
         let missing = Node::new(b"target/no-such-tc");
-        let tc = liero_tc_load(&missing);
+        let tc = load_shared(&missing);
         assert_eq!(tc.borrow().error, "Could not read tc.cfg");
         assert!(tc.borrow().data().is_none());
     }

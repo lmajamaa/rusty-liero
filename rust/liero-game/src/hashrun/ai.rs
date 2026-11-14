@@ -5,14 +5,13 @@
 //!
 //! Besides the game state, they hash the AI's own state: its candidate
 //! plans and their scores, the learnt transition model, the path-finding
-//! cells and the positions it traced (`liero_worm_ai_hash`).
+//! cells and the positions it traced (`WormAi::hash`).
 
 use super::game::{hash_frame, hash_game};
 use super::games::{bot_tick, set_up_game, tc_data, GAME_OF_TAG, HOLDAZONE, HOOKS, KILL_EM_ALL};
 use super::{Fnv, Out};
-use crate::ai::{liero_worm_ai_hash, liero_worm_ai_rand};
+
 use crate::app::App;
-use crate::controllers::liero_game_focus;
 use crate::renderer::Renderer;
 use crate::tc::SharedTc;
 
@@ -92,7 +91,10 @@ fn run_ai_game(a: &mut App, out: &mut Out, tc: &SharedTc, c: &AiConfig, interval
         w.settings_mut().data.controller = 2;
         let testing = w.data.index == 0;
         w.set_ai(2, c.ai_parallels as usize, testing);
-        liero_worm_ai_rand(w.ai_mut().expect("a bot")).seed(c.seed.wrapping_mul(31).wrapping_add(i as u32));
+        w.ai_mut()
+            .expect("a bot")
+            .rand()
+            .seed(c.seed.wrapping_mul(31).wrapping_add(i as u32));
     }
 
     let blood = game.settings_box().data.ext.blood_particle_max;
@@ -105,7 +107,7 @@ fn run_ai_game(a: &mut App, out: &mut Out, tc: &SharedTc, c: &AiConfig, interval
     for r in [&mut split, &mut spectator] {
         r.load_palette(&tc_data(tc));
         // SAFETY: the renderer is a live one.
-        unsafe { liero_game_focus(&mut game, &mut **r) };
+        unsafe { game.focus(&mut **r) };
     }
 
     // The controls every tick, which the game hashes only sample.
@@ -125,7 +127,7 @@ fn run_ai_game(a: &mut App, out: &mut Out, tc: &SharedTc, c: &AiConfig, interval
             out.hash(&format!("{name}-controls"), tick.into(), controls);
             for i in 0..2 {
                 let w = game.worm_at(i).expect("no worm");
-                let h = liero_worm_ai_hash(w.ai_mut().expect("a bot"));
+                let h = w.ai_mut().expect("a bot").hash();
                 out.line(&format!("{name}-ai{i} {tick} {h:016x}"));
             }
             out.line(&format!(

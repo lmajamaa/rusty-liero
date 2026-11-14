@@ -180,7 +180,7 @@ impl ReplayWriter {
     /// `beginRecord`: writes the game as it is, with its settings, level and
     /// the TC's weapons. Writing changes the settings as `write_start` says;
     /// with an `OutOfRange` outcome, what was written stays. The game has
-    /// its settings (`liero_game_set_context`).
+    /// its settings (`Game::set_context`).
     pub fn begin(&mut self, game: &mut Game) -> ReplayOutcome {
         let settings = game.settings();
         let ids = game_worm_ids(game);
@@ -373,7 +373,7 @@ impl ReplayReader {
     /// `beginPlayback`: reads the game the replay starts with into `game`, a
     /// new one with no worms or viewports, and its new settings and level.
     /// On an error they are left as they were. The game has its settings
-    /// and TC (`liero_game_set_context`).
+    /// and TC (`Game::set_context`).
     pub fn begin(&mut self, game: &mut Game) -> ReplayOutcome {
         let (version, g) = match read_start(&mut self.source()) {
             Ok(read) => read,

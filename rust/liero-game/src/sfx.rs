@@ -4,7 +4,7 @@
 //! The mixer has 8 channels and makes mono signed 16-bit samples. A sound is
 //! added at a frame time with an id (any pointer, only compared) and plays
 //! one sample per frame from that time, at a 4.12 fixed-point volume, until
-//! it ends or is stopped; a looping sound starts over. `liero_mixer_mix`
+//! it ends or is stopped; a looping sound starts over. `Mixer::mix`
 //! fills a buffer and advances the mixer's time; the web shell's audio node
 //! calls it (`web.rs`).
 //!
@@ -13,7 +13,7 @@
 //! audio node runs on the page's thread, so here the two never overlap.
 //!
 //! Quirks kept from the C mixer:
-//! - Stopping a channel doesn't clear its id, so `liero_mixer_is_playing`
+//! - Stopping a channel doesn't clear its id, so `Mixer::is_playing`
 //!   keeps finding a stopped sound until its channel is reused. (A looping
 //!   weapon sound that was stopped isn't restarted until then.)
 //! - Ids are looked up by the first channel with that id, active or not,
@@ -29,7 +29,7 @@ use std::ffi::c_void;
 
 /// Number of channels; more sounds than this at once aren't played.
 pub const LIERO_MIXER_CHANNELS: usize = 8;
-/// Flags for `liero_mixer_add`.
+/// Flags for `Mixer::add`.
 pub const LIERO_SOUND_NORMAL: u32 = 0;
 pub const LIERO_SOUND_LOOP: u32 = 1;
 

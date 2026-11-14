@@ -201,9 +201,7 @@ fn choosing_a_replay_plays_it_and_remembers_it() {
         LIERO_MAIN_REPLAY
     );
     assert_eq!(a.files.prev_replay, full.into_bytes());
-    assert!(crate::controllers::liero_controller_is_replay(
-        a.controller.as_deref_mut().unwrap()
-    ));
+    assert!(a.controller.as_deref_mut().unwrap().is_replay());
     a.controller = None;
 }
 

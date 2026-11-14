@@ -40,7 +40,7 @@ pub enum ReplayStatus {
     Ok,
     /// The byte source failed; C++ rethrows what its reader threw.
     ReadError,
-    /// `gvl::archive_check_error`, with `liero_replay_result_message`.
+    /// `gvl::archive_check_error`, with its message.
     CheckError,
     /// A worm index past the game's worms, which `std::vector::at` threw
     /// `std::out_of_range` for.

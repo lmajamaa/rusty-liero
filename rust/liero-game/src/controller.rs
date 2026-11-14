@@ -56,31 +56,17 @@ impl ControllerData {
         }
     }
 
+    /// `CommonController::process`: 1 to 0 choose the frame skip, with ctrl
+    /// inverted, and the frame is counted.
+    pub fn process(&mut self, keys: &mut Keys) {
+        keys.frame_skip(&mut self.frame_skip, &mut self.inverse_frame_skip);
+        self.cycles += 1;
+    }
+
     /// Whether a match is being played or is over but still shown.
     pub fn in_game(&self) -> bool {
         self.state == LIERO_STATE_GAME || self.state == LIERO_STATE_GAME_ENDED
     }
-}
-
-pub fn liero_controller_data_new() -> *mut ControllerData {
-    Box::into_raw(Box::default())
-}
-
-/// # Safety
-/// `c` comes from `liero_controller_data_new`, and isn't used after.
-pub unsafe fn liero_controller_data_free(c: *mut ControllerData) {
-    unsafe {
-        if !c.is_null() {
-            drop(Box::from_raw(c));
-        }
-    }
-}
-
-/// `CommonController::process`: 1 to 0 choose the frame skip, with ctrl
-/// inverted, and the frame is counted.
-pub fn liero_controller_process(c: &mut ControllerData, keys: &mut Keys) {
-    keys.frame_skip(&mut c.frame_skip, &mut c.inverse_frame_skip);
-    c.cycles += 1;
 }
 
 #[cfg(test)]
@@ -89,10 +75,10 @@ mod tests {
 
     #[test]
     fn new_controller_matches_cpp() {
-        unsafe {
-            let c = liero_controller_data_new();
+        {
+            let c = ControllerData::default();
             assert_eq!(
-                *c,
+                c,
                 ControllerData {
                     state: LIERO_STATE_INITIAL,
                     fade_value: 0,
@@ -102,7 +88,6 @@ mod tests {
                     cycles: 0,
                 }
             );
-            liero_controller_data_free(c);
         }
     }
 

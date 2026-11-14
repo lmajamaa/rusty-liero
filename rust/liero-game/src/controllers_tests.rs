@@ -5,18 +5,18 @@ use crate::tc::SharedTc;
 
 /// The bundled TC, with one reference for the test.
 fn tc() -> SharedTc {
-    let tc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
+    let tc = crate::tc::load_shared(&Node::new(b"../../TC/openliero"));
     assert!(tc.borrow().data().is_some());
     tc
 }
 
 /// A local match with the worms named `names`, on a level of its own.
 fn local(tc: SharedTc, names: [&str; 2]) -> Box<Controller> {
-    let settings = liero_settings_box_new();
+    let settings = new_settings();
     for (w, name) in settings.borrow().data.worms.iter().zip(names) {
         w.borrow_mut().data.name = name.as_bytes().to_vec();
     }
-    let mut c = liero_local_controller_new(&Host::none(), settings, tc);
+    let mut c = Controller::local(&Host::none(), settings, tc);
     c.game().unwrap().level_box_mut().resize(504, 350);
     c
 }
@@ -121,8 +121,8 @@ fn r_rewinds_a_replay_to_its_start() {
         drop(c);
 
         let a = &mut App::new();
-        a.settings = Some(liero_settings_box_new());
-        let mut r = Box::from_raw(liero_replay_controller_new(&node, tc));
+        a.settings = Some(new_settings());
+        let mut r = Controller::replay(&node, tc).unwrap();
         r.focus(a, &Host::none());
         assert_eq!(r.data.state, LIERO_STATE_GAME);
         assert!(r.process(a, &Host::none()));
@@ -183,7 +183,7 @@ fn f8_changes_the_tc_of_the_game_behind_the_menu() {
             .collect()
     };
     let before = ammo(&mut c);
-    crate::tc::liero_tc_randomize(&tc, 0);
+    tc.borrow_mut().randomize(0);
     let after = ammo(&mut c);
     assert_ne!(after, before);
     assert_eq!(

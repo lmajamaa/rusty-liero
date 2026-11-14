@@ -11,7 +11,6 @@ use super::games::tc_data;
 use super::{Fnv, Out};
 use crate::app::App;
 use crate::controller::LIERO_STATE_WEAPON_SELECTION;
-use crate::controllers::liero_game_focus;
 use crate::fs::Node;
 use crate::game::Rect;
 use crate::game_box::Game;
@@ -26,10 +25,7 @@ use crate::screen::Host;
 use crate::settings::SettingsBox;
 use crate::sfx::SoundOut;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
-use crate::weapsel::{
-    level_line, liero_weapsel_draw_game, liero_weapsel_free, liero_weapsel_menu, liero_weapsel_menu_count,
-    liero_weapsel_process_game, liero_weapsel_ready, liero_weapsel_set_focused, liero_weapsel_start,
-};
+use crate::weapsel::{level_line, Weapsel};
 use crate::worm::{LIERO_CONTROL_DOWN, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT, LIERO_CONTROL_UP};
 
 // The menus' item ids (`menuIds.hpp`).
@@ -579,12 +575,14 @@ fn run_weapon_selection(
         let mut level = LevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
-        liero_game_focus(&mut game, &mut *a.play);
-        liero_game_focus(&mut game, &mut *a.single);
+        game.focus(&mut *a.play);
+        game.focus(&mut *a.single);
     }
 
     // SAFETY: the selection works on the game, which outlives it.
-    let ws = unsafe { &mut *liero_weapsel_start(&mut game, &mut a.rand) };
+    let selection = Box::into_raw(unsafe { Weapsel::start(&mut game, &mut a.rand) });
+    // SAFETY: it is new, and freed below.
+    let ws = unsafe { &mut *selection };
 
     for step in 0..steps {
         for w in game.listed_worms() {
@@ -606,20 +604,20 @@ fn run_weapon_selection(
         }
 
         if step % 40 == 20 {
-            liero_weapsel_set_focused(ws, false);
+            ws.set_focused(false);
         } else if step % 40 == 22 {
-            liero_weapsel_set_focused(ws, true);
+            ws.set_focused(true);
         }
 
         // SAFETY: as above.
-        let done = unsafe { liero_weapsel_process_game(ws, &mut a.rand) };
+        let done = unsafe { ws.process_game(&mut a.rand) };
         a.menu_cycles = a.menu_cycles.wrapping_add(1);
 
         let mut f = Fnv::default();
-        for i in 0..liero_weapsel_menu_count(ws) {
-            f.bool(liero_weapsel_ready(ws, i));
+        for i in 0..ws.menu_count() {
+            f.bool(ws.ready(i));
             // SAFETY: the selection's menus live as long as it does.
-            hash_menu(&mut f, unsafe { &mut *liero_weapsel_menu(ws, i) });
+            hash_menu(&mut f, ws.menu(i));
         }
         for w in game.listed_worms() {
             let w = w.expect("an empty place among the game's worms");
@@ -633,11 +631,11 @@ fn run_weapon_selection(
         unsafe {
             a.play.clear();
             let play: *mut _ = &mut *a.play;
-            liero_weapsel_draw_game(ws, a, play, LIERO_STATE_WEAPON_SELECTION, false);
+            ws.draw_game(a, play, LIERO_STATE_WEAPON_SELECTION, false);
             add_screen(&mut f, &a.play);
             a.single.clear();
             let single: *mut _ = &mut *a.single;
-            liero_weapsel_draw_game(ws, a, single, LIERO_STATE_WEAPON_SELECTION, true);
+            ws.draw_game(a, single, LIERO_STATE_WEAPON_SELECTION, true);
             add_screen(&mut f, &a.single);
         }
         print(out, name, step, f);
@@ -647,7 +645,7 @@ fn run_weapon_selection(
         }
     }
     // SAFETY: the selection isn't used again, and goes before its game.
-    unsafe { liero_weapsel_free(ws) };
+    drop(unsafe { Box::from_raw(selection) });
     drop(game);
 }
 

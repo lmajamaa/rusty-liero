@@ -74,7 +74,7 @@ pub struct GameWorm {
 }
 
 /// The game's state, besides its worms and level. Rust owns it, and the
-/// fields of C++'s `Game` refer to it (`liero_game_data_new`).
+/// fields of C++'s `Game` refer to it (`GameData::new_boxed`).
 ///
 /// It is 74 KB, more than the web build's stack, so it is only made and
 /// copied on the heap: `new_boxed`, `clone_boxed` and `assign`.
@@ -150,34 +150,6 @@ impl GameData {
             std::ptr::copy_nonoverlapping(other, self, 1);
             std::ptr::addr_of_mut!(self.bobjects).write(other.bobjects.clone());
             drop(old);
-        }
-    }
-}
-
-pub fn liero_game_data_new() -> *mut GameData {
-    Box::into_raw(GameData::new_boxed())
-}
-
-/// # Safety
-/// `g` is valid.
-pub unsafe fn liero_game_data_clone(g: &GameData) -> *mut GameData {
-    Box::into_raw(g.clone_boxed())
-}
-
-/// `Game::operator=`.
-///
-/// # Safety
-/// Both are valid, and nothing points into `to`'s blood particles after.
-pub unsafe fn liero_game_data_assign(to: &mut GameData, from: &GameData) {
-    to.assign(from);
-}
-
-/// # Safety
-/// `g` comes from `liero_game_data_new` or `_clone`, and isn't used after.
-pub unsafe fn liero_game_data_free(g: *mut GameData) {
-    unsafe {
-        if !g.is_null() {
-            drop(Box::from_raw(g));
         }
     }
 }
@@ -757,43 +729,38 @@ mod tests {
 
     #[test]
     fn new_game_matches_cpp_and_copies_are_separate() {
-        unsafe {
-            let g = liero_game_data_new();
+        {
+            let mut g = GameData::new_boxed();
             // What C++'s Game() set.
-            assert_eq!(((*g).cycles, (*g).last_killed_idx, (*g).screen_flash), (0, -1, 0));
-            assert!((*g).paused && !(*g).got_changed && !(*g).quick_sim);
-            let z = (*g).holdazone;
+            assert_eq!((g.cycles, g.last_killed_idx, g.screen_flash), (0, -1, 0));
+            assert!(g.paused && !g.got_changed && !g.quick_sim);
+            let z = g.holdazone;
             assert_eq!(
                 (z.holder_idx, z.contender_idx, z.zone_width, z.zone_height),
                 (-1, -1, 50, 34)
             );
-            assert_eq!(
-                ((*g).wobjects.count, (*g).bobjects.limit(), (*g).bobjects.count),
-                (0, 1, 0)
-            );
-            assert!((*g).nobjects.sentinel.used && (*g).bonuses.arr[5].frame == -1);
+            assert_eq!((g.wobjects.count, g.bobjects.limit(), g.bobjects.count), (0, 1, 0));
+            assert!(g.nobjects.sentinel.used && g.bonuses.arr[5].frame == -1);
 
-            (*g).cycles = 7;
-            (*g).quick_sim = true;
-            (*g).holdazone.timeout_left = 3;
-            (*g).rand.next_u32();
-            (*g).sobjects.arr[3].used = true;
-            (*g).wobjects.count = 2;
-            (*g).bobjects.resize(3);
-            (*g).bobjects.count = 2;
-            (&mut (*g).bobjects.arr)[1].color = 9;
-            let c = liero_game_data_clone(&*g);
+            g.cycles = 7;
+            g.quick_sim = true;
+            g.holdazone.timeout_left = 3;
+            g.rand.next_u32();
+            g.sobjects.arr[3].used = true;
+            g.wobjects.count = 2;
+            g.bobjects.resize(3);
+            g.bobjects.count = 2;
+            (&mut g.bobjects.arr)[1].color = 9;
+            let mut c = g.clone_boxed();
             // Every field is copied, and the blood is separate.
-            assert_eq!(format!("{:?}", *c), format!("{:?}", *g));
-            (*c).cycles = 1;
-            (&mut (*c).bobjects.arr)[1].color = 1;
-            assert_eq!(((*g).cycles, (&(*g).bobjects.arr)[1].color), (7, 9));
+            assert_eq!(format!("{:?}", c), format!("{:?}", g));
+            c.cycles = 1;
+            (&mut c.bobjects.arr)[1].color = 1;
+            assert_eq!((g.cycles, (&g.bobjects.arr)[1].color), (7, 9));
 
             // Assigning copies everything back.
-            liero_game_data_assign(&mut *c, &*g);
-            assert_eq!(format!("{:?}", *c), format!("{:?}", *g));
-            liero_game_data_free(c);
-            liero_game_data_free(g);
+            c.assign(&g);
+            assert_eq!(format!("{:?}", c), format!("{:?}", g));
         }
     }
 

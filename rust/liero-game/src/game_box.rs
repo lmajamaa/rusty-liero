@@ -296,7 +296,7 @@ impl Game {
     ///
     /// # Safety
     /// `r` is valid.
-    pub(crate) unsafe fn focus(&mut self, r: *mut Renderer) {
+    pub unsafe fn focus(&mut self, r: *mut Renderer) {
         unsafe {
             let level_pal = self.level.data().origpal;
             self.origpal(&mut (*r).data.origpal, &level_pal);
@@ -571,11 +571,9 @@ impl Game {
 
 impl Worm {
     /// Gives the worm the bot for `controller`, or none for a human (0).
-    /// See `liero_worm_ai_new`.
+    /// See `WormAi::new`.
     pub fn set_ai(&mut self, controller: u32, candidates: usize, testing: bool) {
-        let ai = crate::ai::liero_worm_ai_new(controller, candidates, testing);
-        // SAFETY: a new bot, or null, which isn't read.
-        self.ai = (!ai.is_null()).then(|| unsafe { Box::from_raw(ai) });
+        self.ai = WormAi::new(controller, candidates, testing);
     }
 
     /// The worm's bot, or null, for the views made of raw pointers.
@@ -725,7 +723,7 @@ mod tests {
         assert_ne!(*c.stats(), *g.stats());
 
         // So is the level, but not the settings.
-        let shared = crate::settings::liero_settings_box_new();
+        let shared = crate::settings::new_settings();
         g.set_context(Some(shared.clone()), None, SoundOut::NONE);
         g.level_box_mut().resize(3, 2);
         let d = g.copy();
@@ -832,7 +830,7 @@ mod tests {
         tc.model.bonus_rand_timer = [[1, 2], [3, 4]];
         tc.model.weapons = (0..40).map(|_| liero_data::model::Weapon::default()).collect();
         tc.model.hacks = hacks(None);
-        let s = crate::settings::liero_settings_box_new();
+        let s = crate::settings::new_settings();
         s.borrow_mut().data.max_bonuses = 6;
         s.borrow_mut().data.load_change = true;
         let g = game_settings(&s.borrow().data, Some(&tc));
@@ -866,7 +864,7 @@ mod tests {
     #[test]
     fn viewports_are_drawn_with_the_settings_and_the_renderers_size() {
         use crate::controller::{LIERO_STATE_GAME_ENDED, LIERO_STATE_WEAPON_SELECTION};
-        let b = crate::settings::liero_settings_box_new();
+        let b = crate::settings::new_settings();
         let mut r = crate::renderer::Renderer::new();
         r.set_render_resolution(640, 400);
         {
@@ -900,7 +898,7 @@ mod tests {
         let mut g = game(&s);
         // The view takes no empty places.
         g.list.remove(1);
-        let set = crate::settings::liero_settings_box_new();
+        let set = crate::settings::new_settings();
         set.borrow_mut().data.game_mode = LIERO_GAME_HOLDAZONE as u32;
         set.borrow_mut().data.blood = 37;
         g.set_context(Some(set.clone()), None, SoundOut::NONE);

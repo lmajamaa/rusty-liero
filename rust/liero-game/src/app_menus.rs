@@ -4,7 +4,6 @@
 //! menus' palettes fading in and cycling.
 
 use crate::app::App;
-use crate::controllers::{liero_controller_level, liero_controller_running};
 use crate::gfx::{fill_rect, palette_fade, palette_rotate_from, palette_set_worm_colour};
 use crate::menu::{draw_versus, Menu};
 use crate::menu_screen::{LIERO_MENU_MAIN, LIERO_MENU_SETTINGS};
@@ -21,7 +20,7 @@ impl App {
     // `extern "C"` fn isn't a Rust closure over the reference.
     #[allow(clippy::redundant_closure)]
     fn running(&self) -> bool {
-        self.controller.as_deref().is_some_and(|c| liero_controller_running(c))
+        self.controller.as_deref().is_some_and(|c| c.running())
     }
 }
 
@@ -70,8 +69,7 @@ pub(crate) fn menu_start(a: &mut App) -> i32 {
     a.frozen.copy_from(&a.play.bmp);
     a.single.clear();
     if let Some(c) = a.controller.as_deref_mut() {
-        // SAFETY: the controller's level is valid.
-        if let Some(level) = unsafe { liero_controller_level(c).as_ref() } {
+        if let Some(level) = c.level() {
             let s = a.single.bmp.view();
             level.draw_miniature(&s, center_x - 126, a.single.data.render_res_y - 208, 2);
         }

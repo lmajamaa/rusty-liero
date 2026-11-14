@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::material::{LIERO_MATERIAL_BACKGROUND, LIERO_MATERIAL_DIRT};
-use crate::settings::liero_settings_box_new;
+use crate::settings::new_settings;
 
 /// A TC's level tables: colour 0 is background, 5 dirt, the rest nothing.
 struct Tables {
@@ -113,7 +113,7 @@ fn the_settings_level_file_gets_lev_added_and_falls_back_to_random() {
     std::fs::write(format!("{dir}/MAP.LEV"), lev(&[])).unwrap();
     let t = Tables::new();
     {
-        let shared = liero_settings_box_new();
+        let shared = new_settings();
         let mut s = shared.borrow_mut();
         s.data.random_level = false;
         s.data.shadow = false;

@@ -14,10 +14,7 @@ use crate::menus::{
 };
 use crate::screen::BoxedScreen;
 use crate::selector::{selector_screen, FileSource, Spec};
-use crate::settings::{
-    liero_worm_settings_box_load_profile, liero_worm_settings_box_save_profile, SettingsBox, SettingsStatus,
-    SharedWormSettings,
-};
+use crate::settings::{SettingsBox, SettingsStatus, SharedWormSettings};
 use crate::tc::s as text;
 
 /// The app's folders and files.
@@ -158,7 +155,7 @@ impl FileSource for AppFiles {
             }
             Choice::Profile(ws) => {
                 let mut status = SettingsStatus::Ok;
-                if !liero_worm_settings_box_load_profile(&mut ws.borrow_mut(), Some(&node.clone()), &mut status) {
+                if !ws.borrow_mut().load_profile(Some(&node.clone()), &mut status) {
                     panic!("Could not read {}", path(&node));
                 }
                 // A profile that ends early, or fails its checkpoint, threw
@@ -174,12 +171,8 @@ impl FileSource for AppFiles {
                 // Reset controller before opening the replay, since we may
                 // be recording it
                 a.controller = None;
-                let c = crate::controllers::liero_replay_controller_new(&node.clone(), a.menu_tc());
-                if c.is_null() {
-                    panic!("Could not read {}", path(&node));
-                }
-                // SAFETY: the controller is new.
-                a.controller = Some(unsafe { Box::from_raw(c) });
+                let c = crate::controllers::Controller::replay(&node.clone(), a.menu_tc());
+                a.controller = Some(c.unwrap_or_else(|| panic!("Could not read {}", path(&node))));
                 return LIERO_MAIN_REPLAY;
             }
             Choice::Options => {
@@ -291,7 +284,7 @@ pub(crate) fn save_profile_as(a: &App, player: i32, name: &[u8]) {
     let node = a.files.config.go(b"Profiles").go(&file);
     let ws = a.settings_mut().data.worms[player as usize].clone();
     let mut ws = ws.borrow_mut();
-    if !liero_worm_settings_box_save_profile(&mut ws, Some(&node.clone())) {
+    if !ws.save_profile(Some(&node.clone())) {
         panic!("Could not write {}", path(&node));
     }
 }

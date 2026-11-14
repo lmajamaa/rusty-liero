@@ -254,7 +254,7 @@ impl MenuScreen {
         if app.test_key_once(SCANCODE_F8) {
             // F8: the developers' random TC.
             if app.has_tc() {
-                crate::tc::liero_tc_randomize(&app.menu_tc(), host.random_seed());
+                app.menu_tc().borrow_mut().randomize(host.random_seed());
             }
         }
 

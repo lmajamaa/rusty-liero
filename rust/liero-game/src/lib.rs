@@ -58,13 +58,9 @@ pub mod web;
 pub mod world;
 pub mod worm;
 
-use std::ffi::c_char;
-
-/// Name and version of this library as a NUL-terminated string, e.g.
-/// "liero-game 0.1.0". The web shell prints it at startup.
-pub fn liero_game_version() -> *const c_char {
-    concat!("liero-game ", env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
-}
+/// Name and version of this library, e.g. "liero-game 0.1.0". The web
+/// shell prints it at startup.
+pub const VERSION: &str = concat!("liero-game ", env!("CARGO_PKG_VERSION"));
 
 #[cfg(test)]
 mod test_util {
@@ -88,17 +84,5 @@ mod test_util {
         pub fn finish(&self) -> u64 {
             self.0
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ffi::CStr;
-
-    #[test]
-    fn version_is_nul_terminated() {
-        let s = unsafe { CStr::from_ptr(liero_game_version()) };
-        assert_eq!(s.to_str().unwrap(), concat!("liero-game ", env!("CARGO_PKG_VERSION")));
     }
 }

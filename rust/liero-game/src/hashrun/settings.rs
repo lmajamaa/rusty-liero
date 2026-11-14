@@ -8,9 +8,7 @@
 
 use super::{Fnv, Out};
 use crate::fs::Node;
-use crate::settings::{
-    liero_worm_settings_box_load_profile, liero_worm_settings_box_save_profile, SettingsStatus, WormSettingsBox,
-};
+use crate::settings::{SettingsStatus, WormSettingsBox};
 use liero_data::gash::Hash;
 use liero_data::settings::{self as data, ArchiveError, Bytes, Settings, TextError, WormSettings};
 
@@ -626,7 +624,7 @@ fn worm_box(ws: &WormSettings) -> WormSettingsBox {
 
 /// `WormSettings::saveProfile`.
 fn save_profile(node: &Node, ws: &WormSettings) -> Result<(), Thrown> {
-    if liero_worm_settings_box_save_profile(&mut worm_box(ws), Some(node)) {
+    if worm_box(ws).save_profile(Some(node)) {
         Ok(())
     } else {
         Err(Thrown::Runtime(format!(
@@ -640,7 +638,7 @@ fn save_profile(node: &Node, ws: &WormSettings) -> Result<(), Thrown> {
 fn load_profile(node: &Node, ws: &mut WormSettings) -> Result<(), Thrown> {
     let mut b = worm_box(ws);
     let mut status = SettingsStatus::Ok;
-    let read = liero_worm_settings_box_load_profile(&mut b, Some(node), &mut status);
+    let read = b.load_profile(Some(node), &mut status);
     *ws = b.worm();
     if !read {
         return Err(Thrown::Runtime(format!(

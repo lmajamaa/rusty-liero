@@ -415,7 +415,7 @@ pub fn joy_hat_key(joy: i32, value: u8) -> u32 {
     }
 }
 
-/// One worm's controls and states for `liero_local_controller_key`.
+/// One worm's controls and states for `local_controller_key`.
 #[derive(Clone, Copy, Debug)]
 pub struct WormKeys {
     /// The key for each control: up, down, left, right, fire, change,

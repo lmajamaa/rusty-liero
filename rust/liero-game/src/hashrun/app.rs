@@ -21,7 +21,6 @@ use super::games::tc_data;
 use super::{Fnv, Out};
 use crate::app::App;
 use crate::app_screens::main_screen;
-use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
 use crate::keys::sdl_to_dos_keysym;
 
@@ -138,7 +137,7 @@ fn process_event(a: &mut App, ev: Ev, to_controller: bool) {
     if dos != 0 && to_controller {
         if let Some(c) = a.controller.as_deref_mut() {
             // SAFETY: the app's controller is a live one.
-            unsafe { liero_controller_on_key(c, dos as i32, down) };
+            unsafe { c.on_key(dos as i32, down) };
         }
     }
 }

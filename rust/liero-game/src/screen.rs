@@ -6,11 +6,11 @@
 //! showed a frame and what happens next: it stays, opens a screen on top,
 //! closes with a result for the screen below, or replaces itself.
 //!
-//! `liero_app_step` runs one step of the top screen. The host shows the
+//! `ScreenStack::step` runs one step of the top screen. The host shows the
 //! frame when the screen drew one, and when a screen is waiting for an event
 //! (it stays and shows nothing) the host is told to idle, so a run driven by
 //! a script can skip to the next event as the old blocking waits did.
-//! `liero_app_frame` runs the steps due by a clock, 14 ms each, for a caller
+//! `ScreenStack::frame` runs the steps due by a clock, 14 ms each, for a caller
 //! woken by the browser or the window.
 //!
 //! A screen is a `Box<dyn Screen>`. It reaches the platform (events, sound,
@@ -25,7 +25,7 @@ use crate::text::Font;
 /// How long one step is, in milliseconds.
 pub const STEP_MS: u32 = 14;
 
-/// The most steps one call of `liero_app_frame` runs. A tab coming back from
+/// The most steps one call of `ScreenStack::frame` runs. A tab coming back from
 /// the background skips the time it missed instead of racing to catch up.
 pub const MAX_STEPS_PER_FRAME: u32 = 4;
 
@@ -278,7 +278,7 @@ pub trait Screen {
 
 pub struct ScreenStack {
     screens: Vec<BoxedScreen>,
-    /// The clock's time of the last step `liero_app_frame` ran, once it has
+    /// The clock's time of the last step `ScreenStack::frame` ran, once it has
     /// run one.
     last: Option<u32>,
 }

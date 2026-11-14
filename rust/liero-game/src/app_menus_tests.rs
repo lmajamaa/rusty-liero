@@ -1,16 +1,15 @@
 use super::*;
 use crate::controller::LIERO_STATE_GAME;
-use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::fs::Node;
 use crate::menus::Menus;
-use crate::settings::liero_settings_box_new;
+use crate::settings::new_settings;
 
 /// An app with menus, the bundled TC, its screens sized, and a match that
 /// hasn't started, on a level of colour 7.
 fn set_up() -> App {
     let mut app = App::new();
     let a = &mut app;
-    a.settings = Some(liero_settings_box_new());
+    a.settings = Some(new_settings());
     a.set_tc(Some(
         crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
     ));
@@ -19,8 +18,8 @@ fn set_up() -> App {
     a.menus = Some(menus);
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    let mut c = liero_local_controller_new(&crate::screen::Host::none(), a.shared_settings(), a.menu_tc());
-    let level = unsafe { &mut *liero_controller_level(&mut c) };
+    let mut c = crate::controllers::Controller::local(&crate::screen::Host::none(), a.shared_settings(), a.menu_tc());
+    let level = c.level().expect("no level");
     level.resize(504, 350);
     level.set_pixels(&vec![7; 504 * 350], |_| Default::default());
     a.controller = Some(c);
@@ -69,7 +68,7 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
     draw_spectator_info(a);
     assert!(shows(a, b"SETUP") && !shows(a, b"PAUSED"));
 
-    unsafe { (*liero_controller_data(a.controller.as_deref_mut().unwrap())).state = LIERO_STATE_GAME };
+    a.controller.as_deref_mut().unwrap().data().state = LIERO_STATE_GAME;
     draw_spectator_info(a);
     assert!(shows(a, b"PAUSED") && !shows(a, b"SETUP"));
     a.controller = None;

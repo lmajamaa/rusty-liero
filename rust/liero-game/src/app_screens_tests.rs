@@ -1,19 +1,19 @@
 use super::*;
-use crate::controllers::{liero_controller_is_replay, Controller};
+use crate::controllers::Controller;
 use crate::fs::Node;
-use crate::settings::liero_settings_box_new;
+use crate::settings::new_settings;
 use crate::tc::SharedTc;
 
 /// The bundled TC.
 fn tc() -> SharedTc {
-    crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"))
+    crate::tc::load_shared(&Node::new(b"../../TC/openliero"))
 }
 
 /// An app with the menus' settings and the bundled TC, and a match behind
 /// the menu.
 fn set_up() -> App {
     let mut a = App::new();
-    a.settings = Some(liero_settings_box_new());
+    a.settings = Some(new_settings());
     a.set_tc(Some(tc()));
     restart(&mut a, &Host::none());
     a
@@ -25,9 +25,7 @@ fn replay() -> Box<Controller> {
     std::fs::create_dir_all(dir).unwrap();
     let path = format!("{dir}/empty.lrp");
     std::fs::write(&path, b"").unwrap();
-    let c = crate::controllers::liero_replay_controller_new(&Node::new(path.as_bytes()), tc());
-    assert!(!c.is_null());
-    unsafe { Box::from_raw(c) }
+    Controller::replay(&Node::new(path.as_bytes()), tc()).expect("a replay")
 }
 
 #[test]
@@ -38,7 +36,7 @@ fn resuming_a_replay_shows_the_single_screen() {
     assert!(!a.primary_single);
 
     a.controller = Some(replay());
-    assert!(liero_controller_is_replay(a.controller.as_deref().unwrap()));
+    assert!(a.controller.as_deref().unwrap().is_replay());
     assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
     assert!(a.primary_single);
 
@@ -76,7 +74,7 @@ fn a_new_game_keeps_the_level_unless_the_settings_changed() {
         (s.data.random_level, s.data.regenerate_level) = (true, false);
     }
     restart(a, &Host::none());
-    let pixels = |a: &mut App| unsafe { (*liero_controller_level(controller(a))).pixels().to_vec() };
+    let pixels = |a: &mut App| controller(a).level().expect("no level").pixels().to_vec();
     let first = pixels(a);
     assert_eq!(after_menu(a, &Host::none(), MAIN_NEW_GAME), LIERO_AFTER_MENU_PLAY);
     assert_eq!(pixels(a), first);

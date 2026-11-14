@@ -16,7 +16,6 @@
 
 use crate::app::App;
 use crate::app_screens::main_screen;
-use crate::controllers::liero_controller_on_key;
 use crate::gfx::{fit_screen, palette_activate, scale_draw, Color};
 use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, KeyChanges};
 use crate::menu_screen::LIERO_MENU_HIDDEN;
@@ -338,7 +337,7 @@ fn send_key(a: &mut App, to_controller: bool, key: u32, down: bool) {
     }
     if let Some(c) = a.controller.as_deref_mut() {
         // SAFETY: the app's controller is a live one.
-        unsafe { liero_controller_on_key(c, key as i32, down) };
+        unsafe { c.on_key(key as i32, down) };
     }
 }
 
@@ -777,9 +776,7 @@ fn report_panics() {
 #[wasm_bindgen]
 pub fn liero_web_start(canvas: HtmlCanvasElement, persist: js_sys::Function) -> Result<(), JsValue> {
     report_panics();
-    // SAFETY: a C string with the version.
-    let version = unsafe { std::ffi::CStr::from_ptr(crate::liero_game_version()) };
-    web_sys::console::log_1(&version.to_string_lossy().as_ref().into());
+    web_sys::console::log_1(&crate::VERSION.into());
     set_up_files();
 
     let ctx = canvas

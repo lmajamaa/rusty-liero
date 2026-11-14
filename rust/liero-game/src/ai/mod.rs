@@ -103,27 +103,27 @@ pub enum WormAi {
     Follow(Box<FollowAi>),
 }
 
-/// The bot for `controller`, or null for a human (0). The predictive one
-/// has `candidates` plans (`aiParallels`); `testing` also tries changing
-/// to loading weapons, which the game gives the first worm's.
-pub fn liero_worm_ai_new(controller: u32, candidates: usize, testing: bool) -> *mut WormAi {
-    let ai = match controller {
-        1 => WormAi::Dumb(Rand::default()),
-        2 => WormAi::Follow(Box::new(FollowAi::new(Weights::default(), candidates, testing))),
-        _ => return std::ptr::null_mut(),
-    };
-    Box::into_raw(Box::new(ai))
-}
-
-/// The bot's own generator, which C++ can seed.
-pub fn liero_worm_ai_rand(ai: &mut WormAi) -> &mut Rand {
-    match ai {
-        WormAi::Dumb(r) => r,
-        WormAi::Follow(f) => &mut f.rand,
-    }
-}
-
 impl WormAi {
+    /// The bot for `controller`, or none for a human (0). The predictive
+    /// one has `candidates` plans (`aiParallels`); `testing` also tries
+    /// changing to loading weapons, which the game gives the first worm's.
+    pub fn new(controller: u32, candidates: usize, testing: bool) -> Option<Box<WormAi>> {
+        let ai = match controller {
+            1 => WormAi::Dumb(Rand::default()),
+            2 => WormAi::Follow(Box::new(FollowAi::new(Weights::default(), candidates, testing))),
+            _ => return None,
+        };
+        Some(Box::new(ai))
+    }
+
+    /// The bot's own generator, which the hash run seeds.
+    pub fn rand(&mut self) -> &mut Rand {
+        match self {
+            WormAi::Dumb(r) => r,
+            WormAi::Follow(f) => &mut f.rand,
+        }
+    }
+
     /// The positions the predictive bot's last plans passed through, with
     /// `aiTraces` on, drawn as debug output.
     pub(crate) fn traces(&self) -> &[AiTrace] {
@@ -134,12 +134,14 @@ impl WormAi {
     }
 }
 
-/// A hash of the predictive bot's whole state, for the hash run; 0 for
-/// the original one.
-pub fn liero_worm_ai_hash(ai: &WormAi) -> u64 {
-    match ai {
-        WormAi::Dumb(_) => 0,
-        WormAi::Follow(f) => hash(f),
+impl WormAi {
+    /// A hash of the predictive bot's whole state, for the hash run; 0 for
+    /// the original one.
+    pub fn hash(&self) -> u64 {
+        match self {
+            WormAi::Dumb(_) => 0,
+            WormAi::Follow(f) => hash(f),
+        }
     }
 }
 
@@ -150,7 +152,7 @@ pub fn liero_worm_ai_hash(ai: &WormAi) -> u64 {
 ///
 /// # Safety
 /// The pointers in `game` and `settings` must be valid for the call, and
-/// the worms' bots must come from `liero_worm_ai_new`, or be null.
+/// the worms' bots must come from `WormAi::new`, or be null.
 pub unsafe fn process_ais(
     game: &GameFields,
     settings: &RuleSettings,

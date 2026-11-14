@@ -6,7 +6,6 @@
 use super::game::{add_screen, hash_frame, hash_game, hash_stats};
 use super::{Fnv, Out};
 use crate::app::App;
-use crate::controllers::liero_game_focus;
 use crate::fs::Node;
 use crate::game::{GameHooks, Rect};
 use crate::game_box::Game;
@@ -18,7 +17,7 @@ use crate::sfx::SoundOut;
 use crate::stats::{stats_scene, StatsScreen};
 use crate::tc::{SharedTc, TcData};
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
-use crate::weapsel::{liero_weapsel_finish, liero_weapsel_free, liero_weapsel_start};
+use crate::weapsel::Weapsel;
 
 pub const KILL_EM_ALL: u32 = 0;
 pub const GAME_OF_TAG: u32 = 1;
@@ -220,7 +219,7 @@ pub(super) fn set_up_game(
             w.data.stats_x = if i == 0 { 0 } else { 218 };
             w.set_ai(1, 0, false);
             let ai = w.ai_mut().expect("a bot");
-            crate::ai::liero_worm_ai_rand(ai).seed(seed.wrapping_mul(104_729).wrapping_add(i as u32));
+            ai.rand().seed(seed.wrapping_mul(104_729).wrapping_add(i as u32));
         }
 
         let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
@@ -232,9 +231,7 @@ pub(super) fn set_up_game(
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
 
-        let ws = liero_weapsel_start(&mut game, &mut a.rand);
-        liero_weapsel_finish(&mut *ws);
-        liero_weapsel_free(ws);
+        Weapsel::start(&mut game, &mut a.rand).finish();
 
         let lives = settings.borrow().data.lives;
         for w in game.listed_worms() {
@@ -301,7 +298,7 @@ fn run_game(a: &mut App, out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks
     for r in [&mut split, &mut spectator] {
         r.load_palette(&d);
         // SAFETY: the renderer is a live one.
-        unsafe { liero_game_focus(&mut game, &mut **r) };
+        unsafe { game.focus(&mut **r) };
     }
 
     out.line(&format!("{name} 0 {:016x}", hash_game(&mut game)));
