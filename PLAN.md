@@ -268,7 +268,7 @@ All of it is in `liero-game`; `liero-data` and `liero-tctool` have no `unsafe` t
 
 ## Write-up: how the port was done
 
-1. [ ] **`RUST_PORT.md`**, the porting strategy as it was carried out, for someone porting another C++ codebase to Rust. Built from the merged pull requests: their descriptions, review comments and commits (`gh pr list --state merged`, `gh pr view --comments`), read in order. It covers what worked and what didn't: the Emscripten build as the reference, moving one module at a time behind a C boundary, the hash run as the check (the reference values from the C++, recorded games and replays, and planted bugs to show it catches changes), keeping C++'s quirks bit for bit, then removing the boundary and the `unsafe` in phase 4. Each point links the PRs it comes from. Nothing in it is new: where a PR doesn't say why, the write-up says so rather than guessing.
+1. [x] **`RUST_PORT.md`**, the porting strategy as it was carried out, for someone porting another C++ codebase to Rust. Built from the merged pull requests: their descriptions, review comments and commits (`gh pr list --state merged`, `gh pr view --comments`), read in order. It covers what worked and what didn't: the Emscripten build as the reference, moving one module at a time behind a C boundary, the hash run as the check (the reference values from the C++, recorded games and replays, and planted bugs to show it catches changes), keeping C++'s quirks bit for bit, then removing the boundary and the `unsafe` in phase 4. Each point links the PRs it comes from. Nothing in it is new: where a PR doesn't say why, the write-up says so rather than guessing.
 
 ## Later: online multiplayer
 

@@ -11,8 +11,9 @@ Kill'em All, Game of Tag, Holdazone and Scales of Justice.
 This is a Rust port of OpenLiero, the open-source remake of Liero 1.33 by
 Erik Lindroos (gliptic) and others, made so that it runs in the browser. The port keeps the game exactly as it was: the same seed gives the
 same game, frame for frame, and replays recorded by OpenLiero play back the
-same. `tools/hashrun` checks that against hashes from the original C++, and
-[PLAN.md](PLAN.md) describes how the port was done.
+same. `tools/hashrun` checks that against hashes from the original C++.
+[RUST_PORT.md](RUST_PORT.md) describes how the port was done, and
+[PLAN.md](PLAN.md) has its step-by-step plan and notes.
 
 The game is only built for the web, with Docker (see below), from Rust. tctool, written
 in Rust, is a native command-line tool.
