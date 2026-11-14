@@ -1,5 +1,5 @@
 use super::*;
-use crate::menus::LIERO_SELECTOR_TC;
+use crate::menus::Selector;
 
 /// An empty folder for one test, and an app with default settings and its
 /// config folder there.
@@ -136,7 +136,7 @@ fn the_selectors_start_where_the_game_left_off() {
     a.settings_mut().data.level_file = b"some/LEVEL.LEV".to_vec();
     with_tc(a);
 
-    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_LEVEL, 0);
+    let (spec, _, choice) = selector_spec(a, Selector::Level, 0);
     assert!(matches!(choice, Choice::Level));
     assert_eq!(
         (spec.filter.as_slice(), spec.select.as_slice(), spec.has_select),
@@ -144,26 +144,26 @@ fn the_selectors_start_where_the_game_left_off() {
     );
     assert!(spec.enter_sound && !spec.random_name.is_empty());
 
-    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_PROFILE, 1);
+    let (spec, _, choice) = selector_spec(a, Selector::Profile, 1);
     let Choice::Profile(ws) = choice else {
         panic!("not a profile")
     };
     assert!(std::rc::Rc::ptr_eq(&ws, &a.settings_mut().data.worms[1]));
     assert_eq!((spec.select, spec.has_select), (in_config(a, "Profiles"), true));
 
-    let (spec, _, _) = selector_spec(a, LIERO_SELECTOR_REPLAY, 0);
+    let (spec, _, _) = selector_spec(a, Selector::Replay, 0);
     assert!(!spec.has_select);
     assert_eq!(spec.fallback, in_config(a, "Replays"));
     a.files.prev_replay = b"x/last.lrp".to_vec();
-    let (spec, _, _) = selector_spec(a, LIERO_SELECTOR_REPLAY, 0);
+    let (spec, _, _) = selector_spec(a, Selector::Replay, 0);
     assert_eq!((spec.select.as_slice(), spec.has_select), (&b"x/last.lrp"[..], true));
 
-    let (spec, _, choice) = selector_spec(a, LIERO_SELECTOR_OPTIONS, 0);
+    let (spec, _, choice) = selector_spec(a, Selector::Options, 0);
     assert!(matches!(choice, Choice::Options));
     assert_eq!((spec.filter.as_slice(), spec.has_select), (&b"CFG"[..], false));
 
     a.files.tc_root = Node::new(b"../../TC");
-    let (spec, root, choice) = selector_spec(a, LIERO_SELECTOR_TC, 0);
+    let (spec, root, choice) = selector_spec(a, Selector::Tc, 0);
     assert!(matches!(choice, Choice::Tc) && spec.tcs);
     assert_eq!(
         (spec.root.as_slice(), root.full_path()),
@@ -196,10 +196,7 @@ fn choosing_a_replay_plays_it_and_remembers_it() {
     std::fs::write(format!("{dir}/empty.lrp"), b"").unwrap();
     let mut s = source(dir, Choice::Replay);
     let full = format!("{dir}/empty.lrp");
-    assert_eq!(
-        s.choose(a, b"empty.lrp", full.as_bytes(), b"empty", false),
-        LIERO_MAIN_REPLAY
-    );
+    assert_eq!(s.choose(a, b"empty.lrp", full.as_bytes(), b"empty", false), MAIN_REPLAY);
     assert_eq!(a.files.prev_replay, full.into_bytes());
     assert!(a.controller.as_deref_mut().unwrap().is_replay());
     a.controller = None;

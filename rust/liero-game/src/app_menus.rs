@@ -6,14 +6,11 @@
 use crate::app::App;
 use crate::gfx::{fill_rect, palette_fade, palette_rotate_from, palette_set_worm_colour};
 use crate::menu::{draw_versus, Menu};
-use crate::menu_screen::{LIERO_MENU_MAIN, LIERO_MENU_SETTINGS};
+use crate::menu_screen::MenuKind;
+use crate::menus::{MAIN_NEW_GAME, MAIN_RESUME_GAME};
 use crate::renderer::Renderer;
 use crate::tc::s as text;
 use crate::weapsel::level_line;
-
-/// The main menu's items `menu_start` changes (`MainMenu`).
-const MAIN_RESUME_GAME: i32 = 0;
-const MAIN_NEW_GAME: i32 = 1;
 
 impl App {
     // Clippy's suggestion, passing the function, doesn't compile: an
@@ -46,7 +43,7 @@ pub(crate) fn menu_start(a: &mut App) -> i32 {
 
     let menus = a.shared_menus();
     let mut menus = menus.borrow_mut();
-    let main = menus.box_of(LIERO_MENU_MAIN);
+    let main = menus.box_of(MenuKind::Main);
     let start = if a.running() {
         main.set_visibility(index_of(main, MAIN_RESUME_GAME), true);
         set_string(main, MAIN_RESUME_GAME, "RESUME GAME (F1)");
@@ -58,13 +55,13 @@ pub(crate) fn menu_start(a: &mut App) -> i32 {
         MAIN_NEW_GAME
     };
 
-    menus.box_of(LIERO_MENU_MAIN).move_to(0);
-    menus.box_of(LIERO_MENU_SETTINGS).move_to(0);
-    menus.update_items(a, LIERO_MENU_SETTINGS);
+    menus.box_of(MenuKind::Main).move_to(0);
+    menus.box_of(MenuKind::Settings).move_to(0);
+    menus.update_items(a, MenuKind::Settings);
 
     a.play.data.fade_value = 0;
     a.single.data.fade_value = 0;
-    menus.set_cur(LIERO_MENU_MAIN);
+    menus.set_cur(MenuKind::Main);
 
     a.frozen.copy_from(&a.play.bmp);
     a.single.clear();
@@ -86,8 +83,8 @@ pub(crate) fn draw_basic_menu(a: &mut App) {
     a.play.bmp.copy_from(&a.frozen);
     let menus = a.shared_menus();
     let mut menus = menus.borrow_mut();
-    let disabled = menus.cur() != LIERO_MENU_MAIN;
-    menus.draw(a, LIERO_MENU_MAIN, &a.play.bmp.view(), &a.font(), disabled, -1, true);
+    let disabled = menus.cur() != MenuKind::Main;
+    menus.draw(a, MenuKind::Main, &a.play.bmp.view(), &a.font(), disabled, -1, true);
 }
 
 /// Who plays whom, the level and whether a game is paused, on the frozen
@@ -124,8 +121,8 @@ pub(crate) fn draw_menus(a: &mut App) {
     let mut menus = menus.borrow_mut();
     let cur = menus.cur();
     let (scr, font) = (a.play.bmp.view(), a.font());
-    if cur == LIERO_MENU_MAIN {
-        menus.draw(a, LIERO_MENU_SETTINGS, &scr, &font, true, -1, false);
+    if cur == MenuKind::Main {
+        menus.draw(a, MenuKind::Settings, &scr, &font, true, -1, false);
     } else {
         menus.draw(a, cur, &scr, &font, false, -1, false);
     }

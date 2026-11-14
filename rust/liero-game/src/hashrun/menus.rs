@@ -17,7 +17,7 @@ use crate::game_box::Game;
 use crate::item::{ItemAction, ItemBehavior};
 use crate::level::LevelBox;
 use crate::menu::{draw_info_box, draw_input_box, draw_versus, Menu, MenuHooks, MenuItem};
-use crate::menu_screen::{LIERO_MENU_HIDDEN, LIERO_MENU_MAIN, LIERO_MENU_PLAYER, LIERO_MENU_SETTINGS};
+use crate::menu_screen::MenuKind;
 use crate::menus::Menus;
 use crate::rand::Rand;
 use crate::renderer::BitmapBox;
@@ -151,7 +151,7 @@ impl Availability {
 /// item's value, and drawing.
 enum Ops {
     /// One of the menus in `menus.rs`.
-    Menus(i32),
+    Menus(MenuKind),
     Availability(Availability),
 }
 
@@ -312,7 +312,7 @@ fn run_menus(a: &mut App, out: &mut Out) {
     let menu = |a: &mut App, kind| unsafe { &mut *with_menus(a, |m, _| m.box_of(kind) as *mut Menu) };
 
     // As the menu loop sets them up before a game.
-    let main = menu(a, LIERO_MENU_MAIN);
+    let main = menu(a, MenuKind::Main);
     main.set_visibility(index_of(main, MA_RESUME_GAME), false);
     // SAFETY: the text is copied.
     main.set_name(index_of(main, MA_NEW_GAME), b"NEW GAME (F1)");
@@ -322,7 +322,7 @@ fn run_menus(a: &mut App, out: &mut Out) {
         out,
         "menu-main",
         main,
-        &Ops::Menus(LIERO_MENU_MAIN),
+        &Ops::Menus(MenuKind::Main),
         &[MA_REPLAYS, MA_TC],
         &[],
         false,
@@ -340,13 +340,13 @@ fn run_menus(a: &mut App, out: &mut Out) {
         SI_LIVES,
         SI_FLAGS_TO_WIN,
     ];
-    let setup = menu(a, LIERO_MENU_SETTINGS);
+    let setup = menu(a, MenuKind::Settings);
     run_menu(
         a,
         out,
         "menu-setup",
         setup,
-        &Ops::Menus(LIERO_MENU_SETTINGS),
+        &Ops::Menus(MenuKind::Settings),
         &no_enter,
         &[],
         false,
@@ -356,13 +356,13 @@ fn run_menus(a: &mut App, out: &mut Out) {
 
     with_menus(a, |m, a| m.player_settings(a, 0));
     let player_no_enter: Vec<i32> = (PL_NAME..=PL_LOAD_PROFILE).filter(|&id| id != PL_CONTROLLER).collect();
-    let player = menu(a, LIERO_MENU_PLAYER);
+    let player = menu(a, MenuKind::Player);
     run_menu(
         a,
         out,
         "menu-player",
         player,
-        &Ops::Menus(LIERO_MENU_PLAYER),
+        &Ops::Menus(MenuKind::Player),
         &player_no_enter,
         &[],
         false,
@@ -370,13 +370,13 @@ fn run_menus(a: &mut App, out: &mut Out) {
         400,
     );
 
-    let options = menu(a, LIERO_MENU_HIDDEN);
+    let options = menu(a, MenuKind::Hidden);
     run_menu(
         a,
         out,
         "menu-options",
         options,
-        &Ops::Menus(LIERO_MENU_HIDDEN),
+        &Ops::Menus(MenuKind::Hidden),
         &[
             HM_DOUBLE_RES,
             HM_FULLSCREEN,

@@ -18,7 +18,7 @@ use crate::app::App;
 use crate::app_screens::main_screen;
 use crate::gfx::{fit_screen, palette_activate, scale_draw, Color};
 use crate::keys::{joy_axis, joy_axis_key, joy_button, joy_button_key, sdl_to_dos_keysym, JoyButtons, KeyChanges};
-use crate::menu_screen::LIERO_MENU_HIDDEN;
+use crate::menu_screen::MenuKind;
 use crate::menus::Menus;
 use crate::screen::{Event, Host, Platform, ScreenStack, TypedKey};
 use crate::sfx::{Mixer, SoundOut};
@@ -428,7 +428,7 @@ fn set_fullscreen(a: &mut App, on: bool, update_menu: bool) {
     a.set_fullscreen(on);
     show_fullscreen(on);
     if update_menu {
-        a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
+        a.shared_menus().borrow_mut().update_items(a, MenuKind::Hidden);
     }
 }
 
@@ -459,7 +459,7 @@ fn on_fullscreen_change() {
 fn left_fullscreen(a: &mut App) {
     if a.fullscreen() {
         a.set_fullscreen(false);
-        a.shared_menus().borrow_mut().update_items(a, LIERO_MENU_HIDDEN);
+        a.shared_menus().borrow_mut().update_items(a, MenuKind::Hidden);
     }
 }
 

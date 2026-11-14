@@ -4,7 +4,7 @@
 //! writes back what comes out, then does what the result says (redraw the
 //! item or the whole menu, or open the number box).
 
-use crate::menu::{enum_change, integer_left_right, value_text, LIERO_MENU_VALUE_INTEGER};
+use crate::menu::{enum_change, integer_left_right, value_text, ValueKind};
 
 const SOUND_RIGHT: i32 = 25;
 const SOUND_LEFT: i32 = 26;
@@ -33,8 +33,7 @@ pub struct ItemBehavior<'a> {
     pub step: i32,
     /// Frames between steps while left or right is held.
     pub scroll_interval: i32,
-    /// One of the `LIERO_MENU_VALUE_*` kinds.
-    pub value_kind: i32,
+    pub value_kind: ValueKind,
     /// Whether Enter opens a box to type a number.
     pub allow_entry: bool,
     pub names: &'a [&'a [u8]],
@@ -63,7 +62,7 @@ impl<'a> ItemBehavior<'a> {
             max,
             step: 1,
             scroll_interval: 5,
-            value_kind: LIERO_MENU_VALUE_INTEGER,
+            value_kind: ValueKind::Integer,
             allow_entry: true,
             names: &[],
         }
@@ -171,7 +170,7 @@ impl<'a> ItemBehavior<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::menu::{LIERO_MENU_VALUE_FRAMES, LIERO_MENU_VALUE_PERCENTAGE, LIERO_MENU_VALUE_TIME};
+    use crate::menu::ValueKind;
 
     fn text(b: &ItemBehavior, v: i32) -> String {
         String::from_utf8(b.value_text(v)).unwrap()
@@ -233,11 +232,11 @@ mod tests {
 
         assert_eq!(v, 6);
         assert_eq!(text(&b, v), "6");
-        b.value_kind = LIERO_MENU_VALUE_PERCENTAGE;
+        b.value_kind = ValueKind::Percentage;
         assert_eq!(text(&b, v), "6%");
-        b.value_kind = LIERO_MENU_VALUE_TIME;
+        b.value_kind = ValueKind::Time;
         assert_eq!(text(&b, 125), "02:05");
-        b.value_kind = LIERO_MENU_VALUE_FRAMES;
+        b.value_kind = ValueKind::Frames;
         assert!(!text(&b, 125).is_empty());
     }
 

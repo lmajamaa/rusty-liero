@@ -26,7 +26,7 @@ use crate::keys::{
 };
 use crate::rand::Rand;
 use crate::settings::SettingsBox;
-use crate::sfx::{Mixer, SoundOut, LIERO_SOUND_LOOP, LIERO_SOUND_NORMAL};
+use crate::sfx::{Mixer, SoundOut};
 use crate::tc::SharedTc;
 
 /// Each of the TC's sounds' samples, or `None` for one the game can't play.
@@ -80,13 +80,9 @@ fn mixer_script(out: &mut Out, tc: &SharedTc, seed: u32, steps: i32) {
         if op < 4 {
             let snd = sounds[r.below(sounds.len() as u32) as usize];
             let time = mixer.now().wrapping_add(r.below(6000) as i32).wrapping_sub(3000) as u32;
-            let flags = if r.below(4) == 0 {
-                LIERO_SOUND_LOOP
-            } else {
-                LIERO_SOUND_NORMAL
-            };
+            let looping = r.below(4) == 0;
             // SAFETY: the samples outlive the mixer.
-            let added = unsafe { mixer.add(snd.as_ptr(), snd.len(), time, id, flags) };
+            let added = unsafe { mixer.add(snd.as_ptr(), snd.len(), time, id, looping) };
             // What C's mixer returned, `id` or null if not added, compared
             // with `id` and with null.
             f.bool(added || id == 0);

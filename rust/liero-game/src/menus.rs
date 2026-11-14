@@ -13,11 +13,8 @@ use crate::boxes::{input_box_screen, key_choice_screen};
 use crate::gfx::Bitmap;
 use crate::item::{ItemAction, ItemBehavior};
 use crate::keys::{is_extended, key_name, DK_ESCAPE};
-use crate::menu::{
-    closest_name, draw_palette_overlay, draw_rgb_overlay, Menu, MenuHooks, MenuItem, LIERO_MENU_VALUE_FRAMES,
-    LIERO_MENU_VALUE_PERCENTAGE, LIERO_MENU_VALUE_TIME,
-};
-use crate::menu_screen::{LIERO_MENU_HIDDEN, LIERO_MENU_MAIN, LIERO_MENU_PLAYER, LIERO_MENU_SETTINGS};
+use crate::menu::{closest_name, draw_palette_overlay, draw_rgb_overlay, Menu, MenuHooks, MenuItem, ValueKind};
+use crate::menu_screen::MenuKind;
 use crate::screen::{BoxedScreen, Host};
 use crate::settings::{GameSettings, WormSettingsBox};
 use crate::tc::{c, s};
@@ -29,18 +26,19 @@ use std::rc::Rc;
 
 const SOUND_CHOICE: i32 = 27;
 
-/// The main menu's item ids (`MainMenu`).
-pub const LIERO_MAIN_RESUME_GAME: i32 = 0;
-pub const LIERO_MAIN_NEW_GAME: i32 = 1;
-const MA_SETTINGS: i32 = 2;
-const MA_PLAYER1_SETTINGS: i32 = 3;
-const MA_PLAYER2_SETTINGS: i32 = 4;
-const MA_ADVANCED: i32 = 5;
-const MA_QUIT: i32 = 6;
-const MA_REPLAYS: i32 = 7;
+/// The main menu's item ids (`MainMenu`), which are also what it closes
+/// with.
+pub const MAIN_RESUME_GAME: i32 = 0;
+pub const MAIN_NEW_GAME: i32 = 1;
+pub const MAIN_SETTINGS: i32 = 2;
+pub const MAIN_PLAYER1_SETTINGS: i32 = 3;
+pub const MAIN_PLAYER2_SETTINGS: i32 = 4;
+pub const MAIN_ADVANCED: i32 = 5;
+pub const MAIN_QUIT: i32 = 6;
+pub const MAIN_REPLAYS: i32 = 7;
 /// What choosing a replay closes the menu with.
-pub const LIERO_MAIN_REPLAY: i32 = 8;
-const MA_TC: i32 = 9;
+pub const MAIN_REPLAY: i32 = 8;
+pub const MAIN_TC: i32 = 9;
 
 // The match setup's item ids (`SettingsMenu`).
 const SI_GAME_MODE: i32 = 0;
@@ -93,11 +91,14 @@ const HM_ALLOW_VIEWING_SPAWN_POINT: i32 = 12;
 const HM_SINGLE_SCREEN_REPLAY: i32 = 13;
 
 /// The file selectors (`app_files::open_selector`).
-pub const LIERO_SELECTOR_LEVEL: i32 = 0;
-pub const LIERO_SELECTOR_PROFILE: i32 = 1;
-pub const LIERO_SELECTOR_REPLAY: i32 = 2;
-pub const LIERO_SELECTOR_OPTIONS: i32 = 3;
-pub const LIERO_SELECTOR_TC: i32 = 4;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Selector {
+    Level,
+    Profile,
+    Replay,
+    Options,
+    Tc,
+}
 
 // `Texts` in C++.
 const ON_OFF: [&[u8]; 2] = [b"OFF", b"ON"];
@@ -172,7 +173,7 @@ enum Then {
 pub type SharedMenus = Rc<RefCell<Menus>>;
 
 struct Pending {
-    kind: i32,
+    kind: MenuKind,
     then: Then,
     /// What the text box typed, before Enter.
     // Boxed: the text box is given its address.
@@ -184,7 +185,7 @@ struct Pending {
 /// `hiddenMenu` and `curMenu`).
 pub struct Menus {
     menus: [Box<Menu>; 4],
-    cur: i32,
+    cur: MenuKind,
     /// Whose settings the player menu shows.
     player: i32,
     /// The palette entry the options menu shows (`HiddenMenu::paletteColor`).
@@ -219,7 +220,7 @@ fn integer(min: i32, max: i32, step: i32, percentage: bool) -> ItemBehavior<'sta
     let mut b = ItemBehavior::integer(min, max);
     b.step = step;
     if percentage {
-        b.value_kind = LIERO_MENU_VALUE_PERCENTAGE;
+        b.value_kind = ValueKind::Percentage;
     }
     b
 }
@@ -227,11 +228,7 @@ fn integer(min: i32, max: i32, step: i32, percentage: bool) -> ItemBehavior<'sta
 /// Seconds, or frames shown as seconds; can't be typed in (`TimeBehavior`).
 fn time(min: i32, max: i32, step: i32, frames: bool) -> ItemBehavior<'static> {
     let mut b = integer(min, max, step, false);
-    b.value_kind = if frames {
-        LIERO_MENU_VALUE_FRAMES
-    } else {
-        LIERO_MENU_VALUE_TIME
-    };
+    b.value_kind = if frames { ValueKind::Frames } else { ValueKind::Time };
     b.allow_entry = false;
     b
 }
@@ -258,14 +255,14 @@ impl Menus {
         let raw = |x, y| Box::new(Menu::raw(x, y, false));
         Menus {
             menus: [raw(53, 20), raw(178, 20), raw(178, 20), raw(178, 20)],
-            cur: LIERO_MENU_MAIN,
+            cur: MenuKind::Main,
             player: 0,
             palette_color: 0,
             pending: None,
         }
     }
 
-    fn menu(&mut self, kind: i32) -> &mut Menu {
+    fn menu(&mut self, kind: MenuKind) -> &mut Menu {
         &mut self.menus[kind as usize]
     }
 
@@ -287,7 +284,7 @@ impl Menus {
         }
         let item = |m: &mut Menu, color: u8, name: &[u8], id: i32| add(m, color, 7, name, id, true);
 
-        let hidden = self.menu(LIERO_MENU_HIDDEN);
+        let hidden = self.menu(MenuKind::Hidden);
         for (name, id) in [
             (&b"FULLSCREEN (F11)"[..], HM_FULLSCREEN),
             (b"DOUBLE SIZE", HM_DOUBLE_RES),
@@ -306,7 +303,7 @@ impl Menus {
             item(hidden, 48, name, id);
         }
 
-        let player = self.menu(LIERO_MENU_PLAYER);
+        let player = self.menu(MenuKind::Player);
         for (name, id) in [
             (&b"PROFILE LOADED"[..], PL_LOADED_PROFILE),
             (b"SAVE PROFILE", PL_SAVE_PROFILE),
@@ -337,7 +334,7 @@ impl Menus {
         }
         item(player, 48, b"CONTROLLER", PL_CONTROLLER);
 
-        let settings = self.menu(LIERO_MENU_SETTINGS);
+        let settings = self.menu(MenuKind::Settings);
         for (name, id) in [
             (&b"GAME MODE"[..], SI_GAME_MODE),
             (b"TIME TO LOSE", SI_TIME_TO_LOSE),
@@ -360,34 +357,34 @@ impl Menus {
             item(settings, 48, name, id);
         }
 
-        let main = self.menu(LIERO_MENU_MAIN);
+        let main = self.menu(MenuKind::Main);
         // The first two names are set when the menu opens.
-        add(main, 10, 10, b"", LIERO_MAIN_RESUME_GAME, true);
-        add(main, 10, 10, b"", LIERO_MAIN_NEW_GAME, true);
-        add(main, 48, 48, b"OPTIONS (F2)", MA_ADVANCED, true);
-        add(main, 48, 48, b"REPLAYS (F3)", MA_REPLAYS, true);
-        add(main, 48, 48, b"TC", MA_TC, true);
-        add(main, 6, 6, b"QUIT TO OS", MA_QUIT, true);
+        add(main, 10, 10, b"", MAIN_RESUME_GAME, true);
+        add(main, 10, 10, b"", MAIN_NEW_GAME, true);
+        add(main, 48, 48, b"OPTIONS (F2)", MAIN_ADVANCED, true);
+        add(main, 48, 48, b"REPLAYS (F3)", MAIN_REPLAYS, true);
+        add(main, 48, 48, b"TC", MAIN_TC, true);
+        add(main, 6, 6, b"QUIT TO OS", MAIN_QUIT, true);
         add(main, 0, 0, b"", -1, false);
-        add(main, 48, 48, b"LEFT PLAYER (F5)", MA_PLAYER1_SETTINGS, true);
-        add(main, 48, 48, b"RIGHT PLAYER (F6)", MA_PLAYER2_SETTINGS, true);
-        add(main, 48, 48, b"MATCH SETUP (F7)", MA_SETTINGS, true);
+        add(main, 48, 48, b"LEFT PLAYER (F5)", MAIN_PLAYER1_SETTINGS, true);
+        add(main, 48, 48, b"RIGHT PLAYER (F6)", MAIN_PLAYER2_SETTINGS, true);
+        add(main, 48, 48, b"MATCH SETUP (F7)", MAIN_SETTINGS, true);
 
-        self.menu(LIERO_MENU_SETTINGS).m.value_offset_x = 100;
-        self.menu(LIERO_MENU_PLAYER).m.value_offset_x = 95;
-        self.menu(LIERO_MENU_HIDDEN).m.value_offset_x = 120;
+        self.menu(MenuKind::Settings).m.value_offset_x = 100;
+        self.menu(MenuKind::Player).m.value_offset_x = 95;
+        self.menu(MenuKind::Hidden).m.value_offset_x = 120;
     }
 
     /// What `kind`'s item `i` does (`getItemBehavior`).
-    fn behavior(&mut self, app: &mut App, kind: i32, i: usize) -> Behavior {
+    fn behavior(&mut self, app: &mut App, kind: MenuKind, i: usize) -> Behavior {
         let id = self.menu(kind).items[i].id;
         match kind {
-            LIERO_MENU_MAIN => match id {
-                MA_REPLAYS => Behavior::ReplaySelect,
-                MA_TC => Behavior::TcSelect,
+            MenuKind::Main => match id {
+                MAIN_REPLAYS => Behavior::ReplaySelect,
+                MAIN_TC => Behavior::TcSelect,
                 _ => Behavior::None,
             },
-            LIERO_MENU_SETTINGS => match id {
+            MenuKind::Settings => match id {
                 SI_NAMES_ON_BONUSES => flag(|s| &mut s.names_on_bonuses),
                 SI_MAP => flag(|s| &mut s.map),
                 SI_REGENERATE_LEVEL => flag(|s| &mut s.regenerate_level),
@@ -411,7 +408,7 @@ impl Menus {
                 SI_LOAD_CHANGE => flag(|s| &mut s.load_change),
                 _ => Behavior::None,
             },
-            LIERO_MENU_PLAYER => {
+            MenuKind::Player => {
                 if (PL_WEAP0..PL_WEAP0 + 5).contains(&id) {
                     return Behavior::Weapon {
                         slot: (id - PL_WEAP0) as usize,
@@ -499,11 +496,11 @@ impl Menus {
         }
     }
 
-    fn set_value(&mut self, kind: i32, i: usize, v: Vec<u8>) {
+    fn set_value(&mut self, kind: MenuKind, i: usize, v: Vec<u8>) {
         self.menu(kind).set_value(i, v);
     }
 
-    fn index_of(&mut self, kind: i32, id: i32) -> Option<usize> {
+    fn index_of(&mut self, kind: MenuKind, id: i32) -> Option<usize> {
         self.menu(kind).index_of(id)
     }
 
@@ -513,7 +510,7 @@ impl Menus {
     }
 
     /// Shows item `i`'s value (`onUpdate`).
-    fn update(&mut self, app: &mut App, kind: i32, i: usize, b: &Behavior) {
+    fn update(&mut self, app: &mut App, kind: MenuKind, i: usize, b: &Behavior) {
         match b {
             Behavior::Weapon { slot } => {
                 // Shown by the weapon's name, in menu order.
@@ -559,7 +556,7 @@ impl Menus {
     }
 
     /// The level item's value, and the regenerate item's name to go with it.
-    fn update_level(&mut self, app: &mut App, kind: i32, i: usize) {
+    fn update_level(&mut self, app: &mut App, kind: MenuKind, i: usize) {
         let st = app.settings_mut();
         let tc = app.tc_data();
         let (value, regen) = if !st.data.random_level {
@@ -577,12 +574,12 @@ impl Menus {
     }
 
     /// `Menu::updateItems`: every item's value, then what the menu shows.
-    pub fn update_items(&mut self, app: &mut App, kind: i32) {
+    pub fn update_items(&mut self, app: &mut App, kind: MenuKind) {
         for i in 0..self.menu(kind).len() {
             let b = self.behavior(app, kind, i);
             self.update(app, kind, i, &b);
         }
-        if kind == LIERO_MENU_SETTINGS {
+        if kind == MenuKind::Settings {
             // `SettingsMenu::onUpdate`: the game mode's own items.
             let mode = app.settings_mut().data.game_mode;
             let shown: &[i32] = match mode {
@@ -606,17 +603,17 @@ impl Menus {
         }
     }
 
-    fn set_visibility(&mut self, kind: i32, id: i32, state: bool) {
+    fn set_visibility(&mut self, kind: MenuKind, id: i32, state: bool) {
         let i = self.index_of(kind, id).expect("no such item") as i32;
         self.menu(kind).set_visibility(i, state);
     }
 
-    fn selection(&mut self, kind: i32) -> Option<usize> {
+    fn selection(&mut self, kind: MenuKind) -> Option<usize> {
         self.menu(kind).selected()
     }
 
     /// Left or right on the selected item. False to stop repeating it.
-    pub fn left_right(&mut self, app: &mut App, host: &Host, kind: i32, dir: i32) -> bool {
+    pub fn left_right(&mut self, app: &mut App, host: &Host, kind: MenuKind, dir: i32) -> bool {
         let Some(i) = self.selection(kind) else { return false };
         let b = self.behavior(app, kind, i);
         let (it, setting) = match &b {
@@ -659,14 +656,14 @@ impl Menus {
 
     /// Does what a switch, number or enum asked: show its value, update
     /// the menu or open the number box.
-    fn apply(&mut self, app: &mut App, kind: i32, i: usize, b: &Behavior, a: ItemAction) -> Option<BoxedScreen> {
+    fn apply(&mut self, app: &mut App, kind: MenuKind, i: usize, b: &Behavior, a: ItemAction) -> Option<BoxedScreen> {
         if a.update_item {
             self.update(app, kind, i, b);
         }
         // The window's switches show in other items too (`setFullscreen`
         // and `setDoubleRes` update the menu).
         let id = self.menu(kind).items[i].id;
-        if a.update_menu || (kind == LIERO_MENU_HIDDEN && a.update_item && (id == HM_DOUBLE_RES || id == HM_FULLSCREEN))
+        if a.update_menu || (kind == MenuKind::Hidden && a.update_item && (id == HM_DOUBLE_RES || id == HM_FULLSCREEN))
         {
             self.update_items(app, kind);
         }
@@ -692,7 +689,7 @@ impl Menus {
     #[allow(clippy::too_many_arguments)]
     fn input(
         &mut self,
-        kind: i32,
+        kind: MenuKind,
         then: Then,
         text: &[u8],
         max_len: usize,
@@ -712,7 +709,7 @@ impl Menus {
         screen
     }
 
-    fn open(&mut self, kind: i32, then: Then, screen: BoxedScreen) -> BoxedScreen {
+    fn open(&mut self, kind: MenuKind, then: Then, screen: BoxedScreen) -> BoxedScreen {
         self.pending = Some(Pending {
             kind,
             then,
@@ -722,20 +719,20 @@ impl Menus {
     }
 
     /// Where a text box opens beside item `i`'s value.
-    fn value_position(&mut self, kind: i32, i: usize) -> Option<(i32, i32)> {
+    fn value_position(&mut self, kind: MenuKind, i: usize) -> Option<(i32, i32)> {
         let (x, y) = self.menu(kind).item_position(i as i32)?;
         Some((x + self.menu(kind).m.value_offset_x + 2, y))
     }
 
     /// A file selector.
-    fn selector(&mut self, app: &mut App, kind: i32, then: Then, selector: i32) -> Option<BoxedScreen> {
+    fn selector(&mut self, app: &mut App, kind: MenuKind, then: Then, selector: Selector) -> Option<BoxedScreen> {
         let screen = crate::app_files::open_selector(app, selector, self.player);
         Some(self.open(kind, then, screen))
     }
 
     /// Enter on the selected item (`onEnter`): what it chose, or -1, and
     /// the screen it opened, if any.
-    pub fn enter(&mut self, app: &mut App, host: &Host, kind: i32) -> (i32, Option<BoxedScreen>) {
+    pub fn enter(&mut self, app: &mut App, host: &Host, kind: MenuKind) -> (i32, Option<BoxedScreen>) {
         let Some(i) = self.selection(kind) else {
             return (0, None);
         };
@@ -784,11 +781,11 @@ impl Menus {
             }
             Behavior::ProfileLoad => {
                 sound();
-                self.selector(app, kind, Then::SoundAndUpdate, LIERO_SELECTOR_PROFILE)
+                self.selector(app, kind, Then::SoundAndUpdate, Selector::Profile)
             }
             Behavior::Level => {
                 sound();
-                self.selector(app, kind, Then::Level { item: i as i32 }, LIERO_SELECTOR_LEVEL)
+                self.selector(app, kind, Then::Level { item: i as i32 }, Selector::Level)
             }
             Behavior::WeaponOptions => {
                 sound();
@@ -807,15 +804,15 @@ impl Menus {
             }
             Behavior::OptionsSelect => {
                 sound();
-                self.selector(app, kind, Then::SoundAndUpdate, LIERO_SELECTOR_OPTIONS)
+                self.selector(app, kind, Then::SoundAndUpdate, Selector::Options)
             }
             Behavior::ReplaySelect => {
                 sound();
-                self.selector(app, kind, Then::Replay, LIERO_SELECTOR_REPLAY)
+                self.selector(app, kind, Then::Replay, Selector::Replay)
             }
             Behavior::TcSelect => {
                 sound();
-                self.selector(app, kind, Then::Tc, LIERO_SELECTOR_TC)
+                self.selector(app, kind, Then::Tc, Selector::Tc)
             }
         };
         (-1, opened)
@@ -931,7 +928,7 @@ impl Menus {
             }
             Then::Tc => {
                 if crate::app_files::take_chosen_tc(app) {
-                    return MA_TC;
+                    return MAIN_TC;
                 }
             }
         }
@@ -941,26 +938,26 @@ impl Menus {
     /// Opens the player menu on `player`'s settings (`Gfx::playerSettings`).
     pub fn player_settings(&mut self, app: &mut App, player: i32) {
         self.player = player;
-        self.update_items(app, LIERO_MENU_PLAYER);
-        self.menu(LIERO_MENU_PLAYER).move_to(0);
-        self.cur = LIERO_MENU_PLAYER;
+        self.update_items(app, MenuKind::Player);
+        self.menu(MenuKind::Player).move_to(0);
+        self.cur = MenuKind::Player;
     }
 
     /// `Gfx::openHiddenMenu`.
     pub fn open_hidden(&mut self, app: &mut App) {
-        if self.cur == LIERO_MENU_HIDDEN {
+        if self.cur == MenuKind::Hidden {
             return;
         }
-        self.cur = LIERO_MENU_HIDDEN;
-        self.update_items(app, LIERO_MENU_HIDDEN);
-        self.menu(LIERO_MENU_HIDDEN).move_to(0);
+        self.cur = MenuKind::Hidden;
+        self.update_items(app, MenuKind::Hidden);
+        self.menu(MenuKind::Hidden).move_to(0);
     }
 
-    pub fn cur(&self) -> i32 {
+    pub fn cur(&self) -> MenuKind {
         self.cur
     }
 
-    pub fn set_cur(&mut self, kind: i32) {
+    pub fn set_cur(&mut self, kind: MenuKind) {
         self.cur = kind;
     }
 
@@ -976,7 +973,7 @@ impl Menus {
 
     /// Enter on `kind`'s selected item. A screen it opened is dropped: the
     /// menu checks only press items that open none.
-    pub fn enter_dropping(&mut self, app: &mut App, host: &Host, kind: i32) -> i32 {
+    pub fn enter_dropping(&mut self, app: &mut App, host: &Host, kind: MenuKind) -> i32 {
         let (r, opened) = self.enter(app, host, kind);
         if opened.is_some() {
             self.pending = None;
@@ -984,17 +981,17 @@ impl Menus {
         r
     }
 
-    pub fn box_of(&mut self, kind: i32) -> &mut Menu {
+    pub fn box_of(&mut self, kind: MenuKind) -> &mut Menu {
         &mut self.menus[kind as usize]
     }
 
     /// Draws `kind`, with the player menu's colour bars and the options
     /// menu's palette entry.
     #[allow(clippy::too_many_arguments)]
-    pub fn draw(&mut self, app: &App, kind: i32, scr: &Bitmap, font: &Font, disabled: bool, x: i32, show: bool) {
+    pub fn draw(&mut self, app: &App, kind: MenuKind, scr: &Bitmap, font: &Font, disabled: bool, x: i32, show: bool) {
         struct Ctx<'a> {
             ids: Vec<i32>,
-            kind: i32,
+            kind: MenuKind,
             scr: Bitmap<'a>,
             player: i32,
             palette_color: i32,
@@ -1004,11 +1001,11 @@ impl Menus {
             unsafe {
                 let c = &*(ctx as *const Ctx);
                 let id = c.ids[item as usize];
-                if c.kind == LIERO_MENU_PLAYER && (PL_RED..=PL_BLUE).contains(&id) {
+                if c.kind == MenuKind::Player && (PL_RED..=PL_BLUE).contains(&id) {
                     let ws = c.settings.borrow().data.worms[c.player as usize].clone();
                     let ws = &ws.borrow().data;
                     draw_rgb_overlay(&c.scr, x, y, selected, ws.rgb[(id - PL_RED) as usize], ws.color);
-                } else if c.kind == LIERO_MENU_HIDDEN && id == HM_PALETTE_SELECT {
+                } else if c.kind == MenuKind::Hidden && id == HM_PALETTE_SELECT {
                     draw_palette_overlay(&c.scr, x, y, selected, c.palette_color);
                 }
             }
@@ -1074,21 +1071,21 @@ mod tests {
         a.settings_mut().data.worms[m.player as usize].clone()
     }
 
-    fn select(m: &mut Menus, kind: i32, id: i32) -> usize {
+    fn select(m: &mut Menus, kind: MenuKind, id: i32) -> usize {
         let i = m.index_of(kind, id).unwrap();
         m.menu(kind).move_to(i as i32);
         assert_eq!(m.selection(kind), Some(i));
         i
     }
 
-    fn value(m: &mut Menus, kind: i32, i: usize) -> Vec<u8> {
+    fn value(m: &mut Menus, kind: MenuKind, i: usize) -> Vec<u8> {
         m.menu(kind).items[i].value.clone()
     }
 
     #[test]
     fn a_key_only_the_extended_controls_have_leaves_the_original_ones() {
         let (mut m, mut app) = menus();
-        select(&mut m, LIERO_MENU_PLAYER, PL_UP + 1);
+        select(&mut m, MenuKind::Player, PL_UP + 1);
         let w = worm(&app, &m);
         w.borrow_mut().data.controls[1] = 30;
         w.borrow_mut().data.controls_ex[1] = 30;
@@ -1097,20 +1094,20 @@ mod tests {
             (ws.controls[1], ws.controls_ex[1])
         };
 
-        let (r, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
+        let (r, opened) = m.enter(&mut app, &Host::none(), MenuKind::Player);
         assert_eq!(r, -1);
         drop(opened.expect("key choice"));
         assert!(is_extended(177));
         m.then(&mut app, &Host::none(), 177);
         assert_eq!(keys(), (30, 177));
 
-        let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
+        let (_, opened) = m.enter(&mut app, &Host::none(), MenuKind::Player);
         drop(opened.unwrap());
         m.then(&mut app, &Host::none(), 31);
         assert_eq!(keys(), (31, 31));
 
         // Escape keeps the key.
-        let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
+        let (_, opened) = m.enter(&mut app, &Host::none(), MenuKind::Player);
         drop(opened.unwrap());
         m.then(&mut app, &Host::none(), DK_ESCAPE as i32);
         assert_eq!(keys(), (31, 31));
@@ -1121,10 +1118,10 @@ mod tests {
         let (mut m, mut app) = menus();
         for player in 0..2 {
             m.player = player;
-            select(&mut m, LIERO_MENU_PLAYER, PL_DIG);
+            select(&mut m, MenuKind::Player, PL_DIG);
             let w = worm(&app, &m);
             let before = w.borrow().data.controls;
-            let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
+            let (_, opened) = m.enter(&mut app, &Host::none(), MenuKind::Player);
             drop(opened.expect("key choice"));
             // C, which has a DOS key.
             assert!(!is_extended(46));
@@ -1137,17 +1134,17 @@ mod tests {
     #[test]
     fn a_typed_number_is_kept_in_range() {
         let (mut m, mut app) = menus();
-        let i = select(&mut m, LIERO_MENU_SETTINGS, SI_LIVES);
+        let i = select(&mut m, MenuKind::Settings, SI_LIVES);
         for (typed, lives) in [(&b"5000"[..], 999), (b"0", 1), (b"12", 12)] {
-            let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_SETTINGS);
+            let (_, opened) = m.enter(&mut app, &Host::none(), MenuKind::Settings);
             drop(opened.expect("number box"));
             *m.pending.as_mut().unwrap().typed = typed.to_vec();
             assert_eq!(m.then(&mut app, &Host::none(), 1), -1);
             assert_eq!(app.settings_mut().data.lives, lives);
-            assert_eq!(value(&mut m, LIERO_MENU_SETTINGS, i), lives.to_string().into_bytes());
+            assert_eq!(value(&mut m, MenuKind::Settings, i), lives.to_string().into_bytes());
         }
         // Escape keeps the number.
-        let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_SETTINGS);
+        let (_, opened) = m.enter(&mut app, &Host::none(), MenuKind::Settings);
         drop(opened.unwrap());
         *m.pending.as_mut().unwrap().typed = b"7".to_vec();
         m.then(&mut app, &Host::none(), 0);
@@ -1157,13 +1154,13 @@ mod tests {
     #[test]
     fn held_keys_step_health_every_fourth_frame() {
         let (mut m, mut app) = menus();
-        select(&mut m, LIERO_MENU_PLAYER, PL_HEALTH);
+        select(&mut m, MenuKind::Player, PL_HEALTH);
         worm(&app, &m).borrow_mut().data.health = 100;
         let start = 100;
         let mut steps = Vec::new();
         for cycle in 1..=12 {
             app.menu_cycles = cycle;
-            assert!(m.left_right(&mut app, &Host::none(), LIERO_MENU_PLAYER, -1));
+            assert!(m.left_right(&mut app, &Host::none(), MenuKind::Player, -1));
             steps.push(start - worm(&app, &m).borrow().data.health);
         }
         assert_eq!(steps, [0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3]);
@@ -1172,11 +1169,11 @@ mod tests {
     #[test]
     fn double_size_shows_the_whole_options_menu_again() {
         let (mut m, mut app) = menus();
-        let frames = m.index_of(LIERO_MENU_HIDDEN, HM_AI_FRAMES).unwrap();
-        select(&mut m, LIERO_MENU_HIDDEN, HM_DOUBLE_RES);
+        let frames = m.index_of(MenuKind::Hidden, HM_AI_FRAMES).unwrap();
+        select(&mut m, MenuKind::Hidden, HM_DOUBLE_RES);
         app.settings_mut().data.ext.ai_frames = 123;
-        m.left_right(&mut app, &Host::none(), LIERO_MENU_HIDDEN, 1);
+        m.left_right(&mut app, &Host::none(), MenuKind::Hidden, 1);
         assert!(app.double_res);
-        assert_eq!(value(&mut m, LIERO_MENU_HIDDEN, frames), b"123");
+        assert_eq!(value(&mut m, MenuKind::Hidden, frames), b"123");
     }
 }

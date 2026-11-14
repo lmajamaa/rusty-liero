@@ -548,19 +548,23 @@ pub fn enum_change(v: u32, min: u32, max: u32, dir: i32) -> u32 {
 }
 
 /// Kinds of value text for `value_text`.
-pub const LIERO_MENU_VALUE_INTEGER: i32 = 0;
-pub const LIERO_MENU_VALUE_PERCENTAGE: i32 = 1;
-/// Seconds as "MM:SS".
-pub const LIERO_MENU_VALUE_TIME: i32 = 2;
-/// Frames as seconds with hundredths.
-pub const LIERO_MENU_VALUE_FRAMES: i32 = 3;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ValueKind {
+    #[default]
+    Integer,
+    Percentage,
+    /// Seconds as "MM:SS".
+    Time,
+    /// Frames as seconds with hundredths.
+    Frames,
+}
 
 /// How a number item shows `v`.
-pub fn value_text(v: i32, kind: i32) -> Vec<u8> {
+pub fn value_text(v: i32, kind: ValueKind) -> Vec<u8> {
     match kind {
-        LIERO_MENU_VALUE_PERCENTAGE => format!("{v}%").into_bytes(),
-        LIERO_MENU_VALUE_TIME => time_to_string(v).to_vec(),
-        LIERO_MENU_VALUE_FRAMES => time_to_string_ex(v.wrapping_mul(14), false, false),
+        ValueKind::Percentage => format!("{v}%").into_bytes(),
+        ValueKind::Time => time_to_string(v).to_vec(),
+        ValueKind::Frames => time_to_string_ex(v.wrapping_mul(14), false, false),
         _ => v.to_string().into_bytes(),
     }
 }
@@ -870,10 +874,10 @@ mod tests {
         assert_eq!(enum_change(1, 1, 40, -1), 40);
 
         let text = value_text;
-        assert_eq!(text(150, LIERO_MENU_VALUE_PERCENTAGE), b"150%");
-        assert_eq!(text(-3, LIERO_MENU_VALUE_INTEGER), b"-3");
-        assert_eq!(text(754, LIERO_MENU_VALUE_TIME), b"12:34");
-        assert_eq!(text(700, LIERO_MENU_VALUE_FRAMES), b"09.80");
+        assert_eq!(text(150, ValueKind::Percentage), b"150%");
+        assert_eq!(text(-3, ValueKind::Integer), b"-3");
+        assert_eq!(text(754, ValueKind::Time), b"12:34");
+        assert_eq!(text(700, ValueKind::Frames), b"09.80");
     }
 
     #[test]

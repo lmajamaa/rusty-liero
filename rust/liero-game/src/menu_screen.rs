@@ -11,6 +11,9 @@
 
 use crate::app::App;
 use crate::menus::{Menus, SharedMenus};
+use crate::menus::{
+    MAIN_ADVANCED, MAIN_PLAYER1_SETTINGS, MAIN_PLAYER2_SETTINGS, MAIN_QUIT, MAIN_REPLAYS, MAIN_SETTINGS, MAIN_TC,
+};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use std::cell::RefMut;
 
@@ -35,20 +38,16 @@ const SOUND_UP: i32 = 26;
 const SOUND_DOWN: i32 = 25;
 const SOUND_CHOICE: i32 = 27;
 
-/// The menus.
-pub const LIERO_MENU_MAIN: i32 = 0;
-pub const LIERO_MENU_SETTINGS: i32 = 1;
-pub const LIERO_MENU_PLAYER: i32 = 2;
-pub const LIERO_MENU_HIDDEN: i32 = 3;
-
-/// The main menu's item ids (`MainMenu`).
-pub const LIERO_MAIN_SETTINGS: i32 = 2;
-pub const LIERO_MAIN_PLAYER1_SETTINGS: i32 = 3;
-pub const LIERO_MAIN_PLAYER2_SETTINGS: i32 = 4;
-pub const LIERO_MAIN_ADVANCED: i32 = 5;
-pub const LIERO_MAIN_QUIT: i32 = 6;
-pub const LIERO_MAIN_REPLAYS: i32 = 7;
-pub const LIERO_MAIN_TC: i32 = 9;
+/// The menus, in `Menus`' order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MenuKind {
+    #[default]
+    Main = 0,
+    Settings = 1,
+    Player = 2,
+    /// The advanced options.
+    Hidden = 3,
+}
 
 /// Where a pass stopped for a screen an item opened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,20 +98,20 @@ impl MenuScreen {
     }
 
     /// Runs `f` on `kind`'s menu.
-    fn menu<R>(&self, kind: i32, f: impl FnOnce(&mut crate::menu::Menu) -> R) -> R {
+    fn menu<R>(&self, kind: MenuKind, f: impl FnOnce(&mut crate::menu::Menu) -> R) -> R {
         f(self.menus().box_of(kind))
     }
 
-    fn cur(&self) -> i32 {
+    fn cur(&self) -> MenuKind {
         self.menus().cur()
     }
 
-    fn set_cur(&self, kind: i32) {
+    fn set_cur(&self, kind: MenuKind) {
         self.menus().set_cur(kind)
     }
 
     fn move_main_to(&self, id: i32) {
-        self.menu(LIERO_MENU_MAIN, |main| {
+        self.menu(MenuKind::Main, |main| {
             let i = (0..main.len())
                 .find(|&i| main.items[i].id == id)
                 .map_or(-1, |i| i as i32);
@@ -121,7 +120,7 @@ impl MenuScreen {
     }
 
     fn main_selected_id(&self) -> i32 {
-        self.menu(LIERO_MENU_MAIN, |main| main.selected().map_or(-1, |i| main.items[i].id))
+        self.menu(MenuKind::Main, |main| main.selected().map_or(-1, |i| main.items[i].id))
     }
 
     /// What an item's `onEnter` returned, put to `how`. True if the menu
@@ -129,8 +128,8 @@ impl MenuScreen {
     fn take_result(&mut self, how: Use, r: i32) -> bool {
         match how {
             Use::Select => self.selected = r,
-            Use::Tc if r == LIERO_MAIN_TC => {
-                self.selected = LIERO_MAIN_TC;
+            Use::Tc if r == MAIN_TC => {
+                self.selected = MAIN_TC;
                 return true;
             }
             _ => {}
@@ -140,7 +139,7 @@ impl MenuScreen {
 
     /// Enter on `kind`'s item. Returns the screen it opened, if any; else
     /// whether the menu closes at once.
-    fn enter(&mut self, app: &mut App, host: &Host, kind: i32, how: Use) -> Result<bool, BoxedScreen> {
+    fn enter(&mut self, app: &mut App, host: &Host, kind: MenuKind, how: Use) -> Result<bool, BoxedScreen> {
         let (r, opened) = self.menus().enter(app, host, kind);
         if let Some(opened) = opened {
             self.how = how;
@@ -175,10 +174,10 @@ impl MenuScreen {
             crate::app_menus::draw_menus(app);
 
             if app.test_key_once(SCANCODE_ESCAPE) {
-                if self.cur() == LIERO_MENU_MAIN {
-                    self.move_main_to(LIERO_MAIN_QUIT);
+                if self.cur() == MenuKind::Main {
+                    self.move_main_to(MAIN_QUIT);
                 } else {
-                    self.set_cur(LIERO_MENU_MAIN);
+                    self.set_cur(MenuKind::Main);
                 }
             }
             if app.test_key_once(SCANCODE_UP) {
@@ -192,29 +191,29 @@ impl MenuScreen {
 
             if app.test_key_once(SCANCODE_RETURN) || app.test_key_once(SCANCODE_KP_ENTER) {
                 let cur = self.cur();
-                if cur == LIERO_MENU_MAIN {
+                if cur == MenuKind::Main {
                     host.play_sound(SOUND_CHOICE);
                     let s = self.main_selected_id();
                     match s {
-                        LIERO_MAIN_SETTINGS => self.set_cur(LIERO_MENU_SETTINGS),
-                        LIERO_MAIN_PLAYER1_SETTINGS | LIERO_MAIN_PLAYER2_SETTINGS => {
-                            self.menus().player_settings(app, s - LIERO_MAIN_PLAYER1_SETTINGS)
+                        MAIN_SETTINGS => self.set_cur(MenuKind::Settings),
+                        MAIN_PLAYER1_SETTINGS | MAIN_PLAYER2_SETTINGS => {
+                            self.menus().player_settings(app, s - MAIN_PLAYER1_SETTINGS)
                         }
-                        LIERO_MAIN_ADVANCED => self.menus().open_hidden(app),
-                        LIERO_MAIN_REPLAYS => {
+                        MAIN_ADVANCED => self.menus().open_hidden(app),
+                        MAIN_REPLAYS => {
                             enter!(cur, Use::Select, Part::AfterEnter);
                         }
-                        LIERO_MAIN_TC => {
+                        MAIN_TC => {
                             if enter!(cur, Use::Tc, Part::AfterEnter) {
                                 return Step::Close;
                             }
                         }
                         _ => {
-                            self.set_cur(LIERO_MENU_MAIN);
+                            self.set_cur(MenuKind::Main);
                             self.selected = s;
                         }
                     }
-                } else if cur == LIERO_MENU_SETTINGS {
+                } else if cur == MenuKind::Settings {
                     enter!(cur, Use::Ignore, Part::AfterEnter);
                 } else {
                     enter!(cur, Use::Select, Part::AfterEnter);
@@ -224,32 +223,32 @@ impl MenuScreen {
 
         if self.part != Part::AfterF3 {
             if app.test_key_once(SCANCODE_F1) {
-                self.set_cur(LIERO_MENU_MAIN);
+                self.set_cur(MenuKind::Main);
                 self.move_main_to(self.start_item);
                 self.selected = self.start_item;
             }
             if app.test_key_once(SCANCODE_F2) {
-                self.move_main_to(LIERO_MAIN_ADVANCED);
+                self.move_main_to(MAIN_ADVANCED);
                 self.menus().open_hidden(app);
             }
             if app.test_key_once(SCANCODE_F3) {
-                self.set_cur(LIERO_MENU_MAIN);
-                self.move_main_to(LIERO_MAIN_REPLAYS);
-                enter!(LIERO_MENU_MAIN, Use::Select, Part::AfterF3);
+                self.set_cur(MenuKind::Main);
+                self.move_main_to(MAIN_REPLAYS);
+                enter!(MenuKind::Main, Use::Select, Part::AfterF3);
             }
         }
 
         if app.test_key_once(SCANCODE_F5) {
-            self.move_main_to(LIERO_MAIN_PLAYER1_SETTINGS);
+            self.move_main_to(MAIN_PLAYER1_SETTINGS);
             self.menus().player_settings(app, 0);
         }
         if app.test_key_once(SCANCODE_F6) {
-            self.move_main_to(LIERO_MAIN_PLAYER2_SETTINGS);
+            self.move_main_to(MAIN_PLAYER2_SETTINGS);
             self.menus().player_settings(app, 1);
         }
         if app.test_key_once(SCANCODE_F7) {
-            self.move_main_to(LIERO_MAIN_SETTINGS);
-            self.set_cur(LIERO_MENU_SETTINGS);
+            self.move_main_to(MAIN_SETTINGS);
+            self.set_cur(MenuKind::Settings);
         }
         if app.test_key_once(SCANCODE_F8) {
             // F8: the developers' random TC.

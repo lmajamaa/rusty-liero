@@ -1,6 +1,7 @@
 use super::*;
 use crate::controllers::Controller;
 use crate::fs::Node;
+use crate::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
 use crate::settings::new_settings;
 use crate::tc::SharedTc;
 
@@ -32,21 +33,21 @@ fn replay() -> Box<Controller> {
 fn resuming_a_replay_shows_the_single_screen() {
     let a = &mut set_up();
     a.primary_single = false;
-    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), AfterMenu::Play);
     assert!(!a.primary_single);
 
     a.controller = Some(replay());
     assert!(a.controller.as_deref().unwrap().is_replay());
-    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), AfterMenu::Play);
     assert!(a.primary_single);
 
     // A replay chosen in the menu, as the settings say.
     a.primary_single = false;
     a.settings_mut().data.ext.single_screen_replay = false;
-    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), AfterMenu::Play);
     assert!(!a.primary_single);
     a.settings_mut().data.ext.single_screen_replay = true;
-    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), AfterMenu::Play);
     assert!(a.primary_single);
     a.controller = None;
 }
@@ -76,14 +77,14 @@ fn a_new_game_keeps_the_level_unless_the_settings_changed() {
     restart(a, &Host::none());
     let pixels = |a: &mut App| controller(a).level().expect("no level").pixels().to_vec();
     let first = pixels(a);
-    assert_eq!(after_menu(a, &Host::none(), MAIN_NEW_GAME), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_NEW_GAME), AfterMenu::Play);
     assert_eq!(pixels(a), first);
     a.settings_mut().data.regenerate_level = true;
     after_menu(a, &Host::none(), MAIN_NEW_GAME);
     assert_ne!(pixels(a), first);
 
-    assert_eq!(after_menu(a, &Host::none(), MAIN_QUIT), LIERO_AFTER_MENU_QUIT);
-    assert_eq!(after_menu(a, &Host::none(), MAIN_TC), LIERO_AFTER_MENU_RESTART);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_QUIT), AfterMenu::Quit);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_TC), AfterMenu::Restart);
     let cycles = a.menu_cycles;
     draw(a, true);
     draw(a, false);

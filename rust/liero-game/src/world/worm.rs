@@ -12,7 +12,7 @@ use super::*;
 use crate::material::Material;
 use crate::object::Ninjarope;
 use crate::objects::Bonus;
-use crate::weapon::{LIERO_SHOT_STEERABLE, SELECTABLE_WEAPONS};
+use crate::weapon::{ShotType, SELECTABLE_WEAPONS};
 use crate::worm::*;
 
 impl World<'_> {
@@ -537,7 +537,7 @@ impl Worm<'_, '_> {
         self.set_steerable_sum_x(0);
         self.set_steerable_sum_y(0);
 
-        if self.weapon().shot_type != LIERO_SHOT_STEERABLE {
+        if self.weapon().shot_type != Some(ShotType::Steerable) {
             return;
         }
 
@@ -896,7 +896,7 @@ impl Worm<'_, '_> {
         self.set_fire_cone(0);
         self.rope_mut().out = false;
 
-        if env.game_mode == LIERO_GAME_SCALES_OF_JUSTICE {
+        if env.game_mode == Some(GameMode::ScalesOfJustice) {
             while self.health() <= 0 {
                 self.set_health(self.health() + self.max_health);
                 self.set_lives(self.lives() - 1);
@@ -910,7 +910,7 @@ impl Worm<'_, '_> {
         let old_last_killed = data.last_killed_idx;
         // In Game of Tag, 'it' doesn't change if the killer was not 'it',
         // the worm itself, unknown, or there was no 'it'.
-        if env.game_mode != LIERO_GAME_GAME_OF_TAG
+        if env.game_mode != Some(GameMode::GameOfTag)
             || old_last_killed < 0
             || by < 0
             || by == index
@@ -1105,7 +1105,7 @@ impl Worm<'_, '_> {
         self.set_visible(true);
         self.set_fire_cone(0);
         self.set_vel(IVec2::default());
-        if self.env.game_mode != LIERO_GAME_SCALES_OF_JUSTICE {
+        if self.env.game_mode != Some(GameMode::ScalesOfJustice) {
             self.set_health(self.max_health);
         }
 
@@ -1150,7 +1150,7 @@ impl Worm<'_, '_> {
         }
 
         let mode = self.env.game_mode;
-        if (mode != LIERO_GAME_KILL_EM_ALL && mode != LIERO_GAME_SCALES_OF_JUSTICE) || self.lives() > 0 {
+        if (mode != Some(GameMode::KillEmAll) && mode != Some(GameMode::ScalesOfJustice)) || self.lives() > 0 {
             if self.visible() {
                 self.process_alive();
             } else {

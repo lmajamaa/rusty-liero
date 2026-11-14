@@ -18,10 +18,7 @@ use crate::tc::TcData;
 use crate::text::Str;
 use crate::viewport::Viewport;
 use crate::world::World;
-use crate::worm::{
-    WormData, WormId, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL,
-    LIERO_GAME_SCALES_OF_JUSTICE,
-};
+use crate::worm::{GameMode, WormData, WormId};
 
 /// Rectangle from (x1, y1) to (x2, y2), x2 and y2 excluded, laid out like
 /// `gvl::rect`.
@@ -182,8 +179,7 @@ pub struct GameFields {
 /// Game settings, and TC constants and hacks, for the rules.
 #[derive(Clone, Copy, Debug)]
 pub struct RuleSettings {
-    /// `LIERO_GAME_*`.
-    pub game_mode: i32,
+    pub game_mode: Option<GameMode>,
     pub max_bonuses: i32,
     pub time_to_lose: i32,
     /// Seconds.
@@ -354,7 +350,7 @@ impl Rules<'_> {
     /// `Game::doHealingDirect`.
     fn heal_direct(&mut self, i: i32, amount: i32) {
         let max_health = self.max_health(i);
-        let scales = self.s.game_mode == LIERO_GAME_SCALES_OF_JUSTICE;
+        let scales = self.s.game_mode == Some(GameMode::ScalesOfJustice);
         let w = self.worm_mut(i);
         w.health += amount;
         if scales {
@@ -388,7 +384,7 @@ impl Rules<'_> {
     pub(crate) fn damage(&mut self, target: i32, amount: i32, by_idx: i32) {
         self.damage_direct(target, amount, by_idx);
 
-        if amount > 0 && self.s.game_mode == LIERO_GAME_SCALES_OF_JUSTICE {
+        if amount > 0 && self.s.game_mode == Some(GameMode::ScalesOfJustice) {
             if by_idx < 0 || by_idx == self.worm(target).index {
                 self.share(target, amount, |g, other, k| g.heal_direct(other, k));
             } else {
@@ -402,7 +398,7 @@ impl Rules<'_> {
     pub(crate) fn heal(&mut self, target: i32, amount: i32) {
         self.heal_direct(target, amount);
 
-        if self.s.game_mode == LIERO_GAME_SCALES_OF_JUSTICE {
+        if self.s.game_mode == Some(GameMode::ScalesOfJustice) {
             let index = self.worm(target).index;
             self.share(target, amount, |g, other, k| g.damage_direct(other, k, index));
         } else {
@@ -546,8 +542,8 @@ impl Rules<'_> {
     /// The game mode's part of the tick.
     pub(crate) fn game_mode_tick(&mut self) {
         match self.s.game_mode {
-            LIERO_GAME_GAME_OF_TAG => self.game_of_tag(),
-            LIERO_GAME_HOLDAZONE => self.holdazone(),
+            Some(GameMode::GameOfTag) => self.game_of_tag(),
+            Some(GameMode::Holdazone) => self.holdazone(),
             _ => {}
         }
     }
@@ -555,8 +551,8 @@ impl Rules<'_> {
     fn is_over(&self) -> bool {
         let mut worms = (0..self.worm_count()).map(|i| self.worm(i));
         match self.s.game_mode {
-            LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => worms.any(|w| w.lives <= 0),
-            LIERO_GAME_GAME_OF_TAG | LIERO_GAME_HOLDAZONE => worms.any(|w| w.timer >= self.s.time_to_lose),
+            Some(GameMode::KillEmAll) | Some(GameMode::ScalesOfJustice) => worms.any(|w| w.lives <= 0),
+            Some(GameMode::GameOfTag) | Some(GameMode::Holdazone) => worms.any(|w| w.timer >= self.s.time_to_lose),
             _ => false,
         }
     }
@@ -603,7 +599,7 @@ pub unsafe fn start_game(game: &GameFields, settings: &RuleSettings, blood_parti
         game.sound.play(&*game.tc, 22, std::ptr::null_mut(), 0);
         let mut g = Rules::new(game, settings);
         g.data.bobjects.resize(blood_particle_max.max(0) as usize);
-        if settings.game_mode == LIERO_GAME_HOLDAZONE {
+        if settings.game_mode == Some(GameMode::Holdazone) {
             g.spawn_zone();
         }
     }
@@ -630,7 +626,7 @@ mod tests {
         }
     }
 
-    fn settings(game_mode: i32) -> RuleSettings {
+    fn settings(game_mode: Option<GameMode>) -> RuleSettings {
         RuleSettings {
             game_mode,
             max_bonuses: 0,
@@ -717,7 +713,7 @@ mod tests {
                 report: Some(report),
             };
             unsafe {
-                start_game(&f, &settings(LIERO_GAME_KILL_EM_ALL), 300);
+                start_game(&f, &settings(Some(GameMode::KillEmAll)), 300);
                 assert_eq!(((*f.game).bobjects.limit(), (*f.game).bobjects.count), (300, 0));
                 // No zone outside Holdazone.
                 assert_eq!((*f.game).holdazone.rect.x2, 0);
@@ -766,7 +762,7 @@ mod tests {
     #[test]
     fn damage_records_the_killer() {
         let mut worms = [worm(10), worm(100)];
-        let s = settings(LIERO_GAME_KILL_EM_ALL);
+        let s = settings(Some(GameMode::KillEmAll));
         with_game(&mut worms, |g| unsafe {
             damage(g, &s, 0, 5, 1);
             damage(g, &s, 0, 0, 1);
@@ -779,7 +775,7 @@ mod tests {
     #[test]
     fn scales_of_justice_moves_health() {
         let mut worms = [worm(50), worm(90), worm(90)];
-        let s = settings(LIERO_GAME_SCALES_OF_JUSTICE);
+        let s = settings(Some(GameMode::ScalesOfJustice));
         with_game(&mut worms, |g| unsafe {
             // Hurt by worm 1: it gets all of it, and an extra life from the
             // overflow.
@@ -803,7 +799,7 @@ mod tests {
     #[test]
     fn healing_is_capped_outside_scales_of_justice() {
         let mut worms = [worm(95), worm(100)];
-        let s = settings(LIERO_GAME_KILL_EM_ALL);
+        let s = settings(Some(GameMode::KillEmAll));
         with_game(&mut worms, |g| unsafe { heal(g, &s, 0, 20) });
         assert_eq!((worms[0].health, worms[0].lives), (100, 5));
     }
@@ -814,10 +810,10 @@ mod tests {
         worms[1].lives = 0;
         worms[0].timer = 600;
         for (mode, over) in [
-            (LIERO_GAME_KILL_EM_ALL, true),
-            (LIERO_GAME_SCALES_OF_JUSTICE, true),
-            (LIERO_GAME_GAME_OF_TAG, true),
-            (LIERO_GAME_HOLDAZONE, true),
+            (Some(GameMode::KillEmAll), true),
+            (Some(GameMode::ScalesOfJustice), true),
+            (Some(GameMode::GameOfTag), true),
+            (Some(GameMode::Holdazone), true),
         ] {
             let s = settings(mode);
             with_game(&mut worms, |g| assert_eq!(unsafe { is_over(g, &s) }, over));
@@ -825,7 +821,7 @@ mod tests {
         worms[1].lives = 1;
         worms[0].timer = 599;
         for mode in 0..4 {
-            let s = settings(mode);
+            let s = settings(GameMode::of(mode));
             with_game(&mut worms, |g| assert!(!unsafe { is_over(g, &s) }));
         }
     }

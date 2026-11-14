@@ -11,6 +11,7 @@ use crate::viewport::{
     draw_viewport, process_viewport, Scene, Sprites, ViewBObject, ViewBonus, ViewNObject, ViewSObject, ViewWObject,
     ViewWeapon, ViewWorm, ViewWormWeapon, Viewport, ViewportBanner,
 };
+use crate::weapon::ShotType;
 use crate::worm::{Control, WormData};
 use liero_data::model::SpriteSet;
 
@@ -227,7 +228,7 @@ fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
                 color_bullets: w.color_bullets,
                 fire_cone: w.fire_cone,
                 start_frame: w.start_frame,
-                shot_type: w.shot_type,
+                shot_type: ShotType::of(w.shot_type),
                 shadow: w.shadow,
             }
         })

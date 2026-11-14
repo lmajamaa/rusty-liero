@@ -176,7 +176,7 @@ impl Games for Sims {
             let d = &*g.fields.game;
             let z = &d.holdazone;
             AiGame {
-                game_mode: g.settings.game_mode as u32,
+                game_mode: g.settings.game_mode,
                 holder_idx: z.holder_idx,
                 contender_idx: z.contender_idx,
                 contender_frames: z.contender_frames,

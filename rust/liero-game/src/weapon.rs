@@ -19,12 +19,25 @@ fn mul_div(v: IVec2, m: i32, d: i32) -> IVec2 {
     }
 }
 
-/// `Weapon::shotType`.
-pub const LIERO_SHOT_NORMAL: i32 = 0;
-pub const LIERO_SHOT_DTYPE1: i32 = 1;
-pub const LIERO_SHOT_STEERABLE: i32 = 2;
-pub const LIERO_SHOT_DTYPE2: i32 = 3;
-pub const LIERO_SHOT_LASER: i32 = 4;
+/// `Weapon::shotType`, numbered as the TC stores it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShotType {
+    Normal = 0,
+    DType1 = 1,
+    Steerable = 2,
+    DType2 = 3,
+    Laser = 4,
+}
+
+impl ShotType {
+    /// The type numbered `n`, or none for a number C++ had no type for.
+    pub fn of(n: i32) -> Option<ShotType> {
+        use ShotType::*;
+        usize::try_from(n)
+            .ok()
+            .and_then(|i| [Normal, DType1, Steerable, DType2, Laser].get(i).copied())
+    }
+}
 
 /// The weapon with this id keeps a laser going until it hits something. The
 /// other lasers move 8 steps per tick.
@@ -62,7 +75,7 @@ pub struct WeaponView {
     pub start_frame: i32,
     pub num_frames: i32,
     pub loop_anim: bool,
-    pub shot_type: i32,
+    pub shot_type: Option<ShotType>,
     pub color_bullets: i32,
     pub splinter_amount: i32,
     pub splinter_colour: i32,
@@ -124,18 +137,18 @@ impl WeaponView {
 
         let cur_frame = if self.start_frame >= 0 {
             match self.shot_type {
-                LIERO_SHOT_NORMAL if self.loop_anim => {
+                Some(ShotType::Normal) if self.loop_anim => {
                     if self.num_frames != 0 {
                         rand.below((self.num_frames + 1) as u32) as i32
                     } else {
                         rand.below(2) as i32
                     }
                 }
-                LIERO_SHOT_DTYPE1 => {
+                Some(ShotType::DType1) => {
                     let a = if angle > 64 { angle - 1 } else { angle };
                     ((a - 12) >> 3).clamp(0, 12)
                 }
-                LIERO_SHOT_DTYPE2 | LIERO_SHOT_STEERABLE => angle,
+                Some(ShotType::DType2) | Some(ShotType::Steerable) => angle,
                 _ => 0,
             }
         } else {
@@ -194,7 +207,7 @@ mod tests {
     fn dtype1_frame_follows_the_angle() {
         let w = WeaponView {
             start_frame: 0,
-            shot_type: LIERO_SHOT_DTYPE1,
+            shot_type: Some(ShotType::DType1),
             ..weapon()
         };
         let mut rand = Rand::new(1);

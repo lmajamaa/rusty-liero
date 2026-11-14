@@ -24,6 +24,7 @@ use crate::tc::{tc_data, SharedTc, TcData};
 use crate::text::Str;
 use crate::viewport::Viewport;
 use crate::viewport::ViewportKind;
+use crate::worm::GameMode;
 use crate::worm::{WormData, WormId};
 use std::cell::{Ref, RefMut};
 
@@ -628,7 +629,7 @@ pub(crate) fn game_settings(s: &crate::settings::GameSettings, tc: Option<&TcDat
     let constant = |name| tc.map_or(0, |tc| tc.constant(c(name)));
     let hack = |name| tc.is_some_and(|tc| tc.hack(h(name)));
     RuleSettings {
-        game_mode: s.game_mode as i32,
+        game_mode: GameMode::of(s.game_mode),
         max_bonuses: s.max_bonuses,
         time_to_lose: s.time_to_lose,
         zone_timeout: s.ext.zone_timeout,
@@ -656,7 +657,7 @@ pub(crate) fn game_settings(s: &crate::settings::GameSettings, tc: Option<&TcDat
 mod tests {
     use super::*;
     use crate::settings::new_worm_settings;
-    use crate::worm::LIERO_GAME_HOLDAZONE;
+    use crate::worm::GameMode;
     use std::rc::Rc;
 
     fn rect(x1: i32, y1: i32, x2: i32, y2: i32) -> Rect {
@@ -900,7 +901,7 @@ mod tests {
         // The view takes no empty places.
         g.list.remove(1);
         let set = crate::settings::new_settings();
-        set.borrow_mut().data.game_mode = LIERO_GAME_HOLDAZONE as u32;
+        set.borrow_mut().data.game_mode = GameMode::Holdazone as u32;
         set.borrow_mut().data.blood = 37;
         g.set_context(Some(set.clone()), None, SoundOut::NONE);
         g.level_box_mut().resize(5, 4);
@@ -911,7 +912,7 @@ mod tests {
         let gs = &v.settings;
         assert_eq!(
             (gs.game_mode, gs.blood, gs.zone_capture_time),
-            (LIERO_GAME_HOLDAZONE, 37, 70)
+            (Some(GameMode::Holdazone), 37, 70)
         );
         assert_eq!(gs.weap_table, set.borrow().data.weap_table.as_ptr());
         // No TC, no TC constants.

@@ -35,11 +35,29 @@ impl Control {
     }
 }
 
-/// `Settings::gameMode`.
-pub const LIERO_GAME_KILL_EM_ALL: i32 = 0;
-pub const LIERO_GAME_GAME_OF_TAG: i32 = 1;
-pub const LIERO_GAME_HOLDAZONE: i32 = 2;
-pub const LIERO_GAME_SCALES_OF_JUSTICE: i32 = 3;
+/// `Settings::gameMode`, numbered as the settings store it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameMode {
+    KillEmAll = 0,
+    GameOfTag = 1,
+    Holdazone = 2,
+    ScalesOfJustice = 3,
+}
+
+impl GameMode {
+    /// The mode numbered `n`, or none: C++ played a game with no mode's
+    /// rules for other numbers.
+    pub fn of(n: u32) -> Option<GameMode> {
+        [
+            GameMode::KillEmAll,
+            GameMode::GameOfTag,
+            GameMode::Holdazone,
+            GameMode::ScalesOfJustice,
+        ]
+        .get(n as usize)
+        .copied()
+    }
+}
 
 /// A worm of a game: its place among every worm the game has made
 /// (`Game`'s pool), listed or not. Copies of the game keep the places.
@@ -240,8 +258,7 @@ pub struct WormConstants {
 /// Everything else `Worm::process` reads from the game.
 pub struct WormEnv {
     pub cycles: i32,
-    /// `LIERO_GAME_*`.
-    pub game_mode: i32,
+    pub game_mode: Option<GameMode>,
     /// Blood amount, in percent.
     pub blood: i32,
     /// Weapon loading time, in percent.

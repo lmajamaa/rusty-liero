@@ -8,20 +8,17 @@ use crate::app::App;
 use crate::controllers::Controller;
 use crate::level::LevelBox;
 use crate::menu_screen::menu_screen;
+use crate::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
 use crate::renderer::Renderer;
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 
 /// What `after_menu` says to do.
-pub const LIERO_AFTER_MENU_QUIT: i32 = 0;
-pub const LIERO_AFTER_MENU_RESTART: i32 = 1;
-pub const LIERO_AFTER_MENU_PLAY: i32 = 2;
-
-/// The main menu's items that start something (`MainMenu`).
-const MAIN_RESUME_GAME: i32 = 0;
-const MAIN_NEW_GAME: i32 = 1;
-const MAIN_QUIT: i32 = 6;
-const MAIN_REPLAY: i32 = 8;
-const MAIN_TC: i32 = 9;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AfterMenu {
+    Quit,
+    Restart,
+    Play,
+}
 
 fn controller(a: &mut App) -> &mut crate::controllers::Controller {
     a.controller.as_deref_mut().expect("no controller")
@@ -72,7 +69,7 @@ fn restart(a: &mut App, host: &Host) {
 
 /// Does what the menu chose (`afterMenu`): quits, starts over with a new
 /// TC, or plays.
-fn after_menu(a: &mut App, host: &Host, selection: i32) -> i32 {
+fn after_menu(a: &mut App, host: &Host, selection: i32) -> AfterMenu {
     match selection {
         MAIN_NEW_GAME => {
             let mut new = new_local(a, host);
@@ -100,7 +97,7 @@ fn after_menu(a: &mut App, host: &Host, selection: i32) -> i32 {
                 a.primary_single = true;
             }
         }
-        MAIN_QUIT => return LIERO_AFTER_MENU_QUIT,
+        MAIN_QUIT => return AfterMenu::Quit,
         MAIN_REPLAY => {
             if a.settings_mut().data.ext.single_screen_replay {
                 a.primary_single = true;
@@ -108,11 +105,11 @@ fn after_menu(a: &mut App, host: &Host, selection: i32) -> i32 {
         }
         MAIN_TC => {
             restart(a, host);
-            return LIERO_AFTER_MENU_RESTART;
+            return AfterMenu::Restart;
         }
         _ => {}
     }
-    LIERO_AFTER_MENU_PLAY
+    AfterMenu::Play
 }
 
 /// Draws the controller on both screens, counting a menu frame when
@@ -227,11 +224,11 @@ impl Screen for MainScreen {
             restart(app, host);
         } else if self.open == Open::InMenu {
             match after_menu(app, host, self.selection) {
-                LIERO_AFTER_MENU_QUIT => {
+                AfterMenu::Quit => {
                     app.controller = None;
                     return Tick::close(0);
                 }
-                LIERO_AFTER_MENU_PLAY => {
+                AfterMenu::Play => {
                     self.open = Open::InGame;
                     return Tick::push(Box::new(GameScreen {
                         next: Next::Focus,
@@ -239,7 +236,7 @@ impl Screen for MainScreen {
                         resumed: false,
                     }));
                 }
-                _ => {}
+                AfterMenu::Restart => {}
             }
         }
 

@@ -790,7 +790,7 @@ const SCANCODE_DOWN: u32 = 81;
 const SCANCODE_UP: u32 = 82;
 
 /// What the stats screen shows of a game besides its stats: the first two
-/// worms' names and the game mode (`LIERO_GAME_*`).
+/// worms' names and the game mode (numbered as `GameMode`).
 #[derive(Clone, Debug)]
 pub(crate) struct StatsGame {
     pub names: [Vec<u8>; 2],
@@ -798,7 +798,7 @@ pub(crate) struct StatsGame {
 }
 
 /// The game modes' names on the stats screen (`Texts::gameModes`), by
-/// `LIERO_GAME_*`.
+/// Numbered as `GameMode`.
 const GAME_MODE_NAMES: [&str; 4] = ["Kill'em All", "Game of Tag", "Holdazone", "Scales of Justice"];
 
 /// What the stats screen draws `g` with, from `tc`, on a screen of

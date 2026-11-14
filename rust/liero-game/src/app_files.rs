@@ -9,9 +9,7 @@
 use crate::app::App;
 use crate::fs::{join_path, Node};
 use crate::level::LevelBox;
-use crate::menus::{
-    LIERO_MAIN_REPLAY, LIERO_SELECTOR_LEVEL, LIERO_SELECTOR_OPTIONS, LIERO_SELECTOR_PROFILE, LIERO_SELECTOR_REPLAY,
-};
+use crate::menus::{Selector, MAIN_REPLAY};
 use crate::screen::BoxedScreen;
 use crate::selector::{selector_screen, FileSource, Spec};
 use crate::settings::{SettingsBox, SettingsStatus, SharedWormSettings};
@@ -173,7 +171,7 @@ impl FileSource for AppFiles {
                 a.controller = None;
                 let c = crate::controllers::Controller::replay(&node.clone(), a.menu_tc());
                 a.controller = Some(c.unwrap_or_else(|| panic!("Could not read {}", path(&node))));
-                return LIERO_MAIN_REPLAY;
+                return MAIN_REPLAY;
             }
             Choice::Options => {
                 a.load_settings(Some(&node), false);
@@ -190,14 +188,14 @@ impl FileSource for AppFiles {
     }
 }
 
-/// A file selector (`LIERO_SELECTOR_*`), for `player`'s profile.
-pub(crate) fn open_selector(a: &App, kind: i32, player: i32) -> BoxedScreen {
+/// A file selector, for `player`'s profile.
+pub(crate) fn open_selector(a: &App, kind: Selector, player: i32) -> BoxedScreen {
     let (spec, root, choice) = selector_spec(a, kind, player);
     selector_screen(&spec, Box::new(AppFiles { root, choice }))
 }
 
 /// What selector `kind` lists and where it starts, its root and its choice.
-fn selector_spec(a: &App, kind: i32, player: i32) -> (Spec, Node, Choice) {
+fn selector_spec(a: &App, kind: Selector, player: i32) -> (Spec, Node, Choice) {
     let config = a.files.config.clone();
     let config_path = config.full_path().to_vec();
     let spec = |filter: &[u8], title: &[u8]| Spec {
@@ -207,7 +205,7 @@ fn selector_spec(a: &App, kind: i32, player: i32) -> (Spec, Node, Choice) {
         ..Default::default()
     };
     match kind {
-        LIERO_SELECTOR_LEVEL => {
+        Selector::Level => {
             let tc = a.tc_data();
             let spec = Spec {
                 random_name: tc.text(text("Random")).to_vec(),
@@ -218,7 +216,7 @@ fn selector_spec(a: &App, kind: i32, player: i32) -> (Spec, Node, Choice) {
             };
             (spec, config, Choice::Level)
         }
-        LIERO_SELECTOR_PROFILE => {
+        Selector::Profile => {
             let spec = Spec {
                 select: join_path(&config_path, b"Profiles"),
                 has_select: true,
@@ -227,7 +225,7 @@ fn selector_spec(a: &App, kind: i32, player: i32) -> (Spec, Node, Choice) {
             let ws = a.settings_mut().data.worms[player as usize].clone();
             (spec, config, Choice::Profile(ws))
         }
-        LIERO_SELECTOR_REPLAY => {
+        Selector::Replay => {
             let prev = a.files.prev_replay.clone();
             let spec = Spec {
                 has_select: !prev.is_empty(),
@@ -237,8 +235,8 @@ fn selector_spec(a: &App, kind: i32, player: i32) -> (Spec, Node, Choice) {
             };
             (spec, config, Choice::Replay)
         }
-        LIERO_SELECTOR_OPTIONS => (spec(b"CFG", b"Select options:"), config, Choice::Options),
-        _ => {
+        Selector::Options => (spec(b"CFG", b"Select options:"), config, Choice::Options),
+        Selector::Tc => {
             let root = a.files.tc_root.clone();
             let spec = Spec {
                 root: root.full_path().to_vec(),

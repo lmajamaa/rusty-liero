@@ -20,9 +20,8 @@ use crate::material::Material;
 use crate::math::{cos_sin, ftoi, IVec2};
 use crate::rand::Rand;
 use crate::text::{time_to_string, time_to_string_ex};
-use crate::worm::{
-    angle_frame, LIERO_GAME_GAME_OF_TAG, LIERO_GAME_HOLDAZONE, LIERO_GAME_KILL_EM_ALL, LIERO_GAME_SCALES_OF_JUSTICE,
-};
+use crate::weapon::ShotType;
+use crate::worm::{angle_frame, GameMode};
 use liero_data::model::FontChar;
 
 /// What a viewport shows.
@@ -91,7 +90,7 @@ pub struct ViewWeapon<'a> {
     pub color_bullets: i32,
     pub fire_cone: i32,
     pub start_frame: i32,
-    pub shot_type: i32,
+    pub shot_type: Option<ShotType>,
     pub shadow: bool,
 }
 
@@ -227,8 +226,7 @@ pub struct Scene<'a> {
     pub committed_suicide_msg: &'a [u8],
 
     pub cycles: i32,
-    /// `LIERO_GAME_*`.
-    pub game_mode: i32,
+    pub game_mode: Option<GameMode>,
     pub holdazone: Holdazone,
     pub zone_capture_time: i32,
     pub last_killed_idx: i32,
@@ -431,14 +429,14 @@ impl<'a> Painter<'a> {
         let s = self.s;
         let Some(worm) = self.worm(pos) else { return };
         let (holder, ahead): (i32, fn(i32, i32) -> bool) = match s.game_mode {
-            LIERO_GAME_KILL_EM_ALL | LIERO_GAME_SCALES_OF_JUSTICE => {
+            Some(GameMode::KillEmAll) | Some(GameMode::ScalesOfJustice) => {
                 let mut lives = s.lives.to_vec();
                 lives.extend_from_slice(worm.lives.to_string().as_bytes());
                 self.text(scr, &lives, x, s.render_res_y - 22, 6);
                 return;
             }
-            LIERO_GAME_HOLDAZONE => (s.holdazone.holder_idx, |other, mine| other <= mine),
-            LIERO_GAME_GAME_OF_TAG => (s.last_killed_idx, |other, mine| other >= mine),
+            Some(GameMode::Holdazone) => (s.holdazone.holder_idx, |other, mine| other <= mine),
+            Some(GameMode::GameOfTag) => (s.last_killed_idx, |other, mine| other >= mine),
             _ => return,
         };
 
@@ -536,14 +534,14 @@ impl<'a> Painter<'a> {
             let Some(w) = self.weapon(o.weapon) else { continue };
             if w.start_frame > -1 {
                 let mut cur_frame = o.cur_frame;
-                if w.shot_type == 2 {
+                if w.shot_type == Some(ShotType::Steerable) {
                     cur_frame = (cur_frame + 4) >> 3;
                     if cur_frame < 0 {
                         cur_frame = 16;
                     } else if cur_frame > 15 {
                         cur_frame -= 16;
                     }
-                } else if w.shot_type == 3 {
+                } else if w.shot_type == Some(ShotType::DType2) {
                     if cur_frame > 64 {
                         cur_frame -= 1;
                     }
@@ -724,7 +722,7 @@ impl<'a> Painter<'a> {
         };
 
         self.draw_level(scr, offs);
-        if s.game_mode == LIERO_GAME_HOLDAZONE {
+        if s.game_mode == Some(GameMode::Holdazone) {
             self.draw_zone(scr, offs);
         }
 
@@ -735,7 +733,7 @@ impl<'a> Painter<'a> {
             self.draw_spawn_point(scr, worm, offs);
         }
 
-        if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == LIERO_GAME_GAME_OF_TAG && s.got_changed {
+        if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == Some(GameMode::GameOfTag) && s.got_changed {
             self.banner(scr, s.youre_it, r.x1 + 2, vp.banner_y);
         }
 
@@ -783,7 +781,7 @@ impl<'a> Painter<'a> {
         }
 
         let z = &s.holdazone;
-        if s.game_mode == LIERO_GAME_HOLDAZONE && z.timeout_left > 0 {
+        if s.game_mode == Some(GameMode::Holdazone) && z.timeout_left > 0 {
             let x = (z.rect.x1 + z.rect.x2) / 2 / 10 + map_x;
             let y = (z.rect.y1 + z.rect.y2) / 2 / 10 + map_y;
             let color = self.worm(z.holder_idx).map_or(168, |h| minimap_color(h.index));
@@ -835,7 +833,7 @@ impl<'a> Painter<'a> {
         }
 
         self.draw_level(scr, offs);
-        if s.game_mode == LIERO_GAME_HOLDAZONE {
+        if s.game_mode == Some(GameMode::Holdazone) {
             self.draw_zone(scr, offs);
         }
 
@@ -843,7 +841,7 @@ impl<'a> Painter<'a> {
             if !worm.visible && worm.killed_timer <= 0 && !worm.ready {
                 self.draw_spawn_point(scr, worm, offs);
             }
-            if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == LIERO_GAME_GAME_OF_TAG && s.got_changed {
+            if vp.banner_y > -8 && worm.health <= 0 && s.game_mode == Some(GameMode::GameOfTag) && s.got_changed {
                 self.banner(scr, s.youre_it, r.x1 + 2, vp.banner_y);
             }
         }
@@ -1197,7 +1195,7 @@ mod tests {
                 color_bullets: 0,
                 fire_cone: 0,
                 start_frame: -1,
-                shot_type: 0,
+                shot_type: Some(ShotType::Normal),
                 shadow: false,
             };
             TestScene {
@@ -1260,7 +1258,7 @@ mod tests {
                 killed_msg: b"",
                 committed_suicide_msg: b"",
                 cycles: 1,
-                game_mode: LIERO_GAME_KILL_EM_ALL,
+                game_mode: Some(GameMode::KillEmAll),
                 holdazone: Holdazone::default(),
                 zone_capture_time: 1,
                 last_killed_idx: -1,
@@ -1388,7 +1386,7 @@ mod tests {
         ];
         t.worms[0].index = 0;
         t.worms[0].timer = 61;
-        t.draw(ViewportKind::Worm, |s| s.game_mode = LIERO_GAME_GAME_OF_TAG);
+        t.draw(ViewportKind::Worm, |s| s.game_mode = Some(GameMode::GameOfTag));
         // Five 8-pixel characters from x = 106 at y = 200 - 39.
         assert_ne!(t.px(106 + 4 * 8 + 3, 161 + 3), 0);
         assert_eq!(t.px(106 + 5 * 8 + 3, 161 + 3), 0);

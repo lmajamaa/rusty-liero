@@ -7,7 +7,7 @@
 //! calls.
 
 use super::*;
-use crate::weapon::{ENDLESS_LASER_ID, LIERO_SHOT_DTYPE2, LIERO_SHOT_LASER, LIERO_SHOT_STEERABLE};
+use crate::weapon::{ShotType, ENDLESS_LASER_ID};
 
 impl<'a> World<'a> {
     /// A copy of weapon object `slot`.
@@ -157,7 +157,7 @@ impl<'a> World<'a> {
 
             self.update_wobj(slot, |o| o.pos = add(o.pos, o.vel));
 
-            if w.shot_type == LIERO_SHOT_STEERABLE {
+            if w.shot_type == Some(ShotType::Steerable) {
                 let dir = cos_sin(self.wobj(slot).cur_frame);
                 let mut new_vel = mul_div(dir, w.speed, 100);
 
@@ -168,7 +168,7 @@ impl<'a> World<'a> {
                 }
 
                 self.update_wobj(slot, |o| o.vel = div(add(mul_div(o.vel, 8, 1), new_vel), 9));
-            } else if w.shot_type == LIERO_SHOT_DTYPE2 {
+            } else if w.shot_type == Some(ShotType::DType2) {
                 self.update_wobj(slot, |o| {
                     o.vel = add(o.vel, mul_div(cos_sin(o.cur_frame), w.add_speed, 100));
                 });
@@ -307,7 +307,8 @@ impl<'a> World<'a> {
                 return;
             }
 
-            if !(w.shot_type == LIERO_SHOT_LASER && self.wobj(slot).used && (iter < 8 || w.id == ENDLESS_LASER_ID)) {
+            if !(w.shot_type == Some(ShotType::Laser) && self.wobj(slot).used && (iter < 8 || w.id == ENDLESS_LASER_ID))
+            {
                 return;
             }
         }

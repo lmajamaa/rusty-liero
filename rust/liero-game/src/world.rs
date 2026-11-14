@@ -27,6 +27,7 @@ use crate::sfx::SoundOut;
 use crate::stats::Stats;
 use crate::tc::{c, h, TcData};
 use crate::viewport::Viewport;
+use crate::weapon::ShotType;
 use crate::weapon::{WeaponView, WormWeapon};
 use crate::worm::{Control, WormConstants, WormData, WormEnv, WormId};
 use liero_data::model::{NObject as NObjectType, SObject as SObjectType, Weapon};
@@ -71,7 +72,7 @@ pub(crate) fn weapon_view(id: i32, w: &Weapon) -> WeaponView {
         start_frame: w.start_frame,
         num_frames: w.num_frames,
         loop_anim: w.loop_anim,
-        shot_type: w.shot_type,
+        shot_type: ShotType::of(w.shot_type),
         color_bullets: w.color_bullets,
         splinter_amount: w.splinter_amount,
         splinter_colour: w.splinter_colour,

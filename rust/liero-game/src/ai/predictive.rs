@@ -12,10 +12,7 @@
 use super::path::{LevelView, PathLevel, NO_CELL};
 use crate::math::{ftoi, itof, vector_length};
 use crate::rand::Rand;
-
-/// Game modes, as `Settings::GameMode` numbers them.
-const GM_GAME_OF_TAG: u32 = 1;
-const GM_HOLDAZONE: u32 = 2;
+use crate::worm::GameMode;
 
 /// Control bits, as `Worm::Control` numbers them.
 pub const UP: u32 = 0;
@@ -75,7 +72,7 @@ pub struct AiWorm {
 /// What the AI reads of a game.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AiGame {
-    pub game_mode: u32,
+    pub game_mode: Option<GameMode>,
     pub holder_idx: i32,
     pub contender_idx: i32,
     pub contender_frames: i32,
@@ -756,7 +753,7 @@ impl FollowAi {
         score += me_health * weights.health * weights.defense;
         score -= target_health * weights.health;
 
-        if info.game_mode == GM_HOLDAZONE && info.holder_idx == me_w.index {
+        if info.game_mode == Some(GameMode::Holdazone) && info.holder_idx == me_w.index {
             score -= aiming_diff_worms(&me_w, &target_w) * 2.0 * weights.aim;
         } else {
             let aim_diff = self.aiming_diff_path(&games.level(g), &me_w, worm_cell);
@@ -765,10 +762,10 @@ impl FollowAi {
 
         score += total_ammo_worth(&me_w) * 2.0 * weights.ammo;
 
-        if info.game_mode == GM_HOLDAZONE {
+        if info.game_mode == Some(GameMode::Holdazone) {
             let scale = if info.holder_idx != me_w.index { 1.0 } else { 1.0 / 4.0 };
             score -= len * scale;
-        } else if info.game_mode == GM_GAME_OF_TAG {
+        } else if info.game_mode == Some(GameMode::GameOfTag) {
             if info.last_killed_idx >= 0 && info.last_killed_idx != me_w.index {
                 score += len;
             } else {
@@ -778,7 +775,7 @@ impl FollowAi {
             score -= len;
         }
 
-        if info.game_mode == GM_HOLDAZONE {
+        if info.game_mode == Some(GameMode::Holdazone) {
             if info.holder_idx == me_w.index {
                 score += 50.0;
             }
@@ -958,7 +955,7 @@ impl FollowAi {
         let info = games.game(org);
 
         let (mut tx, mut ty) = (ftoi(target_w.pos[0]), ftoi(target_w.pos[1]));
-        if info.game_mode == GM_HOLDAZONE {
+        if info.game_mode == Some(GameMode::Holdazone) {
             (tx, ty) = (info.zone_center[0], info.zone_center[1]);
         }
         self.dlevel.build(&games.level(org));
