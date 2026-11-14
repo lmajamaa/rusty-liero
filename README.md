@@ -122,9 +122,10 @@ CI also runs clippy on every crate and fails on any warning:
 ```bash
 docker compose run --rm web sh -c "cd rust/liero-game && cargo clippy --all-targets -- -D warnings"
 ```
-Ported code is tested against the original C++: `rust/liero-game/reference/reference_values.cpp`
-prints the values the tests expect, by running the same loops through the C++
-code (see the comment at its top for how to run it).
+Ported code is tested against the original C++: the values the tests expect
+were printed by running the same loops through the C++ code
+(`rust/liero-game/reference/reference_values.cpp`, removed in phase 4 once
+nothing could build it; it is in git history).
 
 Whole games are checked too: the hash run (`rust/liero-game/src/bin/liero-hashrun.rs`)
 plays fixed-seed bot games, replays, the menus and a scripted run of the whole

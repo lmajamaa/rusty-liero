@@ -63,8 +63,9 @@ mod tests {
     use super::*;
     use crate::test_util::Fnv;
 
-    // The expected hashes are printed by reference/reference_values.cpp,
-    // which runs the same loops through the original C++ code.
+    // The expected hashes were printed by running the same loops through
+    // the original C++ code, run by reference_values.cpp (in git history
+    // up to phase 4, step 12, when nothing could build it any more).
 
     fn stream_hash(seed: u32, f: impl Fn(&mut Rand, u32) -> u32) -> u64 {
         let mut r = Rand::new(seed);

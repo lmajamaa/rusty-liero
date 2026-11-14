@@ -841,8 +841,9 @@ mod tests {
     use crate::material::MATERIAL_ROCK;
     use crate::test_util::Fnv;
 
-    // The expected hashes are printed by reference/reference_values.cpp,
-    // which runs the same steps through the original C++ code.
+    // The expected hashes were printed by running the same steps through
+    // the original C++ code, run by reference_values.cpp (in git history
+    // up to phase 4, step 12, when nothing could build it any more).
 
     /// Made-up TC tables, generated as in the reference: random materials with
     /// few rocks (none in the dirt colours 12 to 19, so random levels always

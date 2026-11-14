@@ -946,7 +946,8 @@ mod tests {
     use super::*;
     use crate::test_util::Fnv;
 
-    // From rust/liero-game/reference/reference_values.cpp.
+    // Printed by the original C++ code, run by reference_values.cpp (in git
+    // history up to phase 4, step 12).
     const EXPECTED_PERCENT: u64 = 0x1eebfb0ae2b13539;
 
     #[test]

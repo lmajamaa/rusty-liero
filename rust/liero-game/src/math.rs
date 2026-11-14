@@ -288,8 +288,9 @@ mod tests {
     use super::*;
     use crate::test_util::Fnv;
 
-    // The expected values are printed by reference/reference_values.cpp,
-    // which runs the same loops through the original C++ code.
+    // The expected values were printed by running the same loops through
+    // the original C++ code, run by reference_values.cpp (in git history
+    // up to phase 4, step 12, when nothing could build it any more).
 
     #[test]
     fn fixed_point() {
