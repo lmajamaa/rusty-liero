@@ -11,10 +11,10 @@
 use crate::app::App;
 use crate::boxes::{input_box_screen, key_choice_screen};
 use crate::gfx::Bitmap;
-use crate::item::{ItemAction, ItemBehavior};
 use crate::keys::{is_extended, key_name, DK_ESCAPE};
+use crate::menu::item::{ItemAction, ItemBehavior};
+use crate::menu::screen::MenuKind;
 use crate::menu::{closest_name, draw_palette_overlay, draw_rgb_overlay, Menu, MenuHooks, MenuItem, ValueKind};
-use crate::menu_screen::MenuKind;
 use crate::screen::{BoxedScreen, Host};
 use crate::settings::{GameSettings, WormSettingsBox};
 use crate::tc::{c, s};
@@ -742,7 +742,7 @@ impl Menus {
         let opened = match b {
             Behavior::None | Behavior::ProfileLoaded => None,
             Behavior::Item(it, setting) => {
-                host.play_sound(crate::item::SOUND_ENTER);
+                host.play_sound(crate::menu::item::SOUND_ENTER);
                 let a = self.change(app, host, &it, setting, |it, v| it.enter(v));
                 self.apply(app, kind, i, &b, a)
             }

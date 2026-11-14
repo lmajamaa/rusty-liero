@@ -1,7 +1,7 @@
 use super::*;
 use crate::controller::State;
 use crate::fs::Node;
-use crate::menus::Menus;
+use crate::menu::menus::Menus;
 use crate::settings::new_settings;
 
 /// An app with menus, the bundled TC, its screens sized, and a match that

@@ -4,7 +4,7 @@
 //! the original C++. `src/bin/liero-hashrun.rs` prints them natively.
 
 use crate::app::App;
-use crate::menus::Menus;
+use crate::menu::menus::Menus;
 
 mod ai;
 mod app;

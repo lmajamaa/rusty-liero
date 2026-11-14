@@ -5,9 +5,9 @@
 
 use crate::app::App;
 use crate::gfx::{fill_rect, palette_fade, palette_rotate_from, palette_set_worm_colour};
+use crate::menu::menus::{MAIN_NEW_GAME, MAIN_RESUME_GAME};
+use crate::menu::screen::MenuKind;
 use crate::menu::{draw_versus, Menu};
-use crate::menu_screen::MenuKind;
-use crate::menus::{MAIN_NEW_GAME, MAIN_RESUME_GAME};
 use crate::renderer::Renderer;
 use crate::tc::s as text;
 use crate::weapsel::level_line;
@@ -163,5 +163,5 @@ pub(crate) fn clear_palettes(a: &mut App) {
 }
 
 #[cfg(test)]
-#[path = "app_menus_tests.rs"]
+#[path = "draw_tests.rs"]
 mod tests;

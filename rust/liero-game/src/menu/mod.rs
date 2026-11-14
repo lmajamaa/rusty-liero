@@ -5,6 +5,16 @@
 //! bit-identical to the C++ versions, which `tools/hashrun` checks.
 //!
 //! A `Menu` owns its items; what each item edits is up to the menu's owner.
+//!
+//! The rest of the menus live beside it: what the common items do
+//! (`item`), the main menu and the menus beside it (`menus`), the screen
+//! that runs them (`screen`) and how the app sets them up and draws them
+//! (`draw`).
+
+pub mod draw;
+pub mod item;
+pub mod menus;
+pub mod screen;
 
 use std::ffi::c_void;
 

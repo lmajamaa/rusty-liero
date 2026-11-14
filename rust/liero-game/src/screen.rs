@@ -197,7 +197,7 @@ impl Host {
     /// another menu is up (`Gfx::drawBasicMenu`).
     pub fn draw_basic_menu(&self, app: &mut App) {
         if self.0.app_drawing() {
-            crate::app_menus::draw_basic_menu(app);
+            crate::menu::draw::draw_basic_menu(app);
         }
     }
     pub fn typed_keys(&self) -> Vec<TypedKey> {
@@ -210,7 +210,7 @@ impl Host {
     /// (`Gfx::menuFade`).
     pub fn menu_fade(&self, app: &mut App) {
         if self.0.app_drawing() {
-            crate::app_menus::menu_fade(app, false);
+            crate::menu::draw::menu_fade(app, false);
         }
     }
     pub fn time(&self) -> i64 {

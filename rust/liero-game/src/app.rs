@@ -43,7 +43,7 @@ pub struct App {
     /// The folders, the settings file and the TC chosen (`app_files.rs`).
     pub files: crate::app_files::Files,
     /// The menus, which the menu screen shares.
-    pub menus: Option<crate::menus::SharedMenus>,
+    pub menus: Option<crate::menu::menus::SharedMenus>,
     /// The match or replay being played, or behind the menu.
     pub controller: Option<Box<Controller>>,
     /// Whether the screen shows the single screen renderer, for a replay on
@@ -88,7 +88,7 @@ impl App {
     }
 
     /// The menus. Panics if there are none yet.
-    pub(crate) fn shared_menus(&self) -> crate::menus::SharedMenus {
+    pub(crate) fn shared_menus(&self) -> crate::menu::menus::SharedMenus {
         self.menus.clone().expect("no menus")
     }
 

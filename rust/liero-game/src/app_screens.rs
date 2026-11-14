@@ -2,13 +2,13 @@
 //! behind the main menu, then whatever the menu chose, and a game run by the
 //! controller until it stops. What the menu's choices do is here too
 //! (`restartApp` and `afterMenu`).
-//! The menus themselves are `menu_screen.rs`.
+//! The menus themselves are `menu::screen`.
 
 use crate::app::App;
 use crate::controllers::Controller;
 use crate::level::LevelBox;
-use crate::menu_screen::menu_screen;
-use crate::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
+use crate::menu::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
+use crate::menu::screen::menu_screen;
 use crate::renderer::Renderer;
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 

@@ -3,15 +3,15 @@
 //! chosen (`MenuScreen` and `Gfx::menuStep` in C++). It closes with the item
 //! chosen.
 //!
-//! The menus and their items are `Menus` (`menus.rs`): an item may
+//! The menus and their items are `Menus` (`menu::menus`): an item may
 //! open a screen, and the screen goes on where it stopped when that one
-//! closes. The app sets the menus up and draws them (`app_menus.rs`);
+//! closes. The app sets the menus up and draws them (`menu::draw`);
 //! saving the settings is the app's (`app_files.rs`), and F8's random TC
 //! is seeded by the platform.
 
 use crate::app::App;
-use crate::menus::{Menus, SharedMenus};
-use crate::menus::{
+use crate::menu::menus::{Menus, SharedMenus};
+use crate::menu::menus::{
     MAIN_ADVANCED, MAIN_PLAYER1_SETTINGS, MAIN_PLAYER2_SETTINGS, MAIN_QUIT, MAIN_REPLAYS, MAIN_SETTINGS, MAIN_TC,
 };
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
@@ -174,7 +174,7 @@ impl MenuScreen {
             if app.save_settings_on_change {
                 app.save_settings_if_changed();
             }
-            crate::app_menus::draw_menus(app);
+            crate::menu::draw::draw_menus(app);
 
             if app.test_key_once(SCANCODE_ESCAPE) {
                 if self.cur() == MenuKind::Main {
@@ -311,12 +311,12 @@ impl Screen for MenuScreen {
 
         match self.phase {
             Phase::Start => {
-                crate::app_menus::clear_palettes(app);
+                crate::menu::draw::clear_palettes(app);
                 self.phase = Phase::Setup;
                 Tick::stay(true)
             }
             Phase::Setup => {
-                self.start_item = crate::app_menus::menu_start(app);
+                self.start_item = crate::menu::draw::menu_start(app);
                 self.selected = None;
                 self.phase = Phase::Menu;
                 self.run_step(app, host)
@@ -327,14 +327,14 @@ impl Screen for MenuScreen {
                 }
                 self.phase = Phase::FadeOut;
                 app.play.data.fade_value = 32;
-                crate::app_menus::menu_fade(app, true);
+                crate::menu::draw::menu_fade(app, true);
                 Tick::stay(true)
             }
             Phase::FadeOut => {
                 let v = &mut app.play.data.fade_value;
                 *v -= 1;
                 if *v > 0 {
-                    crate::app_menus::menu_fade(app, true);
+                    crate::menu::draw::menu_fade(app, true);
                     return Tick::stay(true);
                 }
                 Tick::close(self.selected.unwrap_or(-1))

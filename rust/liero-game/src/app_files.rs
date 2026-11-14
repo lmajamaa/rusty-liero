@@ -9,7 +9,7 @@
 use crate::app::App;
 use crate::fs::{join_path, Node};
 use crate::level::LevelBox;
-use crate::menus::{Selector, MAIN_REPLAY};
+use crate::menu::menus::{Selector, MAIN_REPLAY};
 use crate::screen::BoxedScreen;
 use crate::selector::{selector_screen, FileSource, Spec};
 use crate::settings::{SettingsBox, SettingsStatus, SharedWormSettings};

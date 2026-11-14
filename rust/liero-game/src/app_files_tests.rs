@@ -1,5 +1,5 @@
 use super::*;
-use crate::menus::Selector;
+use crate::menu::menus::Selector;
 
 /// An empty folder for one test, and an app with default settings and its
 /// config folder there.

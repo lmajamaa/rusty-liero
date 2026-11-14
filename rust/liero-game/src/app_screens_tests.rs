@@ -1,7 +1,7 @@
 use super::*;
 use crate::controllers::Controller;
 use crate::fs::Node;
-use crate::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
+use crate::menu::menus::{MAIN_NEW_GAME, MAIN_QUIT, MAIN_REPLAY, MAIN_RESUME_GAME, MAIN_TC};
 use crate::settings::new_settings;
 use crate::tc::SharedTc;
 

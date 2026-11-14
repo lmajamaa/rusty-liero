@@ -4,7 +4,7 @@
 
 use crate::boxes::info_box_screen;
 use crate::gfx::draw_rounded_box;
-use crate::item::ItemBehavior;
+use crate::menu::item::ItemBehavior;
 use crate::menu::{Menu, MenuState};
 use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::text::Str;

@@ -14,11 +14,11 @@ use crate::controller::State;
 use crate::fs::Node;
 use crate::game::Rect;
 use crate::game_box::Game;
-use crate::item::{ItemAction, ItemBehavior};
 use crate::level::LevelBox;
+use crate::menu::item::{ItemAction, ItemBehavior};
+use crate::menu::menus::Menus;
+use crate::menu::screen::MenuKind;
 use crate::menu::{draw_info_box, draw_input_box, draw_versus, Menu, MenuHooks, MenuItem};
-use crate::menu_screen::MenuKind;
-use crate::menus::Menus;
 use crate::rand::Rand;
 use crate::renderer::BitmapBox;
 use crate::screen::Host;
@@ -150,7 +150,7 @@ impl Availability {
 /// What `runMenu` does to a menu: left or right, Enter, showing every
 /// item's value, and drawing.
 enum Ops {
-    /// One of the menus in `menus.rs`.
+    /// One of the menus in `menu::menus`.
     Menus(MenuKind),
     Availability(Availability),
 }
