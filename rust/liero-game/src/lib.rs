@@ -4,7 +4,7 @@
 //! The modules call each other as Rust; only the wasm exports keep the
 //! `liero_` names, as the web shell's API.
 
-// The game is safe Rust (PLAN.md, phase 4, step 12).
+// The game is safe Rust (docs/001-rust-port.md, phase 4, step 12).
 #![forbid(unsafe_code)]
 // The pedantic lints that earn their keep: lossless casts are `From`, and
 // pointer casts keep their pointee type in view. The rest of

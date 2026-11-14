@@ -272,7 +272,7 @@ impl Menu {
     }
 
     /// One item: `MenuItem::draw`.
-    // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
+    // The arguments of the C++ it was ported from; phase 4 of docs/001-rust-port.md groups them.
     #[allow(clippy::too_many_arguments)]
     fn draw_item(
         &self,

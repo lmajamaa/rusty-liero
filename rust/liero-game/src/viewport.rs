@@ -339,7 +339,7 @@ impl<'a> Painter<'a> {
         }
     }
 
-    // The arguments of the C++ it was ported from; phase 4 of PLAN.md groups them.
+    // The arguments of the C++ it was ported from; phase 4 of docs/001-rust-port.md groups them.
     #[allow(clippy::too_many_arguments)]
     fn shadow(&self, scr: &Bitmap, set: &Sprites, frame: i32, x: i32, y: i32, w: i32, h: i32) {
         if let Some(mem) = set.sprite(frame) {

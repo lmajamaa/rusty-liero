@@ -4,7 +4,7 @@ This repository took OpenLiero, a C++ game built on SDL, and turned it into a Ru
 
 This is how it was done, for anyone porting another C++ codebase to Rust. It's built from the merged pull requests (their descriptions and commits), read in order, and each point names the PRs it comes from by number. Nothing here is new. Apart from the pattern report a workflow posts, the PRs have no comments, so their descriptions and commit messages are the record.
 
-[PLAN.md](PLAN.md) has the step-by-step detail, including every planted bug that got through and why.
+[The port plan](001-rust-port.md) has the step-by-step detail, including every planted bug that got through and why.
 
 ## The shape of it
 
@@ -108,7 +108,7 @@ Unit tests against reference values cover small functions. For everything else, 
 **Plant bugs.** From #10 on, almost every port PR planted deliberate bugs at its risky spots, usually 5 to 10, and reported how many the hashes caught. The misses were as useful as the catches:
 
 - **A miss can show a gap in the run's inputs.** In #16, shortening a 1.5 s search timeout went uncaught, because the scripted typing never left a gap of that length; a unit test covers it. In #36, four of eight plants were missed because the hash runs never used profiles, copied settings or edited names. #38 then added inputs that catch one of them (and a miss from #37), and replaced the code behind two others with an explicit `clone()`. #39 extended the app script wherever plants got through.
-- **A miss can be unobservable.** In #25, `>> 1` instead of `/ 2` couldn't change anything, because the value was always even. #26 found the game loop's `++menuCycles` was dead code. PLAN.md lists each unobservable plant with its reason.
+- **A miss can be unobservable.** In #25, `>> 1` instead of `/ 2` couldn't change anything, because the value was always even. #26 found the game loop's `++menuCycles` was dead code. The port plan lists each unobservable plant with its reason.
 - **Some code is outside the hash run's reach, so it needs unit tests.** The browser's frame callback isn't run by the hash run, so #33 says it had no planted-bug check. Plants in the C++ host of #34 weren't caught by anything. The shell got 7 unit tests because the hash run doesn't reach it (#46).
 - **Check that the plant was actually built.** #35 found that earlier plant runs could build stale code when a plant and its revert landed in the same second. Re-run with fresh timestamps, #34's hashes caught 3 of its 9 plants, not 2.
 

@@ -1,4 +1,4 @@
-//! The hash run (step 6 in PLAN.md): fixed-seed bot games, replays, menus,
+//! The hash run (step 6 in docs/001-rust-port.md): fixed-seed bot games, replays, menus,
 //! settings, sound, keys and a scripted run of the whole app, each hashed
 //! into the lines `tools/hashrun/expected.txt` holds, which were made from
 //! the original C++. `src/bin/liero-hashrun.rs` prints them natively.
