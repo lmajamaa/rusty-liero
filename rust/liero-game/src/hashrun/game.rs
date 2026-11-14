@@ -108,7 +108,7 @@ pub fn hash_game(game: &mut Game) -> u64 {
         f.i32(v);
     }
 
-    for i in 0..crate::game_box::liero_game_worm_count(game) {
+    for i in 0..game.worm_count() {
         let w = game.worm_at(i).expect("an empty place among the game's worms");
         let anchor = w.data.ninjarope.anchor;
         let anchor_index = anchor.map_or(-1, |a| game.worm_mut(a).data.index);

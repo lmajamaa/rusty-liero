@@ -12,10 +12,7 @@ use crate::controller::{
 };
 use crate::fs::Node;
 use crate::game::{GameHooks, Rect};
-use crate::game_box::{
-    liero_game_add_viewport, liero_game_clone, liero_game_list_worm, liero_game_new, liero_game_new_worm,
-    liero_game_set_context, liero_worm_set_ai, Game,
-};
+use crate::game_box::Game;
 use crate::keys::{local_controller_key, WormKeys, LIERO_DK_ESCAPE};
 use crate::level::LevelBox;
 use crate::renderer::Renderer;
@@ -69,27 +66,17 @@ pub struct Controller {
 
 /// A new game with the settings, the TC and the app's sound, its clock
 /// seeded from the time, as C++'s `Game` constructor did.
-unsafe fn new_game(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<Game> {
-    unsafe {
-        let mut game = Box::from_raw(liero_game_new());
-        liero_game_set_context(&mut game, Some(settings), Some(tc), host.sound());
-        game.data_mut().rand.seed(host.time() as u32);
-        game
-    }
+fn new_game(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<Game> {
+    let mut game = Game::new();
+    game.set_context(Some(settings), Some(tc), host.sound());
+    game.data_mut().rand.seed(host.time() as u32);
+    game
 }
 
 unsafe fn split_viewports(game: &mut Game, worm0: i32, worm1: i32) {
     let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
-    liero_game_add_viewport(game, r(0, 0, 158, 158), worm0, 504, 350, LIERO_VIEWPORT_WORM, false);
-    liero_game_add_viewport(
-        game,
-        r(160, 0, 158 + 160, 158),
-        worm1,
-        504,
-        350,
-        LIERO_VIEWPORT_WORM,
-        false,
-    );
+    game.add_viewport(r(0, 0, 158, 158), worm0, 504, 350, LIERO_VIEWPORT_WORM, false);
+    game.add_viewport(r(160, 0, 158 + 160, 158), worm1, 504, 350, LIERO_VIEWPORT_WORM, false);
 }
 
 /// The spectator viewport is always full size, +68 on x to align it in the
@@ -101,7 +88,7 @@ unsafe fn spectator_viewport(game: &mut Game, spectator_list: bool) {
         x2: 504 + 68,
         y2: 350,
     };
-    liero_game_add_viewport(game, r, 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, spectator_list);
+    game.add_viewport(r, 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, spectator_list);
 }
 
 /// The renderer `game` shows its new settings on: the play screen, or the
@@ -319,7 +306,7 @@ impl Controller {
                 };
                 let game = r.game.as_mut().expect("no game");
                 if app.keys.test_sdl_once(SCANCODE_R) {
-                    crate::game_box::liero_game_assign(game, r.initial.as_ref().expect("no start to rewind to"));
+                    game.assign(r.initial.as_ref().expect("no start to rewind to"));
                     r.reader.as_mut().expect("no replay").set_pos(r.initial_pos);
                 }
 
@@ -488,7 +475,7 @@ impl Controller {
                 let game = r.game.as_mut().expect("no game");
                 // The replay's viewports are replaced: they aren't what this
                 // screen shows.
-                crate::game_box::liero_game_clear_viewports(game);
+                game.clear_viewports();
                 // Not stored in replays.
                 for (i, x) in [(0, 0), (1, 218)] {
                     game.worm_at(i)
@@ -507,7 +494,7 @@ impl Controller {
                 }
                 let blood = game.settings_box().data.ext.blood_particle_max;
                 game.start(blood);
-                r.initial = Some(Box::from_raw(liero_game_clone(game)));
+                r.initial = Some(game.copy());
                 r.initial_pos = r.reader.as_ref().expect("no replay").pos();
             } else if new_state == LIERO_STATE_GAME_ENDED && !self.data.going_to_menu {
                 self.data.fade_value = 180;
@@ -587,14 +574,14 @@ pub fn liero_local_controller_new(host: &Host, settings: SharedSettings, tc: Sha
         let s = settings.borrow();
         let mut indexes = [0; 2];
         for (i, ws) in s.data.worms.iter().enumerate() {
-            let id = liero_game_new_worm(&mut game, Some(ws.clone()));
+            let id = game.new_worm(Some(ws.clone()));
             let ws = ws.borrow();
-            liero_game_list_worm(&mut game, Some(id));
+            game.list_worm(Some(id));
             let w = game.worm_mut(id);
             w.data.health = ws.data.health;
             w.data.index = i as i32;
             w.data.stats_x = if i == 0 { 0 } else { 218 };
-            liero_worm_set_ai(w, ws.data.controller, s.data.ext.ai_parallels.max(0) as usize, i == 0);
+            w.set_ai(ws.data.controller, s.data.ext.ai_parallels.max(0) as usize, i == 0);
             indexes[i] = w.data.index;
         }
         split_viewports(&mut game, indexes[0], indexes[1]);

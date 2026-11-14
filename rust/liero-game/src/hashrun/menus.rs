@@ -14,9 +14,7 @@ use crate::controller::LIERO_STATE_WEAPON_SELECTION;
 use crate::controllers::liero_game_focus;
 use crate::fs::Node;
 use crate::game::Rect;
-use crate::game_box::{
-    liero_game_add_viewport, liero_game_list_worm, liero_game_new, liero_game_new_worm, liero_game_set_context,
-};
+use crate::game_box::Game;
 use crate::item::{ItemAction, ItemBehavior};
 use crate::level::LevelBox;
 use crate::menu::{
@@ -604,38 +602,22 @@ fn run_weapon_selection(
     let d = tc_data(&tc);
     // SAFETY: the game keeps references to the settings and the TC; its
     // worms and viewports are made as the C++ `Game` view made them.
-    let mut game = unsafe { Box::from_raw(liero_game_new()) };
+    let mut game = Game::new();
     unsafe {
-        liero_game_set_context(&mut game, Some(settings.clone()), Some(tc.clone()), SoundOut::NONE);
+        game.set_context(Some(settings.clone()), Some(tc.clone()), SoundOut::NONE);
         for (i, ws) in worms.iter().enumerate() {
-            let id = liero_game_new_worm(&mut game, Some(ws.clone()));
+            let id = game.new_worm(Some(ws.clone()));
             let ws = ws.borrow();
-            liero_game_list_worm(&mut game, Some(id));
+            game.list_worm(Some(id));
             let w = game.worm_mut(id);
             w.data.health = ws.data.health;
             w.data.index = i as i32;
             w.data.stats_x = if i == 0 { 0 } else { 218 };
         }
         let rect = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
-        liero_game_add_viewport(&mut game, rect(0, 0, 158, 158), 0, 504, 350, LIERO_VIEWPORT_WORM, false);
-        liero_game_add_viewport(
-            &mut game,
-            rect(160, 0, 158 + 160, 158),
-            1,
-            504,
-            350,
-            LIERO_VIEWPORT_WORM,
-            false,
-        );
-        liero_game_add_viewport(
-            &mut game,
-            rect(0, 0, 504 + 68, 350),
-            0,
-            504,
-            350,
-            LIERO_VIEWPORT_SPECTATOR,
-            true,
-        );
+        game.add_viewport(rect(0, 0, 158, 158), 0, 504, 350, LIERO_VIEWPORT_WORM, false);
+        game.add_viewport(rect(160, 0, 158 + 160, 158), 1, 504, 350, LIERO_VIEWPORT_WORM, false);
+        game.add_viewport(rect(0, 0, 504 + 68, 350), 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, true);
         let mut level = LevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);

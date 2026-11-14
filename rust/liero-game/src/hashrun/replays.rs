@@ -11,10 +11,7 @@ use crate::controllers::liero_game_focus;
 use crate::deflate::{inflate, Deflater, Inflated};
 use crate::fs::Node;
 use crate::game::Rect;
-use crate::game_box::{
-    liero_game_add_viewport, liero_game_assign, liero_game_clear_viewports, liero_game_clone, liero_game_new,
-    liero_game_set_context, Game,
-};
+use crate::game_box::Game;
 use crate::renderer::Renderer;
 use crate::replay::{ReplayStatus, LIERO_REPLAY_VERSION};
 use crate::replay_file::{ReplayOutcome, ReplayReader, ReplayWriter};
@@ -183,7 +180,7 @@ fn play_back(
 ) -> Result<(), String> {
     // As the replay controller's game state, without the single screen
     // option.
-    liero_game_clear_viewports(game);
+    game.clear_viewports();
     for (i, x) in [(0, 0), (1, 218)] {
         game.worm_at(i)
             .expect("an empty place among the replay's worms")
@@ -193,25 +190,9 @@ fn play_back(
     let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
     let w0 = game.worm_at(0).expect("no first worm").data.index;
     let w1 = game.worm_at(1).expect("no second worm").data.index;
-    liero_game_add_viewport(
-        game,
-        r(0, 0, 504 + 68, 350),
-        0,
-        504,
-        350,
-        LIERO_VIEWPORT_SPECTATOR,
-        true,
-    );
-    liero_game_add_viewport(game, r(0, 0, 158, 158), w0, 504, 350, LIERO_VIEWPORT_WORM, false);
-    liero_game_add_viewport(
-        game,
-        r(160, 0, 158 + 160, 158),
-        w1,
-        504,
-        350,
-        LIERO_VIEWPORT_WORM,
-        false,
-    );
+    game.add_viewport(r(0, 0, 504 + 68, 350), 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, true);
+    game.add_viewport(r(0, 0, 158, 158), w0, 504, 350, LIERO_VIEWPORT_WORM, false);
+    game.add_viewport(r(160, 0, 158 + 160, 158), w1, 504, 350, LIERO_VIEWPORT_WORM, false);
     let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
     // SAFETY: the renderer is a live one.
@@ -220,7 +201,7 @@ fn play_back(
     // What R rewinds to in the replay controller.
     let mut initial = (rewind_at > 0).then(|| {
         // SAFETY: the clone is the caller's.
-        unsafe { Box::from_raw(liero_game_clone(game)) }
+        game.copy()
     });
     let initial_pos = reader.pos();
 
@@ -238,7 +219,7 @@ fn play_back(
             if let Some(start) = initial.take() {
                 // As R in the replay controller: back to the start, then
                 // play to here again, which has to give the same game.
-                liero_game_assign(game, &start);
+                game.assign(&start);
                 reader.set_pos(initial_pos);
                 let mut t = 0;
                 while t < rewind_at && playback_frame(reader, game, renderer)? {
@@ -292,8 +273,8 @@ pub(super) fn hash_replay(
         // fills in.
         let settings = SettingsBox::defaults();
         // SAFETY: a new game.
-        let mut g = unsafe { Box::from_raw(liero_game_new()) };
-        liero_game_set_context(&mut g, Some(settings), Some(tc.clone()), SoundOut::NONE);
+        let mut g = Game::new();
+        g.set_context(Some(settings), Some(tc.clone()), SoundOut::NONE);
         let o = r.begin(&mut g);
         if let Some(e) = thrown(&o) {
             return Err(e);

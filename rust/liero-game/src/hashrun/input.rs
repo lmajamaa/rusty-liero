@@ -22,7 +22,6 @@ use crate::controllers::{
     liero_controller_data, liero_controller_free, liero_controller_game, liero_controller_on_key,
     liero_local_controller_new,
 };
-use crate::game_box::liero_game_set_context;
 use crate::keys::{
     is_extended, joy_axis, joy_button, joy_hat, joy_key, key_name, sdl_to_dos, sdl_to_dos_keysym, KeyChanges, Keys,
     LIERO_DK_ESCAPE, LIERO_MAX_JOY_BUTTONS,
@@ -130,8 +129,7 @@ fn sound_game(
     let m: *mut Mixer = &mut *mixer;
     let settings = game.settings();
     // The mixer lives until the game's sound goes back to none.
-    liero_game_set_context(
-        &mut game,
+    game.set_context(
         Some(settings.clone()),
         Some(tc.clone()),
         SoundOut { mixer: m, report: None },
@@ -162,7 +160,7 @@ fn sound_game(
     }
 
     // The mixer is dropped once the game has no sound.
-    liero_game_set_context(&mut game, Some(settings), Some(tc.clone()), SoundOut::NONE);
+    game.set_context(Some(settings), Some(tc.clone()), SoundOut::NONE);
     drop(mixer);
 }
 

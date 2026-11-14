@@ -13,7 +13,6 @@ use super::{Fnv, Out};
 use crate::ai::{liero_worm_ai_hash, liero_worm_ai_rand};
 use crate::app::App;
 use crate::controllers::liero_game_focus;
-use crate::game_box::liero_worm_set_ai;
 use crate::renderer::Renderer;
 use crate::tc::SharedTc;
 
@@ -92,7 +91,7 @@ fn run_ai_game(a: &mut App, out: &mut Out, tc: &SharedTc, c: &AiConfig, interval
         let w = game.worm_at(i).expect("no worm");
         w.settings_mut().data.controller = 2;
         let testing = w.data.index == 0;
-        liero_worm_set_ai(w, 2, c.ai_parallels as usize, testing);
+        w.set_ai(2, c.ai_parallels as usize, testing);
         liero_worm_ai_rand(w.ai_mut().expect("a bot")).seed(c.seed.wrapping_mul(31).wrapping_add(i as u32));
     }
 

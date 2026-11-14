@@ -1,6 +1,6 @@
 use super::*;
 use crate::fs::Node;
-use crate::game_box::{liero_game_new, liero_game_viewport_count};
+
 use crate::level::LevelBox;
 use crate::settings::{liero_settings_box_new, SharedSettings};
 use crate::tc::{SharedTc, Tc, TcData};
@@ -21,11 +21,11 @@ impl Setup {
         tc.materials[5].flags = 7;
         // SAFETY: a new game, which the setup owns.
         let mut s = Setup {
-            game: unsafe { Box::from_raw(liero_game_new()) },
+            game: Game::new(),
             settings: liero_settings_box_new(),
             _tc: Tc::of(tc),
         };
-        s.game.set_context_data(
+        s.game.set_context(
             Some(s.settings.clone()),
             Some(s._tc.clone()),
             crate::sfx::SoundOut::NONE,
@@ -43,12 +43,12 @@ impl Setup {
             let ws = crate::settings::new_worm_settings();
             ws.borrow_mut().data.name = format!("worm {i}").into_bytes();
             ws.borrow_mut().data.health = 100 + i;
-            let w = liero_game_new_worm(g, Some(ws));
+            let w = g.new_worm(Some(ws));
             let d = &mut g.worm_mut(w).data;
             d.index = i;
             d.pos.x = 10 * (i + 1);
             d.vel.y = -3;
-            liero_game_list_worm(g, Some(w));
+            g.list_worm(Some(w));
             worms.push(w);
         }
         g.worm_mut(worms[0]).data.ninjarope.anchor = Some(worms[1]);
@@ -59,10 +59,9 @@ impl Setup {
                 x2: 160 * i + 158,
                 y2: 158,
             };
-            liero_game_add_viewport(g, r, i, 504, 350, LIERO_VIEWPORT_WORM, false).shake = 4 + i;
+            g.add_viewport(r, i, 504, 350, LIERO_VIEWPORT_WORM, false).shake = 4 + i;
         }
-        liero_game_add_viewport(
-            g,
+        g.add_viewport(
             Rect {
                 x1: 0,
                 y1: 0,
@@ -171,10 +170,7 @@ fn plays_back_the_game_it_recorded() {
     let second = g.listed_ids()[1];
     assert_eq!(g.worm_at(0).unwrap().data.ninjarope.anchor, second);
     // The split-screen viewports, not the spectator one.
-    assert_eq!(
-        (liero_game_viewport_count(g, false), liero_game_viewport_count(g, true)),
-        (2, 0)
-    );
+    assert_eq!((g.viewport_count(false), g.viewport_count(true)), (2, 0));
     let vp = &g.split_viewports()[1];
     assert_eq!((vp.shake, vp.worm_idx, vp.rect.x1), (5, 1, 160));
     assert_eq!(g.data().rand.x, 1234);
@@ -284,9 +280,9 @@ fn writes_a_worms_changed_settings_with_more_than_three_worms() {
         for i in 2..4 {
             let ws = crate::settings::new_worm_settings();
             ws.borrow_mut().data.name = format!("worm {i}").into_bytes();
-            let w = liero_game_new_worm(g, Some(ws));
+            let w = g.new_worm(Some(ws));
             g.worm_mut(w).data.index = i;
-            liero_game_list_worm(g, Some(w));
+            g.list_worm(Some(w));
         }
         let mut w = ReplayWriter::new(&node(&p)).unwrap();
         ok(w.begin(g));

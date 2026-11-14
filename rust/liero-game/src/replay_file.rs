@@ -18,9 +18,7 @@ use liero_data::settings::{self as data, ReadError, Settings, Source, WormSettin
 use crate::deflate::{inflate, Deflater};
 use crate::fs::Node;
 use crate::game::Rect;
-use crate::game_box::{
-    liero_game_add_viewport, liero_game_list_worm, liero_game_new_worm, liero_worm_set_settings, Game, Worm,
-};
+use crate::game_box::{Game, Worm};
 use crate::replay::{
     self, checksum, liero_replay_viewport_of, liero_replay_viewport_set, liero_replay_worm_of, liero_replay_worm_set,
     read_checksum, read_frame, read_start, write_end, write_frame, write_start, ReplayError, ReplayFrameWorm,
@@ -398,16 +396,16 @@ impl ReplayReader {
 
         // Every worm read, including any only referred to, which the game
         // keeps without listing.
-        let all: Vec<_> = g.worms.iter().map(|_| liero_game_new_worm(game, None)).collect();
+        let all: Vec<_> = g.worms.iter().map(|_| game.new_worm(None)).collect();
         for (&id, rw) in all.iter().zip(&g.worms) {
             let w = game.worm_mut(id);
             liero_replay_worm_set(&mut w.data, &rw.fields, &all);
             let ws = new_worm_settings();
             ws.borrow_mut().set_worm(&rw.settings);
-            liero_worm_set_settings(w, Some(ws));
+            w.set_settings(Some(ws));
         }
         for &i in &g.list {
-            liero_game_list_worm(game, usize::try_from(i).ok().map(|i| all[i]));
+            game.list_worm(usize::try_from(i).ok().map(|i| all[i]));
         }
 
         for vp in &g.viewports {
@@ -417,7 +415,7 @@ impl ReplayReader {
                 x2: 0,
                 y2: 0,
             };
-            let p = liero_game_add_viewport(game, rect, 0, 0, 0, LIERO_VIEWPORT_WORM, false);
+            let p = game.add_viewport(rect, 0, 0, 0, LIERO_VIEWPORT_WORM, false);
             liero_replay_viewport_set(p, vp);
         }
 
