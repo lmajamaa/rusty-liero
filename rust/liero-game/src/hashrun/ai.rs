@@ -11,6 +11,7 @@ use super::game::{hash_frame, hash_game};
 use super::games::{bot_tick, set_up_game, tc_data, GAME_OF_TAG, HOLDAZONE, HOOKS, KILL_EM_ALL};
 use super::{Fnv, Out};
 use crate::ai::{liero_worm_ai_hash, liero_worm_ai_rand};
+use crate::app::LieroApp;
 use crate::controllers::liero_game_focus;
 use crate::game_box::liero_worm_set_ai;
 use crate::renderer::LieroRenderer;
@@ -76,8 +77,8 @@ const CONFIGS: [AiConfig; 6] = [
     ),
 ];
 
-fn run_ai_game(out: &mut Out, tc: &SharedTc, c: &AiConfig, interval: i32) {
-    let mut game = set_up_game(tc, c.seed, c.game_mode, c.weapons);
+fn run_ai_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, c: &AiConfig, interval: i32) {
+    let mut game = set_up_game(a, tc, c.seed, c.game_mode, c.weapons);
     {
         let s = &mut game.settings_box().data;
         s.ai_frames = c.ai_frames;
@@ -149,9 +150,9 @@ fn run_ai_game(out: &mut Out, tc: &SharedTc, c: &AiConfig, interval: i32) {
     ));
 }
 
-pub fn hash_ai_games(out: &mut Out) {
+pub fn hash_ai_games(a: &mut LieroApp, out: &mut Out) {
     let tc = super::tc::bundled();
     for c in &CONFIGS {
-        run_ai_game(out, &tc, c, if c.ticks <= 200 { 10 } else { 50 });
+        run_ai_game(a, out, &tc, c, if c.ticks <= 200 { 10 } else { 50 });
     }
 }

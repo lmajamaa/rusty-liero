@@ -19,23 +19,18 @@
 use super::game::add_screen;
 use super::games::tc_data;
 use super::{Fnv, Out};
-use crate::app::app;
-use crate::app_screens::{liero_main_screen, LieroAppHooks};
+use crate::app::LieroApp;
+use crate::app_screens::liero_main_screen;
 use crate::controllers::liero_controller_on_key;
 use crate::fs::Node;
 use crate::keys::sdl_to_dos_keysym;
-use crate::menu_screen::{liero_menu_screen, LieroMenuScreenHooks};
 use crate::menus::{liero_menus_load, liero_menus_reset};
-use crate::screen::{
-    liero_app_free, liero_app_new, liero_app_push, liero_app_step, liero_screen_set_host, LieroAppHost, LieroEvent,
-    LieroScreen, LieroScreenHost, LieroTypedKey,
-};
+use crate::screen::{liero_app_push, liero_app_step, Host, LieroEvent, LieroTypedKey, Platform, ScreenStack};
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
-use crate::tc::liero_tc_randomize;
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::ffi::c_void;
+use std::rc::Rc;
 
 // SDL's scancodes the script presses.
 const SC_A: i32 = 4;
@@ -127,7 +122,7 @@ fn next_event() -> Option<Ev> {
 
 /// `Gfx::processEvent`, giving the keys to the controller with
 /// `to_controller`. F11, which toggles fullscreen, never comes.
-fn process_event(ev: Ev, to_controller: bool) {
+fn process_event(a: &mut LieroApp, ev: Ev, to_controller: bool) {
     let Ev::Key { down, scancode } = ev else { return };
     if down {
         driver(|d| {
@@ -139,9 +134,9 @@ fn process_event(ev: Ev, to_controller: bool) {
             }
         });
     }
-    let dos = app().keys.event(scancode, down);
+    let dos = a.keys.event(scancode, down);
     if dos != 0 && to_controller {
-        if let Some(c) = app().controller.as_deref_mut() {
+        if let Some(c) = a.controller.as_deref_mut() {
             // SAFETY: the app's controller is a live one.
             unsafe { liero_controller_on_key(c, dos as i32, down) };
         }
@@ -149,79 +144,22 @@ fn process_event(ev: Ev, to_controller: bool) {
 }
 
 /// `Gfx::process`: every event due, into the key states.
-fn process(to_controller: bool) {
+fn process(a: &mut LieroApp, to_controller: bool) {
     driver(|d| d.key_buf.clear());
     while let Some(ev) = next_event() {
-        process_event(ev, to_controller);
+        process_event(a, ev, to_controller);
     }
 }
 
-unsafe fn host_poll_event(out: *mut LieroEvent) -> bool {
-    unsafe {
-        let Some(ev) = next_event() else { return false };
-        process_event(ev, false);
-        let mut e = LieroEvent::default();
-        match ev {
-            Ev::Key { down, scancode } => {
-                e.key_down = down;
-                if down {
-                    e.scancode = scancode as u32;
-                    e.choice = true;
-                    e.key = sdl_to_dos_keysym(scancode);
-                }
-            }
-            // The script types only ASCII, which is the same in DOS.
-            Ev::Text(c) => e.text = c,
-        }
-        *out = e;
-        true
-    }
-}
-
-unsafe fn host_process() {
-    process(false);
-}
-
-unsafe fn host_clear_keys() {
-    app().keys.clear();
-}
-
-unsafe fn report_sound(id: i32) {
+fn report_sound(id: i32) {
     driver(|d| {
         let line = format!("app-sound {} {:016x}", d.shown, id as u32);
         d.lines.push(line);
     });
 }
 
-unsafe fn host_test_key_once(scancode: u32) -> bool {
-    app().keys.test_sdl_once(scancode as i32)
-}
-
-unsafe fn host_test_key(scancode: u32) -> bool {
-    app().keys.test_sdl(scancode as i32)
-}
-
-unsafe fn host_typed_keys(out: *mut LieroTypedKey, cap: usize) -> usize {
-    unsafe {
-        driver(|d| {
-            let n = d.key_buf.len().min(cap);
-            std::ptr::copy_nonoverlapping(d.key_buf.as_ptr(), out, n);
-            n
-        })
-    }
-}
-
-unsafe fn host_ticks() -> u32 {
+fn ticks() -> u32 {
     driver(|d| (d.now as u32).wrapping_mul(14))
-}
-
-unsafe fn host_hires_ticks() -> u64 {
-    unsafe { u64::from(host_ticks()) * 1_000_000 }
-}
-
-unsafe fn host_time() -> i64 {
-    // 2001-09-09, then 70 frames a second.
-    driver(|d| 1_000_000_000 + i64::from(d.now / 70))
 }
 
 /// `t` as "%Y-%m-%d %H.%M.%S" in UTC, the same in every time zone.
@@ -245,77 +183,108 @@ fn utc_text(t: i64) -> String {
     )
 }
 
-unsafe fn host_replay_time(t: i64, out: *mut u8, cap: usize) -> usize {
-    unsafe {
-        let s = utc_text(t);
-        // strftime writes nothing if the text and its 0 don't fit.
-        if s.len() >= cap {
-            return 0;
-        }
-        std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len());
-        *out.add(s.len()) = 0;
-        s.len()
-    }
-}
+/// The hash run's script, as the screens see it.
+struct HashPlatform;
 
-unsafe fn host_sound() -> LieroSoundOut {
-    // No mixer: the hash run has no sound.
-    LieroSoundOut {
-        mixer: std::ptr::null_mut(),
-        report: Some(report_sound),
-    }
-}
-
-/// A frame shown: the screen's pixels and palette.
-unsafe fn host_show(_: *mut c_void) {
-    let a = app();
-    let r = if a.primary_single { &*a.single } else { &*a.play };
-    let mut f = Fnv::default();
-    add_screen(&mut f, r);
-    driver(|d| {
-        let line = format!("app {} {:016x} frame", d.shown, f.0);
-        d.lines.push(line);
-        d.shown += 1;
-        d.now += 1;
-        d.idles = 0;
-        if d.shown > d.limit {
-            d.failed.get_or_insert("the app ran past the end of its script");
-        }
-    });
-}
-
-/// The top screen waits for an event: skip to the next one.
-unsafe fn host_idle(_: *mut c_void) {
-    driver(|d| match d.steps.front() {
-        Some(s) => {
-            d.now = d.now.max(s.at);
-            d.idles += 1;
-            if d.idles > 1000 {
-                d.failed.get_or_insert("the app kept waiting for an event that was due");
+impl Platform for HashPlatform {
+    fn poll_event(&self, app: &mut LieroApp) -> Option<LieroEvent> {
+        let ev = next_event()?;
+        process_event(app, ev, false);
+        let mut e = LieroEvent::default();
+        match ev {
+            Ev::Key { down, scancode } => {
+                e.key_down = down;
+                if down {
+                    e.scancode = scancode as u32;
+                    e.choice = true;
+                    e.key = sdl_to_dos_keysym(scancode);
+                }
             }
+            // The script types only ASCII, which is the same in DOS.
+            Ev::Text(c) => e.text = c,
         }
-        None => {
-            d.failed
-                .get_or_insert("the app waited for an event after its script ended");
+        Some(e)
+    }
+
+    fn process(&self, app: &mut LieroApp) {
+        process(app, false);
+    }
+
+    /// The frame's events, with their keys for the controller.
+    fn process_controller(&self, app: &mut LieroApp) {
+        process(app, true);
+    }
+
+    fn play_sound(&self, id: i32) {
+        report_sound(id);
+    }
+
+    fn typed_keys(&self) -> Vec<LieroTypedKey> {
+        driver(|d| d.key_buf.clone())
+    }
+
+    fn ticks(&self) -> u32 {
+        ticks()
+    }
+
+    fn app_drawing(&self) -> bool {
+        true
+    }
+
+    fn hires_ticks(&self) -> u64 {
+        u64::from(ticks()) * 1_000_000
+    }
+
+    fn time(&self) -> i64 {
+        // 2001-09-09, then 70 frames a second.
+        driver(|d| 1_000_000_000 + i64::from(d.now / 70))
+    }
+
+    fn replay_time(&self, t: i64) -> Vec<u8> {
+        utc_text(t).into_bytes()
+    }
+
+    fn sound(&self) -> LieroSoundOut {
+        // No mixer: the hash run has no sound.
+        LieroSoundOut {
+            mixer: std::ptr::null_mut(),
+            report: Some(report_sound),
         }
-    });
-}
+    }
 
-/// The frame's events, with their keys for the controller.
-unsafe fn app_process() {
-    process(true);
-}
+    /// A frame shown: the screen's pixels and palette.
+    fn show(&self, a: &LieroApp) {
+        let r = if a.primary_single { &*a.single } else { &*a.play };
+        let mut f = Fnv::default();
+        add_screen(&mut f, r);
+        driver(|d| {
+            let line = format!("app {} {:016x} frame", d.shown, f.0);
+            d.lines.push(line);
+            d.shown += 1;
+            d.now += 1;
+            d.idles = 0;
+            if d.shown > d.limit {
+                d.failed.get_or_insert("the app ran past the end of its script");
+            }
+        });
+    }
 
-unsafe fn randomize_tc() {
-    // F8 isn't in the script; the game seeds it from the system.
-    liero_tc_randomize(&app().menu_tc(), 0);
-}
-
-unsafe fn menu_screen() -> LieroScreen {
-    liero_menu_screen(LieroMenuScreenHooks {
-        menus: app().menus,
-        randomize_tc,
-    })
+    /// The top screen waits for an event: skip to the next one.
+    fn idle(&self) {
+        driver(|d| match d.steps.front() {
+            Some(s) => {
+                d.now = d.now.max(s.at);
+                d.idles += 1;
+                if d.idles > 1000 {
+                    d.failed.get_or_insert("the app kept waiting for an event that was due");
+                }
+            }
+            None => {
+                d.failed
+                    .get_or_insert("the app waited for an event after its script ended");
+            }
+        });
+    }
 }
 
 /// Builds the timeline: `t` is the frame the next event happens on.
@@ -508,7 +477,7 @@ fn build_script(s: &mut Script) {
     s.wait(60);
 }
 
-pub fn hash_app(out: &mut Out) {
+pub fn hash_app(a: &mut LieroApp, out: &mut Out) {
     // A config folder of its own, with a broken replay to fail on. The game
     // reads "/hashapp" as "./hashapp" (`super::on_disk`).
     let root = "/hashapp";
@@ -525,10 +494,7 @@ pub fn hash_app(out: &mut Out) {
 
     // Fresh menus, as the game starts with: the menu checks before this one
     // leave items hidden and selected.
-    let a = app();
-    assert!(!a.menus.is_null(), "no menus");
-    // SAFETY: the app's menus are C++'s, which live as long as it does.
-    liero_menus_reset(unsafe { &mut *a.menus });
+    liero_menus_reset(&mut a.shared_menus().borrow_mut());
     a.settings = Some(LieroSettingsBox::defaults());
     let tc = super::tc::bundled();
     a.play.set_render_resolution(320, 200);
@@ -543,10 +509,9 @@ pub fn hash_app(out: &mut Out) {
     a.primary_single = false;
     // As in the browser, where the lines were recorded.
     a.save_settings_on_change = true;
-    crate::app::menu_settings().data.spectator_window = false;
+    a.settings_mut().data.spectator_window = false;
     a.keys.clear();
-    // SAFETY: as above.
-    liero_menus_load(unsafe { &mut *a.menus });
+    liero_menus_load(&mut a.shared_menus().borrow_mut());
 
     let mut script = Script {
         steps: VecDeque::new(),
@@ -559,41 +524,13 @@ pub fn hash_app(out: &mut Out) {
         ..Default::default()
     });
 
-    liero_screen_set_host(&LieroScreenHost {
-        poll_event: Some(host_poll_event),
-        process: Some(host_process),
-        clear_keys: Some(host_clear_keys),
-        play_sound: Some(report_sound),
-        test_key_once: Some(host_test_key_once),
-        typed_keys: Some(host_typed_keys),
-        ticks: Some(host_ticks),
-        test_key: Some(host_test_key),
-        app_drawing: true,
-        time: Some(host_time),
-        hires_ticks: Some(host_hires_ticks),
-        replay_time: Some(host_replay_time),
-        sound: Some(host_sound),
-        ..Default::default()
-    });
-    let host = LieroAppHost {
-        data: std::ptr::null_mut(),
-        show: Some(host_show),
-        idle: Some(host_idle),
-    };
+    let platform: Rc<dyn Platform> = Rc::new(HashPlatform);
+    let host = Host::new(platform);
 
-    // SAFETY: the screens and the host are Rust's.
-    unsafe {
-        let stack = liero_app_new();
-        liero_app_push(
-            &mut *stack,
-            liero_main_screen(LieroAppHooks {
-                process: app_process,
-                menu_screen,
-            }),
-        );
-        while liero_app_step(&mut *stack, &host) && driver(|d| d.failed.is_none()) {}
-        liero_app_free(stack);
-    }
+    let mut stack = ScreenStack::new();
+    liero_app_push(&mut stack, liero_main_screen());
+    while liero_app_step(&mut stack, a, &host) && driver(|d| d.failed.is_none()) {}
+    drop(stack);
 
     let d = DRIVER.take();
     d.lines.iter().for_each(|l| out.line(l));

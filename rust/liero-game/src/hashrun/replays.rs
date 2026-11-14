@@ -6,6 +6,7 @@
 use super::game::hash_game;
 use super::games::{bot_tick, set_up_game, tc_data, GAME_OF_TAG, HOLDAZONE, HOOKS, KILL_EM_ALL};
 use super::{Fnv, Out};
+use crate::app::LieroApp;
 use crate::controllers::liero_game_focus;
 use crate::deflate::{inflate, Deflater, Inflated};
 use crate::fs::Node;
@@ -353,8 +354,8 @@ struct SettingsChange {
 }
 
 /// Starts a bot game as the bot games do and runs it `ticks` ticks.
-fn bot_game(tc: &SharedTc, seed: u32, game_mode: u32, ticks: i32) -> Box<LieroGame> {
-    let mut game = set_up_game(tc, seed, game_mode, None);
+fn bot_game(a: &mut LieroApp, tc: &SharedTc, seed: u32, game_mode: u32, ticks: i32) -> Box<LieroGame> {
+    let mut game = set_up_game(a, tc, seed, game_mode, None);
     let blood = game.settings_box().data.blood_particle_max;
     game.start(blood);
     for _ in 0..ticks {
@@ -369,6 +370,7 @@ fn bot_game(tc: &SharedTc, seed: u32, game_mode: u32, ticks: i32) -> Box<LieroGa
 /// starts; otherwise after that many ticks.
 #[allow(clippy::too_many_arguments)]
 fn record_game(
+    a: &mut LieroApp,
     tc: &SharedTc,
     path: &str,
     seed: u32,
@@ -381,13 +383,13 @@ fn record_game(
     let mut writer = LieroReplayWriter::new(&node(path)).unwrap_or_else(|| panic!("Could not write {path}"));
     writer.set_version(version);
     let mut game = if start_tick == 0 {
-        let mut game = set_up_game(tc, seed, game_mode, None);
+        let mut game = set_up_game(a, tc, seed, game_mode, None);
         assert!(thrown(&writer.begin(&mut game)).is_none(), "the replay didn't begin");
         let blood = game.settings_box().data.blood_particle_max;
         game.start(blood);
         game
     } else {
-        let mut game = bot_game(tc, seed, game_mode, start_tick);
+        let mut game = bot_game(a, tc, seed, game_mode, start_tick);
         assert!(thrown(&writer.begin(&mut game)).is_none(), "the replay didn't begin");
         game
     };
@@ -440,7 +442,7 @@ fn frame_offset(first_frame: usize, k: usize) -> usize {
     first_frame + 2 * k + 4 * k.div_ceil(1050)
 }
 
-pub fn hash_replays(out: &mut Out) {
+pub fn hash_replays(a: &mut LieroApp, out: &mut Out) {
     let tc = super::tc::bundled();
     let tc = &tc;
 
@@ -448,7 +450,7 @@ pub fn hash_replays(out: &mut Out) {
     for version in 0..=LIERO_REPLAY_VERSION {
         let name = format!("replay-v{version}");
         let path = format!("/tmp/{name}.lrp");
-        record_game(tc, &path, 21, KILL_EM_ALL, 0, 2200, version, &[]);
+        record_game(a, tc, &path, 21, KILL_EM_ALL, 0, 2200, version, &[]);
         hash_replay(out, tc, &name, &path, 200, 2200, 600);
     }
 
@@ -458,7 +460,7 @@ pub fn hash_replays(out: &mut Out) {
         for start in [150, 900, 2400, 5000] {
             let name = format!("replay-mode{mode}-from{start}");
             let path = format!("/tmp/{name}.lrp");
-            record_game(tc, &path, 22 + mode, mode, start, 600, LIERO_REPLAY_VERSION, &[]);
+            record_game(a, tc, &path, 22 + mode, mode, start, 600, LIERO_REPLAY_VERSION, &[]);
             hash_replay(out, tc, &name, &path, 200, 600, 0);
         }
     }
@@ -482,14 +484,14 @@ pub fn hash_replays(out: &mut Out) {
     for version in [LIERO_REPLAY_VERSION, 1] {
         let name = format!("replay-settings-v{version}");
         let path = format!("/tmp/{name}.lrp");
-        record_game(tc, &path, 24, KILL_EM_ALL, 0, 1300, version, &changes);
+        record_game(a, tc, &path, 24, KILL_EM_ALL, 0, 1300, version, &changes);
         hash_replay(out, tc, &name, &path, 100, 1300, 0);
     }
 
     // Broken replays, made from one recorded from the start of a game. Its
     // 1200 frames end with the end marker.
     let base_path = "/tmp/replay-base.lrp";
-    record_game(tc, base_path, 25, KILL_EM_ALL, 0, 1200, LIERO_REPLAY_VERSION, &[]);
+    record_game(a, tc, base_path, 25, KILL_EM_ALL, 0, 1200, LIERO_REPLAY_VERSION, &[]);
     let base = read_replay(base_path);
     crate::disk::remove_file(super::on_disk(base_path).as_bytes());
     let first_frame = base.len() - 1 - frame_offset(0, 1200);

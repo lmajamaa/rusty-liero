@@ -8,8 +8,6 @@
 //! each worm's (`LieroWormData`). The rules and the tick (in `world.rs`)
 //! borrow them, through `Game`, for the call.
 
-use std::ffi::c_void;
-
 use crate::level::{slice, Level, LieroLevel};
 use crate::math::ftoi;
 use crate::objects::{
@@ -248,12 +246,10 @@ pub struct LieroGameSettings {
     pub load_change: bool,
 }
 
-/// What the tick takes from the host: the clock. `ctx` is passed back to
-/// `hires_ticks`.
-pub struct LieroGameHooks {
-    pub ctx: *mut c_void,
+/// What the tick takes from the host: the clock.
+pub struct LieroGameHooks<'a> {
     /// The clock the stats time ticks with (`appHiresTicks`).
-    pub hires_ticks: unsafe fn(ctx: *mut c_void) -> u64,
+    pub hires_ticks: &'a dyn Fn() -> u64,
 }
 
 /// A worm as the stats read it (`statsWorm` in C++).

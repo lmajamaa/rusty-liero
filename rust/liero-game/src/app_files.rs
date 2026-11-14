@@ -6,13 +6,13 @@
 //! there: a profile, replay or TC that can't be read, liero.cfg missing a
 //! setting, and a setup or profile that can't be written.
 
-use crate::app::{app, LieroApp};
+use crate::app::LieroApp;
 use crate::fs::{join_path, Node};
 use crate::level::LieroLevelBox;
 use crate::menus::{
     LIERO_MAIN_REPLAY, LIERO_SELECTOR_LEVEL, LIERO_SELECTOR_OPTIONS, LIERO_SELECTOR_PROFILE, LIERO_SELECTOR_REPLAY,
 };
-use crate::screen::LieroScreen;
+use crate::screen::BoxedScreen;
 use crate::selector::{selector_screen, FileSource, Spec};
 use crate::settings::{
     liero_worm_settings_box_load_profile, liero_worm_settings_box_save_profile, LieroSettingsBox, LieroSettingsStatus,
@@ -66,12 +66,13 @@ impl LieroApp {
     /// (`Gfx::saveSettings`). False if it can't be written.
     pub fn save_settings(&mut self, node: &Node) -> bool {
         self.files.settings_node = node.clone();
-        node.write(&crate::app::menu_settings().text())
+        node.write(&self.settings_mut().text())
     }
 
     /// Takes the settings as liero.cfg has them.
     pub fn mark_settings_saved(&mut self) {
-        self.files.saved_text = crate::app::menu_settings().text();
+        let text = self.settings_mut().text();
+        self.files.saved_text = text;
     }
 
     /// Writes liero.cfg in the config folder if the settings changed since
@@ -79,7 +80,7 @@ impl LieroApp {
     /// browser's menu calls it, since a closed tab never reaches the save at
     /// the end.
     pub fn save_settings_if_changed(&mut self) {
-        let text = crate::app::menu_settings().text();
+        let text = self.settings_mut().text();
         if text == self.files.saved_text {
             return;
         }
@@ -117,13 +118,12 @@ impl AppFiles {
 
 /// Shows the level in `node` in miniature on the menu and the spectator
 /// screen, if it loads.
-fn preview_level(node: &Node) {
-    let a = app();
+fn preview_level(a: &LieroApp, node: &Node) {
     // A file that can't be read isn't shown.
     let Some(bytes) = node.read() else { return };
-    let tc = crate::app::menu_tc_data();
+    let tc = a.tc_data();
     let mut level = LieroLevelBox::new();
-    let powerlevel = crate::app::menu_settings().data.load_powerlevel_palette;
+    let powerlevel = a.settings_mut().data.load_powerlevel_palette;
     if !level.load(&tc.level_common(), &tc.palette_colors, powerlevel, &bytes) {
         return;
     }
@@ -142,18 +142,17 @@ impl FileSource for AppFiles {
         self.node(rel).exists()
     }
 
-    fn preview(&mut self, rel: &[u8]) {
+    fn preview(&mut self, a: &LieroApp, rel: &[u8]) {
         if matches!(self.choice, Choice::Level) {
-            preview_level(&self.node(rel));
+            preview_level(a, &self.node(rel));
         }
     }
 
-    fn choose(&mut self, rel: &[u8], full_path: &[u8], name: &[u8], random: bool) -> i32 {
-        let a = app();
+    fn choose(&mut self, a: &mut LieroApp, rel: &[u8], full_path: &[u8], name: &[u8], random: bool) -> i32 {
         let node = self.node(rel);
         match &mut self.choice {
             Choice::Level => {
-                let mut s = crate::app::menu_settings();
+                let mut s = a.settings_mut();
                 s.data.random_level = random;
                 s.level_file = if random { Vec::new() } else { full_path.to_vec() };
             }
@@ -188,7 +187,7 @@ impl FileSource for AppFiles {
             }
             Choice::Tc => match crate::tc::load_checked(&node) {
                 Ok(tc) => {
-                    crate::app::menu_settings().tc = name.to_vec();
+                    a.settings_mut().tc = name.to_vec();
                     a.files.chosen_tc = Some(tc);
                 }
                 Err(e) => panic!("{e}"),
@@ -199,14 +198,13 @@ impl FileSource for AppFiles {
 }
 
 /// A file selector (`LIERO_SELECTOR_*`), for `player`'s profile.
-pub(crate) fn open_selector(kind: i32, player: i32) -> LieroScreen {
-    let (spec, root, choice) = selector_spec(kind, player);
+pub(crate) fn open_selector(a: &LieroApp, kind: i32, player: i32) -> BoxedScreen {
+    let (spec, root, choice) = selector_spec(a, kind, player);
     selector_screen(&spec, Box::new(AppFiles { root, choice }))
 }
 
 /// What selector `kind` lists and where it starts, its root and its choice.
-fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
-    let a = app();
+fn selector_spec(a: &LieroApp, kind: i32, player: i32) -> (Spec, Node, Choice) {
     let config = a.files.config.clone();
     let config_path = config.full_path().to_vec();
     let spec = |filter: &[u8], title: &[u8]| Spec {
@@ -217,10 +215,10 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
     };
     match kind {
         LIERO_SELECTOR_LEVEL => {
-            let tc = crate::app::menu_tc_data();
+            let tc = a.tc_data();
             let spec = Spec {
                 random_name: tc.text(text("Random")).to_vec(),
-                select: crate::app::menu_settings().level_file.clone(),
+                select: a.settings_mut().level_file.clone(),
                 has_select: true,
                 enter_sound: true,
                 ..spec(b"LEV", tc.text(text("SelLevel")))
@@ -233,7 +231,7 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
                 has_select: true,
                 ..spec(b"LPF", b"Select profile:")
             };
-            let ws = crate::app::menu_settings().worms[player as usize].clone();
+            let ws = a.settings_mut().worms[player as usize].clone();
             (spec, config, Choice::Profile(ws))
         }
         LIERO_SELECTOR_REPLAY => {
@@ -261,8 +259,7 @@ fn selector_spec(kind: i32, player: i32) -> (Spec, Node, Choice) {
 }
 
 /// Switches to the TC the TC selector loaded, if it loaded one.
-pub(crate) fn take_chosen_tc() -> bool {
-    let a = app();
+pub(crate) fn take_chosen_tc(a: &mut LieroApp) -> bool {
     match a.files.chosen_tc.take() {
         Some(tc) => {
             a.set_tc(Some(tc));
@@ -273,13 +270,12 @@ pub(crate) fn take_chosen_tc() -> bool {
 }
 
 /// The setup file loaded or saved last.
-pub(crate) fn settings_path() -> Vec<u8> {
-    app().files.settings_node.full_path().to_vec()
+pub(crate) fn settings_path(a: &LieroApp) -> Vec<u8> {
+    a.files.settings_node.full_path().to_vec()
 }
 
 /// Saves the setup as `name`.cfg in the config folder.
-pub(crate) fn save_options(name: &[u8]) {
-    let a = app();
+pub(crate) fn save_options(a: &mut LieroApp, name: &[u8]) {
     let mut file = name.to_vec();
     file.extend_from_slice(b".cfg");
     let node = a.files.config.go(&file);
@@ -289,12 +285,11 @@ pub(crate) fn save_options(name: &[u8]) {
 }
 
 /// Saves `player`'s profile as Profiles/`name`.lpf in the config folder.
-pub(crate) fn save_profile_as(player: i32, name: &[u8]) {
-    let a = app();
+pub(crate) fn save_profile_as(a: &LieroApp, player: i32, name: &[u8]) {
     let mut file = name.to_vec();
     file.extend_from_slice(b".lpf");
     let node = a.files.config.go(b"Profiles").go(&file);
-    let ws = crate::app::menu_settings().worms[player as usize].clone();
+    let ws = a.settings_mut().worms[player as usize].clone();
     let mut ws = ws.borrow_mut();
     if !liero_worm_settings_box_save_profile(&mut ws, Some(&node.clone())) {
         panic!("Could not write {}", path(&node));

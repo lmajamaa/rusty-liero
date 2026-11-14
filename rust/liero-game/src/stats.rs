@@ -13,7 +13,7 @@ use crate::cpp_sort;
 use crate::gfx::{
     liero_gfx_blit_image, liero_gfx_draw_graph, liero_gfx_draw_heatmap, liero_gfx_draw_rounded_box, LieroBitmap,
 };
-use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
+use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::tc::{tc_data, LieroTcData, LieroTcWeapon, SharedTc};
 use crate::text::{time_to_string, time_to_string_ex, LieroFont};
 
@@ -913,20 +913,20 @@ fn copy_rows(scr: &LieroBitmap, buf: &mut Vec<u8>, save: bool) {
 }
 
 impl Screen for StatsPresenter {
-    fn tick(&mut self, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         if self.shown {
-            host.process();
-            if host.test_key(SCANCODE_DOWN) {
+            host.process(app);
+            if app.test_key(SCANCODE_DOWN) {
                 self.dest_offset -= 10.0;
-            } else if host.test_key(SCANCODE_UP) {
+            } else if app.test_key(SCANCODE_UP) {
                 self.dest_offset = (self.dest_offset + 10.0).min(0.0);
-            } else if host.test_key_once(SCANCODE_RIGHT) {
+            } else if app.test_key_once(SCANCODE_RIGHT) {
                 self.dest_pane = (self.dest_pane + 1.0).min(1.0);
-            } else if host.test_key_once(SCANCODE_LEFT) {
+            } else if app.test_key_once(SCANCODE_LEFT) {
                 self.dest_pane = (self.dest_pane - 1.0).max(-1.0);
-            } else if host.test_key(SCANCODE_RETURN) || host.test_key(SCANCODE_ESCAPE) {
-                host.fill_screen(0);
-                host.clear_keys();
+            } else if app.test_key(SCANCODE_RETURN) || app.test_key(SCANCODE_ESCAPE) {
+                host.fill_screen(app, 0);
+                app.clear_keys();
                 return Tick::close(0);
             }
 
@@ -937,12 +937,12 @@ impl Screen for StatsPresenter {
             }
         }
 
-        if let Some(scr) = host.screen() {
+        if let Some(scr) = host.screen(app) {
             copy_rows(&scr, &mut self.bg, false);
             self.draw(&scr);
         }
         // We don't use the level's palette, as its colours are unpredictable.
-        host.menu_palette();
+        host.menu_palette(app);
         self.shown = true;
         Tick::stay(true)
     }
@@ -951,19 +951,20 @@ impl Screen for StatsPresenter {
 /// The stats screen for a copy of `stats`, drawn with `tc` on a screen of
 /// `render_res_x` x `render_res_y`, over what the screen shows now.
 pub(crate) fn liero_stats_presenter_screen(
+    app: &mut crate::app::LieroApp,
+    host: &Host,
     stats: &LieroStats,
     tc: SharedTc,
     game: StatsGame,
     render_res_x: i32,
     render_res_y: i32,
-) -> LieroScreen {
-    let host = crate::screen::current_host();
-    host.clear_keys();
+) -> BoxedScreen {
+    app.clear_keys();
     let mut bg = Vec::new();
-    if let Some(scr) = host.screen() {
+    if let Some(scr) = host.screen(app) {
         copy_rows(&scr, &mut bg, true);
     }
-    into_ffi(Box::new(StatsPresenter {
+    Box::new(StatsPresenter {
         stats: stats.clone(),
         screen: LieroStatsScreen::new(stats, render_res_x),
         tc,
@@ -975,7 +976,7 @@ pub(crate) fn liero_stats_presenter_screen(
         pane: 0.0,
         dest_pane: 0.0,
         shown: false,
-    }))
+    })
 }
 
 #[cfg(test)]

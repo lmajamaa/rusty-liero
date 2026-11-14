@@ -2,60 +2,38 @@ use super::*;
 use crate::controller::LIERO_STATE_GAME;
 use crate::controllers::{liero_controller_data, liero_local_controller_new};
 use crate::fs::Node;
-use crate::menus::{liero_menus_new, LieroMenusHooks};
+use crate::menus::liero_menus_new;
 use crate::settings::liero_settings_box_new;
 
-unsafe fn zero() -> u32 {
-    0
-}
-unsafe fn double_res() -> *mut bool {
-    thread_local! {
-        static ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    }
-    ON.with(|b| b.as_ptr())
-}
-unsafe fn set(_: bool) {}
-
-/// This thread's app with menus, the bundled TC, its screens sized, and a
-/// match that hasn't started, on a level of colour 7.
-fn set_up() -> &'static mut LieroApp {
-    let a = app();
-    if a.settings.is_none() {
-        a.settings = Some(liero_settings_box_new());
-    }
-    if !a.has_tc() {
-        a.set_tc(Some(
-            crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
-        ));
-    }
-    if a.menus.is_null() {
-        let hooks = LieroMenusHooks {
-            menu_cycles: zero,
-            double_res,
-            set_double_res: set,
-            set_fullscreen: set,
-        };
-        let menus = liero_menus_new(hooks);
-        crate::menus::liero_menus_load(unsafe { &mut *menus });
-        crate::app::liero_app_set_menus(a, menus);
-    }
+/// An app with menus, the bundled TC, its screens sized, and a match that
+/// hasn't started, on a level of colour 7.
+fn set_up() -> LieroApp {
+    let mut app = LieroApp::new();
+    let a = &mut app;
+    a.settings = Some(liero_settings_box_new());
+    a.set_tc(Some(
+        crate::tc::load_checked(&Node::new(b"../../TC/openliero")).unwrap(),
+    ));
+    let menus = liero_menus_new();
+    crate::menus::liero_menus_load(&mut menus.borrow_mut());
+    crate::app::liero_app_set_menus(a, menus);
     a.play.set_render_resolution(320, 200);
     a.single.set_render_resolution(640, 400);
-    let mut c = unsafe { Box::from_raw(liero_local_controller_new(a.shared_settings(), a.menu_tc())) };
+    let mut c = liero_local_controller_new(&crate::screen::Host::none(), a.shared_settings(), a.menu_tc());
     let level = unsafe { &mut *liero_controller_level(&mut c) };
     level.resize(504, 350);
     level.set_pixels(&vec![7; 504 * 350], |_| Default::default());
     a.controller = Some(c);
-    a
+    app
 }
 
 #[test]
 fn the_menu_starts_black_with_the_levels_miniature_behind_it() {
-    let a = set_up();
+    let a = &mut set_up();
     a.play.data.fade_value = 20;
     a.single.data.fade_value = 20;
     a.menu_cycles = 9;
-    menu_start();
+    menu_start(a);
     assert_eq!(
         (a.play.data.fade_value, a.single.data.fade_value, a.menu_cycles),
         (0, 0, 0)
@@ -76,9 +54,10 @@ fn the_menu_starts_black_with_the_levels_miniature_behind_it() {
 
 #[test]
 fn the_spectator_screen_says_whether_a_game_is_paused() {
-    let a = set_up();
+    let a = &mut set_up();
     a.frozen_spectator.copy_from(&a.single.bmp);
-    let font = crate::app::menu_font();
+    let chars = a.font().chars.to_vec();
+    let font = crate::text::LieroFont { chars: &chars };
     let (cx, cy) = (320, 100);
     // Drawing the same words again changes nothing; other words do.
     let shows = |a: &mut LieroApp, words: &[u8]| {
@@ -87,11 +66,11 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
         a.single.bmp.pixels() == before
     };
 
-    draw_spectator_info();
+    draw_spectator_info(a);
     assert!(shows(a, b"SETUP") && !shows(a, b"PAUSED"));
 
     unsafe { (*liero_controller_data(a.controller.as_deref_mut().unwrap())).state = LIERO_STATE_GAME };
-    draw_spectator_info();
+    draw_spectator_info(a);
     assert!(shows(a, b"PAUSED") && !shows(a, b"SETUP"));
     a.controller = None;
 }

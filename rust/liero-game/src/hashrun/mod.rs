@@ -3,10 +3,8 @@
 //! into the lines `tools/hashrun/expected.txt` holds, which were made from
 //! the original C++. `src/bin/liero-hashrun.rs` prints them natively.
 
-use std::cell::Cell;
-
-use crate::app::app;
-use crate::menus::{liero_menus_new, LieroMenusHooks};
+use crate::app::LieroApp;
+use crate::menus::liero_menus_new;
 
 mod ai;
 mod app;
@@ -80,14 +78,14 @@ pub const SECTIONS: [&str; 10] = [
 
 /// Runs section `name`, giving its lines to `out`, with the bot games
 /// `ticks` long at most and hashed every `interval`.
-fn run_section(name: &str, ticks: i32, interval: i32, out: &mut Out) {
+fn run_section(name: &str, a: &mut LieroApp, ticks: i32, interval: i32, out: &mut Out) {
     match name {
-        "app" => app::hash_app(out),
-        "games" => games::hash_games(out, ticks, interval),
-        "replays" => replays::hash_replays(out),
-        "ai" => ai::hash_ai_games(out),
-        "input" => input::hash_sound_and_input(out),
-        "menus" => menus::hash_menus(out),
+        "app" => app::hash_app(a, out),
+        "games" => games::hash_games(a, out, ticks, interval),
+        "replays" => replays::hash_replays(a, out),
+        "ai" => ai::hash_ai_games(a, out),
+        "input" => input::hash_sound_and_input(a, out),
+        "menus" => menus::hash_menus(a, out),
         "tc" => tc::hash_tc(out),
         "randomtc" => tc::hash_random_tc(out),
         "levels" => levels::hash_level_files(out),
@@ -96,30 +94,11 @@ fn run_section(name: &str, ticks: i32, interval: i32, out: &mut Out) {
     }
 }
 
-thread_local! {
-    static DOUBLE_RES: Cell<bool> = const { Cell::new(true) };
-}
-
 /// Where `path`, which starts with `/`, is on the disk: in the current
 /// folder, as the game reads it.
 pub(crate) fn on_disk(path: &str) -> String {
     format!(".{path}")
 }
-
-unsafe fn menu_cycles() -> u32 {
-    app().menu_cycles
-}
-
-unsafe fn double_res() -> *mut bool {
-    DOUBLE_RES.with(Cell::as_ptr)
-}
-
-unsafe fn set_double_res(on: bool) {
-    DOUBLE_RES.set(on);
-}
-
-/// The menu has set the setting; there's no window to change.
-unsafe fn set_fullscreen(_: bool) {}
 
 /// Runs the sections in `only`, or all of them, in their order, each after
 /// a line "hash-section name". It runs in a folder of its own, as `/` is in
@@ -134,24 +113,17 @@ pub fn hash_run(ticks: i32, interval: i32, only: &[String], out: &mut dyn FnMut(
             SECTIONS.join(",")
         ));
     }
-    let a = app();
-    if a.menus.is_null() {
-        // The window's hooks, without a window: double size starts on, as
-        // in the game.
-        a.menus = liero_menus_new(LieroMenusHooks {
-            menu_cycles,
-            double_res,
-            set_double_res,
-            set_fullscreen,
-        });
-    }
+    // One app for every section, as in the game: the sections that use it
+    // go on from what the ones before left.
+    let mut app = LieroApp::new();
+    app.menus = Some(liero_menus_new());
     let mut out = Out(out);
     for name in SECTIONS
         .iter()
         .filter(|n| only.is_empty() || only.iter().any(|o| o == *n))
     {
         out.line(&format!("hash-section {name}"));
-        run_section(name, ticks, interval, &mut out);
+        run_section(name, &mut app, ticks, interval, &mut out);
     }
     Ok(())
 }

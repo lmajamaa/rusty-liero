@@ -1,29 +1,21 @@
 use super::*;
 use crate::controllers::{liero_controller_is_replay, LieroController};
 use crate::fs::Node;
-use crate::settings::{liero_settings_box_new, SharedSettings};
+use crate::settings::liero_settings_box_new;
 use crate::tc::SharedTc;
 
-thread_local! {
-    static SETTINGS: SharedSettings = liero_settings_box_new();
-    static TC: SharedTc = crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"));
-}
-
-fn settings() -> SharedSettings {
-    SETTINGS.with(|s| s.clone())
-}
-
+/// The bundled TC.
 fn tc() -> SharedTc {
-    TC.with(|t| t.clone())
+    crate::tc::liero_tc_load(&Node::new(b"../../TC/openliero"))
 }
 
-/// This thread's app with the menus' settings and the bundled TC, and a
-/// match behind the menu.
-fn set_up() -> &'static mut LieroApp {
-    let a = app();
-    crate::app::liero_app_set_settings(a, Some(settings()));
+/// An app with the menus' settings and the bundled TC, and a match behind
+/// the menu.
+fn set_up() -> LieroApp {
+    let mut a = LieroApp::new();
+    crate::app::liero_app_set_settings(&mut a, Some(liero_settings_box_new()));
     a.set_tc(Some(tc()));
-    restart(a);
+    restart(&mut a, &Host::none());
     a
 }
 
@@ -40,71 +32,60 @@ fn replay() -> Box<LieroController> {
 
 #[test]
 fn resuming_a_replay_shows_the_single_screen() {
-    let a = set_up();
+    let a = &mut set_up();
     a.primary_single = false;
-    assert_eq!(after_menu(a, MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
     assert!(!a.primary_single);
 
     a.controller = Some(replay());
     assert!(liero_controller_is_replay(a.controller.as_deref().unwrap()));
-    assert_eq!(after_menu(a, MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_RESUME_GAME), LIERO_AFTER_MENU_PLAY);
     assert!(a.primary_single);
 
     // A replay chosen in the menu, as the settings say.
     a.primary_single = false;
-    crate::app::menu_settings().data.single_screen_replay = false;
-    assert_eq!(after_menu(a, MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
+    a.settings_mut().data.single_screen_replay = false;
+    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
     assert!(!a.primary_single);
-    crate::app::menu_settings().data.single_screen_replay = true;
-    assert_eq!(after_menu(a, MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
+    a.settings_mut().data.single_screen_replay = true;
+    assert_eq!(after_menu(a, &Host::none(), MAIN_REPLAY), LIERO_AFTER_MENU_PLAY);
     assert!(a.primary_single);
     a.controller = None;
 }
 
 #[test]
 fn a_finished_game_goes_back_to_the_play_screen() {
-    let a = set_up();
+    let a = &mut set_up();
     a.primary_single = true;
-    let hooks = LieroAppHooks {
-        process: no_process,
-        menu_screen: no_menu,
-    };
     let mut g = GameScreen {
-        h: hooks,
         next: Next::Finish,
         shown: false,
         resumed: true,
     };
-    let t = g.tick(&Host(Default::default()));
-    assert_eq!((t.kind, t.shown), (crate::screen::LieroTickKind::TickClose, false));
+    let t = g.tick(a, &Host::none());
+    assert_eq!((t.closed(), t.shown), (Some(0), false));
     assert!(!a.primary_single);
     a.controller = None;
 }
 
-unsafe fn no_process() {}
-
-unsafe fn no_menu() -> LieroScreen {
-    LieroScreen::empty()
-}
-
 #[test]
 fn a_new_game_keeps_the_level_unless_the_settings_changed() {
-    let a = set_up();
+    let a = &mut set_up();
     {
-        let mut s = crate::app::menu_settings();
+        let mut s = a.settings_mut();
         (s.data.random_level, s.data.regenerate_level) = (true, false);
     }
-    restart(a);
+    restart(a, &Host::none());
     let pixels = |a: &mut LieroApp| unsafe { (*liero_controller_level(controller(a))).pixels().to_vec() };
     let first = pixels(a);
-    assert_eq!(after_menu(a, MAIN_NEW_GAME), LIERO_AFTER_MENU_PLAY);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_NEW_GAME), LIERO_AFTER_MENU_PLAY);
     assert_eq!(pixels(a), first);
-    crate::app::menu_settings().data.regenerate_level = true;
-    after_menu(a, MAIN_NEW_GAME);
+    a.settings_mut().data.regenerate_level = true;
+    after_menu(a, &Host::none(), MAIN_NEW_GAME);
     assert_ne!(pixels(a), first);
 
-    assert_eq!(after_menu(a, MAIN_QUIT), LIERO_AFTER_MENU_QUIT);
-    assert_eq!(after_menu(a, MAIN_TC), LIERO_AFTER_MENU_RESTART);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_QUIT), LIERO_AFTER_MENU_QUIT);
+    assert_eq!(after_menu(a, &Host::none(), MAIN_TC), LIERO_AFTER_MENU_RESTART);
     let cycles = a.menu_cycles;
     draw(a, true);
     draw(a, false);

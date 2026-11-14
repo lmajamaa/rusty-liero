@@ -540,26 +540,13 @@ pub const LIERO_MENU_VALUE_TIME: i32 = 2;
 /// Frames as seconds with hundredths.
 pub const LIERO_MENU_VALUE_FRAMES: i32 = 3;
 
-/// How a number item shows `v`, written with a NUL to `out` (`cap` bytes).
-/// Returns the length.
-///
-/// # Safety
-/// `out` must hold `cap` bytes.
-pub unsafe fn liero_menu_value_text(v: i32, kind: i32, out: *mut u8, cap: usize) -> usize {
-    unsafe {
-        let text = match kind {
-            LIERO_MENU_VALUE_PERCENTAGE => format!("{v}%").into_bytes(),
-            LIERO_MENU_VALUE_TIME => time_to_string(v).to_vec(),
-            LIERO_MENU_VALUE_FRAMES => time_to_string_ex(v.wrapping_mul(14), false, false),
-            _ => v.to_string().into_bytes(),
-        };
-        if cap == 0 {
-            return 0;
-        }
-        let n = text.len().min(cap - 1);
-        std::ptr::copy_nonoverlapping(text.as_ptr(), out, n);
-        *out.add(n) = 0;
-        n
+/// How a number item shows `v`.
+pub fn liero_menu_value_text(v: i32, kind: i32) -> Vec<u8> {
+    match kind {
+        LIERO_MENU_VALUE_PERCENTAGE => format!("{v}%").into_bytes(),
+        LIERO_MENU_VALUE_TIME => time_to_string(v).to_vec(),
+        LIERO_MENU_VALUE_FRAMES => time_to_string_ex(v.wrapping_mul(14), false, false),
+        _ => v.to_string().into_bytes(),
     }
 }
 
@@ -1323,15 +1310,11 @@ mod tests {
         assert_eq!(liero_menu_enum_change(0, 0, 3, -1), 3);
         assert_eq!(liero_menu_enum_change(1, 1, 40, -1), 40);
 
-        let mut out = [0u8; 16];
-        let text = |v, kind, out: &mut [u8; 16]| unsafe {
-            let n = liero_menu_value_text(v, kind, out.as_mut_ptr(), 16);
-            out[..n].to_vec()
-        };
-        assert_eq!(text(150, LIERO_MENU_VALUE_PERCENTAGE, &mut out), b"150%");
-        assert_eq!(text(-3, LIERO_MENU_VALUE_INTEGER, &mut out), b"-3");
-        assert_eq!(text(754, LIERO_MENU_VALUE_TIME, &mut out), b"12:34");
-        assert_eq!(text(700, LIERO_MENU_VALUE_FRAMES, &mut out), b"09.80");
+        let text = liero_menu_value_text;
+        assert_eq!(text(150, LIERO_MENU_VALUE_PERCENTAGE), b"150%");
+        assert_eq!(text(-3, LIERO_MENU_VALUE_INTEGER), b"-3");
+        assert_eq!(text(754, LIERO_MENU_VALUE_TIME), b"12:34");
+        assert_eq!(text(700, LIERO_MENU_VALUE_FRAMES), b"09.80");
     }
 
     #[test]

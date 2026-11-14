@@ -5,7 +5,7 @@
 
 use super::game::{add_screen, hash_frame, hash_game, hash_stats};
 use super::{Fnv, Out};
-use crate::app::app;
+use crate::app::LieroApp;
 use crate::controllers::liero_game_focus;
 use crate::fs::Node;
 use crate::game::{LieroGameHooks, LieroRect};
@@ -21,7 +21,6 @@ use crate::stats::{stats_scene, LieroStatsScreen};
 use crate::tc::{LieroTcData, LieroTcWeapon, SharedTc};
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{liero_weapsel_finish, liero_weapsel_free, liero_weapsel_start};
-use std::ffi::c_void;
 
 pub const KILL_EM_ALL: u32 = 0;
 pub const GAME_OF_TAG: u32 = 1;
@@ -168,19 +167,22 @@ fn weapon_positions(d: &LieroTcData, names: &[&str; 5]) -> [u32; 5] {
     })
 }
 
-unsafe fn no_ticks(_: *mut c_void) -> u64 {
+fn no_ticks() -> u64 {
     0
 }
 
 /// What a tick runs with: the stats clock isn't hashed.
-pub(super) const HOOKS: LieroGameHooks = LieroGameHooks {
-    ctx: std::ptr::null_mut(),
-    hires_ticks: no_ticks,
-};
+pub(super) const HOOKS: LieroGameHooks<'static> = LieroGameHooks { hires_ticks: &no_ticks };
 
 /// A bot-vs-bot game as the hash run sets it up, before it starts, with
 /// random weapons when `weapons` is None (`setUpGame`).
-pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Option<&[&str; 5]>) -> Box<LieroGame> {
+pub(super) fn set_up_game(
+    a: &mut LieroApp,
+    tc: &SharedTc,
+    seed: u32,
+    game_mode: u32,
+    weapons: Option<&[&str; 5]>,
+) -> Box<LieroGame> {
     let d = tc_data(tc);
     let settings = LieroSettingsBox::defaults();
     let mut s = settings.borrow_mut();
@@ -201,7 +203,6 @@ pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Opt
 
     // Everything random comes from these seeds. Weapon selection and the
     // level use the app's random numbers, as in the menus.
-    let a = app();
     a.rand.seed(seed);
 
     // SAFETY: the game, its worms and viewports are made as the local
@@ -254,7 +255,7 @@ pub(super) fn set_up_game(tc: &SharedTc, seed: u32, game_mode: u32, weapons: Opt
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
 
-        let ws = liero_weapsel_start(&mut game);
+        let ws = liero_weapsel_start(&mut game, &mut a.rand);
         liero_weapsel_finish(&mut *ws);
         liero_weapsel_free(ws);
 
@@ -300,9 +301,9 @@ fn hash_stats_screen(out: &mut Out, name: &str, game: &mut LieroGame, renderer: 
     }
 }
 
-fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interval: i32) {
+fn run_game(a: &mut LieroApp, out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interval: i32) {
     let d = tc_data(tc);
-    let mut game = set_up_game(tc, config.seed, config.game_mode, config.weapons);
+    let mut game = set_up_game(a, tc, config.seed, config.game_mode, config.weapons);
     let name = config.name;
 
     // Records a replay of the game, as the local controller does when
@@ -373,9 +374,9 @@ fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interv
 }
 
 /// Every bot game, `ticks` long at most and hashed every `interval`.
-pub fn hash_games(out: &mut Out, ticks: i32, interval: i32) {
+pub fn hash_games(a: &mut LieroApp, out: &mut Out, ticks: i32, interval: i32) {
     let tc = super::tc::bundled();
     for config in &CONFIGS {
-        run_game(out, &tc, config, ticks, interval);
+        run_game(a, out, &tc, config, ticks, interval);
     }
 }

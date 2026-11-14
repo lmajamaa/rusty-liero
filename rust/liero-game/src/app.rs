@@ -1,13 +1,8 @@
 //! What the app keeps besides the game (C++'s `Gfx`): the two renderers,
 //! the screens frozen behind the menus, the random numbers for things that
 //! don't affect the game, the keys, the menus' frame count, the menus'
-//! settings and TC, and the files (`app_files.rs`). Rust owns it, and
-//! `Gfx`'s fields refer to it.
-//!
-//! There is one app per thread, made when first asked for. The game runs on
-//! one thread; tests running on others each get their own.
-
-use std::cell::Cell;
+//! settings and TC, and the files (`app_files.rs`). The entry point (the
+//! web shell, or the hash run) owns it and lends it to the screens.
 
 use crate::controllers::LieroController;
 use crate::keys::LieroKeys;
@@ -34,6 +29,8 @@ pub struct LieroApp {
     pub keys: LieroKeys,
     /// Frames the menus have shown, which their colours cycle with.
     pub menu_cycles: u32,
+    /// The window's double size (`Gfx::doubleRes`), on to start with.
+    pub double_res: bool,
     /// The menus' settings (`gfx.settings`), which can be another game's
     /// than the one played. Loading options replaces them.
     pub settings: Option<SharedSettings>,
@@ -45,8 +42,8 @@ pub struct LieroApp {
     font: Vec<crate::gfx::LieroFontChar>,
     /// The folders, the settings file and the TC chosen (`app_files.rs`).
     pub files: crate::app_files::Files,
-    /// The menus, which C++ makes.
-    pub menus: *mut crate::menus::LieroMenus,
+    /// The menus, which the menu screen shares.
+    pub menus: Option<crate::menus::SharedMenus>,
     /// The match or replay being played, or behind the menu.
     pub controller: Option<Box<LieroController>>,
     /// Whether the screen shows the single screen renderer, for a replay on
@@ -75,6 +72,26 @@ impl LieroApp {
         self.tc.is_some()
     }
 
+    /// The menus' TC's data. Panics if there's no TC.
+    pub(crate) fn tc_data(&self) -> Ref<'_, LieroTcData> {
+        tc_data(self.tc.as_ref().expect("no TC"))
+    }
+
+    /// The menus' settings. Panics if there are none, or if they're borrowed.
+    pub fn settings_mut(&self) -> RefMut<'_, LieroSettingsBox> {
+        self.settings.as_ref().expect("no menu settings").borrow_mut()
+    }
+
+    /// The menus' TC's font.
+    pub(crate) fn font(&self) -> crate::text::LieroFont<'_> {
+        crate::text::LieroFont { chars: &self.font }
+    }
+
+    /// The menus. Panics if there are none yet.
+    pub(crate) fn shared_menus(&self) -> crate::menus::SharedMenus {
+        self.menus.clone().expect("no menus")
+    }
+
     /// Makes `tc` (or none) the menus' TC.
     pub fn set_tc(&mut self, tc: Option<SharedTc>) {
         self.font = tc.as_ref().map_or(Vec::new(), |t| tc_data(t).font.to_vec());
@@ -82,28 +99,15 @@ impl LieroApp {
     }
 }
 
-/// The menus' TC's font.
-pub(crate) fn menu_font() -> crate::text::LieroFont<'static> {
-    let a: &'static LieroApp = app();
-    crate::text::LieroFont { chars: &a.font }
+impl Default for LieroApp {
+    fn default() -> Self {
+        Self::new()
+    }
 }
-
-/// The menus' settings. Panics if there are none, or if they're borrowed.
-pub fn menu_settings() -> RefMut<'static, LieroSettingsBox> {
-    let a: &'static LieroApp = app();
-    a.settings.as_ref().expect("no menu settings").borrow_mut()
-}
-
-/// The menus' TC's data. Panics if there's no TC.
-pub(crate) fn menu_tc_data() -> Ref<'static, LieroTcData> {
-    let a: &'static LieroApp = app();
-    tc_data(a.tc.as_ref().expect("no TC"))
-}
-
-impl LieroApp {}
 
 impl LieroApp {
-    fn new() -> Self {
+    /// An app with no settings, TC, menus or game yet.
+    pub fn new() -> Self {
         let mut rand = LieroRand { x: 0, c: 0 };
         rand.seed(LIERO_RAND_DEFAULT_SEED);
         LieroApp {
@@ -114,36 +118,39 @@ impl LieroApp {
             frozen_spectator: LieroBitmapBox::new(),
             keys: LieroKeys::default(),
             menu_cycles: 0,
+            double_res: true,
             settings: None,
             tc: None,
             font: Vec::new(),
             files: Default::default(),
             controller: None,
-            menus: std::ptr::null_mut(),
+            menus: None,
             primary_single: false,
             save_settings_on_change: false,
         }
     }
 }
 
-thread_local! {
-    static APP: Cell<*mut LieroApp> = const { Cell::new(std::ptr::null_mut()) };
-}
-
-/// This thread's app.
-pub fn app() -> &'static mut LieroApp {
-    APP.with(|a| {
-        if a.get().is_null() {
-            a.set(Box::into_raw(Box::new(LieroApp::new())));
+impl LieroApp {
+    /// Whether an SDL key was pressed since it was last asked about, which
+    /// it then forgets (`Gfx::testSDLKeyOnce`).
+    pub fn test_key_once(&mut self, scancode: u32) -> bool {
+        self.keys.test_sdl_once(scancode as i32)
+    }
+    /// Whether an SDL key is held (`Gfx::testSDLKey`).
+    pub fn test_key(&self, scancode: u32) -> bool {
+        self.keys.test_sdl(scancode as i32)
+    }
+    pub fn clear_keys(&mut self) {
+        self.keys.clear();
+    }
+    /// Holds down SDL keys, as their events would.
+    #[cfg(test)]
+    pub fn press(&mut self, scancodes: &[u32]) {
+        for &sc in scancodes {
+            self.keys.set(crate::keys::sdl_to_dos(sc as i32), true);
         }
-        // SAFETY: the app is never freed, and only this thread has it.
-        unsafe { &mut *a.get() }
-    })
-}
-
-/// The app, at a fixed address.
-pub fn liero_app() -> *mut LieroApp {
-    app()
+    }
 }
 
 /// The play renderer, or with `single`, the single screen one.
@@ -175,8 +182,8 @@ pub fn liero_app_primary(a: &mut LieroApp) -> *mut LieroRenderer {
 }
 
 /// The menus the app draws.
-pub fn liero_app_set_menus(a: &mut LieroApp, menus: *mut crate::menus::LieroMenus) {
-    a.menus = menus;
+pub fn liero_app_set_menus(a: &mut LieroApp, menus: crate::menus::SharedMenus) {
+    a.menus = Some(menus);
 }
 
 #[cfg(test)]
@@ -184,24 +191,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn each_thread_has_one_app() {
-        let a: *mut LieroApp = app();
-        assert_eq!(a, liero_app());
-        app().menu_cycles = 5;
-        let other = std::thread::spawn(|| (app().menu_cycles, app() as *mut LieroApp as usize))
-            .join()
-            .unwrap();
-        assert_eq!(other.0, 0);
-        assert_ne!(other.1, a as usize);
-        assert_eq!(unsafe { (*a).menu_cycles }, 5);
-    }
-
-    #[test]
-    fn the_app_is_made_once() {
-        let a: *mut LieroApp = app();
-        app().menu_cycles += 1;
-        assert_eq!(liero_app(), a);
-        assert!(std::ptr::eq(liero_app_renderer(app(), true), &*app().single));
-        assert!(std::ptr::eq(liero_app_frozen(app(), false), &*app().frozen));
+    fn the_renderers_are_the_apps() {
+        let mut a = LieroApp::new();
+        assert!(std::ptr::eq(liero_app_renderer(&mut a, true), &*a.single));
+        assert!(std::ptr::eq(liero_app_frozen(&mut a, false), &*a.frozen));
     }
 }

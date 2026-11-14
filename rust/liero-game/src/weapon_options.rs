@@ -4,9 +4,9 @@
 
 use crate::boxes::liero_info_box_screen;
 use crate::gfx::liero_gfx_draw_rounded_box;
-use crate::item::{LieroItemBehavior, LieroItemKind};
+use crate::item::LieroItemBehavior;
 use crate::menu::{LieroMenu, OwnedMenu};
-use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
+use crate::screen::{BoxedScreen, Host, Screen, Tick};
 use crate::text::LieroStr;
 
 const SCANCODE_ESCAPE: u32 = 41;
@@ -54,47 +54,53 @@ struct WeaponOptions {
 }
 
 impl WeaponOptions {
-    /// The availability item for menu item `i`, with `names` the states'.
-    fn behavior(&self, i: usize, names: &[LieroStr]) -> LieroItemBehavior {
-        // SAFETY: `order` holds indexes into the 40-entry table.
-        let value = unsafe { self.weap_table.add(self.order[i]) } as *mut i32;
-        let mut b = LieroItemBehavior::integer(value, 0, names.len() as i32 - 1);
-        b.kind = LieroItemKind::Enum;
-        b.names = names.as_ptr();
-        b.name_count = names.len();
-        b
+    /// The availability item, with `names` the states'.
+    fn behavior<'a>(names: &'a [&'a [u8]]) -> LieroItemBehavior<'a> {
+        LieroItemBehavior::enumeration(0, names.len() as i32 - 1, names)
     }
 
-    fn state_names(&self) -> Vec<LieroStr> {
-        self.states
-            .iter()
-            .map(|s| LieroStr {
-                ptr: s.as_ptr(),
-                len: s.len(),
-            })
-            .collect()
+    fn state_names(&self) -> Vec<&[u8]> {
+        self.states.iter().map(|s| &s[..]).collect()
+    }
+
+    /// Menu item `i`'s entry in the weapon table.
+    fn entry(&self, i: usize) -> *mut u32 {
+        // SAFETY: `order` holds indexes into the 40-entry table.
+        unsafe { self.weap_table.add(self.order[i]) }
+    }
+
+    fn value(&self, i: usize) -> i32 {
+        // SAFETY: the table outlives the screen.
+        unsafe { *self.entry(i) as i32 }
     }
 
     /// `Menu::updateItems`: every item's value.
     fn update_items(&mut self) {
-        let names = self.state_names();
         for i in 0..self.order.len() {
-            let text = unsafe { self.behavior(i, &names).value_text() };
+            let text = Self::behavior(&self.state_names()).value_text(self.value(i));
             self.menu.set_value(i, text);
         }
     }
 
     /// `Menu::onLeftRight` on the selected item.
-    fn left_right(&mut self, dir: i32) {
+    fn left_right(&mut self, host: &Host, dir: i32) {
         let Some(i) = self.menu.selected() else {
             return;
         };
         let names = self.state_names();
-        let a = unsafe { self.behavior(i, &names).left_right(dir, 0) };
+        let b = Self::behavior(&names);
+        if let Some(s) = b.left_right_sound(dir) {
+            host.play_sound(s);
+        }
+        let (v, a) = b.left_right(self.value(i), dir, 0);
+        // SAFETY: as in `value`.
+        unsafe { *self.entry(i) = v as u32 };
+        let text = b.value_text(v);
+        drop(names);
         if a.update_menu {
             self.update_items();
         } else if a.update_item {
-            self.menu.set_value(i, unsafe { self.behavior(i, &names).value_text() });
+            self.menu.set_value(i, text);
         }
     }
 
@@ -103,8 +109,8 @@ impl WeaponOptions {
         (0..WEAPON_COUNT).any(|i| unsafe { *self.weap_table.add(i) } == 0)
     }
 
-    fn draw(&mut self, host: &Host) {
-        let (Some(scr), Some(font)) = (host.screen(), host.font()) else {
+    fn draw(&mut self, app: &crate::app::LieroApp, host: &Host) {
+        let (Some(scr), Some(font)) = (host.screen(app), host.font(app)) else {
             return;
         };
         for (x, title) in [(179, &self.weapon_title), (249, &self.availability_title)] {
@@ -116,11 +122,11 @@ impl WeaponOptions {
 }
 
 impl Screen for WeaponOptions {
-    fn tick(&mut self, host: &Host) -> Tick {
+    fn tick(&mut self, app: &mut crate::app::LieroApp, host: &Host) -> Tick {
         // Back from the message: it read the events.
         if self.shown && !self.resumed {
-            host.process();
-            if host.test_key_once(SCANCODE_ESCAPE) {
+            host.process(app);
+            if app.test_key_once(SCANCODE_ESCAPE) {
                 if self.any_on() {
                     return Tick::close(0);
                 }
@@ -133,39 +139,39 @@ impl Screen for WeaponOptions {
         }
         self.resumed = false;
 
-        host.draw_basic_menu();
-        self.draw(host);
+        host.draw_basic_menu(app);
+        self.draw(app, host);
 
-        if host.test_key_once(SCANCODE_UP) {
+        if app.test_key_once(SCANCODE_UP) {
             host.play_sound(SOUND_UP);
             self.menu.movement(-1);
         }
-        if host.test_key_once(SCANCODE_DOWN) {
+        if app.test_key_once(SCANCODE_DOWN) {
             host.play_sound(SOUND_DOWN);
             self.menu.movement(1);
         }
-        if host.test_key_once(SCANCODE_LEFT) {
-            self.left_right(-1);
+        if app.test_key_once(SCANCODE_LEFT) {
+            self.left_right(host, -1);
         }
-        if host.test_key_once(SCANCODE_RIGHT) {
-            self.left_right(1);
+        if app.test_key_once(SCANCODE_RIGHT) {
+            self.left_right(host, 1);
         }
-        if host.test_key_once(SCANCODE_PAGEUP) {
+        if app.test_key_once(SCANCODE_PAGEUP) {
             host.play_sound(SOUND_UP);
             self.menu.movement_page(-1);
         }
-        if host.test_key_once(SCANCODE_PAGEDOWN) {
+        if app.test_key_once(SCANCODE_PAGEDOWN) {
             host.play_sound(SOUND_DOWN);
             self.menu.movement_page(1);
         }
         self.menu.on_keys(host, false);
 
-        host.menu_fade();
+        host.menu_fade(app);
         self.shown = true;
         Tick::stay(true)
     }
 
-    fn resume(&mut self, _host: &Host, _result: i32) {
+    fn resume(&mut self, _app: &mut crate::app::LieroApp, _host: &Host, _result: i32) {
         self.resumed = true;
     }
 }
@@ -176,8 +182,8 @@ impl Screen for WeaponOptions {
 /// # Safety
 /// `spec`'s pointers are valid for their counts, and `order`'s entries are
 /// below 40.
-pub unsafe fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> LieroScreen {
-    unsafe { into_ffi(Box::new(WeaponOptions::new(spec))) }
+pub unsafe fn liero_weapon_options_screen(spec: &LieroWeaponOptionsSpec) -> BoxedScreen {
+    unsafe { Box::new(WeaponOptions::new(spec)) }
 }
 
 impl WeaponOptions {
@@ -222,24 +228,7 @@ impl WeaponOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{LieroScreenHost, LieroTickKind};
-    use std::cell::RefCell;
-
-    thread_local! {
-        static KEYS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
-    }
-
-    unsafe fn key_once(sc: u32) -> bool {
-        KEYS.with(|k| {
-            let mut k = k.borrow_mut();
-            let found = k.iter().position(|&x| x == sc);
-            found.map(|i| k.remove(i)).is_some()
-        })
-    }
-
-    fn press(keys: &[u32]) {
-        KEYS.with(|k| *k.borrow_mut() = keys.to_vec());
-    }
+    use crate::screen::Transition;
 
     fn s(b: &'static [u8]) -> LieroStr {
         LieroStr {
@@ -266,20 +255,13 @@ mod tests {
         unsafe { WeaponOptions::new(&spec) }
     }
 
-    fn host() -> Host {
-        Host(LieroScreenHost {
-            test_key_once: Some(key_once),
-            ..Default::default()
-        })
-    }
-
     #[test]
     fn values_follow_the_table_in_menu_order() {
         let mut table = [0; WEAPON_COUNT];
         table[1] = 2;
         let mut w = screen(&mut table);
         assert_eq!(w.menu.values, [b"BANNED".to_vec(), b"MENU".to_vec()]);
-        w.left_right(1);
+        w.left_right(&Host::none(), 1);
         assert_eq!(table[1], 0, "wraps round");
         assert_eq!(w.menu.values[0], b"MENU".to_vec());
     }
@@ -288,21 +270,21 @@ mod tests {
     fn escape_needs_a_weapon_on() {
         let mut table = [1; WEAPON_COUNT];
         let mut w = screen(&mut table);
-        let h = host();
-        press(&[SCANCODE_ESCAPE]);
-        assert_eq!(
-            w.tick(&h).kind,
-            LieroTickKind::TickStay,
+        let h = Host::none();
+        let mut app = crate::app::LieroApp::new();
+        app.press(&[SCANCODE_ESCAPE]);
+        assert!(
+            matches!(w.tick(&mut app, &h).then, Transition::Stay),
             "keys wait for the first frame"
         );
-        press(&[SCANCODE_ESCAPE]);
-        let t = w.tick(&h);
-        assert_eq!(t.kind, LieroTickKind::TickPush, "every weapon off: the message");
+        app.press(&[SCANCODE_ESCAPE]);
+        let t = w.tick(&mut app, &h);
+        assert!(matches!(t.then, Transition::Open(_)), "every weapon off: the message");
 
         // Back from the message, which read the events: no keys this tick.
-        w.resume(&h, 0);
-        press(&[SCANCODE_ESCAPE]);
-        assert_eq!(w.tick(&h).kind, LieroTickKind::TickStay);
+        w.resume(&mut app, &h, 0);
+        app.press(&[SCANCODE_ESCAPE]);
+        assert!(matches!(w.tick(&mut app, &h).then, Transition::Stay));
 
         // The screen reads the table through its pointer, which the
         // compiler doesn't see.
@@ -310,7 +292,7 @@ mod tests {
         {
             table[5] = 0;
         }
-        press(&[SCANCODE_ESCAPE]);
-        assert_eq!(w.tick(&h).kind, LieroTickKind::TickClose);
+        app.press(&[SCANCODE_ESCAPE]);
+        assert_eq!(w.tick(&mut app, &h).closed(), Some(0));
     }
 }
