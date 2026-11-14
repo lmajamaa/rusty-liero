@@ -783,7 +783,7 @@ pub fn replay_worm_of(worm: &WormData, ids: &[WormId]) -> ReplayWorm {
         rope_vel: [rope.vel.x, rope.vel.y],
         rope_pos: [rope.pos.x, rope.pos.y],
         current_weapon: worm.current_weapon,
-        last_killed_by: worm.last_killed_by_idx,
+        last_killed_by: worm.last_killed_by_idx.unwrap_or(-1),
         fire_cone: worm.fire_cone,
         leave_shell_timer: worm.leave_shell_timer,
         index: worm.index,
@@ -851,7 +851,7 @@ pub fn replay_worm_set(worm: &mut WormData, f: &ReplayWorm, all: &[WormId]) {
         y: f.rope_pos[1],
     };
     worm.current_weapon = f.current_weapon;
-    worm.last_killed_by_idx = f.last_killed_by;
+    worm.last_killed_by_idx = Some(f.last_killed_by).filter(|&i| i >= 0);
     worm.fire_cone = f.fire_cone;
     worm.leave_shell_timer = f.leave_shell_timer;
     worm.index = f.index;

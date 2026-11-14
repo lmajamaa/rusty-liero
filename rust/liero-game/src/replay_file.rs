@@ -196,7 +196,7 @@ impl ReplayWriter {
             fields: ReplayGameFields {
                 cycles: d.cycles,
                 got_changed: d.got_changed,
-                last_killed: d.last_killed_idx,
+                last_killed: d.last_killed_idx.unwrap_or(-1),
                 screen_flash: d.screen_flash,
                 rand_x: d.rand.x,
                 rand_c: d.rand.c,
@@ -385,7 +385,7 @@ impl ReplayReader {
         let d = game.data_mut();
         d.cycles = g.fields.cycles;
         d.got_changed = g.fields.got_changed;
-        d.last_killed_idx = g.fields.last_killed;
+        d.last_killed_idx = Some(g.fields.last_killed).filter(|&i| i >= 0);
         d.screen_flash = g.fields.screen_flash;
         d.rand.x = g.fields.rand_x;
         d.rand.c = g.fields.rand_c;

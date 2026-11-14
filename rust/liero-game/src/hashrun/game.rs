@@ -65,7 +65,7 @@ fn hash_worm(f: &mut Fnv, w: &Worm, anchor_index: i32) {
     f.i32(r.cur_len);
 
     f.i32(w.current_weapon);
-    f.i32(w.last_killed_by_idx);
+    f.i32(w.last_killed_by_idx.unwrap_or(-1));
     f.i32(w.fire_cone);
     f.i32(w.leave_shell_timer);
     w.reacts.iter().for_each(|&r| f.i32(r));
@@ -89,7 +89,7 @@ pub fn hash_game(game: &mut Game) -> u64 {
     f.u32(g.rand.x);
     f.u32(g.rand.c);
     f.i32(g.screen_flash);
-    f.i32(g.last_killed_idx);
+    f.i32(g.last_killed_idx.unwrap_or(-1));
     f.bool(g.got_changed);
 
     let z = &g.holdazone;
@@ -98,8 +98,8 @@ pub fn hash_game(game: &mut Game) -> u64 {
         z.rect.y1,
         z.rect.x2,
         z.rect.y2,
-        z.holder_idx,
-        z.contender_idx,
+        z.holder_idx.unwrap_or(-1),
+        z.contender_idx.unwrap_or(-1),
         z.contender_frames,
         z.timeout_left,
         z.zone_width,

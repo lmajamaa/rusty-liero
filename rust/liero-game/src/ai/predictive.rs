@@ -73,12 +73,12 @@ pub struct AiWorm {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AiGame {
     pub game_mode: Option<GameMode>,
-    pub holder_idx: i32,
-    pub contender_idx: i32,
+    pub holder_idx: Option<i32>,
+    pub contender_idx: Option<i32>,
     pub contender_frames: i32,
     /// The middle of the zone (`rect.center_x()` and `center_y()`).
     pub zone_center: [i32; 2],
-    pub last_killed_idx: i32,
+    pub last_killed_idx: Option<i32>,
     pub ai_frames: i32,
     pub ai_mutations: i32,
     pub ai_traces: bool,
@@ -753,7 +753,7 @@ impl FollowAi {
         score += me_health * weights.health * weights.defense;
         score -= target_health * weights.health;
 
-        if info.game_mode == Some(GameMode::Holdazone) && info.holder_idx == me_w.index {
+        if info.game_mode == Some(GameMode::Holdazone) && info.holder_idx == Some(me_w.index) {
             score -= aiming_diff_worms(&me_w, &target_w) * 2.0 * weights.aim;
         } else {
             let aim_diff = self.aiming_diff_path(&games.level(g), &me_w, worm_cell);
@@ -763,10 +763,14 @@ impl FollowAi {
         score += total_ammo_worth(&me_w) * 2.0 * weights.ammo;
 
         if info.game_mode == Some(GameMode::Holdazone) {
-            let scale = if info.holder_idx != me_w.index { 1.0 } else { 1.0 / 4.0 };
+            let scale = if info.holder_idx != Some(me_w.index) {
+                1.0
+            } else {
+                1.0 / 4.0
+            };
             score -= len * scale;
         } else if info.game_mode == Some(GameMode::GameOfTag) {
-            if info.last_killed_idx >= 0 && info.last_killed_idx != me_w.index {
+            if info.last_killed_idx.is_some_and(|i| i != me_w.index) {
                 score += len;
             } else {
                 score -= len;
@@ -776,16 +780,16 @@ impl FollowAi {
         }
 
         if info.game_mode == Some(GameMode::Holdazone) {
-            if info.holder_idx == me_w.index {
+            if info.holder_idx == Some(me_w.index) {
                 score += 50.0;
             }
-            if info.contender_idx == me_w.index {
+            if info.contender_idx == Some(me_w.index) {
                 score += info.contender_frames as f64 * 30.0 / 70.0;
             }
-            if info.holder_idx == target_w.index {
+            if info.holder_idx == Some(target_w.index) {
                 score -= 50.0;
             }
-            if info.contender_idx == target_w.index {
+            if info.contender_idx == Some(target_w.index) {
                 score -= info.contender_frames as f64 * 30.0 / 70.0;
             }
         }

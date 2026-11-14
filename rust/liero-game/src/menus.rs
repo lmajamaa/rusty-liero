@@ -732,9 +732,10 @@ impl Menus {
 
     /// Enter on the selected item (`onEnter`): what it chose, or -1, and
     /// the screen it opened, if any.
-    pub fn enter(&mut self, app: &mut App, host: &Host, kind: MenuKind) -> (i32, Option<BoxedScreen>) {
+    pub fn enter(&mut self, app: &mut App, host: &Host, kind: MenuKind) -> (Option<i32>, Option<BoxedScreen>) {
         let Some(i) = self.selection(kind) else {
-            return (0, None);
+            // C++ returned 0 here, the resume item's id.
+            return (Some(0), None);
         };
         let b = self.behavior(app, kind, i);
         let sound = || host.play_sound(SOUND_CHOICE);
@@ -815,7 +816,7 @@ impl Menus {
                 self.selector(app, kind, Then::Tc, Selector::Tc)
             }
         };
-        (-1, opened)
+        (None, opened)
     }
 
     /// The weapon options screen, on the settings' weapon table.
@@ -839,11 +840,9 @@ impl Menus {
     }
 
     /// The screen the last item opened closed with `result`: what the item
-    /// does with it, and what it chose, or -1.
-    pub fn then(&mut self, app: &mut App, host: &Host, result: i32) -> i32 {
-        let Some(Pending { kind, then, typed }) = self.pending.take() else {
-            return -1;
-        };
+    /// does with it, and what it chose, if anything.
+    pub fn then(&mut self, app: &mut App, host: &Host, result: i32) -> Option<i32> {
+        let Pending { kind, then, typed } = self.pending.take()?;
         let sound = || host.play_sound(SOUND_CHOICE);
         let ok = result != 0;
         let typed = *typed;
@@ -924,15 +923,16 @@ impl Menus {
             }
             Then::Replay => {
                 sound();
-                return result;
+                // A cancelled selector closes with -1.
+                return Some(result).filter(|&r| r >= 0);
             }
             Then::Tc => {
                 if crate::app_files::take_chosen_tc(app) {
-                    return MAIN_TC;
+                    return Some(MAIN_TC);
                 }
             }
         }
-        -1
+        None
     }
 
     /// Opens the player menu on `player`'s settings (`Gfx::playerSettings`).
@@ -973,7 +973,7 @@ impl Menus {
 
     /// Enter on `kind`'s selected item. A screen it opened is dropped: the
     /// menu checks only press items that open none.
-    pub fn enter_dropping(&mut self, app: &mut App, host: &Host, kind: MenuKind) -> i32 {
+    pub fn enter_dropping(&mut self, app: &mut App, host: &Host, kind: MenuKind) -> Option<i32> {
         let (r, opened) = self.enter(app, host, kind);
         if opened.is_some() {
             self.pending = None;
@@ -1095,7 +1095,7 @@ mod tests {
         };
 
         let (r, opened) = m.enter(&mut app, &Host::none(), MenuKind::Player);
-        assert_eq!(r, -1);
+        assert_eq!(r, None);
         drop(opened.expect("key choice"));
         assert!(is_extended(177));
         m.then(&mut app, &Host::none(), 177);
@@ -1139,7 +1139,7 @@ mod tests {
             let (_, opened) = m.enter(&mut app, &Host::none(), MenuKind::Settings);
             drop(opened.expect("number box"));
             *m.pending.as_mut().unwrap().typed = typed.to_vec();
-            assert_eq!(m.then(&mut app, &Host::none(), 1), -1);
+            assert_eq!(m.then(&mut app, &Host::none(), 1), None);
             assert_eq!(app.settings_mut().data.lives, lives);
             assert_eq!(value(&mut m, MenuKind::Settings, i), lives.to_string().into_bytes());
         }

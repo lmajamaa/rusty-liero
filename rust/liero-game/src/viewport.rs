@@ -132,7 +132,7 @@ pub struct ViewWorm<'a> {
     pub rope_out: bool,
     pub rope_pos: IVec2,
     pub fire_cone: i32,
-    pub last_killed_by_idx: i32,
+    pub last_killed_by_idx: Option<i32>,
     pub current_weapon: i32,
     pub weapons: [ViewWormWeapon; 5],
     pub steerable_count: i32,
@@ -229,7 +229,7 @@ pub struct Scene<'a> {
     pub game_mode: Option<GameMode>,
     pub holdazone: Holdazone,
     pub zone_capture_time: i32,
-    pub last_killed_idx: i32,
+    pub last_killed_idx: Option<i32>,
     pub got_changed: bool,
     pub shadow: bool,
     pub names_on_bonuses: bool,
@@ -428,7 +428,7 @@ impl<'a> Painter<'a> {
         const STATE_COLOURS: [[i32; 2]; 2] = [[6, 10], [79, 4]];
         let s = self.s;
         let Some(worm) = self.worm(pos) else { return };
-        let (holder, ahead): (i32, fn(i32, i32) -> bool) = match s.game_mode {
+        let (holder, ahead): (Option<i32>, fn(i32, i32) -> bool) = match s.game_mode {
             Some(GameMode::KillEmAll) | Some(GameMode::ScalesOfJustice) => {
                 let mut lives = s.lives.to_vec();
                 lives.extend_from_slice(worm.lives.to_string().as_bytes());
@@ -445,7 +445,7 @@ impl<'a> Painter<'a> {
             .iter()
             .enumerate()
             .any(|(i, w)| i as i32 != pos && ahead(w.timer, worm.timer)) as usize;
-        let color = STATE_COLOURS[(holder != worm.index) as usize][state];
+        let color = STATE_COLOURS[(holder != Some(worm.index)) as usize][state];
 
         // C++ calls drawText(scr, str, len, x, y, color) with these four
         // numbers, so 5 * scale is the length and the rest are shifted by one.
@@ -468,7 +468,7 @@ impl<'a> Painter<'a> {
         let z = &self.s.holdazone;
         let timing_out = z.timeout_left < 70 * 4;
         let color = if timing_out { 168 } else { 50 };
-        let contender_color = match self.worm(z.contender_idx) {
+        let contender_color = match z.contender_idx.and_then(|i| self.worm(i)) {
             Some(c) if timing_out => minimap_color(c.index),
             Some(c) => WORM_COLOUR_INDEXES[c.index as usize & 1] + 5,
             None => color,
@@ -741,7 +741,7 @@ impl<'a> Painter<'a> {
             let Some(other) = self.worm(v.worm_idx) else { continue };
             if i as i32 != self_index && other.health <= 0 && v.banner_y > -8 {
                 let mut msg = Vec::new();
-                if other.last_killed_by_idx == worm.index {
+                if other.last_killed_by_idx == Some(worm.index) {
                     msg.extend_from_slice(s.killed_msg);
                     msg.extend_from_slice(other.name);
                 } else {
@@ -784,7 +784,10 @@ impl<'a> Painter<'a> {
         if s.game_mode == Some(GameMode::Holdazone) && z.timeout_left > 0 {
             let x = (z.rect.x1 + z.rect.x2) / 2 / 10 + map_x;
             let y = (z.rect.y1 + z.rect.y2) / 2 / 10 + map_y;
-            let color = self.worm(z.holder_idx).map_or(168, |h| minimap_color(h.index));
+            let color = z
+                .holder_idx
+                .and_then(|i| self.worm(i))
+                .map_or(168, |h| minimap_color(h.index));
             for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
                 self.pixel(scr, x + dx, y + dy, color);
             }
@@ -849,12 +852,12 @@ impl<'a> Painter<'a> {
         for worm in self.worms {
             if worm.health <= 0 && vp.banner_y > -8 {
                 let mut msg = Vec::new();
-                if worm.last_killed_by_idx == worm.index {
+                if worm.last_killed_by_idx == Some(worm.index) {
                     msg.extend_from_slice(worm.name);
                     msg.extend_from_slice(s.committed_suicide_msg);
                 } else {
                     // C++ looks the killer up by position.
-                    if let Some(killer) = self.worm(worm.last_killed_by_idx) {
+                    if let Some(killer) = worm.last_killed_by_idx.and_then(|i| self.worm(i)) {
                         msg.extend_from_slice(killer.name);
                     }
                     msg.extend_from_slice(b" killed ");
@@ -1016,7 +1019,7 @@ mod tests {
             rope_out: false,
             rope_pos: IVec2::default(),
             fire_cone: 0,
-            last_killed_by_idx: -1,
+            last_killed_by_idx: None,
             current_weapon: 0,
             weapons: [ViewWormWeapon {
                 weapon: 0,
@@ -1261,7 +1264,7 @@ mod tests {
                 game_mode: Some(GameMode::KillEmAll),
                 holdazone: Holdazone::default(),
                 zone_capture_time: 1,
-                last_killed_idx: -1,
+                last_killed_idx: None,
                 got_changed: false,
                 shadow: false,
                 names_on_bonuses: false,

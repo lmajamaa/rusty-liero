@@ -133,9 +133,9 @@ impl Fake {
             ai_frames: 20,
             ai_mutations: 2,
             ai_traces: true,
-            last_killed_idx: -1,
-            holder_idx: -1,
-            contender_idx: -1,
+            last_killed_idx: None,
+            holder_idx: None,
+            contender_idx: None,
             ..Default::default()
         };
         Fake {

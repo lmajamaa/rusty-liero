@@ -104,7 +104,7 @@ impl Worm<'_, '_> {
         killed_timer, set_killed_timer: i32;
         current_frame, set_current_frame: i32;
         current_weapon, set_current_weapon: i32;
-        last_killed_by_idx, set_last_killed_by_idx: i32;
+        last_killed_by_idx, set_last_killed_by_idx: Option<i32>;
         fire_cone, set_fire_cone: i32;
         direction, set_direction: i32;
         control_states, set_control_states: u32;
@@ -911,16 +911,16 @@ impl Worm<'_, '_> {
         // In Game of Tag, 'it' doesn't change if the killer was not 'it',
         // the worm itself, unknown, or there was no 'it'.
         if env.game_mode != Some(GameMode::GameOfTag)
-            || old_last_killed < 0
-            || by < 0
-            || by == index
+            || old_last_killed.is_none()
+            || by.is_none()
+            || by == Some(index)
             || by == old_last_killed
         {
-            data.last_killed_idx = index;
+            data.last_killed_idx = Some(index);
         }
         data.got_changed = old_last_killed != data.last_killed_idx;
 
-        if by >= 0 && by != index {
+        if let Some(by) = by.filter(|&by| by != index) {
             self.world.g.worm_mut(by).kills += 1;
         }
 

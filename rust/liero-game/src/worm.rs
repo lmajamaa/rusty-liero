@@ -97,7 +97,7 @@ pub struct WormData {
     pub flags: i32,
     pub ninjarope: Ninjarope,
     pub current_weapon: i32,
-    pub last_killed_by_idx: i32,
+    pub last_killed_by_idx: Option<i32>,
     pub fire_cone: i32,
     pub leave_shell_timer: i32,
     /// 0 or 1.
@@ -176,7 +176,7 @@ impl Default for WormData {
                 cur_len: 0,
             },
             current_weapon: 0,
-            last_killed_by_idx: -1,
+            last_killed_by_idx: None,
             fire_cone: 0,
             leave_shell_timer: 0,
             index: 0,
@@ -343,7 +343,7 @@ mod tests {
             // What C++'s Worm() set.
             assert!(w.ready && w.movable && !w.visible);
             assert_eq!(w.killed_timer, 150);
-            assert_eq!(w.last_killed_by_idx, -1);
+            assert_eq!(w.last_killed_by_idx, None);
             assert_eq!(w.reacts, [0; 4]);
             assert!(w.ninjarope.anchor.is_none() && !w.ninjarope.out);
 

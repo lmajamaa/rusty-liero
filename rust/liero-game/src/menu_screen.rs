@@ -85,10 +85,11 @@ struct MenuScreen {
     menus: SharedMenus,
     phase: Phase,
     start_item: i32,
-    selected: i32,
+    /// What the menu closes with, once chosen.
+    selected: Option<i32>,
     part: Part,
     how: Use,
-    entered: i32,
+    entered: Option<i32>,
     resumed: bool,
 }
 
@@ -119,17 +120,19 @@ impl MenuScreen {
         });
     }
 
-    fn main_selected_id(&self) -> i32 {
-        self.menu(MenuKind::Main, |main| main.selected().map_or(-1, |i| main.items[i].id))
+    fn main_selected_id(&self) -> Option<i32> {
+        self.menu(MenuKind::Main, |main| {
+            main.selected().map(|i| main.items[i].id).filter(|&id| id >= 0)
+        })
     }
 
     /// What an item's `onEnter` returned, put to `how`. True if the menu
     /// closes at once (a new TC).
-    fn take_result(&mut self, how: Use, r: i32) -> bool {
+    fn take_result(&mut self, how: Use, r: Option<i32>) -> bool {
         match how {
             Use::Select => self.selected = r,
-            Use::Tc if r == MAIN_TC => {
-                self.selected = MAIN_TC;
+            Use::Tc if r == Some(MAIN_TC) => {
+                self.selected = Some(MAIN_TC);
                 return true;
             }
             _ => {}
@@ -195,15 +198,15 @@ impl MenuScreen {
                     host.play_sound(SOUND_CHOICE);
                     let s = self.main_selected_id();
                     match s {
-                        MAIN_SETTINGS => self.set_cur(MenuKind::Settings),
-                        MAIN_PLAYER1_SETTINGS | MAIN_PLAYER2_SETTINGS => {
-                            self.menus().player_settings(app, s - MAIN_PLAYER1_SETTINGS)
+                        Some(MAIN_SETTINGS) => self.set_cur(MenuKind::Settings),
+                        Some(id @ (MAIN_PLAYER1_SETTINGS | MAIN_PLAYER2_SETTINGS)) => {
+                            self.menus().player_settings(app, id - MAIN_PLAYER1_SETTINGS)
                         }
-                        MAIN_ADVANCED => self.menus().open_hidden(app),
-                        MAIN_REPLAYS => {
+                        Some(MAIN_ADVANCED) => self.menus().open_hidden(app),
+                        Some(MAIN_REPLAYS) => {
                             enter!(cur, Use::Select, Part::AfterEnter);
                         }
-                        MAIN_TC => {
+                        Some(MAIN_TC) => {
                             if enter!(cur, Use::Tc, Part::AfterEnter) {
                                 return Step::Close;
                             }
@@ -225,7 +228,7 @@ impl MenuScreen {
             if app.test_key_once(SCANCODE_F1) {
                 self.set_cur(MenuKind::Main);
                 self.move_main_to(self.start_item);
-                self.selected = self.start_item;
+                self.selected = Some(self.start_item);
             }
             if app.test_key_once(SCANCODE_F2) {
                 self.move_main_to(MAIN_ADVANCED);
@@ -282,7 +285,7 @@ impl MenuScreen {
 
     fn run_step(&mut self, app: &mut App, host: &Host) -> Tick {
         match self.step(app, host) {
-            Step::Close => Tick::close(self.selected),
+            Step::Close => Tick::close(self.selected.unwrap_or(-1)),
             Step::Opened(screen) => Tick::push(screen),
             Step::Done => {
                 host.menu_fade(app);
@@ -314,12 +317,12 @@ impl Screen for MenuScreen {
             }
             Phase::Setup => {
                 self.start_item = crate::app_menus::menu_start(app);
-                self.selected = -1;
+                self.selected = None;
                 self.phase = Phase::Menu;
                 self.run_step(app, host)
             }
             Phase::Menu => {
-                if self.selected < 0 {
+                if self.selected.is_none() {
                     return self.run_step(app, host);
                 }
                 self.phase = Phase::FadeOut;
@@ -334,7 +337,7 @@ impl Screen for MenuScreen {
                     crate::app_menus::menu_fade(app, true);
                     return Tick::stay(true);
                 }
-                Tick::close(self.selected)
+                Tick::close(self.selected.unwrap_or(-1))
             }
         }
     }
@@ -352,10 +355,10 @@ pub fn menu_screen(menus: SharedMenus) -> BoxedScreen {
         menus,
         phase: Phase::Start,
         start_item: 0,
-        selected: -1,
+        selected: None,
         part: Part::Top,
         how: Use::Ignore,
-        entered: -1,
+        entered: None,
         resumed: false,
     })
 }

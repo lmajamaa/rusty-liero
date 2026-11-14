@@ -35,9 +35,9 @@ pub struct Rect {
 pub struct Holdazone {
     pub rect: Rect,
     /// The worm holding the zone, or -1.
-    pub holder_idx: i32,
+    pub holder_idx: Option<i32>,
     /// The worm taking the zone, or -1.
-    pub contender_idx: i32,
+    pub contender_idx: Option<i32>,
     pub contender_frames: i32,
     pub timeout_left: i32,
     pub zone_width: i32,
@@ -79,7 +79,7 @@ pub struct GameWorm {
 pub struct GameData {
     pub cycles: i32,
     /// The worm that died last, which is 'it' in Game of Tag, or -1.
-    pub last_killed_idx: i32,
+    pub last_killed_idx: Option<i32>,
     /// Whether 'it' changed this tick.
     pub got_changed: bool,
     pub screen_flash: i32,
@@ -105,12 +105,12 @@ impl GameData {
             std::ptr::addr_of_mut!((*g.as_mut_ptr()).bobjects).write(BObjectList::new(1));
             g.assume_init()
         };
-        g.last_killed_idx = -1;
+        g.last_killed_idx = None;
         g.paused = true;
         g.holdazone = Holdazone {
             rect: Rect::default(),
-            holder_idx: -1,
-            contender_idx: -1,
+            holder_idx: None,
+            contender_idx: None,
             contender_frames: 0,
             timeout_left: 0,
             zone_width: 50,
@@ -342,7 +342,7 @@ impl Rules<'_> {
             let w = self.worm_mut(i);
             w.health -= amount;
             if w.health <= 0 {
-                w.last_killed_by_idx = by_idx;
+                w.last_killed_by_idx = (by_idx >= 0).then_some(by_idx);
             }
         }
     }
@@ -442,9 +442,9 @@ impl Rules<'_> {
                     y2: pos.y + z.zone_height,
                 };
                 z.timeout_left = self.s.zone_timeout * 70;
-                z.contender_idx = -1;
+                z.contender_idx = None;
                 z.contender_frames = 0;
-                z.holder_idx = -1;
+                z.holder_idx = None;
                 break;
             }
 
@@ -458,7 +458,7 @@ impl Rules<'_> {
         let some_invisible = (0..self.worm_count()).any(|i| !self.worm(i).visible);
         let it = self.data.last_killed_idx;
 
-        if !some_invisible && it >= 0 && self.cycles() % 70 == 0 {
+        if let Some(it) = it.filter(|_| !some_invisible && self.cycles() % 70 == 0) {
             let time_to_lose = self.s.time_to_lose;
             let w = self.worm_mut(it);
             if w.timer < time_to_lose {
@@ -470,13 +470,13 @@ impl Rules<'_> {
     fn holdazone(&mut self) {
         let s = self.s;
 
-        let mut contender_idx = -1;
+        let mut contender_idx = None;
         let mut contenders = 0;
 
         for i in 0..self.worm_count() {
             let w = self.worm(i);
             if w.visible && self.data.holdazone.rect.contains(ftoi(w.pos.x), ftoi(w.pos.y)) {
-                contender_idx = w.index;
+                contender_idx = Some(w.index);
                 contenders += 1;
             }
         }
@@ -488,13 +488,13 @@ impl Rules<'_> {
         }
 
         if contenders <= 1 {
-            if contender_idx < 0 || (z.contender_idx != contender_idx && z.contender_frames != 0) {
+            if contender_idx.is_none() || (z.contender_idx != contender_idx && z.contender_frames != 0) {
                 if z.contender_frames == 0 || {
                     z.contender_frames -= 1;
                     z.contender_frames == 0
                 } {
                     z.contender_idx = contender_idx;
-                    z.holder_idx = -1;
+                    z.holder_idx = None;
                 }
             } else {
                 z.contender_idx = contender_idx;
@@ -508,7 +508,7 @@ impl Rules<'_> {
                 {
                     // New holder
                     let mut new_timeout = z.timeout_left;
-                    if z.contender_idx >= 0 {
+                    if z.contender_idx.is_some() {
                         new_timeout += s.zone_timeout * 70 / 4;
                     } else {
                         new_timeout += s.zone_timeout * 70 / 8;
@@ -521,7 +521,7 @@ impl Rules<'_> {
         }
 
         let holder = self.data.holdazone.holder_idx;
-        let dec = if holder >= 0 {
+        let dec = if let Some(holder) = holder {
             if self.cycles() % 70 == 0 {
                 self.worm_mut(holder).timer += 1;
             }
@@ -727,12 +727,12 @@ mod tests {
         {
             let mut g = GameData::new_boxed();
             // What C++'s Game() set.
-            assert_eq!((g.cycles, g.last_killed_idx, g.screen_flash), (0, -1, 0));
+            assert_eq!((g.cycles, g.last_killed_idx, g.screen_flash), (0, None, 0));
             assert!(g.paused && !g.got_changed && !g.quick_sim);
             let z = g.holdazone;
             assert_eq!(
                 (z.holder_idx, z.contender_idx, z.zone_width, z.zone_height),
-                (-1, -1, 50, 34)
+                (None, None, 50, 34)
             );
             assert_eq!((g.wobjects.count, g.bobjects.limit(), g.bobjects.count), (0, 1, 0));
             assert!(g.nobjects.sentinel.used && g.bonuses.arr[5].frame == -1);
@@ -768,7 +768,7 @@ mod tests {
             damage(g, &s, 0, 0, 1);
             damage(g, &s, 0, 7, 1);
         });
-        assert_eq!((worms[0].health, worms[0].last_killed_by_idx), (-2, 1));
+        assert_eq!((worms[0].health, worms[0].last_killed_by_idx), (-2, Some(1)));
         assert_eq!(worms[1].health, 100);
     }
 
@@ -793,7 +793,7 @@ mod tests {
         assert_eq!(worms[0].health, 30 - 13 - 4);
         assert_eq!(worms[1].health, 10 + 6 - 5);
         assert_eq!((worms[2].health, worms[2].lives), (90 + 7 + 9 - 100, 6));
-        assert_eq!(worms[0].last_killed_by_idx, -1);
+        assert_eq!(worms[0].last_killed_by_idx, None);
     }
 
     #[test]
