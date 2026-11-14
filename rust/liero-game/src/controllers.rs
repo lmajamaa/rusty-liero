@@ -22,38 +22,30 @@ use crate::keys::{local_controller_key, LieroWormKeys, LIERO_DK_ESCAPE};
 use crate::level::LieroLevelBox;
 use crate::renderer::LieroRenderer;
 use crate::replay::LieroReplayStatus;
-use crate::replay_file::{
-    liero_replay_reader_begin, liero_replay_reader_frame, liero_replay_reader_new, liero_replay_writer_begin,
-    liero_replay_writer_focus, liero_replay_writer_frame, liero_replay_writer_new, liero_replay_writer_unfocus,
-    LieroReplayOutcome, LieroReplayReader, LieroReplayWriter,
-};
+use crate::replay_file::{LieroReplayOutcome, LieroReplayReader, LieroReplayWriter};
 use crate::screen::{current_host, LieroScreen};
 use crate::settings::{liero_settings_box_new, SharedSettings, LIERO_MAX_CONTROL_EX};
-use crate::stats::{liero_stats_presenter_screen, LieroSprite, LieroStatsScene};
+use crate::stats::liero_stats_presenter_screen;
 use crate::tc::SharedTc;
-use crate::text::LieroStr;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{
     liero_weapsel_draw_game, liero_weapsel_finish, liero_weapsel_process_game, liero_weapsel_set_focused,
-    liero_weapsel_start, tc_font, LieroWeapsel,
+    liero_weapsel_start, LieroWeapsel,
 };
 
 /// `SDL_SCANCODE_R`, which rewinds a replay.
 const SCANCODE_R: i32 = 21;
 
-/// The game modes' names on the stats screen (`Texts::gameModes`).
-const GAME_MODE_NAMES: [&str; 4] = ["Kill'em All", "Game of Tag", "Holdazone", "Scales of Justice"];
-
 /// A match played here.
 struct Local {
     game: Box<LieroGame>,
     ws: Option<Box<LieroWeapsel>>,
-    replay: Option<Box<LieroReplayWriter>>,
+    replay: Option<LieroReplayWriter>,
 }
 
 /// A replay played back.
 struct Replay {
-    reader: Option<Box<LieroReplayReader>>,
+    reader: Option<LieroReplayReader>,
     /// The TC the game is made with.
     tc: SharedTc,
     game: Option<Box<LieroGame>>,
@@ -98,7 +90,6 @@ fn game_hooks() -> LieroGameHooks {
     LieroGameHooks {
         ctx: std::ptr::null_mut(),
         hires_ticks: host_hires_ticks,
-        process_viewports: true,
     }
 }
 
@@ -183,20 +174,13 @@ impl LieroController {
     }
 
     /// Ends the game's stats and opens the stats screen (`presentStats`).
-    unsafe fn present_stats(&mut self) {
-        unsafe {
-            let game = self.game().expect("no game");
-            game.stats_finish();
-            let names: Vec<LieroStr>;
-            let scene;
-            {
-                let tc = &*game.tc_ptr();
-                names = tc.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
-                scene = stats_scene(game, &app().play.data, &names);
-            }
-            let s = liero_stats_presenter_screen(&*game.stats(), &scene);
-            self.open(s);
-        }
+    fn present_stats(&mut self) {
+        let game = self.game().expect("no game");
+        game.stats_finish();
+        let g = game.stats_game();
+        let r = &app().play.data;
+        let s = liero_stats_presenter_screen(game.stats(), game.tc(), g, r.render_res_x, r.render_res_y);
+        self.open(s);
     }
 
     unsafe fn on_key(&mut self, key: i32, state: bool) {
@@ -227,15 +211,13 @@ impl LieroController {
         }
     }
 
-    unsafe fn unfocus(&mut self) {
-        unsafe {
-            if let Kind::Local(l) = &mut self.kind {
-                if let Some(w) = &mut l.replay {
-                    liero_replay_writer_unfocus(w);
-                }
-                if self.data.state == LIERO_STATE_WEAPON_SELECTION {
-                    liero_weapsel_set_focused(l.ws.as_mut().expect("no weapon selection"), false);
-                }
+    fn unfocus(&mut self) {
+        if let Kind::Local(l) = &mut self.kind {
+            if let Some(w) = &mut l.replay {
+                w.unfocus(&mut l.game);
+            }
+            if self.data.state == LIERO_STATE_WEAPON_SELECTION {
+                liero_weapsel_set_focused(l.ws.as_mut().expect("no weapon selection"), false);
             }
         }
     }
@@ -254,7 +236,7 @@ impl LieroController {
                         liero_weapsel_set_focused(l.ws.as_mut().expect("no weapon selection"), true);
                     }
                     if let Some(w) = &mut l.replay {
-                        liero_replay_writer_focus(w);
+                        w.focus(&mut l.game);
                     }
                     if d.state == LIERO_STATE_INITIAL {
                         self.change_state(LIERO_STATE_WEAPON_SELECTION);
@@ -264,7 +246,7 @@ impl LieroController {
                     if d.state == LIERO_STATE_INITIAL {
                         let mut game = new_game(liero_settings_box_new(), r.tc.clone());
                         let reader = r.reader.as_mut().expect("no replay");
-                        let o = liero_replay_reader_begin(reader, &mut game);
+                        let o = reader.begin(&mut game);
                         if let Some(e) = caught(&o, true) {
                             drop(game);
                             self.info_box(&format!("Error starting replay playback: {e}"));
@@ -310,7 +292,7 @@ impl LieroController {
                     let Kind::Local(l) = &mut self.kind else { unreachable!() };
                     l.game.process_ais(Some(&game_hooks()));
                     if let Some(w) = &mut l.replay {
-                        liero_replay_writer_frame(w);
+                        w.frame(&mut l.game);
                     }
                     l.game.process_frame(&game_hooks());
                     if l.game.is_over() {
@@ -347,10 +329,7 @@ impl LieroController {
                 let game = r.game.as_mut().expect("no game");
                 if app().keys.test_sdl_once(SCANCODE_R) {
                     crate::game_box::liero_game_assign(game, r.initial.as_ref().expect("no start to rewind to"));
-                    crate::replay_file::liero_replay_reader_set_pos(
-                        r.reader.as_mut().expect("no replay"),
-                        r.initial_pos,
-                    );
+                    r.reader.as_mut().expect("no replay").set_pos(r.initial_pos);
                 }
 
                 let ticks = self.data.ticks();
@@ -360,7 +339,7 @@ impl LieroController {
                         unreachable!()
                     };
                     if let Some(reader) = &mut r.reader {
-                        let o = liero_replay_reader_frame(reader);
+                        let o = reader.frame(r.game.as_mut().expect("no game"));
                         if o.end {
                             // End of replay
                             r.reader = None;
@@ -434,7 +413,7 @@ impl LieroController {
                             spectators,
                         );
                     } else {
-                        l.game.draw(renderer, state, spectators, false);
+                        l.game.draw(&mut *renderer, state, spectators, false);
                     }
                 }
                 Kind::Replay(r) => {
@@ -442,7 +421,7 @@ impl LieroController {
                         r.game
                             .as_mut()
                             .expect("no game")
-                            .draw(renderer, state, spectators, true);
+                            .draw(&mut *renderer, state, spectators, true);
                     }
                 }
             }
@@ -535,7 +514,7 @@ impl LieroController {
                 let blood = game.settings_box().data.blood_particle_max;
                 game.start(blood);
                 r.initial = Some(Box::from_raw(liero_game_clone(game)));
-                r.initial_pos = crate::replay_file::liero_replay_reader_pos(r.reader.as_ref().expect("no replay"));
+                r.initial_pos = r.reader.as_ref().expect("no replay").pos();
             } else if new_state == LIERO_STATE_GAME_ENDED && !self.data.going_to_menu {
                 self.data.fade_value = 180;
                 self.data.going_to_menu = true;
@@ -588,16 +567,14 @@ unsafe fn free_screen(s: LieroScreen) {
 /// The error a replay outcome is, as the controllers catch it: a check
 /// error, and with `read_too` a read error. Others stop the app, as the
 /// exceptions C++ didn't catch did.
-unsafe fn caught(o: &LieroReplayOutcome, read_too: bool) -> Option<String> {
-    unsafe {
-        let message = String::from_utf8_lossy(o.message.bytes()).into_owned();
-        match o.status {
-            LieroReplayStatus::Ok => None,
-            LieroReplayStatus::CheckError => Some(message),
-            LieroReplayStatus::ReadError if read_too => Some(message),
-            LieroReplayStatus::ReadError => panic!("{message}"),
-            LieroReplayStatus::OutOfRange => panic!("vector"),
-        }
+fn caught(o: &LieroReplayOutcome, read_too: bool) -> Option<String> {
+    let message = o.message.to_string();
+    match o.status {
+        LieroReplayStatus::Ok => None,
+        LieroReplayStatus::CheckError => Some(message),
+        LieroReplayStatus::ReadError if read_too => Some(message),
+        LieroReplayStatus::ReadError => panic!("{message}"),
+        LieroReplayStatus::OutOfRange => panic!("vector"),
     }
 }
 
@@ -606,64 +583,15 @@ unsafe fn start_recording(l: &mut Local) -> Result<(), String> {
     unsafe {
         let name = replay_name(&mut l.game);
         let node = crate::app::app().files.config.go(b"Replays").go(&name);
-        let w = liero_replay_writer_new(&node.clone());
-        if w.is_null() {
+        let Some(mut w) = LieroReplayWriter::new(&node) else {
             return Err(format!("Could not write {}", String::from_utf8_lossy(node.full_path())));
-        }
-        let mut w = Box::from_raw(w);
-        let o = liero_replay_writer_begin(&mut w, &mut l.game);
+        };
+        let o = w.begin(&mut l.game);
         // The writer is kept even when beginning fails, as C++ kept it.
         l.replay = Some(w);
         match caught(&o, true) {
             Some(e) => Err(e),
             None => Ok(()),
-        }
-    }
-}
-
-/// What the stats screen draws with (`statsScene`).
-///
-/// # Safety
-/// The game has its TC, which it keeps while the scene is used; `names`
-/// are the TC's weapons' names.
-pub(crate) unsafe fn stats_scene(
-    game: &mut LieroGame,
-    r: &crate::renderer::LieroRendererData,
-    names: &[LieroStr],
-) -> LieroStatsScene<'static> {
-    unsafe {
-        let tc: &'static crate::tc::LieroTcData = &*game.tc_ptr();
-        let sprites = &tc.worm_sprites;
-        // `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
-        let sprite = |i: i32| {
-            let frame = 2 + (if i == 0 { 1 } else { 0 }) * 7 * 3 + i * 2 * 7 * 3;
-            LieroSprite {
-                mem: sprites.frame(frame),
-                width: sprites.width,
-                height: sprites.height,
-                pitch: sprites.width,
-            }
-        };
-        let name = |g: &mut LieroGame, i| {
-            let n = &g
-                .worm_at(i)
-                .expect("an empty place among the game's worms")
-                .settings()
-                .name;
-            LieroStr::of(n)
-        };
-        let mode = game.settings_box().data.game_mode as i32;
-        LieroStatsScene {
-            font: tc_font(tc),
-            worm_sprites: [sprite(0), sprite(1)],
-            names: [name(game, 0), name(game, 1)],
-            game_mode: mode,
-            game_mode_name: LieroStr::of(GAME_MODE_NAMES[mode as usize].as_bytes()),
-            weapon_names: names.as_ptr(),
-            weapon_count: names.len(),
-            render_res_x: r.render_res_x,
-            render_res_y: r.render_res_y,
-            ticks_per_sec: 1_000_000_000,
         }
     }
 }
@@ -700,24 +628,18 @@ pub unsafe fn liero_local_controller_new(settings: SharedSettings, tc: SharedTc)
 
 /// A replay of `node`, played with `tc` (`ReplayController`), or null if
 /// it can't be read.
-///
-/// # Safety
-/// `tc` has a reference, which the controller keeps while it lives.
-pub unsafe fn liero_replay_controller_new(node: &Node, tc: SharedTc) -> *mut LieroController {
-    unsafe {
-        let reader = liero_replay_reader_new(node);
-        if reader.is_null() {
-            return std::ptr::null_mut();
-        }
-        let r = Replay {
-            reader: Some(Box::from_raw(reader)),
-            tc,
-            game: None,
-            initial: None,
-            initial_pos: 0,
-        };
-        Box::into_raw(LieroController::new(Kind::Replay(r)))
-    }
+pub fn liero_replay_controller_new(node: &Node, tc: SharedTc) -> *mut LieroController {
+    let Some(reader) = LieroReplayReader::new(node) else {
+        return std::ptr::null_mut();
+    };
+    let r = Replay {
+        reader: Some(reader),
+        tc,
+        game: None,
+        initial: None,
+        initial_pos: 0,
+    };
+    Box::into_raw(LieroController::new(Kind::Replay(r)))
 }
 
 /// # Safety
@@ -746,13 +668,8 @@ pub unsafe fn liero_controller_on_key(c: &mut LieroController, key: i32, state: 
 }
 
 /// The menu opened.
-///
-/// # Safety
-/// `c` is valid.
-pub unsafe fn liero_controller_unfocus(c: &mut LieroController) {
-    unsafe {
-        c.unfocus();
-    }
+pub fn liero_controller_unfocus(c: &mut LieroController) {
+    c.unfocus();
 }
 
 /// The menu closed to the game.
@@ -816,27 +733,6 @@ pub unsafe fn liero_controller_take_opened(c: &mut LieroController, out: *mut Li
             }
             None => false,
         }
-    }
-}
-
-/// What the stats screen draws `g`'s game with, on `r`; `names` are the
-/// TC's weapons' names, which outlive the scene.
-///
-/// # Safety
-/// The game has its TC and its first two worms; `names` points to `count`.
-pub unsafe fn liero_game_stats_scene(
-    g: &mut LieroGame,
-    r: &LieroRenderer,
-    names: *const LieroStr,
-    count: usize,
-) -> LieroStatsScene<'static> {
-    unsafe {
-        let names = if count == 0 {
-            &[][..]
-        } else {
-            std::slice::from_raw_parts(names, count)
-        };
-        stats_scene(g, &r.data, names)
     }
 }
 

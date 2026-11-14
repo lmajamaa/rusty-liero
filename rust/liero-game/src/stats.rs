@@ -2,11 +2,9 @@
 //! collects during a game, and the stats screen drawn from it after the game
 //! (`src/game/controller/stats_presenter.cpp`).
 //!
-//! C++'s `NormalStatsRecorder` owns a `LieroStats` and forwards each event,
-//! with worms and weapons as indexes and the worms' state copied into
-//! `LieroStatsWorm`s. The base `StatsRecorder`, which AI clones of a game use,
-//! stays a C++ no-op. The SDL loop that scrolls the stats screen stays in C++
-//! and calls `liero_stats_screen_draw` every frame.
+//! A game owns a `LieroStats`, and its tick records each event, with worms
+//! and weapons as indexes and the worms' state copied into
+//! `LieroStatsWorm`s. The AI's copies of a game record nothing.
 //!
 //! The counters are C++ `int`s, which wrap around here rather than being
 //! undefined.
@@ -16,7 +14,8 @@ use crate::gfx::{
     liero_gfx_blit_image, liero_gfx_draw_graph, liero_gfx_draw_heatmap, liero_gfx_draw_rounded_box, LieroBitmap,
 };
 use crate::screen::{into_ffi, Host, LieroScreen, Screen, Tick};
-use crate::text::{time_to_string, time_to_string_ex, LieroFont, LieroStr};
+use crate::tc::{tc_data, LieroTcData, LieroTcWeapon, SharedTc};
+use crate::text::{time_to_string, time_to_string_ex, LieroFont};
 
 const WEAPON_COUNT: usize = 40;
 const WORM_COLOUR_INDEXES: [u8; 2] = [0x58, 0x78];
@@ -77,17 +76,6 @@ impl Heatmap {
                     self.add(cx, cy, v.wrapping_mul(weight));
                 }
             }
-        }
-    }
-
-    fn view(&self) -> LieroHeatmapView {
-        LieroHeatmapView {
-            width: self.width,
-            height: self.height,
-            org_width: self.org_width,
-            org_height: self.org_height,
-            map: self.map.as_ptr(),
-            len: self.map.len(),
         }
     }
 }
@@ -520,17 +508,16 @@ pub struct LieroSprite<'a> {
 }
 
 /// What the stats screen draws with, besides the stats.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct LieroStatsScene<'a> {
     pub font: LieroFont<'a>,
     /// Each worm facing the middle: `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
     pub worm_sprites: [LieroSprite<'a>; 2],
-    pub names: [LieroStr; 2],
+    pub names: [&'a [u8]; 2],
     pub game_mode: i32,
-    pub game_mode_name: LieroStr,
-    /// The TC's weapon names, by index.
-    pub weapon_names: *const LieroStr,
-    pub weapon_count: usize,
+    pub game_mode_name: &'a [u8],
+    /// The TC's weapons, for their names, by index.
+    pub weapons: &'a [LieroTcWeapon],
     pub render_res_x: i32,
     pub render_res_y: i32,
     /// `gvl::hires_ticks_per_sec()`, for the AI's processing time.
@@ -578,8 +565,8 @@ impl Layout<'_> {
         liero_gfx_blit_image(self.scr, s.mem, x, y, s.width, s.height, s.pitch);
     }
 
-    unsafe fn name(&self, i: usize) -> &[u8] {
-        unsafe { self.scene.names[i].bytes() }
+    fn name(&self, i: usize) -> &[u8] {
+        self.scene.names[i]
     }
 
     fn pane(&mut self, n: i32, left_x: i32, top_y: i32, p: impl FnOnce(&mut Self)) {
@@ -604,36 +591,32 @@ impl Layout<'_> {
         ran
     }
 
-    unsafe fn draw_worms(&mut self) {
-        unsafe {
-            self.hblock(20, |r| {
-                let res_x = r.scene.render_res_x;
-                for i in 0..2 {
-                    let x = res_x / 2 + if i == 0 { -1 } else { 1 } * (res_x / 4) + r.offs_x;
-                    r.worm_sprite(i, x - 8, r.y);
-                    let (place, dx) = if i == 0 { (Place::Right, -16) } else { (Place::Left, 16) };
-                    r.text(r.name(i), place, x + dx, r.y + 2, TEXT_COLOR);
-                }
-            });
-        }
-    }
-
-    unsafe fn draw_worm(&mut self, i: usize) {
-        unsafe {
-            let visible = self.hblock(20, |r| {
-                let x = r.scene.render_res_x / 2 + r.offs_x;
+    fn draw_worms(&mut self) {
+        self.hblock(20, |r| {
+            let res_x = r.scene.render_res_x;
+            for i in 0..2 {
+                let x = res_x / 2 + if i == 0 { -1 } else { 1 } * (res_x / 4) + r.offs_x;
                 r.worm_sprite(i, x - 8, r.y);
                 let (place, dx) = if i == 0 { (Place::Right, -16) } else { (Place::Left, 16) };
                 r.text(r.name(i), place, x + dx, r.y + 2, TEXT_COLOR);
-            });
-            if !visible {
-                self.worm_sprite(i, 18 + self.offs_x - 8, 10);
             }
+        });
+    }
+
+    fn draw_worm(&mut self, i: usize) {
+        let visible = self.hblock(20, |r| {
+            let x = r.scene.render_res_x / 2 + r.offs_x;
+            r.worm_sprite(i, x - 8, r.y);
+            let (place, dx) = if i == 0 { (Place::Right, -16) } else { (Place::Left, 16) };
+            r.text(r.name(i), place, x + dx, r.y + 2, TEXT_COLOR);
+        });
+        if !visible {
+            self.worm_sprite(i, 18 + self.offs_x - 8, 10);
         }
     }
 
     /// A row with `name` in the middle and each worm's value beside it.
-    unsafe fn draw_worm_stat(&mut self, name: &[u8], stat: impl Fn(&WormStats) -> Vec<u8>) {
+    fn draw_worm_stat(&mut self, name: &[u8], stat: impl Fn(&WormStats) -> Vec<u8>) {
         self.hblock(11, |r| {
             let mid = r.scene.render_res_x / 2 + r.offs_x;
             r.text(name, Place::Center, mid, r.y, TEXT_COLOR);
@@ -644,14 +627,12 @@ impl Layout<'_> {
         });
     }
 
-    unsafe fn draw_worm_int(&mut self, name: &[u8], field: impl Fn(&WormStats) -> i32) {
-        unsafe {
-            self.draw_worm_stat(name, |w| field(w).to_string().into_bytes());
-        }
+    fn draw_worm_int(&mut self, name: &[u8], field: impl Fn(&WormStats) -> i32) {
+        self.draw_worm_stat(name, |w| field(w).to_string().into_bytes());
     }
 
     /// A row with `name` left of the middle and `value` right of it.
-    unsafe fn draw_stat(&mut self, name: &[u8], value: &[u8]) {
+    fn draw_stat(&mut self, name: &[u8], value: &[u8]) {
         self.hblock(11, |r| {
             let mid = r.scene.render_res_x / 2 + r.offs_x;
             r.text(name, Place::Right, mid, r.y, TEXT_COLOR);
@@ -660,7 +641,7 @@ impl Layout<'_> {
     }
 
     /// A heading: level 0 is a section of its own, level 1 a weapon's name.
-    unsafe fn section(&mut self, s: &[u8], level: i32) {
+    fn section(&mut self, s: &[u8], level: i32) {
         let (x, color) = if level > 0 {
             (self.offs_x + 40, 3)
         } else {
@@ -676,35 +657,33 @@ impl Layout<'_> {
         self.y += 5;
     }
 
-    unsafe fn weapon_stats(&mut self, list: &[LieroWeaponStats]) {
-        unsafe {
-            for ws in list.iter().filter(|ws| ws.total_hp > 0) {
-                let name = match usize::try_from(ws.index) {
-                    Ok(i) if i < self.scene.weapon_count => (*self.scene.weapon_names.add(i)).bytes(),
-                    _ => &[],
-                };
-                self.section(name, 1);
-                let hits = format!(
+    fn weapon_stats(&mut self, list: &[LieroWeaponStats]) {
+        for ws in list.iter().filter(|ws| ws.total_hp > 0) {
+            let name = match usize::try_from(ws.index) {
+                Ok(i) if i < self.scene.weapons.len() => &self.scene.weapons[i].name[..],
+                _ => &[],
+            };
+            self.section(name, 1);
+            let hits = format!(
+                "{}/{} ({})",
+                ws.actual_hits,
+                ws.potential_hits,
+                percent(ws.actual_hits, ws.potential_hits)
+            );
+            self.draw_stat(b"hits", hits.as_bytes());
+            if ws.potential_hp > 0 {
+                let damage = format!(
                     "{}/{} ({})",
-                    ws.actual_hits,
-                    ws.potential_hits,
-                    percent(ws.actual_hits, ws.potential_hits)
+                    ws.actual_hp,
+                    ws.potential_hp,
+                    percent(ws.actual_hp, ws.potential_hp)
                 );
-                self.draw_stat(b"hits", hits.as_bytes());
-                if ws.potential_hp > 0 {
-                    let damage = format!(
-                        "{}/{} ({})",
-                        ws.actual_hp,
-                        ws.potential_hp,
-                        percent(ws.actual_hp, ws.potential_hp)
-                    );
-                    self.draw_stat(b"damage", damage.as_bytes());
-                }
-                if ws.total_hp != ws.actual_hp {
-                    self.draw_stat(b"total damage", ws.total_hp.to_string().as_bytes());
-                }
-                self.gap();
+                self.draw_stat(b"damage", damage.as_bytes());
             }
+            if ws.total_hp != ws.actual_hp {
+                self.draw_stat(b"total damage", ws.total_hp.to_string().as_bytes());
+            }
+            self.gap();
         }
     }
 
@@ -730,177 +709,79 @@ impl LieroStatsScreen {
     /// Draws the overall pane in the middle and each worm's pane beside it,
     /// `pane` screens to the right (-1 to 1, or between while moving) and
     /// scrolled `offset` pixels: `StatsScreen::draw`.
-    ///
-    /// # Safety
-    /// See `LieroBitmap` and the scene's views.
-    pub unsafe fn draw(&self, stats: &LieroStats, scene: &LieroStatsScene, scr: &LieroBitmap, pane: f64, offset: f64) {
-        unsafe {
-            let mut r = Layout {
-                scr,
-                scene,
-                stats,
-                pane_width: scene.render_res_x - 20,
-                offs_x: 0,
-                y: 0,
-            };
-            let offs_x = (pane * -(scene.render_res_x as f64)).floor() as i32;
-            let offs_y = offset as i32;
+    pub fn draw(&self, stats: &LieroStats, scene: &LieroStatsScene, scr: &LieroBitmap, pane: f64, offset: f64) {
+        let mut r = Layout {
+            scr,
+            scene,
+            stats,
+            pane_width: scene.render_res_x - 20,
+            offs_x: 0,
+            y: 0,
+        };
+        let offs_x = (pane * -(scene.render_res_x as f64)).floor() as i32;
+        let offs_y = offset as i32;
 
-            r.pane(0, offs_x, offs_y, |r| {
-                r.draw_worms();
+        r.pane(0, offs_x, offs_y, |r| {
+            r.draw_worms();
 
-                let old_y = r.y;
-                r.y -= 20;
-                r.draw_stat(scene.game_mode_name.bytes(), &time_frames(stats.game_time));
-                r.y = old_y;
+            let old_y = r.y;
+            r.y -= 20;
+            r.draw_stat(scene.game_mode_name, &time_frames(stats.game_time));
+            r.y = old_y;
 
-                let ticks_per_sec = scene.ticks_per_sec.max(1);
-                r.draw_worm_stat(b"ai processing", |w| {
-                    format!("{}ms", (w.ai_process_time.wrapping_mul(1000) / ticks_per_sec) as i32).into_bytes()
-                });
-
-                if scene.game_mode == HOLDAZONE || scene.game_mode == GAME_OF_TAG {
-                    r.draw_worm_stat(b"timer", |w| time_to_string(w.timer).to_vec());
-                } else {
-                    r.draw_worm_int(b"lives left", |w| w.lives);
-                }
-                r.draw_worm_int(b"kills", |w| w.kills);
-                r.draw_worm_int(b"damage dealt", |w| w.damage_dealt);
-                r.draw_worm_int(b"damage received", |w| w.damage);
-                r.draw_worm_int(b"damage to self", |w| w.self_damage);
-                r.draw_worm_stat(b"shortest life", |w| time_frames(w.life_stats().0));
-                r.draw_worm_stat(b"longest life", |w| time_frames(w.life_stats().1));
-                r.draw_worm_stat(b"loading efficiency", |w| {
-                    percent(
-                        w.weapon_change_good,
-                        w.weapon_change_good.wrapping_add(w.weapon_change_bad),
-                    )
-                    .into_bytes()
-                });
-
-                r.gap();
-                r.weapon_stats(&self.combined);
-
-                r.section(b"Total health difference", 0);
-                r.graph(
-                    &self.total_hp_diff,
-                    100,
-                    WORM_COLOUR_INDEXES[0],
-                    WORM_COLOUR_INDEXES[1],
-                    true,
-                );
-
-                r.section(b"Presence", 0);
-                r.heatmap(&stats.presence);
+            let ticks_per_sec = scene.ticks_per_sec.max(1);
+            r.draw_worm_stat(b"ai processing", |w| {
+                format!("{}ms", (w.ai_process_time.wrapping_mul(1000) / ticks_per_sec) as i32).into_bytes()
             });
 
-            for (i, w) in stats.worms.iter().enumerate().take(2) {
-                r.pane(if i == 0 { -1 } else { 1 }, offs_x, offs_y, |r| {
-                    r.draw_worm(i);
-                    r.weapon_stats(&self.weapons[i]);
-
-                    r.section(b"Damage over time", 0);
-                    r.graph(&self.worm_damages[i], 50, WORM_COLOUR_INDEXES[i], 0, false);
-
-                    r.section(b"Presence", 0);
-                    r.heatmap(&w.presence);
-                    r.section(b"Damage", 0);
-                    r.heatmap(&w.damage_hm);
-                });
+            if scene.game_mode == HOLDAZONE || scene.game_mode == GAME_OF_TAG {
+                r.draw_worm_stat(b"timer", |w| time_to_string(w.timer).to_vec());
+            } else {
+                r.draw_worm_int(b"lives left", |w| w.lives);
             }
-        }
-    }
-}
+            r.draw_worm_int(b"kills", |w| w.kills);
+            r.draw_worm_int(b"damage dealt", |w| w.damage_dealt);
+            r.draw_worm_int(b"damage received", |w| w.damage);
+            r.draw_worm_int(b"damage to self", |w| w.self_damage);
+            r.draw_worm_stat(b"shortest life", |w| time_frames(w.life_stats().0));
+            r.draw_worm_stat(b"longest life", |w| time_frames(w.life_stats().1));
+            r.draw_worm_stat(b"loading efficiency", |w| {
+                percent(
+                    w.weapon_change_good,
+                    w.weapon_change_good.wrapping_add(w.weapon_change_bad),
+                )
+                .into_bytes()
+            });
 
-// ---- C interface ----
+            r.gap();
+            r.weapon_stats(&self.combined);
 
-/// A heatmap's size and counts, for C++ to read.
-#[derive(Clone, Copy, Debug)]
-pub struct LieroHeatmapView {
-    pub width: i32,
-    pub height: i32,
-    pub org_width: i32,
-    pub org_height: i32,
-    pub map: *const i32,
-    pub len: usize,
-}
+            r.section(b"Total health difference", 0);
+            r.graph(
+                &self.total_hp_diff,
+                100,
+                WORM_COLOUR_INDEXES[0],
+                WORM_COLOUR_INDEXES[1],
+                true,
+            );
 
-/// A worm's stats, for C++ to read. The pointers are valid until the stats
-/// next change.
-#[derive(Clone, Copy, Debug)]
-pub struct LieroWormStatsView {
-    /// Pairs of spawn and death frames.
-    pub life_spans: *const [i32; 2],
-    pub life_span_count: usize,
-    /// 40 weapons, by index.
-    pub weapons: *const LieroWeaponStats,
-    pub damage: i32,
-    pub damage_dealt: i32,
-    pub self_damage: i32,
-    pub damage_hm: LieroHeatmapView,
-    pub presence: LieroHeatmapView,
-    pub weapon_change_good: i32,
-    pub weapon_change_bad: i32,
-    pub frame_stats: *const LieroWormFrameStats,
-    pub frame_stat_count: usize,
-    pub spawn_time: i32,
-    pub index: i32,
-    pub lives: i32,
-    pub timer: i32,
-    pub kills: i32,
-    pub ai_process_time: u64,
-}
+            r.section(b"Presence", 0);
+            r.heatmap(&stats.presence);
+        });
 
-/// All the stats, for C++ to read.
-#[derive(Clone, Copy, Debug)]
-pub struct LieroStatsView {
-    pub frame: i32,
-    pub game_time: i32,
-    pub presence: LieroHeatmapView,
-    pub worms: [LieroWormStatsView; 2],
-    pub frame_start: u64,
-    pub process_time_total: u64,
-}
+        for (i, w) in stats.worms.iter().enumerate().take(2) {
+            r.pane(if i == 0 { -1 } else { 1 }, offs_x, offs_y, |r| {
+                r.draw_worm(i);
+                r.weapon_stats(&self.weapons[i]);
 
-impl LieroStats {
-    pub fn view(&self) -> LieroStatsView {
-        let worm = |w: &WormStats| LieroWormStatsView {
-            life_spans: w.life_spans.as_ptr(),
-            life_span_count: w.life_spans.len(),
-            weapons: w.weapons.as_ptr(),
-            damage: w.damage,
-            damage_dealt: w.damage_dealt,
-            self_damage: w.self_damage,
-            damage_hm: w.damage_hm.view(),
-            presence: w.presence.view(),
-            weapon_change_good: w.weapon_change_good,
-            weapon_change_bad: w.weapon_change_bad,
-            frame_stats: w.frame_stats.as_ptr(),
-            frame_stat_count: w.frame_stats.len(),
-            spawn_time: w.spawn_time,
-            index: w.index,
-            lives: w.lives,
-            timer: w.timer,
-            kills: w.kills,
-            ai_process_time: w.ai_process_time,
-        };
-        LieroStatsView {
-            frame: self.frame,
-            game_time: self.game_time,
-            presence: self.presence.view(),
-            worms: [worm(&self.worms[0]), worm(&self.worms[1])],
-            frame_start: self.frame_start,
-            process_time_total: self.process_time_total,
-        }
-    }
-}
+                r.section(b"Damage over time", 0);
+                r.graph(&self.worm_damages[i], 50, WORM_COLOUR_INDEXES[i], 0, false);
 
-unsafe fn worms<'a>(worms: *const LieroStatsWorm, count: usize) -> &'a [LieroStatsWorm] {
-    unsafe {
-        if count == 0 || worms.is_null() {
-            &[]
-        } else {
-            std::slice::from_raw_parts(worms, count)
+                r.section(b"Presence", 0);
+                r.heatmap(&w.presence);
+                r.section(b"Damage", 0);
+                r.heatmap(&w.damage_hm);
+            });
         }
     }
 }
@@ -939,61 +820,6 @@ pub fn liero_stats_after_death(s: &mut LieroStats, worm: i32) {
     s.after_death(worm);
 }
 
-/// # Safety
-/// `worms` must point to `count` worms.
-pub unsafe fn liero_stats_pre_tick(s: &mut LieroStats, ticks: u64, w: *const LieroStatsWorm, count: usize) {
-    unsafe {
-        s.pre_tick(ticks, worms(w, count));
-    }
-}
-
-/// # Safety
-/// `worms` must point to `count` worms.
-pub unsafe fn liero_stats_tick(s: &mut LieroStats, ticks: u64, w: *const LieroStatsWorm, count: usize) {
-    unsafe {
-        s.tick(ticks, worms(w, count));
-    }
-}
-
-/// # Safety
-/// `worms` must point to `count` worms.
-pub unsafe fn liero_stats_finish(s: &mut LieroStats, w: *const LieroStatsWorm, count: usize) {
-    unsafe {
-        s.finish(worms(w, count));
-    }
-}
-
-/// The stats screen for `s`, laid out for a screen `render_res_x` wide. Free
-/// it with `liero_stats_screen_free`.
-pub fn liero_stats_screen_new(s: &LieroStats, render_res_x: i32) -> *mut LieroStatsScreen {
-    Box::into_raw(Box::new(LieroStatsScreen::new(s, render_res_x)))
-}
-
-/// # Safety
-/// `screen` must come from `liero_stats_screen_new`, or be null.
-pub unsafe fn liero_stats_screen_free(screen: *mut LieroStatsScreen) {
-    unsafe {
-        if !screen.is_null() {
-            drop(Box::from_raw(screen));
-        }
-    }
-}
-
-/// # Safety
-/// See `LieroBitmap` and `LieroStatsScene`.
-pub unsafe fn liero_stats_screen_draw(
-    screen: &LieroStatsScreen,
-    s: &LieroStats,
-    scene: &LieroStatsScene,
-    scr: &LieroBitmap,
-    pane: f64,
-    offset: f64,
-) {
-    unsafe {
-        screen.draw(s, scene, scr, pane, offset);
-    }
-}
-
 const SCANCODE_RETURN: u32 = 40;
 const SCANCODE_ESCAPE: u32 = 41;
 const SCANCODE_RIGHT: u32 = 79;
@@ -1001,16 +827,58 @@ const SCANCODE_LEFT: u32 = 80;
 const SCANCODE_DOWN: u32 = 81;
 const SCANCODE_UP: u32 = 82;
 
+/// What the stats screen shows of a game besides its stats: the first two
+/// worms' names and the game mode (`LIERO_GAME_*`).
+#[derive(Clone, Debug)]
+pub(crate) struct StatsGame {
+    pub names: [Vec<u8>; 2],
+    pub game_mode: i32,
+}
+
+/// The game modes' names on the stats screen (`Texts::gameModes`), by
+/// `LIERO_GAME_*`.
+const GAME_MODE_NAMES: [&str; 4] = ["Kill'em All", "Game of Tag", "Holdazone", "Scales of Justice"];
+
+/// What the stats screen draws `g` with, from `tc`, on a screen of
+/// `render_res_x` x `render_res_y` (`statsScene`).
+pub(crate) fn stats_scene<'a>(
+    tc: &'a LieroTcData,
+    g: &'a StatsGame,
+    render_res_x: i32,
+    render_res_y: i32,
+) -> LieroStatsScene<'a> {
+    let sprites = &tc.worm_sprites;
+    // `wormSpriteObj(2, i == 0 ? 1 : 0, i)`.
+    let sprite = |i: i32| {
+        let frame = 2 + (if i == 0 { 1 } else { 0 }) * 7 * 3 + i * 2 * 7 * 3;
+        LieroSprite {
+            mem: sprites.frame(frame),
+            width: sprites.width,
+            height: sprites.height,
+            pitch: sprites.width,
+        }
+    };
+    LieroStatsScene {
+        font: LieroFont { chars: &tc.font },
+        worm_sprites: [sprite(0), sprite(1)],
+        names: [&g.names[0], &g.names[1]],
+        game_mode: g.game_mode,
+        game_mode_name: GAME_MODE_NAMES[g.game_mode as usize].as_bytes(),
+        weapons: &tc.weapons,
+        render_res_x,
+        render_res_y,
+        ticks_per_sec: 1_000_000_000,
+    }
+}
+
 /// The stats screen after a game, over its last frame: Up and Down scroll,
 /// Left and Right move between the panes, Enter or Escape closes it.
 struct StatsPresenter {
-    stats: *const LieroStats,
+    stats: LieroStats,
     screen: LieroStatsScreen,
-    /// The scene's texts are copied, so the game's can change.
-    names: [Vec<u8>; 2],
-    game_mode_name: Vec<u8>,
-    weapon_names: Vec<Vec<u8>>,
-    scene: LieroStatsScene<'static>,
+    tc: SharedTc,
+    game: StatsGame,
+    render_res: (i32, i32),
     /// The last frame of the game, row by row.
     bg: Vec<u8>,
     offset: f64,
@@ -1020,26 +888,11 @@ struct StatsPresenter {
     shown: bool,
 }
 
-fn text(s: &[u8]) -> LieroStr {
-    LieroStr {
-        ptr: s.as_ptr(),
-        len: s.len(),
-    }
-}
-
 impl StatsPresenter {
     fn draw(&mut self, scr: &LieroBitmap) {
-        let weapon_names: Vec<LieroStr> = self.weapon_names.iter().map(|n| text(n)).collect();
-        let scene = LieroStatsScene {
-            names: [text(&self.names[0]), text(&self.names[1])],
-            game_mode_name: text(&self.game_mode_name),
-            weapon_names: weapon_names.as_ptr(),
-            weapon_count: weapon_names.len(),
-            ..self.scene
-        };
-        // SAFETY: the stats and the scene's font and sprites outlive the
-        // screen, and the texts are ours.
-        unsafe { self.screen.draw(&*self.stats, &scene, scr, self.pane, self.offset) };
+        let tc = tc_data(&self.tc);
+        let scene = stats_scene(&tc, &self.game, self.render_res.0, self.render_res.1);
+        self.screen.draw(&self.stats, &scene, scr, self.pane, self.offset);
     }
 }
 
@@ -1095,37 +948,34 @@ impl Screen for StatsPresenter {
     }
 }
 
-/// The stats screen for `stats` over what the screen shows now. `scene`'s
-/// texts are copied; the rest of it, and `stats`, must outlive the screen.
-///
-/// # Safety
-/// `stats` and `scene` are valid, as in `liero_stats_screen_draw`.
-pub unsafe fn liero_stats_presenter_screen(stats: &LieroStats, scene: &LieroStatsScene<'static>) -> LieroScreen {
-    unsafe {
-        let host = crate::screen::current_host();
-        host.clear_keys();
-        let mut bg = Vec::new();
-        if let Some(scr) = host.screen() {
-            copy_rows(&scr, &mut bg, true);
-        }
-        let weapon_names = (0..scene.weapon_count)
-            .map(|i| (*scene.weapon_names.add(i)).bytes().to_vec())
-            .collect();
-        into_ffi(Box::new(StatsPresenter {
-            stats,
-            screen: LieroStatsScreen::new(stats, scene.render_res_x),
-            names: [scene.names[0].bytes().to_vec(), scene.names[1].bytes().to_vec()],
-            game_mode_name: scene.game_mode_name.bytes().to_vec(),
-            weapon_names,
-            scene: *scene,
-            bg,
-            offset: 0.0,
-            dest_offset: 0.0,
-            pane: 0.0,
-            dest_pane: 0.0,
-            shown: false,
-        }))
+/// The stats screen for a copy of `stats`, drawn with `tc` on a screen of
+/// `render_res_x` x `render_res_y`, over what the screen shows now.
+pub(crate) fn liero_stats_presenter_screen(
+    stats: &LieroStats,
+    tc: SharedTc,
+    game: StatsGame,
+    render_res_x: i32,
+    render_res_y: i32,
+) -> LieroScreen {
+    let host = crate::screen::current_host();
+    host.clear_keys();
+    let mut bg = Vec::new();
+    if let Some(scr) = host.screen() {
+        copy_rows(&scr, &mut bg, true);
     }
+    into_ffi(Box::new(StatsPresenter {
+        stats: stats.clone(),
+        screen: LieroStatsScreen::new(stats, render_res_x),
+        tc,
+        game,
+        render_res: (render_res_x, render_res_y),
+        bg,
+        offset: 0.0,
+        dest_offset: 0.0,
+        pane: 0.0,
+        dest_pane: 0.0,
+        shown: false,
+    }))
 }
 
 #[cfg(test)]

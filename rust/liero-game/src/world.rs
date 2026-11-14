@@ -680,7 +680,7 @@ impl<'a> World<'a> {
     }
 
     /// `Game::processFrame`, but for the viewports' own processing, which
-    /// `liero_game_process_frame` does after.
+    /// `LieroGame::process_frame` does after.
     pub(crate) fn process_frame(&mut self) {
         let s = self.g.s;
 

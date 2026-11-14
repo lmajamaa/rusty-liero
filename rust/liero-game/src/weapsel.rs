@@ -717,7 +717,7 @@ pub unsafe fn liero_weapsel_draw_game(ws: &mut LieroWeapsel, r: *mut LieroRender
             menu_palette(&mut *a.single);
         } else {
             if !ws.cached {
-                game.draw(r, state, false, false);
+                game.draw(&mut *r, state, false, false);
                 font.text(&(*r).bmp.view(), &line(), 0, 162, 50, 1);
                 a.frozen.copy_from(&(*r).bmp);
                 ws.cached = true;

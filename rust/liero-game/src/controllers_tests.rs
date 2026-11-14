@@ -88,14 +88,15 @@ fn the_stats_screen_shows_each_worm_facing_the_middle() {
     let mut c = local(tc.clone(), ["left", "right"]);
     let game = c.game().unwrap();
     game.settings_box().data.game_mode = 2;
-    unsafe {
-        let s = stats_scene(game, &app().play.data, &[]);
+    let g = game.stats_game();
+    {
         let tc = game.tc_data();
+        let s = crate::stats::stats_scene(&tc, &g, 320, 200);
         let sprites = &tc.worm_sprites;
         assert_eq!(s.worm_sprites[0].mem, sprites.frame(23));
         assert_eq!(s.worm_sprites[1].mem, sprites.frame(44));
-        assert_eq!((s.names[0].bytes(), s.names[1].bytes()), (&b"left"[..], &b"right"[..]));
-        assert_eq!((s.game_mode, s.game_mode_name.bytes()), (2, &b"Holdazone"[..]));
+        assert_eq!(s.names, [&b"left"[..], &b"right"[..]]);
+        assert_eq!((s.game_mode, s.game_mode_name), (2, &b"Holdazone"[..]));
     }
     drop(c);
 }
@@ -119,15 +120,14 @@ fn r_rewinds_a_replay_to_its_start() {
         }
         let blood = game.settings_box().data.blood_particle_max;
         game.start(blood);
-        let w = liero_replay_writer_new(&node);
-        assert!(!w.is_null());
-        assert_eq!(liero_replay_writer_begin(&mut *w, game).status, LieroReplayStatus::Ok);
+        let mut w = crate::replay_file::LieroReplayWriter::new(&node).unwrap();
+        assert_eq!(w.begin(game).status, LieroReplayStatus::Ok);
         for i in 0..30 {
             game.worm_at(0).unwrap().data.control_states = if i % 3 == 0 { 1 } else { 4 };
-            liero_replay_writer_frame(&mut *w);
+            w.frame(game);
             game.process_frame(&game_hooks());
         }
-        crate::replay_file::liero_replay_writer_free(w);
+        drop(w);
         drop(c);
 
         crate::app::liero_app_set_settings(app(), Some(menu_settings()));
@@ -136,7 +136,7 @@ fn r_rewinds_a_replay_to_its_start() {
         assert_eq!(r.data.state, LIERO_STATE_GAME);
         assert!(r.process());
         let pos = |r: &LieroController| match &r.kind {
-            Kind::Replay(r) => crate::replay_file::liero_replay_reader_pos(r.reader.as_ref().unwrap()),
+            Kind::Replay(r) => r.reader.as_ref().unwrap().pos(),
             _ => unreachable!(),
         };
         let (p1, c1) = (pos(&r), r.game().unwrap().data_mut().cycles);

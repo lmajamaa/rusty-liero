@@ -123,17 +123,13 @@ pub fn liero_worm_ai_rand(ai: &mut LieroWormAi) -> &mut LieroRand {
     }
 }
 
-/// The positions the predictive bot's last plans passed through, with
-/// `aiTraces` on, for C++ to draw. Valid until the next tick.
-pub fn liero_worm_ai_traces(ai: &LieroWormAi, count: &mut usize) -> *const LieroAiTrace {
-    match ai {
-        LieroWormAi::Dumb(_) => {
-            *count = 0;
-            std::ptr::NonNull::dangling().as_ptr()
-        }
-        LieroWormAi::Follow(f) => {
-            *count = f.evaluate_positions.len();
-            f.evaluate_positions.as_ptr()
+impl LieroWormAi {
+    /// The positions the predictive bot's last plans passed through, with
+    /// `aiTraces` on, drawn as debug output.
+    pub(crate) fn traces(&self) -> &[LieroAiTrace] {
+        match self {
+            LieroWormAi::Dumb(_) => &[],
+            LieroWormAi::Follow(f) => &f.evaluate_positions,
         }
     }
 }

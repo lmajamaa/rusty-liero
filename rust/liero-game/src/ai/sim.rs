@@ -54,7 +54,6 @@ unsafe fn no_ticks(_: *mut c_void) -> u64 {
 const NO_HOOKS: LieroGameHooks = LieroGameHooks {
     ctx: null_mut(),
     hires_ticks: no_ticks,
-    process_viewports: false,
 };
 
 impl SimGame {

@@ -175,8 +175,7 @@ impl FileSource for AppFiles {
                 // Reset controller before opening the replay, since we may
                 // be recording it
                 a.controller = None;
-                // SAFETY: the app's TC has a reference.
-                let c = unsafe { crate::controllers::liero_replay_controller_new(&node.clone(), a.menu_tc()) };
+                let c = crate::controllers::liero_replay_controller_new(&node.clone(), a.menu_tc());
                 if c.is_null() {
                     panic!("Could not read {}", path(&node));
                 }

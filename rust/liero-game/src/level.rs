@@ -74,6 +74,21 @@ pub struct Level<'a> {
     pub height: i32,
 }
 
+/// The level's pixels, to draw.
+#[derive(Clone, Copy, Debug)]
+pub struct LevelView<'a> {
+    pub data: &'a [u8],
+    pub width: i32,
+    pub height: i32,
+}
+
+impl LevelView<'_> {
+    /// See `Level::draw_miniature`.
+    pub fn draw_miniature(&self, scr: &LieroBitmap, map_x: i32, map_y: i32, step: i32) {
+        draw_miniature(self.data, self.width, self.height, scr, map_x, map_y, step);
+    }
+}
+
 /// The TC's tables as Rust works on them.
 pub struct Common<'a> {
     pub materials: &'a [LieroMaterial; 256],
@@ -631,6 +646,20 @@ impl LieroLevel {
             }
         }
     }
+
+    /// The pixels, to draw.
+    ///
+    /// # Safety
+    /// `data` points to `width * height` pixels that nothing changes while
+    /// the view is used.
+    pub unsafe fn view(&self) -> LevelView<'_> {
+        let len = (self.width.max(0) as usize) * (self.height.max(0) as usize);
+        LevelView {
+            data: unsafe { slice(self.data, len) },
+            width: self.width,
+            height: self.height,
+        }
+    }
 }
 
 impl LieroLevelCommon {
@@ -738,8 +767,16 @@ impl LieroLevelBox {
 
     /// See `Level::draw_miniature`.
     pub fn draw_miniature(&self, scr: &LieroBitmap, map_x: i32, map_y: i32, step: i32) {
-        let l = &self.data.level;
-        draw_miniature(&self.pixels, l.width, l.height, scr, map_x, map_y, step);
+        self.view().draw_miniature(scr, map_x, map_y, step);
+    }
+
+    /// The pixels, to draw.
+    pub fn view(&self) -> LevelView<'_> {
+        LevelView {
+            data: &self.pixels,
+            width: self.data.level.width,
+            height: self.data.level.height,
+        }
     }
 
     pub(crate) fn data(&self) -> &LieroLevelData {

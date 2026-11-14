@@ -6,7 +6,7 @@
 use super::game::{add_screen, hash_frame, hash_game, hash_stats};
 use super::{Fnv, Out};
 use crate::app::app;
-use crate::controllers::{liero_game_focus, liero_game_stats_scene};
+use crate::controllers::liero_game_focus;
 use crate::fs::Node;
 use crate::game::{LieroGameHooks, LieroRect};
 use crate::game_box::{
@@ -14,14 +14,11 @@ use crate::game_box::{
 };
 use crate::level::LieroLevelBox;
 use crate::renderer::LieroRenderer;
-use crate::replay_file::{
-    liero_replay_writer_begin, liero_replay_writer_frame, liero_replay_writer_free, liero_replay_writer_new,
-};
+use crate::replay_file::LieroReplayWriter;
 use crate::settings::LieroSettingsBox;
 use crate::sfx::LieroSoundOut;
-use crate::stats::{liero_stats_screen_draw, LieroStatsScreen};
+use crate::stats::{stats_scene, LieroStatsScreen};
 use crate::tc::{LieroTcData, LieroTcWeapon, SharedTc};
-use crate::text::LieroStr;
 use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
 use crate::weapsel::{liero_weapsel_finish, liero_weapsel_free, liero_weapsel_start};
 use std::ffi::c_void;
@@ -179,7 +176,6 @@ unsafe fn no_ticks(_: *mut c_void) -> u64 {
 pub(super) const HOOKS: LieroGameHooks = LieroGameHooks {
     ctx: std::ptr::null_mut(),
     hires_ticks: no_ticks,
-    process_viewports: true,
 };
 
 /// A bot-vs-bot game as the hash run sets it up, before it starts, with
@@ -280,24 +276,20 @@ pub(super) fn bot_tick(game: &mut LieroGame) {
 /// (`hashStatsScreen`).
 fn hash_stats_screen(out: &mut Out, name: &str, game: &mut LieroGame, renderer: &mut LieroRenderer, d: &LieroTcData) {
     game.stats_finish();
-    // SAFETY: the game's stats live as long as it does.
-    let stats = unsafe { &*game.stats() };
+    let g = game.stats_game();
+    let stats = game.stats();
     out.line(&format!("{name}-stats-end 0 {:016x}", hash_stats(stats)));
 
     let mut bg = crate::renderer::LieroBitmapBox::new();
     bg.copy_from(&renderer.bmp);
-    let names: Vec<LieroStr> = d.weapons.iter().map(|w| LieroStr::of(&w.name)).collect();
     let screen = LieroStatsScreen::new(stats, renderer.data.render_res_x);
+    let scene = stats_scene(d, &g, renderer.data.render_res_x, renderer.data.render_res_y);
 
     let mut n = 0;
     for pane in [0.0, -1.0, 1.0, 0.37, -0.81] {
         for offset in [0.0, -35.5, -140.0, -400.0, -1200.0] {
             renderer.bmp.copy_from(&bg);
-            // SAFETY: as the stats screen draws itself, with the TC's names.
-            unsafe {
-                let scene = liero_game_stats_scene(game, renderer, names.as_ptr(), names.len());
-                liero_stats_screen_draw(&screen, stats, &scene, &renderer.bmp.view(), pane, offset);
-            }
+            screen.draw(stats, &scene, &renderer.bmp.view(), pane, offset);
             renderer.data.pal = d.palette_colors;
 
             let mut f = Fnv::default();
@@ -316,16 +308,13 @@ fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interv
     // Records a replay of the game, as the local controller does when
     // replays are on, to play it back afterwards.
     let path = format!("/tmp/{name}.lrp");
-    let writer = liero_replay_writer_new(&Node::new(path.as_bytes()));
-    assert!(!writer.is_null(), "Could not write {path}");
-    // SAFETY: the writer is new, and records the game while both live.
-    unsafe {
-        let o = liero_replay_writer_begin(&mut *writer, &mut game);
-        assert!(
-            o.status == crate::replay::LieroReplayStatus::Ok,
-            "the replay didn't begin"
-        );
-    }
+    let mut writer =
+        LieroReplayWriter::new(&Node::new(path.as_bytes())).unwrap_or_else(|| panic!("Could not write {path}"));
+    let o = writer.begin(&mut game);
+    assert!(
+        o.status == crate::replay::LieroReplayStatus::Ok,
+        "the replay didn't begin"
+    );
 
     let blood = game.settings_box().data.blood_particle_max;
     game.start(blood);
@@ -349,8 +338,7 @@ fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interv
 
     for tick in 1..=ticks {
         bot_tick(&mut game);
-        // SAFETY: the writer records the game, which lives.
-        unsafe { liero_replay_writer_frame(&mut *writer) };
+        writer.frame(&mut game);
         game.process_frame(&HOOKS);
 
         let over = game.is_over();
@@ -361,11 +349,7 @@ fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interv
                 "{name} {tick} {:016x} frame",
                 hash_frame(&mut game, &mut split, &mut spectator)
             ));
-            // SAFETY: the game's stats live as long as it does.
-            out.line(&format!(
-                "{name}-stats {tick} {:016x}",
-                hash_stats(unsafe { &*game.stats() })
-            ));
+            out.line(&format!("{name}-stats {tick} {:016x}", hash_stats(game.stats())));
         }
         if over {
             break;
@@ -373,8 +357,8 @@ fn run_game(out: &mut Out, tc: &SharedTc, config: &RunConfig, ticks: i32, interv
     }
 
     hash_stats_screen(out, name, &mut game, &mut split, &d);
-    // SAFETY: the writer is done with; freeing it finishes the file.
-    unsafe { liero_replay_writer_free(writer) };
+    // Finishes the file.
+    drop(writer);
     super::replays::hash_replay(out, tc, name, &path, 1000, ticks, 0);
 
     let g = game.data_mut().cycles;
