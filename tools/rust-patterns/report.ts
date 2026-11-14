@@ -137,11 +137,11 @@ export function table(base: Counts, head: Counts): string {
     "",
     "| Pattern | Base | This PR | Change | % |",
     "|:--|--:|--:|--:|--:|",
-    ...rows.map(([name, b, h]) => `| ${name} | ${b} | ${h} | ${change(b, h).join(" | ")} |`),
+    ...rows.filter(([, b, h]) => b !== 0 || h !== 0).map(([name, b, h]) => `| ${name} | ${b} | ${h} | ${change(b, h).join(" | ")} |`),
     "",
     `\`unsafe\` blocks and functions per 1,000 lines of Rust: ${per1k(base).toFixed(1)} → ${per1k(head).toFixed(1)}.`,
     "",
-    "<sub>Counted by `tools/rust-patterns/report.ts`, skipping comments and strings. Lines are non-blank lines.</sub>",
+    "<sub>Counted by `tools/rust-patterns/report.ts`, skipping comments and strings. Lines are non-blank lines. Rows that are 0 in both are left out.</sub>",
   ];
   return lines.join("\n") + "\n";
 }
