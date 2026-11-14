@@ -1,5 +1,5 @@
 use super::*;
-use crate::material::{LIERO_MATERIAL_BACKGROUND, LIERO_MATERIAL_DIRT, LIERO_MATERIAL_ROCK};
+use crate::material::{MATERIAL_BACKGROUND, MATERIAL_DIRT, MATERIAL_ROCK};
 use crate::rand::Rand;
 
 const AIR: u8 = 0;
@@ -9,12 +9,12 @@ const ROCK: u8 = 2;
 fn materials() -> Vec<Material> {
     let mut m = vec![
         Material {
-            flags: LIERO_MATERIAL_BACKGROUND
+            flags: MATERIAL_BACKGROUND
         };
         256
     ];
-    m[DIRT as usize].flags = LIERO_MATERIAL_DIRT;
-    m[ROCK as usize].flags = LIERO_MATERIAL_ROCK;
+    m[DIRT as usize].flags = MATERIAL_DIRT;
+    m[ROCK as usize].flags = MATERIAL_ROCK;
     m
 }
 

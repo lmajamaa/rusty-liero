@@ -12,7 +12,7 @@ use crate::app::App;
 use crate::boxes::{input_box_screen, key_choice_screen};
 use crate::gfx::Bitmap;
 use crate::item::{ItemAction, ItemBehavior};
-use crate::keys::{is_extended, key_name, LIERO_DK_ESCAPE};
+use crate::keys::{is_extended, key_name, DK_ESCAPE};
 use crate::menu::{
     closest_name, draw_palette_overlay, draw_rgb_overlay, Menu, MenuHooks, MenuItem, LIERO_MENU_VALUE_FRAMES,
     LIERO_MENU_VALUE_PERCENTAGE, LIERO_MENU_VALUE_TIME,
@@ -853,7 +853,7 @@ impl Menus {
         match then {
             Then::Key { item, index } => {
                 let k = result as u32;
-                if k != LIERO_DK_ESCAPE {
+                if k != DK_ESCAPE {
                     self.with_worm(app, |w| {
                         let ws = &mut w.data;
                         // Dig has only an extended control (`PlDig`'s
@@ -1112,7 +1112,7 @@ mod tests {
         // Escape keeps the key.
         let (_, opened) = m.enter(&mut app, &Host::none(), LIERO_MENU_PLAYER);
         drop(opened.unwrap());
-        m.then(&mut app, &Host::none(), LIERO_DK_ESCAPE as i32);
+        m.then(&mut app, &Host::none(), DK_ESCAPE as i32);
         assert_eq!(keys(), (31, 31));
     }
 

@@ -7,10 +7,8 @@ use liero_data::settings::{self as data, ArchiveError, Bytes, Extensions, Settin
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Up, down, left, right, fire, change and jump.
-pub const LIERO_MAX_CONTROL: usize = data::MAX_CONTROL;
-/// The same and dig.
-pub const LIERO_MAX_CONTROL_EX: usize = data::MAX_CONTROL_EX;
+/// Up, down, left, right, fire, change and jump; and the same and dig.
+pub use data::{MAX_CONTROL, MAX_CONTROL_EX};
 
 /// What a settings call did.
 ///
@@ -156,7 +154,7 @@ impl WormSettingsBox {
         let mut worm = self.worm();
         *status = archive_status(data::read_worm(
             &mut worm,
-            crate::replay::LIERO_REPLAY_VERSION,
+            crate::replay::REPLAY_VERSION,
             &mut Bytes::new(&d),
         ));
         let color = self.data.color;
@@ -179,7 +177,7 @@ impl WormSettingsBox {
             return false;
         }
         let mut worm = self.worm();
-        let bytes = data::write_worm(&mut worm, crate::replay::LIERO_REPLAY_VERSION);
+        let bytes = data::write_worm(&mut worm, crate::replay::REPLAY_VERSION);
         if !node.write(&bytes) {
             return false;
         }
@@ -206,13 +204,13 @@ impl Default for WormSettingsBox {
             data: WormSettings {
                 health: 0,
                 controller: 0,
-                controls: [0; LIERO_MAX_CONTROL],
+                controls: [0; MAX_CONTROL],
                 weapons: [0; 5],
                 name: Vec::new(),
                 rgb: [0; 3],
                 random_name: false,
                 color: 0,
-                controls_ex: [0; LIERO_MAX_CONTROL_EX],
+                controls_ex: [0; MAX_CONTROL_EX],
             },
             profile: None,
         }

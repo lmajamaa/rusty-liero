@@ -16,7 +16,7 @@ use crate::settings::SettingsBox;
 use crate::sfx::SoundOut;
 use crate::stats::{stats_scene, StatsScreen};
 use crate::tc::{SharedTc, TcData};
-use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
+use crate::viewport::ViewportKind;
 use crate::weapsel::Weapsel;
 
 pub const KILL_EM_ALL: u32 = 0;
@@ -223,9 +223,9 @@ pub(super) fn set_up_game(
         }
 
         let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
-        game.add_viewport(r(0, 0, 158, 158), 0, 504, 350, LIERO_VIEWPORT_WORM, false);
-        game.add_viewport(r(160, 0, 158 + 160, 158), 1, 504, 350, LIERO_VIEWPORT_WORM, false);
-        game.add_viewport(r(0, 0, 504 + 68, 350), 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, true);
+        game.add_viewport(r(0, 0, 158, 158), 0, 504, 350, ViewportKind::Worm, false);
+        game.add_viewport(r(160, 0, 158 + 160, 158), 1, 504, 350, ViewportKind::Worm, false);
+        game.add_viewport(r(0, 0, 504 + 68, 350), 0, 504, 350, ViewportKind::Spectator, true);
 
         let mut level = LevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);

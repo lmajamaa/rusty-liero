@@ -12,7 +12,7 @@ use super::*;
 use crate::material::Material;
 use crate::object::Ninjarope;
 use crate::objects::Bonus;
-use crate::weapon::{LIERO_SELECTABLE_WEAPONS, LIERO_SHOT_STEERABLE};
+use crate::weapon::{LIERO_SHOT_STEERABLE, SELECTABLE_WEAPONS};
 use crate::worm::*;
 
 impl World<'_> {
@@ -183,20 +183,20 @@ impl Worm<'_, '_> {
         weapon_view(self.slot().kind, self.tc_weapon())
     }
 
-    fn pressed(&self, c: u32) -> bool {
-        (self.control_states() >> c) & 1 != 0
+    fn pressed(&self, c: Control) -> bool {
+        self.control_states() & c.bit() != 0
     }
 
-    fn set_control(&mut self, c: u32, v: bool) {
+    fn set_control(&mut self, c: Control, v: bool) {
         let s = self.control_states();
-        self.set_control_states(if v { s | 1 << c } else { s & !(1 << c) });
+        self.set_control_states(if v { s | c.bit() } else { s & !c.bit() });
     }
 
-    fn release(&mut self, c: u32) {
+    fn release(&mut self, c: Control) {
         self.set_control(c, false);
     }
 
-    fn pressed_once(&mut self, c: u32) -> bool {
+    fn pressed_once(&mut self, c: Control) -> bool {
         let state = self.pressed(c);
         self.release(c);
         state
@@ -545,7 +545,7 @@ impl Worm<'_, '_> {
         self.wobjects = Cursor::default();
         while let Some(n) = self.steerable_next() {
             let pos = self.world.wobj(n).pos;
-            let (left, right) = (self.pressed(LIERO_CONTROL_LEFT), self.pressed(LIERO_CONTROL_RIGHT));
+            let (left, right) = (self.pressed(Control::Left), self.pressed(Control::Right));
             self.world.update_wobj(n, |o| {
                 if left {
                     o.cur_frame -= turn;
@@ -565,8 +565,8 @@ impl Worm<'_, '_> {
 
     fn process_aiming(&mut self) {
         let k = self.k;
-        let up = self.pressed(LIERO_CONTROL_UP);
-        let down = self.pressed(LIERO_CONTROL_DOWN);
+        let up = self.pressed(Control::Up);
+        let down = self.pressed(Control::Down);
 
         if self.aiming_speed() != 0 {
             self.set_aiming_angle(self.aiming_angle() + self.aiming_speed());
@@ -598,7 +598,7 @@ impl Worm<'_, '_> {
         }
 
         let rope_out = self.rope().out;
-        if self.movable() && (!rope_out || !self.pressed(LIERO_CONTROL_CHANGE)) {
+        if self.movable() && (!rope_out || !self.pressed(Control::Change)) {
             // Up turns towards the top on either side, down away from it.
             for (key, dir) in [(up, 0), (down, 1)] {
                 if !key {
@@ -618,9 +618,9 @@ impl Worm<'_, '_> {
     fn process_tasks(&mut self) {
         let k = self.k;
 
-        if self.pressed(LIERO_CONTROL_CHANGE) {
+        if self.pressed(Control::Change) {
             if self.rope().out {
-                let (up, down) = (self.pressed(LIERO_CONTROL_UP), self.pressed(LIERO_CONTROL_DOWN));
+                let (up, down) = (self.pressed(Control::Up), self.pressed(Control::Down));
                 let r = self.rope_mut();
                 if up {
                     r.length -= k.nr_pull_vel;
@@ -637,7 +637,7 @@ impl Worm<'_, '_> {
                 }
             }
 
-            if self.pressed_once(LIERO_CONTROL_JUMP) {
+            if self.pressed_once(Control::Jump) {
                 let r = self.rope_mut();
                 r.out = true;
                 r.attached = false;
@@ -655,7 +655,7 @@ impl Worm<'_, '_> {
 
                 r.length = k.nr_initial_length;
             }
-        } else if self.pressed(LIERO_CONTROL_JUMP) {
+        } else if self.pressed(Control::Jump) {
             // Jump removes the rope and jumps.
             let r = self.rope_mut();
             r.out = false;
@@ -676,11 +676,7 @@ impl Worm<'_, '_> {
         let ww = *self.slot();
         let w = self.weapon();
 
-        if self.pressed(LIERO_CONTROL_FIRE)
-            && !self.pressed(LIERO_CONTROL_CHANGE)
-            && ww.loading_left == 0
-            && ww.delay_left <= 0
-        {
+        if self.pressed(Control::Fire) && !self.pressed(Control::Change) && ww.loading_left == 0 && ww.delay_left <= 0 {
             self.fire(&w);
         } else if w.loop_sound != 0 {
             self.world.stop(self.slot_sound_id());
@@ -692,7 +688,7 @@ impl Worm<'_, '_> {
     fn process_weapons(&mut self) {
         let current = self.weapon();
 
-        for ww in &mut self.w_mut().weapons[..LIERO_SELECTABLE_WEAPONS] {
+        for ww in &mut self.w_mut().weapons[..SELECTABLE_WEAPONS] {
             if ww.delay_left >= 0 {
                 ww.delay_left -= 1;
             }
@@ -766,8 +762,8 @@ impl Worm<'_, '_> {
 
     fn process_weapon_change(&mut self) {
         if !self.key_change_pressed() {
-            self.release(LIERO_CONTROL_LEFT);
-            self.release(LIERO_CONTROL_RIGHT);
+            self.release(Control::Left);
+            self.release(Control::Right);
             self.set_key_change_pressed(true);
         }
 
@@ -777,8 +773,8 @@ impl Worm<'_, '_> {
         self.stop_loop_sound_if_any();
 
         if self.available() || self.env.load_change {
-            let n = LIERO_SELECTABLE_WEAPONS as i32;
-            for (key, step) in [(LIERO_CONTROL_LEFT, n - 1), (LIERO_CONTROL_RIGHT, 1)] {
+            let n = SELECTABLE_WEAPONS as i32;
+            for (key, step) in [(Control::Left, n - 1), (Control::Right, 1)] {
                 if self.pressed_once(key) {
                     self.set_current_weapon((self.current_weapon() + step) % n);
 
@@ -816,8 +812,8 @@ impl Worm<'_, '_> {
             return;
         }
 
-        let left = self.pressed(LIERO_CONTROL_LEFT);
-        let right = self.pressed(LIERO_CONTROL_RIGHT);
+        let left = self.pressed(Control::Left);
+        let right = self.pressed(Control::Right);
 
         if left && !right {
             let mut vel = self.vel();
@@ -949,7 +945,7 @@ impl Worm<'_, '_> {
             s.after_death(self.i);
         }
 
-        self.release(LIERO_CONTROL_FIRE);
+        self.release(Control::Fire);
     }
 
     fn process_alive(&mut self) {
@@ -958,7 +954,7 @@ impl Worm<'_, '_> {
         self.process_steerables();
 
         // process_steerables sets movable to false; does this interfere?
-        if !self.movable() && !self.pressed(LIERO_CONTROL_LEFT) && !self.pressed(LIERO_CONTROL_RIGHT) {
+        if !self.movable() && !self.pressed(Control::Left) && !self.pressed(Control::Right) {
             self.set_movable(true);
         } // 2FB1
 
@@ -969,7 +965,7 @@ impl Worm<'_, '_> {
         self.process_physics();
         self.process_sight();
 
-        if self.pressed(LIERO_CONTROL_CHANGE) {
+        if self.pressed(Control::Change) {
             self.process_weapon_change();
         } else {
             self.set_key_change_pressed(false);
@@ -1130,7 +1126,7 @@ impl Worm<'_, '_> {
     fn process_dead(&mut self) {
         self.set_steerable_count(0);
 
-        if self.pressed_once(LIERO_CONTROL_FIRE) {
+        if self.pressed_once(Control::Fire) {
             self.set_ready(true);
         }
 

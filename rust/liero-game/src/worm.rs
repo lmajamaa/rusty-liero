@@ -6,7 +6,7 @@
 
 use crate::math::{ftoi, IVec2};
 use crate::object::Ninjarope;
-use crate::weapon::{WormWeapon, LIERO_SELECTABLE_WEAPONS};
+use crate::weapon::{WormWeapon, SELECTABLE_WEAPONS};
 
 /// Indices into `reacts`: how much terrain pushes the worm in each
 /// direction (`Worm::RFDown` and so on). RF_UP is ground below the worm.
@@ -15,14 +15,25 @@ pub(crate) const RF_LEFT: usize = 1;
 pub(crate) const RF_UP: usize = 2;
 pub(crate) const RF_RIGHT: usize = 3;
 
-/// Bits of `control_states` (`Worm::Control`).
-pub const LIERO_CONTROL_UP: u32 = 0;
-pub const LIERO_CONTROL_DOWN: u32 = 1;
-pub const LIERO_CONTROL_LEFT: u32 = 2;
-pub const LIERO_CONTROL_RIGHT: u32 = 3;
-pub const LIERO_CONTROL_FIRE: u32 = 4;
-pub const LIERO_CONTROL_CHANGE: u32 = 5;
-pub const LIERO_CONTROL_JUMP: u32 = 6;
+/// A worm's controls (`Worm::Control`), numbered by their bits in
+/// `control_states`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Control {
+    Up = 0,
+    Down = 1,
+    Left = 2,
+    Right = 3,
+    Fire = 4,
+    Change = 5,
+    Jump = 6,
+}
+
+impl Control {
+    /// The control's bit in `control_states`.
+    pub const fn bit(self) -> u32 {
+        1 << self as u32
+    }
+}
 
 /// `Settings::gameMode`.
 pub const LIERO_GAME_KILL_EM_ALL: i32 = 0;
@@ -75,10 +86,10 @@ pub struct WormData {
     pub index: i32,
     /// Indexed by `RF_*`.
     pub reacts: [i32; 4],
-    pub weapons: [WormWeapon; LIERO_SELECTABLE_WEAPONS],
+    pub weapons: [WormWeapon; SELECTABLE_WEAPONS],
     /// 0 is left, 1 is right.
     pub direction: i32,
-    /// One bit per `LIERO_CONTROL_*`: the controls the game sees, those of
+    /// One bit per `Control`: the controls the game sees, those of
     /// the last tick, and the ones the player holds (`LocalController`).
     pub control_states: u32,
     pub prev_control_states: u32,
@@ -88,6 +99,25 @@ pub struct WormData {
     pub steerable_count: i32,
     /// Where the worm's stats are drawn.
     pub stats_x: i32,
+}
+
+impl WormData {
+    /// `Worm::pressed`.
+    pub fn pressed(&self, c: Control) -> bool {
+        self.control_states & c.bit() != 0
+    }
+
+    /// `Worm::release`.
+    pub fn release(&mut self, c: Control) {
+        self.control_states &= !c.bit();
+    }
+
+    /// `Worm::pressedOnce`: whether it was pressed, then clears it.
+    pub fn pressed_once(&mut self, c: Control) -> bool {
+        let p = self.pressed(c);
+        self.release(c);
+        p
+    }
 }
 
 impl Default for WormData {
@@ -138,7 +168,7 @@ impl Default for WormData {
                 ammo: 0,
                 delay_left: 0,
                 loading_left: 0,
-            }; LIERO_SELECTABLE_WEAPONS],
+            }; SELECTABLE_WEAPONS],
             direction: 0,
             control_states: 0,
             prev_control_states: 0,

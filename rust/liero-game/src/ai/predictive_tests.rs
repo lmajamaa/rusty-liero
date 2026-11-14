@@ -1,7 +1,7 @@
 use super::*;
 use crate::ai::path::{FULL_HEIGHT, FULL_WIDTH};
 use crate::material::Material;
-use crate::material::LIERO_MATERIAL_BACKGROUND;
+use crate::material::MATERIAL_BACKGROUND;
 
 #[test]
 fn states_decompose_into_their_parts() {
@@ -147,7 +147,7 @@ impl Fake {
             level: vec![0; (FULL_WIDTH * FULL_HEIGHT) as usize],
             materials: vec![
                 Material {
-                    flags: LIERO_MATERIAL_BACKGROUND
+                    flags: MATERIAL_BACKGROUND
                 };
                 256
             ],

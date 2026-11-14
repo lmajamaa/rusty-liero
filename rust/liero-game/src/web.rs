@@ -301,7 +301,7 @@ fn poll_gamepads() {
             let last = s.pads[i as usize].get_or_insert_with(|| Pad {
                 buttons: vec![false; buttons.len()],
                 axes: vec![0; axes.len()],
-                state: [false; crate::keys::LIERO_MAX_JOY_BUTTONS as usize],
+                state: [false; crate::keys::MAX_JOY_BUTTONS as usize],
             });
             for (b, (&now, was)) in buttons.iter().zip(last.buttons.iter_mut()).enumerate() {
                 if now != *was {

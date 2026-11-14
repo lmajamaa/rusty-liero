@@ -1,22 +1,22 @@
 //! Loading levels and making them from the settings.
 
 use super::*;
-use crate::material::{LIERO_MATERIAL_BACKGROUND, LIERO_MATERIAL_DIRT};
+use crate::material::{MATERIAL_BACKGROUND, MATERIAL_DIRT};
 use crate::settings::new_settings;
 
 /// A TC's level tables: colour 0 is background, 5 dirt, the rest nothing.
 struct Tables {
     materials: [Material; 256],
-    textures: [Texture; LIERO_TEXTURE_COUNT],
+    textures: [Texture; TEXTURE_COUNT],
     sprites: Vec<u8>,
 }
 
 impl Tables {
     fn new() -> Self {
         let mut materials = [Material::default(); 256];
-        materials[5].flags = LIERO_MATERIAL_DIRT;
-        materials[0].flags = LIERO_MATERIAL_BACKGROUND;
-        let mut textures = [Texture::default(); LIERO_TEXTURE_COUNT];
+        materials[5].flags = MATERIAL_DIRT;
+        materials[0].flags = MATERIAL_BACKGROUND;
+        let mut textures = [Texture::default(); TEXTURE_COUNT];
         for t in textures.iter_mut() {
             t.r_frame = 1;
         }
@@ -45,7 +45,7 @@ fn exepal() -> [Color; 256] {
     })
 }
 
-const PIXELS: usize = (LIERO_LEVEL_WIDTH * LIERO_LEVEL_HEIGHT) as usize;
+const PIXELS: usize = (LEVEL_WIDTH * LEVEL_HEIGHT) as usize;
 
 /// A .LEV file of colour 5, then `rest`.
 fn lev(rest: &[u8]) -> Vec<u8> {
@@ -68,10 +68,10 @@ fn a_level_file_has_its_pixels_and_materials() {
     assert!(l.load(&t.common(), &exepal(), true, &lev(&[])));
     assert_eq!(
         (l.data().level.width, l.data().level.height),
-        (LIERO_LEVEL_WIDTH, LIERO_LEVEL_HEIGHT)
+        (LEVEL_WIDTH, LEVEL_HEIGHT)
     );
     assert!(l.pixels().iter().all(|&p| p == 5));
-    assert!(l.materials.iter().all(|m| m.flags == LIERO_MATERIAL_DIRT));
+    assert!(l.materials.iter().all(|m| m.flags == MATERIAL_DIRT));
     assert_eq!(l.data().origpal, exepal());
 
     // Cut short: what there is is read, and loading fails.

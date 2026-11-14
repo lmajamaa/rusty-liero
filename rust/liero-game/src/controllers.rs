@@ -6,23 +6,20 @@
 
 use crate::app::App;
 use crate::boxes::info_box_screen;
-use crate::controller::{
-    ControllerData, LIERO_FADE_SHOWN, LIERO_STATE_GAME, LIERO_STATE_GAME_ENDED, LIERO_STATE_INITIAL,
-    LIERO_STATE_WEAPON_SELECTION,
-};
+use crate::controller::{ControllerData, State, FADE_SHOWN};
 use crate::fs::Node;
 use crate::game::{GameHooks, Rect};
 use crate::game_box::Game;
-use crate::keys::{local_controller_key, WormKeys, LIERO_DK_ESCAPE};
+use crate::keys::{local_controller_key, WormKeys, DK_ESCAPE};
 use crate::level::LevelBox;
 use crate::renderer::Renderer;
 use crate::replay::ReplayStatus;
 use crate::replay_file::{ReplayOutcome, ReplayReader, ReplayWriter};
 use crate::screen::{BoxedScreen, Host};
-use crate::settings::{new_settings, SharedSettings, LIERO_MAX_CONTROL_EX};
+use crate::settings::{new_settings, SharedSettings, MAX_CONTROL_EX};
 use crate::stats::stats_presenter_screen;
 use crate::tc::SharedTc;
-use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
+use crate::viewport::ViewportKind;
 use crate::weapsel::Weapsel;
 
 /// `SDL_SCANCODE_R`, which rewinds a replay.
@@ -72,8 +69,8 @@ fn new_game(host: &Host, settings: SharedSettings, tc: SharedTc) -> Box<Game> {
 
 unsafe fn split_viewports(game: &mut Game, worm0: i32, worm1: i32) {
     let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
-    game.add_viewport(r(0, 0, 158, 158), worm0, 504, 350, LIERO_VIEWPORT_WORM, false);
-    game.add_viewport(r(160, 0, 158 + 160, 158), worm1, 504, 350, LIERO_VIEWPORT_WORM, false);
+    game.add_viewport(r(0, 0, 158, 158), worm0, 504, 350, ViewportKind::Worm, false);
+    game.add_viewport(r(160, 0, 158 + 160, 158), worm1, 504, 350, ViewportKind::Worm, false);
 }
 
 /// The spectator viewport is always full size, +68 on x to align it in the
@@ -85,7 +82,7 @@ unsafe fn spectator_viewport(game: &mut Game, spectator_list: bool) {
         x2: 504 + 68,
         y2: 350,
     };
-    game.add_viewport(r, 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, spectator_list);
+    game.add_viewport(r, 0, 504, 350, ViewportKind::Spectator, spectator_list);
 }
 
 /// The renderer `game` shows its new settings on: the play screen, or the
@@ -177,9 +174,9 @@ impl Controller {
                             }
                         })
                         .collect();
-                    local_controller_key(&keys, LIERO_MAX_CONTROL_EX, key, state)
+                    local_controller_key(&keys, MAX_CONTROL_EX, key, state)
                 }
-                Kind::Replay(_) => key as u32 == LIERO_DK_ESCAPE,
+                Kind::Replay(_) => key as u32 == DK_ESCAPE,
             };
             if escape && !self.data.going_to_menu {
                 self.data.fade_value = 31;
@@ -194,7 +191,7 @@ impl Controller {
             if let Some(w) = &mut l.replay {
                 w.unfocus(&mut l.game);
             }
-            if self.data.state == LIERO_STATE_WEAPON_SELECTION {
+            if self.data.state == State::WeaponSelection {
                 l.ws.as_mut().expect("no weapon selection").set_focused(false);
             }
         }
@@ -207,25 +204,25 @@ impl Controller {
     pub unsafe fn focus(&mut self, app: &mut App, host: &Host) {
         unsafe {
             let d = &mut self.data;
-            if d.state == LIERO_STATE_GAME_ENDED {
+            if d.state == State::GameEnded {
                 d.going_to_menu = true;
                 d.fade_value = 0;
                 return;
             }
             match &mut self.kind {
                 Kind::Local(l) => {
-                    if d.state == LIERO_STATE_WEAPON_SELECTION {
+                    if d.state == State::WeaponSelection {
                         l.ws.as_mut().expect("no weapon selection").set_focused(true);
                     }
                     if let Some(w) = &mut l.replay {
                         w.focus(&mut l.game);
                     }
-                    if d.state == LIERO_STATE_INITIAL {
-                        self.change_state(app, host, LIERO_STATE_WEAPON_SELECTION);
+                    if d.state == State::Initial {
+                        self.change_state(app, host, State::WeaponSelection);
                     }
                 }
                 Kind::Replay(r) => {
-                    if d.state == LIERO_STATE_INITIAL {
+                    if d.state == State::Initial {
                         let mut game = new_game(host, new_settings(), r.tc.clone());
                         let reader = r.reader.as_mut().expect("no replay");
                         let o = reader.begin(&mut game);
@@ -238,7 +235,7 @@ impl Controller {
                         }
                         r.game = Some(game);
                         // Changing state first when game is available
-                        self.change_state(app, host, LIERO_STATE_GAME);
+                        self.change_state(app, host, State::Game);
                     }
                 }
             }
@@ -266,9 +263,9 @@ impl Controller {
     unsafe fn process_local(&mut self, app: &mut App, host: &Host) -> bool {
         unsafe {
             let Kind::Local(l) = &mut self.kind else { unreachable!() };
-            if self.data.state == LIERO_STATE_WEAPON_SELECTION {
+            if self.data.state == State::WeaponSelection {
                 if l.ws.as_mut().expect("no weapon selection").process_game(&mut app.rand) {
-                    self.change_state(app, host, LIERO_STATE_GAME);
+                    self.change_state(app, host, State::Game);
                 }
             } else if self.data.in_game() {
                 let ticks = self.data.ticks();
@@ -285,7 +282,7 @@ impl Controller {
                         hires_ticks: &|| host.hires_ticks(),
                     });
                     if l.game.is_over() {
-                        self.change_state(app, host, LIERO_STATE_GAME_ENDED);
+                        self.change_state(app, host, State::GameEnded);
                     }
                     i += 1;
                 }
@@ -296,13 +293,13 @@ impl Controller {
                 if self.data.fade_value > 0 {
                     self.data.fade_value -= 1;
                 } else {
-                    if self.data.state == LIERO_STATE_GAME_ENDED {
+                    if self.data.state == State::GameEnded {
                         self.end_record();
                         self.present_stats(app, host);
                     }
                     return false;
                 }
-            } else if self.data.fade_value < LIERO_FADE_SHOWN {
+            } else if self.data.fade_value < FADE_SHOWN {
                 self.data.fade_value += 1;
             }
             true
@@ -338,7 +335,7 @@ impl Controller {
                             }
                             if let Some(e) = caught(&o, false) {
                                 self.info_box(&format!("Archive error in replay: {e}"));
-                                self.change_state(app, host, LIERO_STATE_GAME_ENDED);
+                                self.change_state(app, host, State::GameEnded);
                                 let Kind::Replay(r) = &mut self.kind else {
                                     unreachable!()
                                 };
@@ -360,14 +357,14 @@ impl Controller {
                         } else {
                             break;
                         }
-                    } else if d.fade_value < LIERO_FADE_SHOWN {
+                    } else if d.fade_value < FADE_SHOWN {
                         d.fade_value += 1;
                     }
                     i += 1;
                 }
 
                 if self.game().expect("no game").is_over() {
-                    self.change_state(app, host, LIERO_STATE_GAME_ENDED);
+                    self.change_state(app, host, State::GameEnded);
                 }
             }
 
@@ -376,14 +373,14 @@ impl Controller {
             self.data.process(&mut app.keys);
 
             if self.data.going_to_menu && self.data.fade_value <= 0 {
-                if self.data.state == LIERO_STATE_GAME_ENDED {
+                if self.data.state == State::GameEnded {
                     self.present_stats(app, host);
                 }
                 return false;
             }
 
             let Kind::Replay(r) = &self.kind else { unreachable!() };
-            if r.reader.is_none() && self.data.state == LIERO_STATE_GAME {
+            if r.reader.is_none() && self.data.state == State::Game {
                 self.present_stats(app, host);
                 return false;
             }
@@ -401,7 +398,7 @@ impl Controller {
             let state = self.data.state;
             match &mut self.kind {
                 Kind::Local(l) => {
-                    if state == LIERO_STATE_WEAPON_SELECTION {
+                    if state == State::WeaponSelection {
                         l.ws.as_mut()
                             .expect("no weapon selection")
                             .draw_game(app, renderer, state, spectators);
@@ -410,7 +407,7 @@ impl Controller {
                     }
                 }
                 Kind::Replay(r) => {
-                    if state == LIERO_STATE_GAME || state == LIERO_STATE_GAME_ENDED {
+                    if state == State::Game || state == State::GameEnded {
                         r.game
                             .as_mut()
                             .expect("no game")
@@ -422,7 +419,7 @@ impl Controller {
         }
     }
 
-    unsafe fn change_state(&mut self, app: &mut App, host: &Host, new_state: i32) {
+    unsafe fn change_state(&mut self, app: &mut App, host: &Host, new_state: State) {
         unsafe {
             if self.data.state == new_state {
                 return;
@@ -434,18 +431,18 @@ impl Controller {
         }
     }
 
-    unsafe fn change_local_state(&mut self, app: &mut App, host: &Host, new_state: i32) {
+    unsafe fn change_local_state(&mut self, app: &mut App, host: &Host, new_state: State) {
         unsafe {
             let Kind::Local(l) = &mut self.kind else { unreachable!() };
             // The new state is prepared before the old one goes: weapon
             // selection is dropped only once recording has started.
-            if self.data.state == LIERO_STATE_WEAPON_SELECTION {
+            if self.data.state == State::WeaponSelection {
                 l.ws.as_mut().expect("no weapon selection").finish();
             }
 
-            if new_state == LIERO_STATE_WEAPON_SELECTION {
+            if new_state == State::WeaponSelection {
                 l.ws = Some(Weapsel::start(&mut l.game, &mut app.rand));
-            } else if new_state == LIERO_STATE_GAME {
+            } else if new_state == State::Game {
                 // Before the replay recording starts below.
                 let lives = l.game.settings_box().data.lives;
                 for w in l.game.listed_worms() {
@@ -464,13 +461,13 @@ impl Controller {
 
                 let blood = l.game.settings_box().data.ext.blood_particle_max;
                 l.game.start(blood);
-            } else if new_state == LIERO_STATE_GAME_ENDED && !self.data.going_to_menu {
+            } else if new_state == State::GameEnded && !self.data.going_to_menu {
                 self.data.fade_value = 180;
                 self.data.going_to_menu = true;
             }
 
-            if self.data.state == LIERO_STATE_WEAPON_SELECTION {
-                self.data.fade_value = LIERO_FADE_SHOWN;
+            if self.data.state == State::WeaponSelection {
+                self.data.fade_value = FADE_SHOWN;
                 let Kind::Local(l) = &mut self.kind else { unreachable!() };
                 l.ws = None;
             }
@@ -478,12 +475,12 @@ impl Controller {
         }
     }
 
-    unsafe fn change_replay_state(&mut self, app: &mut App, new_state: i32) {
+    unsafe fn change_replay_state(&mut self, app: &mut App, new_state: State) {
         unsafe {
             let Kind::Replay(r) = &mut self.kind else {
                 unreachable!()
             };
-            if new_state == LIERO_STATE_GAME {
+            if new_state == State::Game {
                 let game = r.game.as_mut().expect("no game");
                 // The replay's viewports are replaced: they aren't what this
                 // screen shows.
@@ -508,7 +505,7 @@ impl Controller {
                 game.start(blood);
                 r.initial = Some(game.copy());
                 r.initial_pos = r.reader.as_ref().expect("no replay").pos();
-            } else if new_state == LIERO_STATE_GAME_ENDED && !self.data.going_to_menu {
+            } else if new_state == State::GameEnded && !self.data.going_to_menu {
                 self.data.fade_value = 180;
                 self.data.going_to_menu = true;
             }
@@ -525,7 +522,7 @@ impl Controller {
 
     /// Whether a game is on, for the menu to offer to resume it.
     pub fn running(&self) -> bool {
-        self.data.state != LIERO_STATE_GAME_ENDED && self.data.state != LIERO_STATE_INITIAL
+        self.data.state != State::GameEnded && self.data.state != State::Initial
     }
 
     /// The level shown behind the menu, if any.

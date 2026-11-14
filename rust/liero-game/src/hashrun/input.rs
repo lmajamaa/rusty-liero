@@ -22,7 +22,7 @@ use crate::controllers::Controller;
 use crate::game_box::Game;
 use crate::keys::{
     is_extended, joy_axis, joy_button, joy_hat, joy_key, key_name, sdl_to_dos, sdl_to_dos_keysym, KeyChanges, Keys,
-    LIERO_DK_ESCAPE, LIERO_MAX_JOY_BUTTONS,
+    DK_ESCAPE, MAX_JOY_BUTTONS,
 };
 use crate::rand::Rand;
 use crate::settings::SettingsBox;
@@ -204,7 +204,7 @@ fn hash_key_map(out: &mut Out) {
     out.hash("keys-map", (SDL_NUM_SCANCODES / 64).into(), f);
 }
 
-type JoyButtons = [bool; LIERO_MAX_JOY_BUTTONS as usize];
+type JoyButtons = [bool; MAX_JOY_BUTTONS as usize];
 
 /// What `Gfx::processEvent` keeps besides the key state: the 32 key
 /// presses it buffers until `Gfx::process` empties them, and each
@@ -298,7 +298,7 @@ fn hash_events(a: &mut App, out: &mut Out, seed: u32, steps: i32) {
     keys.clear();
     let mut ev = Events {
         key_buf: Vec::new(),
-        joysticks: [[false; LIERO_MAX_JOY_BUTTONS as usize]; 2],
+        joysticks: [[false; MAX_JOY_BUTTONS as usize]; 2],
     };
 
     let name = format!("keys-events-{seed}");
@@ -393,7 +393,7 @@ fn hash_key_names(out: &mut Out) {
         f.bool(is_extended(k));
     }
     for j in 0..4 {
-        for b in 0..LIERO_MAX_JOY_BUTTONS as i32 {
+        for b in 0..MAX_JOY_BUTTONS as i32 {
             f.u32(joy_key(j, b));
         }
     }
@@ -446,7 +446,7 @@ fn hash_controls(a: &mut App, out: &mut Out, tc: &SharedTc, seed: u32, steps: i3
         let op = r.below(10);
         if op < 7 {
             let key = if r.below(8) == 0 {
-                LIERO_DK_ESCAPE
+                DK_ESCAPE
             } else if r.below(8) == 0 {
                 r.below(177)
             } else {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::controller::LIERO_STATE_GAME;
+use crate::controller::State;
 use crate::fs::Node;
 use crate::menus::Menus;
 use crate::settings::new_settings;
@@ -68,7 +68,7 @@ fn the_spectator_screen_says_whether_a_game_is_paused() {
     draw_spectator_info(a);
     assert!(shows(a, b"SETUP") && !shows(a, b"PAUSED"));
 
-    a.controller.as_deref_mut().unwrap().data().state = LIERO_STATE_GAME;
+    a.controller.as_deref_mut().unwrap().data().state = State::Game;
     draw_spectator_info(a);
     assert!(shows(a, b"PAUSED") && !shows(a, b"SETUP"));
     a.controller = None;

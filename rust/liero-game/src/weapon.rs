@@ -89,7 +89,7 @@ pub struct WormWeapon {
 }
 
 /// Number of weapons a worm carries (`Settings::selectableWeapons`).
-pub const LIERO_SELECTABLE_WEAPONS: usize = 5;
+pub const SELECTABLE_WEAPONS: usize = 5;
 
 /// How a new weapon object starts, from `Weapon::fire`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

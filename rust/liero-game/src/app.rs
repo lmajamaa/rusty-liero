@@ -6,7 +6,7 @@
 
 use crate::controllers::Controller;
 use crate::keys::Keys;
-use crate::rand::{Rand, LIERO_RAND_DEFAULT_SEED};
+use crate::rand::{Rand, RAND_DEFAULT_SEED};
 use crate::renderer::{BitmapBox, Renderer};
 use crate::settings::{SettingsBox, SharedSettings};
 use crate::tc::{tc_data, SharedTc, TcData};
@@ -109,7 +109,7 @@ impl App {
     /// An app with no settings, TC, menus or game yet.
     pub fn new() -> Self {
         let mut rand = Rand { x: 0, c: 0 };
-        rand.seed(LIERO_RAND_DEFAULT_SEED);
+        rand.seed(RAND_DEFAULT_SEED);
         App {
             rand,
             play: Renderer::new(),

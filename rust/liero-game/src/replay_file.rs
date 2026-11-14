@@ -22,11 +22,11 @@ use crate::game_box::{Game, Worm};
 use crate::replay::{
     self, checksum, read_checksum, read_frame, read_start, replay_viewport_of, replay_viewport_set, replay_worm_of,
     replay_worm_set, write_end, write_frame, write_start, ReplayError, ReplayFrameWorm, ReplayGameFields, ReplayStatus,
-    LIERO_REPLAY_VERSION,
+    REPLAY_VERSION,
 };
 use crate::settings::{new_worm_settings, SettingsBox, WormSettingsBox};
 use crate::tc::tc_data;
-use crate::viewport::LIERO_VIEWPORT_WORM;
+use crate::viewport::ViewportKind;
 use crate::worm::WormId;
 
 /// How a replay call ended, to report as C++'s replay code threw it.
@@ -153,7 +153,7 @@ impl ReplayWriter {
     pub fn new(node: &Node) -> Option<Self> {
         Some(ReplayWriter {
             out: Deflater::new(node)?,
-            version: LIERO_REPLAY_VERSION,
+            version: REPLAY_VERSION,
             settings_expired: true,
             last_settings_hash: Hash::default(),
             worms: Vec::new(),
@@ -346,7 +346,7 @@ impl ReplayReader {
             } else {
                 "Read error in get()"
             },
-            version: LIERO_REPLAY_VERSION,
+            version: REPLAY_VERSION,
         })
     }
 
@@ -411,7 +411,7 @@ impl ReplayReader {
                 x2: 0,
                 y2: 0,
             };
-            let p = game.add_viewport(rect, 0, 0, 0, LIERO_VIEWPORT_WORM, false);
+            let p = game.add_viewport(rect, 0, 0, 0, ViewportKind::Worm, false);
             replay_viewport_set(p, vp);
         }
 

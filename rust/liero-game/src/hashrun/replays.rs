@@ -12,12 +12,12 @@ use crate::fs::Node;
 use crate::game::Rect;
 use crate::game_box::Game;
 use crate::renderer::Renderer;
-use crate::replay::{ReplayStatus, LIERO_REPLAY_VERSION};
+use crate::replay::{ReplayStatus, REPLAY_VERSION};
 use crate::replay_file::{ReplayOutcome, ReplayReader, ReplayWriter};
 use crate::settings::{SettingsBox, WormSettingsBox};
 use crate::sfx::SoundOut;
 use crate::tc::SharedTc;
-use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
+use crate::viewport::ViewportKind;
 use liero_data::gash::Hash;
 use liero_data::settings::{self as data, Settings, WormSettings};
 
@@ -189,9 +189,9 @@ fn play_back(
     let r = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
     let w0 = game.worm_at(0).expect("no first worm").data.index;
     let w1 = game.worm_at(1).expect("no second worm").data.index;
-    game.add_viewport(r(0, 0, 504 + 68, 350), 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, true);
-    game.add_viewport(r(0, 0, 158, 158), w0, 504, 350, LIERO_VIEWPORT_WORM, false);
-    game.add_viewport(r(160, 0, 158 + 160, 158), w1, 504, 350, LIERO_VIEWPORT_WORM, false);
+    game.add_viewport(r(0, 0, 504 + 68, 350), 0, 504, 350, ViewportKind::Spectator, true);
+    game.add_viewport(r(0, 0, 158, 158), w0, 504, 350, ViewportKind::Worm, false);
+    game.add_viewport(r(160, 0, 158 + 160, 158), w1, 504, 350, ViewportKind::Worm, false);
     let blood = game.settings_box().data.ext.blood_particle_max;
     game.start(blood);
     // SAFETY: the renderer is a live one.
@@ -423,7 +423,7 @@ pub fn hash_replays(a: &mut App, out: &mut Out) {
     let tc = &tc;
 
     // Every version, from the start of a game past the second checksum.
-    for version in 0..=LIERO_REPLAY_VERSION {
+    for version in 0..=REPLAY_VERSION {
         let name = format!("replay-v{version}");
         let path = format!("/tmp/{name}.lrp");
         record_game(a, tc, &path, 21, KILL_EM_ALL, 0, 2200, version, &[]);
@@ -436,7 +436,7 @@ pub fn hash_replays(a: &mut App, out: &mut Out) {
         for start in [150, 900, 2400, 5000] {
             let name = format!("replay-mode{mode}-from{start}");
             let path = format!("/tmp/{name}.lrp");
-            record_game(a, tc, &path, 22 + mode, mode, start, 600, LIERO_REPLAY_VERSION, &[]);
+            record_game(a, tc, &path, 22 + mode, mode, start, 600, REPLAY_VERSION, &[]);
             hash_replay(out, tc, &name, &path, 200, 600, 0);
         }
     }
@@ -457,7 +457,7 @@ pub fn hash_replays(a: &mut App, out: &mut Out) {
         change(400, 200, 6, 0, None),
         change(1050, 100, 4, 100, None),
     ];
-    for version in [LIERO_REPLAY_VERSION, 1] {
+    for version in [REPLAY_VERSION, 1] {
         let name = format!("replay-settings-v{version}");
         let path = format!("/tmp/{name}.lrp");
         record_game(a, tc, &path, 24, KILL_EM_ALL, 0, 1300, version, &changes);
@@ -467,7 +467,7 @@ pub fn hash_replays(a: &mut App, out: &mut Out) {
     // Broken replays, made from one recorded from the start of a game. Its
     // 1200 frames end with the end marker.
     let base_path = "/tmp/replay-base.lrp";
-    record_game(a, tc, base_path, 25, KILL_EM_ALL, 0, 1200, LIERO_REPLAY_VERSION, &[]);
+    record_game(a, tc, base_path, 25, KILL_EM_ALL, 0, 1200, REPLAY_VERSION, &[]);
     let base = read_replay(base_path);
     crate::disk::remove_file(super::on_disk(base_path).as_bytes());
     let first_frame = base.len() - 1 - frame_offset(0, 1200);
@@ -534,7 +534,7 @@ pub fn hash_replays(a: &mut App, out: &mut Out) {
         health: 50,
         ..WormSettings::default()
     };
-    let worm_archive = data::write_worm(&mut ws.clone(), LIERO_REPLAY_VERSION);
+    let worm_archive = data::write_worm(&mut ws.clone(), REPLAY_VERSION);
     for id in [0u32, 1] {
         let mut worm_bytes = vec![0x82];
         put_u32(&mut worm_bytes, id);

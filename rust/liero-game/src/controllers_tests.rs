@@ -26,10 +26,10 @@ fn escape_fades_to_the_menu_once() {
     let tc = tc();
     let mut c = local(tc.clone(), ["a", "b"]);
     unsafe {
-        c.on_key(LIERO_DK_ESCAPE as i32, true);
+        c.on_key(DK_ESCAPE as i32, true);
         assert_eq!((c.data.fade_value, c.data.going_to_menu), (31, true));
         c.data.fade_value = 5;
-        c.on_key(LIERO_DK_ESCAPE as i32, true);
+        c.on_key(DK_ESCAPE as i32, true);
         assert_eq!(c.data.fade_value, 5);
 
         // A replay takes Escape and nothing else.
@@ -40,9 +40,9 @@ fn escape_fades_to_the_menu_once() {
             initial: None,
             initial_pos: 0,
         }));
-        r.on_key(LIERO_DK_ESCAPE as i32 + 1, true);
+        r.on_key(DK_ESCAPE as i32 + 1, true);
         assert!(!r.data.going_to_menu);
-        r.on_key(LIERO_DK_ESCAPE as i32, false);
+        r.on_key(DK_ESCAPE as i32, false);
         assert_eq!((r.data.fade_value, r.data.going_to_menu), (31, true));
         drop((c, r));
     }
@@ -66,7 +66,7 @@ fn focus_starts_weapon_selection_and_sets_both_palettes() {
     a.play.data.origpal[200].r = 0;
     a.single.data.origpal[200].r = 0;
     unsafe { c.focus(a, &Host::none()) };
-    assert_eq!(c.data.state, LIERO_STATE_WEAPON_SELECTION);
+    assert_eq!(c.data.state, State::WeaponSelection);
     assert_eq!((a.play.data.origpal[200].r, a.single.data.origpal[200].r), (7, 7));
     assert_eq!((c.data.fade_value, c.data.going_to_menu), (0, false));
     drop(c);
@@ -124,7 +124,7 @@ fn r_rewinds_a_replay_to_its_start() {
         a.settings = Some(new_settings());
         let mut r = Controller::replay(&node, tc).unwrap();
         r.focus(a, &Host::none());
-        assert_eq!(r.data.state, LIERO_STATE_GAME);
+        assert_eq!(r.data.state, State::Game);
         assert!(r.process(a, &Host::none()));
         let pos = |r: &Controller| match &r.kind {
             Kind::Replay(r) => r.reader.as_ref().unwrap().pos(),
@@ -157,10 +157,10 @@ fn the_game_fades_in_to_fully_shown() {
         for _ in 0..40 {
             assert!(c.process(a, &Host::none()));
         }
-        assert_eq!(c.data.fade_value, LIERO_FADE_SHOWN);
+        assert_eq!(c.data.fade_value, FADE_SHOWN);
         // Then out to the menu, which ends it.
         c.data.going_to_menu = true;
-        for _ in 0..LIERO_FADE_SHOWN {
+        for _ in 0..FADE_SHOWN {
             assert!(c.process(a, &Host::none()));
         }
         assert!(!c.process(a, &Host::none()));

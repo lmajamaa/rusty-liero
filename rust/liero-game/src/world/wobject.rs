@@ -137,8 +137,8 @@ impl<'a> World<'a> {
         // As liero would do this while rendering, we try to do it as early as possible
         if self.hack(h("RemExp"))
             && index == self.constant(c("RemExpObject")) - 1
-            && pressed(self.worm(owner_idx), LIERO_CONTROL_CHANGE)
-            && pressed(self.worm(owner_idx), LIERO_CONTROL_FIRE)
+            && self.worm(owner_idx).pressed(Control::Change)
+            && self.worm(owner_idx).pressed(Control::Fire)
         {
             self.update_wobj(slot, |o| o.time_left = 0);
         }
@@ -163,7 +163,7 @@ impl<'a> World<'a> {
 
                 // Whether the owner is steering: visible and holding up.
                 let owner = self.worm(owner_idx);
-                if owner.visible && pressed(owner, LIERO_CONTROL_UP) {
+                if owner.visible && owner.pressed(Control::Up) {
                     new_vel = add(new_vel, mul_div(dir, w.add_speed, 100));
                 }
 

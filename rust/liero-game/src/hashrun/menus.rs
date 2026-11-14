@@ -10,7 +10,7 @@ use super::game::add_screen;
 use super::games::tc_data;
 use super::{Fnv, Out};
 use crate::app::App;
-use crate::controller::LIERO_STATE_WEAPON_SELECTION;
+use crate::controller::State;
 use crate::fs::Node;
 use crate::game::Rect;
 use crate::game_box::Game;
@@ -24,9 +24,9 @@ use crate::renderer::BitmapBox;
 use crate::screen::Host;
 use crate::settings::SettingsBox;
 use crate::sfx::SoundOut;
-use crate::viewport::{LIERO_VIEWPORT_SPECTATOR, LIERO_VIEWPORT_WORM};
+use crate::viewport::ViewportKind;
 use crate::weapsel::{level_line, Weapsel};
-use crate::worm::{LIERO_CONTROL_DOWN, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT, LIERO_CONTROL_UP};
+use crate::worm::Control;
 
 // The menus' item ids (`menuIds.hpp`).
 const MA_RESUME_GAME: i32 = 0;
@@ -569,9 +569,9 @@ fn run_weapon_selection(
             w.data.stats_x = if i == 0 { 0 } else { 218 };
         }
         let rect = |x1, y1, x2, y2| Rect { x1, y1, x2, y2 };
-        game.add_viewport(rect(0, 0, 158, 158), 0, 504, 350, LIERO_VIEWPORT_WORM, false);
-        game.add_viewport(rect(160, 0, 158 + 160, 158), 1, 504, 350, LIERO_VIEWPORT_WORM, false);
-        game.add_viewport(rect(0, 0, 504 + 68, 350), 0, 504, 350, LIERO_VIEWPORT_SPECTATOR, true);
+        game.add_viewport(rect(0, 0, 158, 158), 0, 504, 350, ViewportKind::Worm, false);
+        game.add_viewport(rect(160, 0, 158 + 160, 158), 1, 504, 350, ViewportKind::Worm, false);
+        game.add_viewport(rect(0, 0, 504 + 68, 350), 0, 504, 350, ViewportKind::Spectator, true);
         let mut level = LevelBox::new();
         level.generate_from_settings(&d.level_common(), &d.palette_colors, &settings.borrow(), &mut a.rand);
         std::mem::swap(game.level_box_mut(), &mut level);
@@ -589,16 +589,16 @@ fn run_weapon_selection(
             let w = w.expect("an empty place among the game's worms");
             let c = &mut w.data.control_states;
             for (bit, n) in [
-                (LIERO_CONTROL_LEFT, 6),
-                (LIERO_CONTROL_RIGHT, 6),
-                (LIERO_CONTROL_UP, 5),
-                (LIERO_CONTROL_DOWN, 4),
-                (LIERO_CONTROL_FIRE, 40),
+                (Control::Left, 6),
+                (Control::Right, 6),
+                (Control::Up, 5),
+                (Control::Down, 4),
+                (Control::Fire, 40),
             ] {
                 if r.below(n) == 0 {
-                    *c |= 1 << bit;
+                    *c |= bit.bit();
                 } else {
-                    *c &= !(1 << bit);
+                    *c &= !bit.bit();
                 }
             }
         }
@@ -631,11 +631,11 @@ fn run_weapon_selection(
         unsafe {
             a.play.clear();
             let play: *mut _ = &mut *a.play;
-            ws.draw_game(a, play, LIERO_STATE_WEAPON_SELECTION, false);
+            ws.draw_game(a, play, State::WeaponSelection, false);
             add_screen(&mut f, &a.play);
             a.single.clear();
             let single: *mut _ = &mut *a.single;
-            ws.draw_game(a, single, LIERO_STATE_WEAPON_SELECTION, true);
+            ws.draw_game(a, single, State::WeaponSelection, true);
             add_screen(&mut f, &a.single);
         }
         print(out, name, step, f);

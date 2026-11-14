@@ -224,8 +224,7 @@ pub struct GameHooks<'a> {
 
 /// A worm as the stats read it (`statsWorm` in C++).
 pub(crate) fn stats_worm(w: &WormData, max_health: i32) -> StatsWorm {
-    use crate::worm::{LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_LEFT, LIERO_CONTROL_RIGHT};
-    let pressed = |c: u32| (w.control_states >> c) & 1 != 0;
+    use crate::worm::Control;
     StatsWorm {
         index: w.index,
         x: ftoi(w.pos.x),
@@ -236,10 +235,10 @@ pub(crate) fn stats_worm(w: &WormData, max_health: i32) -> StatsWorm {
         timer: w.timer,
         kills: w.kills,
         max_health,
-        fire: pressed(LIERO_CONTROL_FIRE),
-        change: pressed(LIERO_CONTROL_CHANGE),
-        left: pressed(LIERO_CONTROL_LEFT),
-        right: pressed(LIERO_CONTROL_RIGHT),
+        fire: w.pressed(Control::Fire),
+        change: w.pressed(Control::Change),
+        left: w.pressed(Control::Left),
+        right: w.pressed(Control::Right),
         current_weapon: w.current_weapon,
         loading_left: w.weapons.map(|ww| ww.loading_left),
     }

@@ -15,10 +15,10 @@ use crate::math::IVec2;
 use crate::object::BObject;
 
 /// List sizes, as in `Game`'s typedefs.
-pub const LIERO_MAX_BONUSES: usize = 99;
-pub const LIERO_MAX_WOBJECTS: usize = 600;
-pub const LIERO_MAX_SOBJECTS: usize = 700;
-pub const LIERO_MAX_NOBJECTS: usize = 600;
+pub const MAX_BONUSES: usize = 99;
+pub const MAX_WOBJECTS: usize = 600;
+pub const MAX_SOBJECTS: usize = 700;
+pub const MAX_NOBJECTS: usize = 600;
 
 /// A bonus, laid out like C++'s `Bonus`.
 #[derive(Clone, Copy, Debug)]
@@ -94,7 +94,7 @@ pub struct NObject {
 /// `ExactObjectList<Bonus, 99>`.
 #[derive(Clone, Copy, Debug)]
 pub struct BonusList {
-    pub arr: [Bonus; LIERO_MAX_BONUSES],
+    pub arr: [Bonus; MAX_BONUSES],
     pub sentinel: Bonus,
     /// A set bit is a free slot.
     pub free_list: [u32; 4],
@@ -104,7 +104,7 @@ pub struct BonusList {
 /// `ExactObjectList<WObject, 600>`.
 #[derive(Clone, Copy, Debug)]
 pub struct WObjectList {
-    pub arr: [WObject; LIERO_MAX_WOBJECTS],
+    pub arr: [WObject; MAX_WOBJECTS],
     pub sentinel: WObject,
     pub free_list: [u32; 19],
     pub count: usize,
@@ -113,7 +113,7 @@ pub struct WObjectList {
 /// `ExactObjectList<SObject, 700>`.
 #[derive(Clone, Copy, Debug)]
 pub struct SObjectList {
-    pub arr: [SObject; LIERO_MAX_SOBJECTS],
+    pub arr: [SObject; MAX_SOBJECTS],
     pub sentinel: SObject,
     pub free_list: [u32; 22],
     pub count: usize,
@@ -122,7 +122,7 @@ pub struct SObjectList {
 /// `ExactObjectList<NObject, 600>`.
 #[derive(Clone, Copy, Debug)]
 pub struct NObjectList {
-    pub arr: [NObject; LIERO_MAX_NOBJECTS],
+    pub arr: [NObject; MAX_NOBJECTS],
     pub sentinel: NObject,
     pub free_list: [u32; 19],
     pub count: usize,
@@ -240,10 +240,10 @@ macro_rules! exact_list {
     };
 }
 
-exact_list!(BonusList, LIERO_MAX_BONUSES);
-exact_list!(WObjectList, LIERO_MAX_WOBJECTS);
-exact_list!(SObjectList, LIERO_MAX_SOBJECTS);
-exact_list!(NObjectList, LIERO_MAX_NOBJECTS);
+exact_list!(BonusList, MAX_BONUSES);
+exact_list!(WObjectList, MAX_WOBJECTS);
+exact_list!(SObjectList, MAX_SOBJECTS);
+exact_list!(NObjectList, MAX_NOBJECTS);
 
 /// `ExactObjectList::range` as an index: the slots in use, first to last,
 /// stopping at the sentinel. Each step reads the list afresh, so objects
@@ -363,12 +363,12 @@ mod tests {
         assert_eq!(l.count, 2);
         assert_eq!(l.new_object(), Some(1));
 
-        for _ in 3..LIERO_MAX_SOBJECTS {
+        for _ in 3..MAX_SOBJECTS {
             assert!(l.new_object().is_some());
         }
         assert_eq!(l.new_object(), None);
-        assert_eq!(l.new_object_reuse(), LIERO_MAX_SOBJECTS - 1);
-        assert_eq!(l.count, LIERO_MAX_SOBJECTS);
+        assert_eq!(l.new_object_reuse(), MAX_SOBJECTS - 1);
+        assert_eq!(l.count, MAX_SOBJECTS);
     }
 
     #[test]

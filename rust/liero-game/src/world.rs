@@ -28,9 +28,7 @@ use crate::stats::Stats;
 use crate::tc::{c, h, TcData};
 use crate::viewport::Viewport;
 use crate::weapon::{WeaponView, WormWeapon};
-use crate::worm::{
-    WormConstants, WormData, WormEnv, WormId, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE, LIERO_CONTROL_UP,
-};
+use crate::worm::{Control, WormConstants, WormData, WormEnv, WormId};
 use liero_data::model::{NObject as NObjectType, SObject as SObjectType, Weapon};
 
 mod nobject;
@@ -452,7 +450,7 @@ impl<'a> World<'a> {
             for cx in x1..x2 {
                 assert!(cy * 16 + cx < 16 * 16);
                 let pix = sprite[(cy * 16 + cx) as usize];
-                if materials[pix as usize].flags & crate::material::LIERO_MATERIAL_WORM != 0 {
+                if materials[pix as usize].flags & crate::material::MATERIAL_WORM != 0 {
                     return true;
                 }
             }
@@ -739,11 +737,6 @@ impl<'a> World<'a> {
 
         self.stats_tick(true);
     }
-}
-
-/// Whether worm `w` holds control `c`.
-fn pressed(w: &WormData, c: u32) -> bool {
-    (w.control_states >> c) & 1 != 0
 }
 
 #[cfg(test)]

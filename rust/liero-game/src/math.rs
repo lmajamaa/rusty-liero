@@ -22,12 +22,12 @@ pub struct IVec2 {
 
 /// Entry `angle` (0 to 127) of the cos/sin table, which is computed once.
 pub fn cos_sin(angle: i32) -> IVec2 {
-    static TABLE: std::sync::OnceLock<[IVec2; LIERO_COS_SIN_ENTRIES]> = std::sync::OnceLock::new();
+    static TABLE: std::sync::OnceLock<[IVec2; COS_SIN_ENTRIES]> = std::sync::OnceLock::new();
     TABLE.get_or_init(cos_sin_table)[angle as usize]
 }
 
 /// Number of entries in the cos/sin table: a full turn in 128 steps.
-pub const LIERO_COS_SIN_ENTRIES: usize = 128;
+pub const COS_SIN_ENTRIES: usize = 128;
 
 /// Integer square root, rounded down.
 pub fn isqrt(mut op: u32) -> u32 {
@@ -86,12 +86,12 @@ impl Fp {
 /// The 16.16 fixed-point table of directions, one per 1/128 of a turn, in
 /// C++'s `cossinTable` layout: x is -sin and y is cos of the angle. Computed with integer maths only, so it comes
 /// out the same on every platform.
-pub fn cos_sin_table() -> [IVec2; LIERO_COS_SIN_ENTRIES] {
-    let mut table = [IVec2::default(); LIERO_COS_SIN_ENTRIES];
+pub fn cos_sin_table() -> [IVec2; COS_SIN_ENTRIES] {
+    let mut table = [IVec2::default(); COS_SIN_ENTRIES];
     let scale_bits = 28;
     let scale: i32 = 13176795; // (2pi / 128) << scale_bits
 
-    for i in 0..LIERO_COS_SIN_ENTRIES {
+    for i in 0..COS_SIN_ENTRIES {
         let mut rf: i64 = 0;
         let mut c: i64 = -1;
         let xf = i as i32 * scale;

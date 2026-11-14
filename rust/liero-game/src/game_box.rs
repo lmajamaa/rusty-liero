@@ -10,7 +10,7 @@
 //! too.
 
 use crate::ai::WormAi;
-use crate::controller::LIERO_STATE_GAME;
+use crate::controller::State;
 use crate::game::RuleSettings;
 use crate::game::{GameData, GameFields, GameWorm, Rect};
 use crate::gfx::Palette;
@@ -23,6 +23,7 @@ use crate::stats::Stats;
 use crate::tc::{tc_data, SharedTc, TcData};
 use crate::text::Str;
 use crate::viewport::Viewport;
+use crate::viewport::ViewportKind;
 use crate::worm::{WormData, WormId};
 use std::cell::{Ref, RefMut};
 
@@ -306,7 +307,7 @@ impl Game {
     /// `Game::draw`: the split-screen viewports, or with `spectators` the
     /// spectator ones, on `r`, and the palette with the TC's colour
     /// animations, the fade and the screen flash. The game has its context.
-    pub(crate) fn draw(&mut self, r: &mut Renderer, state: i32, spectators: bool, is_replay: bool) {
+    pub(crate) fn draw(&mut self, r: &mut Renderer, state: State, spectators: bool, is_replay: bool) {
         let Game {
             data,
             pool,
@@ -455,7 +456,7 @@ impl Game {
         worm_idx: i32,
         level_width: i32,
         level_height: i32,
-        kind: i32,
+        kind: ViewportKind,
         spectator_list: bool,
     ) -> &mut Viewport {
         let mut vp = Viewport::new(rect, worm_idx, level_width, level_height);
@@ -597,14 +598,14 @@ fn view_worms<'a>(ws: &'a [(&'a Worm, Ref<'a, WormSettingsBox>)]) -> Vec<crate::
 }
 
 /// What drawing a viewport takes of the settings and the renderer.
-fn draw_settings(s: &crate::settings::GameSettings, r: &RendererData, state: i32, is_replay: bool) -> DrawSettings {
+fn draw_settings(s: &crate::settings::GameSettings, r: &RendererData, state: State, is_replay: bool) -> DrawSettings {
     DrawSettings {
         names_on_bonuses: s.names_on_bonuses,
         allow_viewing_spawn_point: s.ext.allow_viewing_spawn_point,
         map: s.map,
         render_res_x: r.render_res_x,
         render_res_y: r.render_res_y,
-        state_game: state == LIERO_STATE_GAME,
+        state_game: state == State::Game,
         is_replay,
     }
 }
@@ -684,9 +685,9 @@ mod tests {
         g.list_worm(Some(a));
         g.list_worm(None);
         g.list_worm(Some(b));
-        g.add_viewport(rect(0, 0, 158, 158), 0, 504, 350, 0, false);
-        g.add_viewport(rect(160, 0, 318, 158), 1, 504, 350, 0, false);
-        g.add_viewport(rect(0, 0, 572, 350), 0, 504, 350, 1, true);
+        g.add_viewport(rect(0, 0, 158, 158), 0, 504, 350, ViewportKind::Worm, false);
+        g.add_viewport(rect(160, 0, 318, 158), 1, 504, 350, ViewportKind::Worm, false);
+        g.add_viewport(rect(0, 0, 572, 350), 0, 504, 350, ViewportKind::Spectator, true);
         g
     }
 
@@ -753,8 +754,8 @@ mod tests {
         let mut to = Game::new();
         let old = to.new_worm(Some(s[0].clone()));
         to.list_worm(Some(old));
-        to.add_viewport(rect(0, 0, 1, 1), 0, 1, 1, 0, false);
-        let spectator: *const Viewport = to.add_viewport(rect(0, 0, 1, 1), 0, 1, 1, 0, true);
+        to.add_viewport(rect(0, 0, 1, 1), 0, 1, 1, ViewportKind::Worm, false);
+        let spectator: *const Viewport = to.add_viewport(rect(0, 0, 1, 1), 0, 1, 1, ViewportKind::Worm, true);
         to.worm_mut(old).set_ai(1, 0, false);
         let bot: *const WormAi = to.worm(old).ai().expect("a bot");
 
@@ -863,7 +864,7 @@ mod tests {
 
     #[test]
     fn viewports_are_drawn_with_the_settings_and_the_renderers_size() {
-        use crate::controller::{LIERO_STATE_GAME_ENDED, LIERO_STATE_WEAPON_SELECTION};
+        use crate::controller::State;
         let b = crate::settings::new_settings();
         let mut r = crate::renderer::Renderer::new();
         r.set_render_resolution(640, 400);
@@ -871,7 +872,7 @@ mod tests {
             let mut b = b.borrow_mut();
             let s = &mut b.data;
             s.names_on_bonuses = true;
-            let d = draw_settings(s, &r.data, LIERO_STATE_GAME, true);
+            let d = draw_settings(s, &r.data, State::Game, true);
             assert_eq!(
                 (d.names_on_bonuses, d.allow_viewing_spawn_point, d.map),
                 (true, false, false)
@@ -881,13 +882,13 @@ mod tests {
                 (640, 400, true, true)
             );
             (s.names_on_bonuses, s.ext.allow_viewing_spawn_point, s.map) = (false, true, true);
-            let d = draw_settings(s, &r.data, LIERO_STATE_GAME_ENDED, false);
+            let d = draw_settings(s, &r.data, State::GameEnded, false);
             assert_eq!(
                 (d.names_on_bonuses, d.allow_viewing_spawn_point, d.map),
                 (false, true, true)
             );
             assert!(!d.state_game && !d.is_replay);
-            assert!(!draw_settings(s, &r.data, LIERO_STATE_WEAPON_SELECTION, false).state_game);
+            assert!(!draw_settings(s, &r.data, State::WeaponSelection, false).state_game);
         }
     }
 

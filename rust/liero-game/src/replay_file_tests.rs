@@ -59,7 +59,7 @@ impl Setup {
                 x2: 160 * i + 158,
                 y2: 158,
             };
-            g.add_viewport(r, i, 504, 350, LIERO_VIEWPORT_WORM, false).shake = 4 + i;
+            g.add_viewport(r, i, 504, 350, ViewportKind::Worm, false).shake = 4 + i;
         }
         g.add_viewport(
             Rect {
@@ -71,7 +71,7 @@ impl Setup {
             0,
             504,
             350,
-            1,
+            crate::viewport::ViewportKind::Spectator,
             true,
         );
         g.data_mut().rand.x = 1234;

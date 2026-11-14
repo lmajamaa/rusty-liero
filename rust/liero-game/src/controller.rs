@@ -7,20 +7,23 @@ use crate::keys::Keys;
 
 /// `GameState`: before the match, choosing weapons, playing, and the match
 /// over.
-pub const LIERO_STATE_INITIAL: i32 = 0;
-pub const LIERO_STATE_WEAPON_SELECTION: i32 = 1;
-pub const LIERO_STATE_GAME: i32 = 2;
-pub const LIERO_STATE_GAME_ENDED: i32 = 3;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum State {
+    #[default]
+    Initial,
+    WeaponSelection,
+    Game,
+    GameEnded,
+}
 
 /// The fade value when the game is fully shown.
-pub const LIERO_FADE_SHOWN: i32 = 33;
+pub const FADE_SHOWN: i32 = 33;
 
 /// A controller's state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ControllerData {
-    /// `LIERO_STATE_*`.
-    pub state: i32,
-    /// 0 is black, `LIERO_FADE_SHOWN` fully shown.
+    pub state: State,
+    /// 0 is black, `FADE_SHOWN` fully shown.
     pub fade_value: i32,
     /// Fading out to the menu.
     pub going_to_menu: bool,
@@ -35,7 +38,7 @@ impl Default for ControllerData {
     /// What C++'s controller constructors set.
     fn default() -> Self {
         ControllerData {
-            state: LIERO_STATE_INITIAL,
+            state: State::Initial,
             fade_value: 0,
             going_to_menu: false,
             frame_skip: 1,
@@ -65,7 +68,7 @@ impl ControllerData {
 
     /// Whether a match is being played or is over but still shown.
     pub fn in_game(&self) -> bool {
-        self.state == LIERO_STATE_GAME || self.state == LIERO_STATE_GAME_ENDED
+        self.state == State::Game || self.state == State::GameEnded
     }
 }
 
@@ -80,7 +83,7 @@ mod tests {
             assert_eq!(
                 c,
                 ControllerData {
-                    state: LIERO_STATE_INITIAL,
+                    state: State::Initial,
                     fade_value: 0,
                     going_to_menu: false,
                     frame_skip: 1,
@@ -122,7 +125,7 @@ mod tests {
             }
             .in_game()
         };
-        assert!(!at(LIERO_STATE_INITIAL) && !at(LIERO_STATE_WEAPON_SELECTION));
-        assert!(at(LIERO_STATE_GAME) && at(LIERO_STATE_GAME_ENDED));
+        assert!(!at(State::Initial) && !at(State::WeaponSelection));
+        assert!(at(State::Game) && at(State::GameEnded));
     }
 }

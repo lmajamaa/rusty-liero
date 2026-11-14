@@ -14,7 +14,7 @@ pub struct Rand {
 
 const MULTIPLIER: u64 = 2083801278;
 const INITIAL_CARRY: u32 = 9413207;
-pub const LIERO_RAND_DEFAULT_SEED: u32 = 0x1337;
+pub const RAND_DEFAULT_SEED: u32 = 0x1337;
 
 impl Rand {
     pub const fn new(seed: u32) -> Self {
@@ -54,7 +54,7 @@ impl Rand {
 
 impl Default for Rand {
     fn default() -> Self {
-        Rand::new(LIERO_RAND_DEFAULT_SEED)
+        Rand::new(RAND_DEFAULT_SEED)
     }
 }
 
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn next_matches_cpp() {
-        assert_eq!(stream_hash(LIERO_RAND_DEFAULT_SEED, |r, _| r.next_u32()), EXPECTED_NEXT);
+        assert_eq!(stream_hash(RAND_DEFAULT_SEED, |r, _| r.next_u32()), EXPECTED_NEXT);
         assert_eq!(stream_hash(0, |r, _| r.next_u32()), EXPECTED_NEXT_SEED0);
         assert_eq!(stream_hash(0xffff_ffff, |r, _| r.next_u32()), EXPECTED_NEXT_SEEDMAX);
     }

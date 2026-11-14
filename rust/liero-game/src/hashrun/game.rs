@@ -2,7 +2,7 @@
 //! which the bot games, replays, AI games and sound games print.
 
 use super::Fnv;
-use crate::controller::LIERO_STATE_GAME;
+use crate::controller::State;
 use crate::game_box::{Game, Worm};
 use crate::math::IVec2;
 use crate::renderer::Renderer;
@@ -183,7 +183,7 @@ pub fn hash_frame(game: &mut Game, split: &mut Renderer, spectator: &mut Rendere
     let mut f = Fnv::default();
     for (r, spectators) in [(split, false), (spectator, true)] {
         r.clear();
-        game.draw(r, LIERO_STATE_GAME, spectators, false);
+        game.draw(r, State::Game, spectators, false);
         add_screen(&mut f, r);
     }
     f.0

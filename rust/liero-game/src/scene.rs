@@ -11,7 +11,7 @@ use crate::viewport::{
     draw_viewport, process_viewport, Scene, Sprites, ViewBObject, ViewBonus, ViewNObject, ViewSObject, ViewWObject,
     ViewWeapon, ViewWorm, ViewWormWeapon, Viewport, ViewportBanner,
 };
-use crate::worm::{WormData, LIERO_CONTROL_CHANGE, LIERO_CONTROL_FIRE};
+use crate::worm::{Control, WormData};
 use liero_data::model::SpriteSet;
 
 /// What a draw needs besides the game: the settings the tick doesn't use,
@@ -62,8 +62,8 @@ pub(crate) fn view_worm<'a>(w: &'a WormData, looks: WormLooks<'a>, ai: Option<&'
         index: w.index,
         name: looks.name,
         color: looks.color,
-        pressed_change: w.control_states >> LIERO_CONTROL_CHANGE & 1 != 0,
-        pressed_fire: w.control_states >> LIERO_CONTROL_FIRE & 1 != 0,
+        pressed_change: w.pressed(Control::Change),
+        pressed_fire: w.pressed(Control::Fire),
         current_frame: w.current_frame,
         direction: w.direction,
         hotspot_x: w.hotspot_x,
@@ -304,7 +304,7 @@ fn lists<'a>(src: &SceneSource<'a>) -> Lists<'a> {
 mod tests {
     use super::*;
     use crate::game::Rect;
-    use crate::viewport::LIERO_VIEWPORT_SPECTATOR;
+    use crate::viewport::ViewportKind;
     use liero_data::model::{NObject as NObjectType, SObject as SObjectType, Weapon};
 
     fn defaults<T: Default>(n: usize) -> Vec<T> {
@@ -378,7 +378,7 @@ mod tests {
         d.bobjects.resize(4);
         d.bobjects.count = 3;
         let mut worms = two_worms();
-        worms[1].control_states = 1 << LIERO_CONTROL_FIRE;
+        worms[1].control_states = Control::Fire.bit();
         worms[0].weapons[2].kind = 2;
         let data = crate::settings::SettingsBox::defaults().borrow().data.clone();
         let mut settings = crate::game_box::game_settings(&data, None);
@@ -433,7 +433,7 @@ mod tests {
             y: 200 << 16,
         };
         let mut vps = [viewport(0), viewport(1), viewport(0)];
-        vps[2].kind = LIERO_VIEWPORT_SPECTATOR;
+        vps[2].kind = ViewportKind::Spectator;
         let before = (vps[2].x, vps[2].y);
         process_viewports(&views(&worms), vps.iter_mut().map(|v| &mut **v));
         assert_eq!(
@@ -445,7 +445,7 @@ mod tests {
 
         // A single-screen replay's spectator viewport in the split-screen
         // list is still a spectator one.
-        vps[1].kind = LIERO_VIEWPORT_SPECTATOR;
+        vps[1].kind = ViewportKind::Spectator;
         vps[1].worm_idx = 0;
         let before = (vps[1].x, vps[1].y);
         process_viewports(&views(&worms), vps.iter_mut().map(|v| &mut **v));

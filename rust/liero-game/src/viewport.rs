@@ -25,10 +25,15 @@ use crate::worm::{
 };
 use liero_data::model::FontChar;
 
-/// The viewport that follows one worm, in split screen.
-pub const LIERO_VIEWPORT_WORM: i32 = 0;
-/// The viewport that shows the whole level, in spectator mode.
-pub const LIERO_VIEWPORT_SPECTATOR: i32 = 1;
+/// What a viewport shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewportKind {
+    /// One worm, followed, in split screen (`Viewport`).
+    #[default]
+    Worm,
+    /// The whole level, in spectator mode (`SpectatorViewport`).
+    Spectator,
+}
 
 /// The fire cone's position for each direction and angle frame, relative to
 /// the worm sprite (`Common::fireConeOffset`).
@@ -59,10 +64,9 @@ pub struct Viewport {
     pub rect: Rect,
     /// Used for shaking and for the laser sight.
     pub rand: Rand,
-    /// `LIERO_VIEWPORT_WORM`, or `LIERO_VIEWPORT_SPECTATOR` for a
-    /// `SpectatorViewport`, which a single-screen replay also shows in the
-    /// split-screen list.
-    pub kind: i32,
+    /// A spectator one is also shown in the split-screen list by a
+    /// single-screen replay.
+    pub kind: ViewportKind,
 }
 
 /// A set of sprites: `count` sprites of `width` x `height` pixels, one
@@ -889,7 +893,7 @@ impl Viewport {
             banner_y: -8,
             rect,
             rand: Rand::default(),
-            kind: LIERO_VIEWPORT_WORM,
+            kind: ViewportKind::Worm,
         }
     }
 
@@ -920,13 +924,13 @@ impl Viewport {
     }
 }
 
-/// Moves the camera one tick: `Viewport::process` for `LIERO_VIEWPORT_WORM`,
-/// `SpectatorViewport::process` for `LIERO_VIEWPORT_SPECTATOR`. `worms` are
+/// Moves the camera one tick: `Viewport::process` for a worm's viewport,
+/// `SpectatorViewport::process` for a spectator one. `worms` are
 /// in the order of `Game::worms`.
-pub fn process_viewport(vp: &mut Viewport, kind: i32, worms: &[ViewWorm]) {
+pub fn process_viewport(vp: &mut Viewport, kind: ViewportKind, worms: &[ViewWorm]) {
     let worm = |i: i32| usize::try_from(i).ok().and_then(|i| worms.get(i));
 
-    if kind == LIERO_VIEWPORT_SPECTATOR {
+    if kind == ViewportKind::Spectator {
         // C++: "FIXME this is a bit broken". 150 is where killedTimer starts.
         if [0, 1].iter().any(|&i| worm(i).is_some_and(|w| w.killed_timer == 150)) {
             vp.banner_y = -8;
@@ -968,12 +972,12 @@ fn draw_traces(scr: &Bitmap, traces: &[AiTrace], offs: IVec2) {
     }
 }
 
-/// Draws a viewport on `scr`: `Viewport::draw` for `LIERO_VIEWPORT_WORM`,
-/// `SpectatorViewport::draw` for `LIERO_VIEWPORT_SPECTATOR`. `self_index` is
+/// Draws a viewport on `scr`: `Viewport::draw` for a worm's viewport,
+/// `SpectatorViewport::draw` for a spectator one. `self_index` is
 /// a split-screen viewport's position in `scene.viewports`.
-pub fn draw_viewport(vp: &mut Viewport, kind: i32, self_index: i32, scene: &Scene, scr: &Bitmap) {
+pub fn draw_viewport(vp: &mut Viewport, kind: ViewportKind, self_index: i32, scene: &Scene, scr: &Bitmap) {
     let scene = Painter::new(scene);
-    if kind == LIERO_VIEWPORT_SPECTATOR {
+    if kind == ViewportKind::Spectator {
         scene.draw_spectator_view(vp, scr);
     } else {
         scene.draw_worm_view(vp, scr, self_index);
@@ -983,7 +987,7 @@ pub fn draw_viewport(vp: &mut Viewport, kind: i32, self_index: i32, scene: &Scen
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rand::LIERO_RAND_DEFAULT_SEED;
+    use crate::rand::RAND_DEFAULT_SEED;
 
     fn worm(index: i32) -> ViewWorm<'static> {
         ViewWorm {
@@ -1051,7 +1055,7 @@ mod tests {
             (504 - 158, 350 - 158, 79, 79)
         );
         assert_eq!((vp.x, vp.y, vp.shake, vp.banner_y), (0, 0, 0, -8));
-        assert_eq!(vp.rand, Rand::new(LIERO_RAND_DEFAULT_SEED));
+        assert_eq!(vp.rand, Rand::new(RAND_DEFAULT_SEED));
         let mut a = Viewport::new(
             Rect {
                 x1: 160,
@@ -1073,7 +1077,7 @@ mod tests {
         assert_eq!((a.x, c.x), (12, 1), "the copy changes alone");
     }
 
-    fn process(vp: &mut Viewport, kind: i32, worms: &[ViewWorm]) {
+    fn process(vp: &mut Viewport, kind: ViewportKind, worms: &[ViewWorm]) {
         process_viewport(vp, kind, worms)
     }
 
@@ -1082,19 +1086,19 @@ mod tests {
         let mut vp = viewport();
         let mut w = worm(0);
 
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (100 - 79, 80 - 79));
 
         // Steerables are followed instead of the worm.
         w.steerable_count = 2;
         w.steerable_sum_x = 2 * 300;
         w.steerable_sum_y = 2 * 200;
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (300 - 79, 200 - 79));
 
         // Before spawning, the camera scrolls 4 pixels a tick.
         w.visible = false;
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (300 - 79 - 4, 200 - 79 - 4));
 
         // Kept inside the level.
@@ -1104,14 +1108,14 @@ mod tests {
             x: -5 << 16,
             y: 1000 << 16,
         };
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!((vp.x, vp.y), (0, vp.max_y));
 
         // Dying shows the kill banner.
         w.health = 0;
         w.killed_timer = 150;
         vp.banner_y = 2;
-        process(&mut vp, LIERO_VIEWPORT_WORM, &[w]);
+        process(&mut vp, ViewportKind::Worm, &[w]);
         assert_eq!(vp.banner_y, -8);
     }
 
@@ -1147,20 +1151,20 @@ mod tests {
         vp.x = 50;
         vp.y = 60;
         let worms = [worm(0), worm(1)];
-        process(&mut vp, LIERO_VIEWPORT_SPECTATOR, &worms);
+        process(&mut vp, ViewportKind::Spectator, &worms);
         assert_eq!((vp.x, vp.y), (50, 60));
 
         vp.shake = 3 << 16;
-        let mut expect = Rand::new(LIERO_RAND_DEFAULT_SEED);
+        let mut expect = Rand::new(RAND_DEFAULT_SEED);
         let dx = expect.below(6) as i32 - 3;
         let dy = expect.below(6) as i32 - 3;
-        process(&mut vp, LIERO_VIEWPORT_SPECTATOR, &worms);
+        process(&mut vp, ViewportKind::Spectator, &worms);
         assert_eq!((vp.x, vp.y), (50 + dx, 60 + dy));
 
         let mut worms = worms;
         worms[1].killed_timer = 150;
         vp.banner_y = 0;
-        process(&mut vp, LIERO_VIEWPORT_SPECTATOR, &worms);
+        process(&mut vp, ViewportKind::Spectator, &worms);
         assert_eq!(vp.banner_y, -8);
     }
 
@@ -1217,7 +1221,7 @@ mod tests {
             }
         }
 
-        fn draw(&mut self, kind: i32, f: impl FnOnce(&mut Scene)) {
+        fn draw(&mut self, kind: ViewportKind, f: impl FnOnce(&mut Scene)) {
             fn set(data: &[u8], w: i32) -> Sprites<'_> {
                 Sprites {
                     data,
@@ -1308,11 +1312,11 @@ mod tests {
             frame: 0,
             weapon: 0,
         });
-        t.draw(LIERO_VIEWPORT_WORM, |_| {});
+        t.draw(ViewportKind::Worm, |_| {});
         assert_eq!(t.px(57, 57), 100);
         assert_eq!(t.px(56, 50), 1, "no name unless names on bonuses");
 
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.names_on_bonuses = true);
+        t.draw(ViewportKind::Worm, |s| s.names_on_bonuses = true);
         // "AB" is 8 pixels wide, centred on x = 60, 10 pixels above.
         assert_eq!(t.px(56, 50), 200);
         assert_eq!(t.px(60, 50), 201);
@@ -1330,11 +1334,11 @@ mod tests {
             cur_frame: 0,
             slot: 41,
         });
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.names_on_bonuses = true);
+        t.draw(ViewportKind::Worm, |s| s.names_on_bonuses = true);
         // Slot 41 of 40 weapons names weapon 1, "C", drawn from x = 60 - 2.
         assert_eq!(t.px(58, 50), 202);
 
-        t.draw(LIERO_VIEWPORT_SPECTATOR, |s| {
+        t.draw(ViewportKind::Spectator, |s| {
             s.names_on_bonuses = true;
             s.rem_exp = true;
         });
@@ -1348,10 +1352,10 @@ mod tests {
         t.worms[0].ready = false;
         t.worms[0].pressed_change = true;
         t.worms[1].visible = false;
-        t.draw(LIERO_VIEWPORT_WORM, |_| {});
+        t.draw(ViewportKind::Worm, |_| {});
         assert_eq!((t.px(93, 75), t.px(94, 75)), (1, 1), "not allowed");
 
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.allow_viewing_spawn_point = true);
+        t.draw(ViewportKind::Worm, |s| s.allow_viewing_spawn_point = true);
         // Every other pixel of the sprite at (100 - 7, 80 - 5), by cycles 1.
         assert_eq!((t.px(93, 75), t.px(94, 75)), (50, 1));
         assert_eq!((t.px(93, 76), t.px(94, 76)), (1, 50));
@@ -1361,10 +1365,10 @@ mod tests {
     fn replays_show_name_colour_and_time() {
         let mut t = TestScene::new();
         t.worms[0].stats_x = 10;
-        t.draw(LIERO_VIEWPORT_WORM, |_| {});
+        t.draw(ViewportKind::Worm, |_| {});
         assert_eq!(t.px(10, 192), 0);
 
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.is_replay = true);
+        t.draw(ViewportKind::Worm, |s| s.is_replay = true);
         assert_eq!(t.px(10, 192), 7);
         assert_eq!(t.px(11, 193), 9);
         assert_eq!(t.px(17, 199), 7);
@@ -1384,7 +1388,7 @@ mod tests {
         ];
         t.worms[0].index = 0;
         t.worms[0].timer = 61;
-        t.draw(LIERO_VIEWPORT_WORM, |s| s.game_mode = LIERO_GAME_GAME_OF_TAG);
+        t.draw(ViewportKind::Worm, |s| s.game_mode = LIERO_GAME_GAME_OF_TAG);
         // Five 8-pixel characters from x = 106 at y = 200 - 39.
         assert_ne!(t.px(106 + 4 * 8 + 3, 161 + 3), 0);
         assert_eq!(t.px(106 + 5 * 8 + 3, 161 + 3), 0);

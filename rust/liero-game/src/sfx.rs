@@ -28,7 +28,7 @@
 use std::ffi::c_void;
 
 /// Number of channels; more sounds than this at once aren't played.
-pub const LIERO_MIXER_CHANNELS: usize = 8;
+pub const MIXER_CHANNELS: usize = 8;
 /// Flags for `Mixer::add`.
 pub const LIERO_SOUND_NORMAL: u32 = 0;
 pub const LIERO_SOUND_LOOP: u32 = 1;
@@ -114,7 +114,7 @@ impl Channel {
 /// The mixer's channels and time. Opaque to C++.
 #[derive(Clone, Debug, Default)]
 pub struct Mixer {
-    channels: [Channel; LIERO_MIXER_CHANNELS],
+    channels: [Channel; MIXER_CHANNELS],
     base_frame: i32,
 }
 

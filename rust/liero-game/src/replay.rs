@@ -21,7 +21,7 @@ use std::collections::HashMap;
 /// "LRPF".
 const MAGIC: u32 = u32::from_be_bytes(*b"LRPF");
 /// The newest version this reads, and the one the game writes.
-pub const LIERO_REPLAY_VERSION: i32 = data::REPLAY_VERSION;
+pub use data::REPLAY_VERSION;
 /// The checkpoint at the end of each worm.
 const CHECKPOINT: u32 = 0x1234_5678;
 /// Frames between checksums: 15 seconds.
@@ -661,7 +661,7 @@ pub fn read_start<S: Source + ?Sized>(src: &mut S) -> Result<(i32, Game), Replay
         return Err(ReplayError::Check("File does not appear to be a replay"));
     }
     let version = r.u8()? as i32;
-    if version > LIERO_REPLAY_VERSION {
+    if version > REPLAY_VERSION {
         return Err(ReplayError::Check("Replay version is too recent"));
     }
     let mut gr = GameReader {
@@ -985,7 +985,7 @@ mod tests {
         let mut g = game(vec![worm(0), worm(1)]);
         g.worms[0].fields.rope_anchor = 1;
         g.worms[1].fields.last_killed_by = 0;
-        for version in 0..=LIERO_REPLAY_VERSION {
+        for version in 0..=REPLAY_VERSION {
             let mut written = g.clone();
             let (bytes, r) = write_start(&mut written, version);
             assert_eq!(r, Ok(()));
@@ -999,7 +999,7 @@ mod tests {
             // Older versions store less of the worms' settings.
             let fields = |g: &Game| g.worms.iter().map(|w| w.fields).collect::<Vec<_>>();
             assert_eq!(fields(&back), fields(&written));
-            if version == LIERO_REPLAY_VERSION {
+            if version == REPLAY_VERSION {
                 assert_eq!(back.worms, written.worms);
             }
             assert_eq!(
@@ -1065,9 +1065,9 @@ mod tests {
             fields: f,
             settings: WormSettings::default(),
         }]);
-        let (bytes, _) = write_start(&mut g, LIERO_REPLAY_VERSION);
+        let (bytes, _) = write_start(&mut g, REPLAY_VERSION);
         let settings = data::write_archive(&mut Settings::default()).len();
-        let worm_settings = data::write_worm(&mut WormSettings::default(), LIERO_REPLAY_VERSION).len();
+        let worm_settings = data::write_worm(&mut WormSettings::default(), REPLAY_VERSION).len();
         // Header, settings, cycles, got_changed, last killed (none), screen
         // flash, the generator, the list's 1 and the worm's number.
         let mut c = Cursor(&bytes[5 + settings + 4 + 1 + 4 + 4 + 8 + 1 + 4..]);
@@ -1101,7 +1101,7 @@ mod tests {
         // first, and the list refers to it by its new place.
         let mut g = game(vec![worm(0), worm(1)]);
         g.fields.last_killed = 1;
-        let (bytes, _) = write_start(&mut g.clone(), LIERO_REPLAY_VERSION);
+        let (bytes, _) = write_start(&mut g.clone(), REPLAY_VERSION);
         let (_, back) = read(&bytes).unwrap();
         assert_eq!(back.list, vec![1, 0]);
         assert_eq!(back.worms[0].fields.index, 1);
@@ -1116,7 +1116,7 @@ mod tests {
         g.worms[0].fields.last_killed_by = 0;
         g.worms[0].fields.rope_anchor = 0;
         g.viewports.clear();
-        let (bytes, _) = write_start(&mut g, LIERO_REPLAY_VERSION);
+        let (bytes, _) = write_start(&mut g, REPLAY_VERSION);
         let (_, back) = read(&bytes).unwrap();
         assert_eq!(back.worms.len(), 1);
         assert_eq!(back.worms[0].fields.last_killed_by, 0);
@@ -1128,7 +1128,7 @@ mod tests {
     fn a_worm_index_past_the_list_fails_after_what_was_written() {
         let mut g = game(vec![worm(0)]);
         g.fields.last_killed = 1;
-        let (bytes, r) = write_start(&mut g, LIERO_REPLAY_VERSION);
+        let (bytes, r) = write_start(&mut g, REPLAY_VERSION);
         assert_eq!(r, Err(ReplayError::OutOfRange));
         let settings = data::write_archive(&mut Settings::default());
         // Header, settings, cycles, got_changed.
@@ -1137,7 +1137,7 @@ mod tests {
 
     #[test]
     fn broken_starts_fail_like_the_cpp() {
-        let (bytes, _) = write_start(&mut game(vec![worm(0), worm(1)]), LIERO_REPLAY_VERSION);
+        let (bytes, _) = write_start(&mut game(vec![worm(0), worm(1)]), REPLAY_VERSION);
         let mut magic = bytes.clone();
         magic[0] = b'X';
         assert_eq!(
