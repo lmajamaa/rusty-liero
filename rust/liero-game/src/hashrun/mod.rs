@@ -14,6 +14,8 @@ mod input;
 mod levels;
 mod menus;
 mod replays;
+#[cfg(test)]
+mod rollback_tests;
 mod settings;
 mod tc;
 

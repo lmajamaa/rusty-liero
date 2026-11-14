@@ -12,7 +12,7 @@
 use crate::ai::WormAi;
 use crate::controller::State;
 use crate::game::RuleSettings;
-use crate::game::{GameData, GameFields, GameWorm, Rect};
+use crate::game::{GameData, GameFields, GameHooks, GameState, GameWorm, Rect};
 use crate::gfx::Palette;
 use crate::level::LevelBox;
 use crate::renderer::{Renderer, RendererData};
@@ -90,6 +90,23 @@ impl Worm {
     /// The worm's settings, to change. Panics if it has none.
     pub(crate) fn settings_mut(&mut self) -> RefMut<'_, WormSettingsBox> {
         self.settings.as_ref().expect("a worm without settings").borrow_mut()
+    }
+}
+
+/// What a tick changes in a `Game`, saved for rollback (`Game::save`,
+/// `Game::restore`): what the AI's copies hold (`GameState`) and the
+/// viewports, whose shake and death banners ticks move.
+#[derive(Clone, Debug, Default)]
+pub struct Snapshot {
+    pub state: GameState,
+    pub viewports: Vec<Viewport>,
+    pub spectators: Vec<Viewport>,
+}
+
+impl Snapshot {
+    /// The bytes it holds, on the heap and in place.
+    pub fn bytes(&self) -> usize {
+        self.state.bytes() + std::mem::size_of_val(&self.viewports[..]) + std::mem::size_of_val(&self.spectators[..])
     }
 }
 
@@ -275,9 +292,76 @@ impl Game {
     }
 
     /// `Game::processFrame`: one tick.
-    pub(crate) fn process_frame(&mut self, hooks: &crate::game::GameHooks) {
+    pub(crate) fn process_frame(&mut self, hooks: &GameHooks) {
         self.with_view(|f, _, s| crate::game::process_frame(f, s, hooks));
         self.process_viewports();
+    }
+
+    /// A tick without side effects, for a frame rollback may play again: no
+    /// sounds and no stats. The viewports still move, as they are in the
+    /// `Snapshot`; so does the game's state, just as `process_frame` moves
+    /// it, as sounds and stats only take from the game.
+    pub fn process_frame_quietly(&mut self) {
+        self.with_view(|mut f, _, s| {
+            f.stats = None;
+            f.sound = SoundOut::NONE;
+            crate::game::process_frame(f, s, &GameHooks::NONE);
+        });
+        self.process_viewports();
+    }
+
+    /// Saves what a tick changes into `to`, reusing its memory: the game's
+    /// state, the level, the listed worms and both lists of viewports. Not
+    /// saved: the stats, which only confirmed ticks record, the bots, which
+    /// rollback runs only on confirmed ticks, and the worms the game doesn't
+    /// list, which ticks don't change. Panics on an empty place among the
+    /// listed worms.
+    pub fn save(&self, to: &mut Snapshot) {
+        let l = &self.level;
+        let worms = self
+            .list
+            .iter()
+            .map(|id| &self.pool[id.expect("an empty place among the game's worms").0 as usize].data);
+        to.state.copy_from(
+            &self.data,
+            (l.pixels(), l.materials(), l.data().width, l.data().height),
+            worms,
+        );
+        to.viewports.clear();
+        to.viewports.extend(self.viewports.iter().map(|v| **v));
+        to.spectators.clear();
+        to.spectators.extend(self.spectators.iter().map(|v| **v));
+    }
+
+    /// What a tick changes, saved (see `save`).
+    pub fn snapshot(&self) -> Snapshot {
+        let mut s = Snapshot::default();
+        self.save(&mut s);
+        s
+    }
+
+    /// Puts the game back as it was when `from` was saved. Panics if the
+    /// game has since changed what `save` doesn't save: its list of worms,
+    /// its viewports or its level's size.
+    pub fn restore(&mut self, from: &Snapshot) {
+        let s = &from.state;
+        assert_eq!(s.worms.len(), self.list.len(), "the game's worms changed");
+        assert_eq!(from.viewports.len(), self.viewports.len(), "the viewports changed");
+        assert_eq!(from.spectators.len(), self.spectators.len(), "the viewports changed");
+        self.data.clone_from(&s.data);
+        let l = self.level.level();
+        assert_eq!((l.width, l.height), (s.width, s.height), "the level changed");
+        l.data.copy_from_slice(&s.pixels);
+        l.materials.copy_from_slice(&s.materials);
+        for (id, w) in self.list.iter().zip(&s.worms) {
+            self.pool[id.expect("an empty place among the game's worms").0 as usize].data = *w;
+        }
+        for (v, saved) in self.viewports.iter_mut().zip(&from.viewports) {
+            **v = *saved;
+        }
+        for (v, saved) in self.spectators.iter_mut().zip(&from.spectators) {
+            **v = *saved;
+        }
     }
 
     /// The listed worms with their settings, for the viewports. Panics on

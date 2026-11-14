@@ -34,5 +34,6 @@ Players send each other inputs over WebRTC DataChannels and run the game with ro
 ## Order
 
 1. **Offline rollback test.** Run a game with fake input delays and forced rollbacks, and check its hashes match a straight run, as the hash run does. No network is involved. This step also solves item 1.
+   Done: `Game::save`, `Game::restore` and `Game::process_frame_quietly` in `game_box.rs`, tested in `hashrun/rollback_tests.rs`. A snapshot is about 430 KB (the level's materials are bigger than its pixels); in a release build saving takes about 8 µs and restoring about 9 µs. Sounds and stats happen only on confirmed frames, so sounds come a few frames late. Bots think only on confirmed frames, so their own state is never rolled back, and both sides would compute the same moves.
 2. **Two tabs over `BroadcastChannel`.** Tests timing and setup without any server.
 3. **WebRTC with the Bun signaling server, then TURN.**

@@ -9,7 +9,7 @@
 use super::dumb::{self, DumbAiWorm};
 use super::path::LevelView;
 use super::predictive::{AiGame, AiWeapon, AiWorm, FollowAi, Games};
-use crate::game::{GameData, GameFields, GameHooks, RuleSettings};
+use crate::game::{GameData, GameFields, GameHooks, GameState, RuleSettings};
 use crate::level::Level;
 use crate::material::Material;
 use crate::rand::Rand;
@@ -26,17 +26,6 @@ pub struct AiSettings {
     pub traces: bool,
 }
 
-/// A copy of the game, which owns its state, level and listed worms.
-struct SimCopy {
-    data: GameData,
-    pixels: Vec<u8>,
-    materials: Vec<Material>,
-    width: i32,
-    height: i32,
-    /// The listed worms, in the game's order.
-    worms: Vec<WormData>,
-}
-
 /// One of the AI's games: the one it is in, or a copy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Sim {
@@ -50,19 +39,17 @@ struct Sims<'r, 'a> {
     real: &'r mut GameFields<'a>,
     settings: &'r RuleSettings,
     ai: &'r AiSettings,
-    copies: Vec<Option<SimCopy>>,
-}
-
-fn no_ticks() -> u64 {
-    0
+    /// Each a copy of the game, which owns its state, level and listed
+    /// worms.
+    copies: Vec<Option<GameState>>,
 }
 
 /// `NullSoundPlayer` and the base `StatsRecorder`, and no viewports to
 /// process.
-const NO_HOOKS: GameHooks<'static> = GameHooks { hires_ticks: &no_ticks };
+const NO_HOOKS: GameHooks<'static> = GameHooks::NONE;
 
 impl Sims<'_, '_> {
-    fn copy(&self, i: usize) -> &SimCopy {
+    fn copy(&self, i: usize) -> &GameState {
         self.copies[i].as_ref().expect("a freed game")
     }
 
@@ -146,7 +133,7 @@ impl Games for Sims<'_, '_> {
         let mut data = self.data(g).clone();
         data.quick_sim = true;
         let (pixels, materials, width, height) = self.level_data(g);
-        let copy = SimCopy {
+        let copy = GameState {
             data,
             pixels: pixels.to_vec(),
             materials: materials.to_vec(),
